@@ -137,21 +137,14 @@ function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: b
       )}
 
       {replies.map(r => (
-        <div key={r.id} className={cn('flex', r.is_admin ? 'justify-end' : 'justify-start')}>
-          <div className={cn(
-            'max-w-[80%] rounded-2xl px-4 py-2.5 text-sm',
-            r.is_admin
-              ? 'bg-violet-600 text-white rounded-br-sm'
-              : 'bg-gray-100 text-gray-800 rounded-bl-sm'
-          )}>
-            <p className={cn('text-[10px] font-semibold mb-1', r.is_admin ? 'text-violet-200' : 'text-gray-400')}>
-              {r.is_admin ? 'Soporte SCENCE' : 'Tú'}
+        <div key={r.id} className="border border-gray-100 rounded-xl px-3 py-2 bg-gray-50">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <p className="text-[11px] font-semibold text-gray-500">
+              {r.is_admin ? 'Soporte SCENCE' : 'Usuario'}
             </p>
-            <p className="leading-relaxed whitespace-pre-wrap">{r.message}</p>
-            <p className={cn('text-[10px] mt-1 text-right', r.is_admin ? 'text-violet-300' : 'text-gray-400')}>
-              {fmt(r.created_at)}
-            </p>
+            <p className="text-[10px] text-gray-400">{fmt(r.created_at)}</p>
           </div>
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{r.message}</p>
         </div>
       ))}
 
@@ -162,7 +155,7 @@ function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: b
             value={message}
             onChange={e => setMessage(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply() } }}
-            placeholder="Escribe una respuesta… (Enter para enviar)"
+            placeholder="Responder ticket..."
             rows={2}
             className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-violet-400 bg-gray-50 focus:bg-white transition-colors resize-none"
           />
@@ -399,9 +392,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
                     {adminMode && t.ai_review?.severity && (
                       <div className={cn('w-2 h-2 rounded-full flex-shrink-0 mt-2', SEVERITY_DOT[t.ai_review.severity] ?? 'bg-gray-300')} />
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 truncate">{t.title}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{fmt(t.created_at)}</p>
+                    <div className="flex-1 min-w-0 space-y-1">
                       {adminMode && (() => {
                         const submitter = t.submitter ?? {
                           name: 'Usuario sin identificar',
@@ -411,17 +402,20 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
                         const cfg = SUBMITTER_TYPE_CONFIG[submitter.type]
                         const Icon = cfg.icon
                         return (
-                          <div className={cn('inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-xs font-medium', cfg.color)}>
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                             <Icon className="h-3 w-3 flex-shrink-0" />
-                            <span className="opacity-70">Enviado por:</span>
-                            <span className="font-semibold">{submitter.name}</span>
-                            <span className="opacity-60">·</span>
-                            <span className="opacity-80">{submitter.email}</span>
-                            <span className="opacity-60">·</span>
+                            <span className="font-semibold text-gray-700">Enviado por: {submitter.name}</span>
+                            <span>·</span>
+                            <span>{submitter.email}</span>
+                            <span>·</span>
                             <span className="font-semibold">{cfg.label}</span>
+                            <span>·</span>
+                            <span>{fmt(t.created_at)}</span>
                           </div>
                         )
                       })()}
+                      <p className="font-semibold text-gray-900 truncate">{t.title}</p>
+                      {!adminMode && <p className="text-xs text-gray-400 mt-0.5">{fmt(t.created_at)}</p>}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full', PRIORITY_COLOR[t.priority] ?? PRIORITY_COLOR.P2)}>
@@ -444,25 +438,18 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
                     {/* Admin: cambiar estado + eliminar */}
                     {adminMode && (
                       <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-gray-400">Estado:</span>
-                          <div className="flex gap-1.5">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+                          Estado:
+                          <select
+                            value={t.status}
+                            onChange={e => updateStatus(t.id, e.target.value)}
+                            className="px-2 py-1 text-xs border border-gray-200 rounded-lg bg-white text-gray-700 outline-none focus:border-violet-400"
+                          >
                             {(Object.keys(STATUS_CONFIG) as Array<keyof typeof STATUS_CONFIG>).map(s => (
-                              <button
-                                key={s}
-                                onClick={() => updateStatus(t.id, s)}
-                                className={cn(
-                                  'text-[10px] font-bold px-3 py-1.5 rounded-full transition-all',
-                                  t.status === s
-                                    ? STATUS_CONFIG[s].color + ' ring-2 ring-offset-1 ring-current'
-                                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                                )}
-                              >
-                                {STATUS_CONFIG[s].label}
-                              </button>
+                              <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
                             ))}
-                          </div>
-                        </div>
+                          </select>
+                        </label>
                         <button
                           onClick={() => deleteTicket(t.id)}
                           className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"

@@ -19,7 +19,6 @@ export async function GET(req: NextRequest) {
   let query = admin
     .from('brands')
     .select('*, campaigns:campaigns!brand_id(id, name, status, budget_total, currency)')
-    .eq('organization_id', orgId)
     .order('name', { ascending: true })
     .limit(limit)
 

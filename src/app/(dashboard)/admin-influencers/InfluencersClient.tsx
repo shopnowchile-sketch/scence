@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Upload, Users, TrendingUp, Globe, ChevronLeft, ChevronRight, ShieldCheck, Trash2, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useInfluencers } from '@/hooks/useInfluencers'
@@ -16,9 +16,10 @@ import Link from 'next/link'
 
 interface InfluencersClientProps {
   portal?: 'admin' | 'brand'
+  initialView?: 'grid' | 'list' | 'ranking'
 }
 
-export function InfluencersClient({ portal = 'admin' }: InfluencersClientProps) {
+export function InfluencersClient({ portal = 'admin', initialView }: InfluencersClientProps) {
   const isBrandPortal = portal === 'brand'
   const [showBulk, setShowBulk] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -43,6 +44,14 @@ export function InfluencersClient({ portal = 'admin' }: InfluencersClientProps) 
     totalPages,
     pageSize,
   } = useInfluencers(undefined, isBrandPortal ? '/api/brand/influencers' : '/api/influencers')
+
+  const initialViewApplied = useRef(false)
+
+  useEffect(() => {
+    if (!initialView || initialViewApplied.current) return
+    setView(initialView)
+    initialViewApplied.current = true
+  }, [initialView, setView])
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {

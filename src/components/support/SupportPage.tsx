@@ -402,15 +402,23 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-900 truncate">{t.title}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{fmt(t.created_at)}</p>
-                      {adminMode && t.submitter && (() => {
-                        const cfg = SUBMITTER_TYPE_CONFIG[t.submitter.type]
+                      {adminMode && (() => {
+                        const submitter = t.submitter ?? {
+                          name: 'Usuario sin identificar',
+                          email: 'Sin email',
+                          type: 'admin' as const,
+                        }
+                        const cfg = SUBMITTER_TYPE_CONFIG[submitter.type]
                         const Icon = cfg.icon
                         return (
                           <div className={cn('inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-xs font-medium', cfg.color)}>
                             <Icon className="h-3 w-3 flex-shrink-0" />
-                            <span className="font-semibold">{t.submitter.name}</span>
+                            <span className="opacity-70">Enviado por:</span>
+                            <span className="font-semibold">{submitter.name}</span>
                             <span className="opacity-60">·</span>
-                            <span className="opacity-80">{t.submitter.email}</span>
+                            <span className="opacity-80">{submitter.email}</span>
+                            <span className="opacity-60">·</span>
+                            <span className="font-semibold">{cfg.label}</span>
                           </div>
                         )
                       })()}

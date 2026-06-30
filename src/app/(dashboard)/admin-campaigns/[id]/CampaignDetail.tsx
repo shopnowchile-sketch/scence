@@ -621,7 +621,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
           <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{c.name}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
+          <Link href={isBrandPortal ? `/brand-campaigns/${id}/report` : `/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
             <FileDown className="h-3.5 w-3.5" /> Reporte PDF
           </Link>

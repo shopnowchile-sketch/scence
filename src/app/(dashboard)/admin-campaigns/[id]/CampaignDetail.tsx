@@ -349,6 +349,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     is_public: false,
     notes: '',
   })
+  const [editMode, setEditMode] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [allBrands, setAllBrands] = useState<Array<{ id: string; name: string }>>([])
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id)
   const patchCampaign = usePatchCampaign(id)
@@ -458,6 +461,72 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     ...(((c as unknown as { campaign_brands?: Array<{ brand?: Record<string, unknown> }> }).campaign_brands ?? [])
       .map(cb => cb.brand ? { ...cb.brand, _role: 'Colaboradora' } : null)),
   ].filter(Boolean) as Array<Record<string, unknown>>
+
+  async function openInlineEditMode() {
+    setEditMode(true)
+
+    if (isBrandPortal || allBrands.length > 0) return
+
+    try {
+      const res = await fetch('/api/brands')
+      const json = await res.json().catch(() => ({}))
+      setAllBrands(Array.isArray(json.data) ? json.data : [])
+    } catch {
+      setAllBrands([])
+    }
+  }
+
+  async function handleInlineCampaignSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+
+    const form = new FormData(e.currentTarget)
+    const platforms = String(form.get('platforms') ?? '')
+      .split(',')
+      .map(v => v.trim().toLowerCase())
+      .filter(Boolean)
+
+    const socialTags = String(form.get('social_tags') ?? '')
+      .split(',')
+      .map(v => v.trim())
+      .filter(Boolean)
+
+    const budgetRaw = String(form.get('budget_total') ?? '0')
+    const budget = Number(budgetRaw || 0)
+
+    setEditSaving(true)
+    try {
+      const res = await fetch(`/api/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: String(form.get('name') ?? '').trim(),
+          description: String(form.get('description') ?? '').trim() || null,
+          status: String(form.get('status') ?? '').trim(),
+          type: String(form.get('type') ?? '').trim(),
+          start_date: String(form.get('start_date') ?? '').trim() || null,
+          end_date: String(form.get('end_date') ?? '').trim() || null,
+          budget_total: Number.isFinite(budget) ? budget : 0,
+          currency: String(form.get('currency') ?? 'CLP').trim() || 'CLP',
+          brief_url: String(form.get('brief_url') ?? '').trim() || null,
+          content_guidelines: String(form.get('content_guidelines') ?? '').trim() || null,
+          platforms,
+          social_tags: socialTags,
+          brand_id: String(form.get('brand_id') ?? '').trim() || null,
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar campaña')
+
+      toast.success('Campaña actualizada')
+      setEditMode(false)
+      await refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al guardar campaña')
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   async function reloadCampaignAssets() {
     const res = await fetch(`/api/campaigns/${id}/assets`)
@@ -627,10 +696,15 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
             <FileDown className="h-3.5 w-3.5" /> Reporte PDF
           </Link>
-          <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/admin-campaigns/${id}/edit`}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <Pencil className="h-3.5 w-3.5" /> Editar
-          </Link>
+          {!isBrandPortal && (
+            <button
+              type="button"
+              onClick={openInlineEditMode}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Editar
+            </button>
+          )}
           {c.status === 'draft' && (
             <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
@@ -663,6 +737,129 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
           )}
         </div>
       </div>
+
+      {editMode && !isBrandPortal && (
+        <form onSubmit={handleInlineCampaignSave} className="card p-6 space-y-5 border-2 border-violet-100">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Editar campaña</h2>
+              <p className="text-sm text-gray-400">Edita sin salir del detalle de campaña.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEditMode(false)}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={editSaving}
+                className="px-4 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-60"
+              >
+                {editSaving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Nombre</label>
+              <input name="name" defaultValue={c.name ?? ''} className="input-base w-full" required />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Descripción</label>
+              <textarea name="description" defaultValue={c.description ?? ''} rows={3} className="input-base w-full resize-none" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Estado</label>
+              <select name="status" defaultValue={c.status ?? 'draft'} className="input-base w-full">
+                <option value="draft">Draft</option>
+                <option value="pending_approval">Pendiente aprobación</option>
+                <option value="active">Activa</option>
+                <option value="paused">Pausada</option>
+                <option value="completed">Completada</option>
+                <option value="canceled">Cancelada</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Tipo</label>
+              <select name="type" defaultValue={c.type ?? 'sponsored_post'} className="input-base w-full">
+                <option value="sponsored_post">Sponsored Post</option>
+                <option value="ambassador">Embajador</option>
+                <option value="ugc">UGC</option>
+                <option value="event_appearance">Evento</option>
+                <option value="product_seeding">Product Seeding</option>
+                <option value="live">Live</option>
+                <option value="commission">Comisión</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Fecha inicio</label>
+              <input name="start_date" type="date" defaultValue={c.start_date ?? ''} className="input-base w-full" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Fecha fin</label>
+              <input name="end_date" type="date" defaultValue={c.end_date ?? ''} className="input-base w-full" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Budget total</label>
+              <input name="budget_total" type="number" min="0" step="1000" defaultValue={c.budget_total ?? 0} className="input-base w-full" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Moneda</label>
+              <select name="currency" defaultValue={c.currency ?? 'CLP'} className="input-base w-full">
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="MXN">MXN</option>
+                <option value="COP">COP</option>
+                <option value="ARS">ARS</option>
+                <option value="BRL">BRL</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Marca principal</label>
+              <select name="brand_id" defaultValue={c.brand_id ?? ''} className="input-base w-full">
+                <option value="">Sin marca principal</option>
+                {allBrands.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Brief URL</label>
+              <input name="brief_url" defaultValue={c.brief_url ?? ''} className="input-base w-full" placeholder="https://..." />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Plataformas</label>
+              <input name="platforms" defaultValue={(c.platforms ?? []).join(', ')} className="input-base w-full" placeholder="instagram, tiktok" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Tags obligatorios</label>
+              <input name="social_tags" defaultValue={(c.social_tags ?? []).join(', ')} className="input-base w-full" placeholder="@marca, @influencers.snc" />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Guía de contenido</label>
+              <textarea name="content_guidelines" defaultValue={c.content_guidelines ?? ''} rows={4} className="input-base w-full resize-none" />
+            </div>
+          </div>
+        </form>
+      )}
 
       {/* Header card */}
       <div className="card p-6">
@@ -1409,9 +1606,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Marcas de la campaña</h3>
-            <Link href={`/admin-campaigns/${id}/edit`} className="text-sm font-semibold text-violet-600 hover:underline">
+            <button type="button" onClick={openInlineEditMode} className="text-sm font-semibold text-violet-600 hover:underline">
               Editar campaña
-            </Link>
+            </button>
           </div>
 
           {campaignBrands.length === 0 ? (

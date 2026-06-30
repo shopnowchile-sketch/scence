@@ -54,7 +54,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={`/campaigns/${campaignId}`}
+        <Link href={`/admin-campaigns/${campaignId}`}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
           <ChevronLeft className="h-5 w-5" />
         </Link>
@@ -168,7 +168,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
         <p className="text-sm text-gray-400">
           {added.size > 0 ? `${added.size} influencer${added.size !== 1 ? 's' : ''} agregado${added.size !== 1 ? 's' : ''}` : ''}
         </p>
-        <Link href={`/campaigns/${campaignId}`}
+        <Link href={`/admin-campaigns/${campaignId}`}
           className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors">
           Ver campaña
         </Link>

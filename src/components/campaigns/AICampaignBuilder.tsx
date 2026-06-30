@@ -96,7 +96,7 @@ export function AICampaignBuilder({ onClose }: { onClose: () => void }) {
       toast.success('¡Campaña generada! Redirigiendo al editor…')
       setTimeout(() => {
         onClose()
-        router.push(`/campaigns/${json.data.id}/edit`)
+        router.push(`/admin-campaigns/${json.data.id}/edit`)
       }, 900)
 
     } catch (e: unknown) {

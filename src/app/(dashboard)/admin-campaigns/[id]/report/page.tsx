@@ -134,7 +134,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
     .from('campaigns')
     .select(`
       *,
-      brand:brands (id, name, logo_url, website, email, phone, contact_name),
+      brand:brands!campaigns_brand_id_fkey (id, name, logo_url, website, contact_name, contact_email, contact_phone),
       campaign_influencers (
         id, fee, status, notes,
         influencer:influencers (

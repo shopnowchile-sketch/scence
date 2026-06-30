@@ -157,7 +157,7 @@ export function CampaignEditForm({ id }: { id: string }) {
         approval_required:     data.approval_required,
       })
       toast.success('Campaña actualizada')
-      router.push(`/campaigns/${id}`)
+      router.push(`/admin-campaigns/${id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
@@ -189,7 +189,7 @@ export function CampaignEditForm({ id }: { id: string }) {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={`/campaigns/${id}`}
+        <Link href={`/admin-campaigns/${id}`}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
           <ChevronLeft className="h-5 w-5" />
         </Link>
@@ -440,7 +440,7 @@ export function CampaignEditForm({ id }: { id: string }) {
 
         {/* Actions */}
         <div className="flex justify-between">
-          <Link href={`/campaigns/${id}`}
+          <Link href={`/admin-campaigns/${id}`}
             className="px-4 py-2.5 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
             Cancelar
           </Link>

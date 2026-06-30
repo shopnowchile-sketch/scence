@@ -568,7 +568,7 @@ export function CampaignForm() {
       }
       const { data: campaign } = await res.json()
       toast.success('Campaña creada correctamente')
-      router.push(`/campaigns/${campaign.id}`)
+      router.push(`/admin-campaigns/${campaign.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')
     } finally {

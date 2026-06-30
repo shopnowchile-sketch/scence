@@ -396,11 +396,11 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
           <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{c.name}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
+          <Link href={`/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
             <FileDown className="h-3.5 w-3.5" /> Reporte PDF
           </Link>
-          <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/campaigns/${id}/edit`}
+          <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/admin-campaigns/${id}/edit`}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
             <Pencil className="h-3.5 w-3.5" /> Editar
           </Link>
@@ -688,10 +688,10 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <div className="card p-4 space-y-2">
               <h3 className="text-sm font-semibold text-gray-700 mb-1">Acciones rápidas</h3>
               {[
-                { label: '+ Agregar influencer', href: `/campaigns/${id}/influencers/add`, color: 'text-violet-700 bg-violet-50 hover:bg-violet-100' },
-                { label: '📄 Ver contratos',      href: `/contracts`,  color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
-                { label: '💳 Crear factura',      href: `/billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
-                { label: '💸 Crear payroll run',  href: `/billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
+                { label: '+ Agregar influencer', href: `/admin-campaigns/${id}/influencers/add`, color: 'text-violet-700 bg-violet-50 hover:bg-violet-100' },
+                { label: '📄 Ver contratos',      href: `/admin-contracts`,  color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
+                { label: '💳 Crear factura',      href: `/admin-billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
+                { label: '💸 Crear payroll run',  href: `/admin-billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
               ].map(({ label, href, color }) => (
                 <Link key={label} href={href} className={cn('block w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors', color)}>
                   {label}
@@ -771,7 +771,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <p className="text-sm text-gray-500">
               {campaignInfluencers.filter(ci => ci.status !== 'applied').length} influencer{campaignInfluencers.length !== 1 ? 's' : ''} asignado{campaignInfluencers.length !== 1 ? 's' : ''}
             </p>
-            <Link href={`/campaigns/${id}/influencers/add`}
+            <Link href={`/admin-campaigns/${id}/influencers/add`}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors">
               + Agregar influencer
             </Link>
@@ -781,7 +781,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <div className="card p-12 text-center">
               <Users className="h-10 w-10 text-gray-200 mx-auto mb-3" />
               <p className="text-sm text-gray-400">Sin influencers asignados aún</p>
-              <Link href={`/campaigns/${id}/influencers/add`}
+              <Link href={`/admin-campaigns/${id}/influencers/add`}
                 className="mt-3 inline-block text-sm text-violet-600 hover:underline font-medium">+ Agregar el primero</Link>
             </div>
           ) : (

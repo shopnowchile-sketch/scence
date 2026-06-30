@@ -32,7 +32,7 @@ const GRADIENTS = [
   'from-amber-400 to-orange-500', 'from-violet-400 to-indigo-500',
 ]
 
-type Tab = 'overview' | 'influencers' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
+type Tab = 'overview' | 'influencers' | 'brands' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
 
 // ── Deliverable card ─────────────────────────────────────────────────────────
 function DeliverableCard({
@@ -352,6 +352,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const [editMode, setEditMode] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [allBrands, setAllBrands] = useState<Array<{ id: string; name: string }>>([])
+  const [brandAssignOpen, setBrandAssignOpen] = useState(false)
+  const [brandAssignSearch, setBrandAssignSearch] = useState('')
+  const [brandAssignSaving, setBrandAssignSaving] = useState(false)
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id)
   const patchCampaign = usePatchCampaign(id)
@@ -462,6 +465,20 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       .map(cb => cb.brand ? { ...cb.brand, _role: 'Colaboradora' } : null)),
   ].filter(Boolean) as Array<Record<string, unknown>>
 
+  const campaignMeta = ((c as unknown as { metadata?: Record<string, unknown> }).metadata ?? {}) as Record<string, unknown>
+  const campaignLocation = (
+    (campaignMeta.primary_location as string | undefined)
+    ?? (campaignMeta.location as string | undefined)
+    ?? (campaignMeta.address as string | undefined)
+    ?? ''
+  ).trim()
+
+  const assignedBrandIds = new Set(campaignBrands.map(b => String(b.id ?? '')).filter(Boolean))
+  const assignableBrands = allBrands
+    .filter(b => !assignedBrandIds.has(String(b.id)))
+    .filter(b => !brandAssignSearch.trim() || b.name.toLowerCase().includes(brandAssignSearch.trim().toLowerCase()))
+    .slice(0, 8)
+
   async function openInlineEditMode() {
     setEditMode(true)
 
@@ -473,6 +490,41 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       setAllBrands(Array.isArray(json.data) ? json.data : [])
     } catch {
       setAllBrands([])
+    }
+  }
+
+  async function loadAllBrandsForAssign() {
+    if (allBrands.length > 0) return
+
+    try {
+      const res = await fetch('/api/brands')
+      const json = await res.json().catch(() => ({}))
+      setAllBrands(Array.isArray(json.data) ? json.data : [])
+    } catch {
+      setAllBrands([])
+    }
+  }
+
+  async function handleAssignCampaignBrand(brandId: string) {
+    setBrandAssignSaving(true)
+    try {
+      const res = await fetch(`/api/campaigns/${id}/brands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_id: brandId, role: 'collaborator' }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Error al asignar marca')
+
+      toast.success('Marca asignada')
+      setBrandAssignOpen(false)
+      setBrandAssignSearch('')
+      await refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al asignar marca')
+    } finally {
+      setBrandAssignSaving(false)
     }
   }
 
@@ -671,6 +723,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-4 w-4" /> },
     { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-4 w-4" /> },
+    { id: 'brands',       label: `Marcas (${campaignBrands.length})`,           icon: <Target className="h-4 w-4" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-4 w-4" /> },
     ...(!isBrandPortal ? [
       { id: 'assets' as Tab,       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-4 w-4" /> },
@@ -738,129 +791,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
         </div>
       </div>
 
-      {editMode && !isBrandPortal && (
-        <form onSubmit={handleInlineCampaignSave} className="card p-6 space-y-5 border-2 border-violet-100">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">Editar campaña</h2>
-              <p className="text-sm text-gray-400">Edita sin salir del detalle de campaña.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setEditMode(false)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={editSaving}
-                className="px-4 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-60"
-              >
-                {editSaving ? 'Guardando...' : 'Guardar cambios'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Nombre</label>
-              <input name="name" defaultValue={c.name ?? ''} className="input-base w-full" required />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Descripción</label>
-              <textarea name="description" defaultValue={c.description ?? ''} rows={3} className="input-base w-full resize-none" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Estado</label>
-              <select name="status" defaultValue={c.status ?? 'draft'} className="input-base w-full">
-                <option value="draft">Draft</option>
-                <option value="pending_approval">Pendiente aprobación</option>
-                <option value="active">Activa</option>
-                <option value="paused">Pausada</option>
-                <option value="completed">Completada</option>
-                <option value="canceled">Cancelada</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Tipo</label>
-              <select name="type" defaultValue={c.type ?? 'sponsored_post'} className="input-base w-full">
-                <option value="sponsored_post">Sponsored Post</option>
-                <option value="ambassador">Embajador</option>
-                <option value="ugc">UGC</option>
-                <option value="event_appearance">Evento</option>
-                <option value="product_seeding">Product Seeding</option>
-                <option value="live">Live</option>
-                <option value="commission">Comisión</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Fecha inicio</label>
-              <input name="start_date" type="date" defaultValue={c.start_date ?? ''} className="input-base w-full" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Fecha fin</label>
-              <input name="end_date" type="date" defaultValue={c.end_date ?? ''} className="input-base w-full" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Budget total</label>
-              <input name="budget_total" type="number" min="0" step="1000" defaultValue={c.budget_total ?? 0} className="input-base w-full" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Moneda</label>
-              <select name="currency" defaultValue={c.currency ?? 'CLP'} className="input-base w-full">
-                <option value="CLP">CLP</option>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="MXN">MXN</option>
-                <option value="COP">COP</option>
-                <option value="ARS">ARS</option>
-                <option value="BRL">BRL</option>
-                <option value="GBP">GBP</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Marca principal</label>
-              <select name="brand_id" defaultValue={c.brand_id ?? ''} className="input-base w-full">
-                <option value="">Sin marca principal</option>
-                {allBrands.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Brief URL</label>
-              <input name="brief_url" defaultValue={c.brief_url ?? ''} className="input-base w-full" placeholder="https://..." />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Plataformas</label>
-              <input name="platforms" defaultValue={(c.platforms ?? []).join(', ')} className="input-base w-full" placeholder="instagram, tiktok" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Tags obligatorios</label>
-              <input name="social_tags" defaultValue={(c.social_tags ?? []).join(', ')} className="input-base w-full" placeholder="@marca, @influencers.snc" />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Guía de contenido</label>
-              <textarea name="content_guidelines" defaultValue={c.content_guidelines ?? ''} rows={4} className="input-base w-full resize-none" />
-            </div>
-          </div>
-        </form>
-      )}
-
       {/* Header card */}
       <div className="card p-6">
         <div className="flex items-start gap-4">
@@ -897,15 +827,37 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 flex-shrink-0">
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px]">
               <div className="text-2xl font-bold text-gray-900">{pct}%</div>
               <div className="text-[11px] text-gray-400">Completado</div>
             </div>
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px]">
               <div className="text-2xl font-bold text-gray-900">{budgetPct}%</div>
               <div className="text-[11px] text-gray-400">Budget usado</div>
             </div>
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px]">
+              <div className="text-2xl font-bold text-gray-900">{campaignInfluencers.length}</div>
+              <div className="text-[11px] text-gray-400">Influencers</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTab('brands')}
+              className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px] hover:bg-violet-50 transition-colors"
+            >
+              <div className="text-2xl font-bold text-gray-900">{campaignBrands.length}</div>
+              <div className="text-[11px] text-gray-400">Marcas</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('locations')}
+              className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px] hover:bg-violet-50 transition-colors"
+            >
+              <div className="text-sm font-bold text-gray-900 truncate max-w-[110px]">
+                {campaignLocation || brandLocations.length || '—'}
+              </div>
+              <div className="text-[11px] text-gray-400">Lugar</div>
+            </button>
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-100">
@@ -1633,6 +1585,112 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       )}
 
       {/* ── LUGARES ────────────────────────────────────────────────────────── */}
+      {tab === 'brands' && (
+        <div className="card p-6 space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">Marcas participantes</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                La marca principal vive en campaigns.brand_id. Las colaboradoras viven en campaign_brands.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
+                {campaignBrands.length} marca(s)
+              </span>
+              {!isBrandPortal && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setBrandAssignOpen(prev => !prev)
+                    await loadAllBrandsForAssign()
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700"
+                >
+                  + Agregar marca
+                </button>
+              )}
+            </div>
+          </div>
+
+          {brandAssignOpen && (
+            <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
+              <input
+                value={brandAssignSearch}
+                onChange={e => setBrandAssignSearch(e.target.value)}
+                className="input-base w-full bg-white text-sm"
+                placeholder="Buscar marca existente..."
+              />
+
+              {assignableBrands.length === 0 ? (
+                <p className="text-xs text-gray-500">
+                  No hay marcas disponibles con esa búsqueda. Por ahora crea la marca desde el módulo Marcas y luego vuelve a asignarla.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {assignableBrands.map(b => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      disabled={brandAssignSaving}
+                      onClick={() => handleAssignCampaignBrand(b.id)}
+                      className="text-left rounded-lg border border-white bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:border-violet-200 hover:bg-violet-50 disabled:opacity-60"
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {campaignBrands.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin marcas asociadas todavía.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {campaignBrands.map((brand, idx) => (
+                <div key={`${brand.id ?? idx}`} className="rounded-xl border border-gray-100 p-4 bg-white">
+                  <div className="flex items-start gap-3">
+                    {brand.logo_url ? (
+                      <img
+                        src={String(brand.logo_url)}
+                        alt={String(brand.name ?? 'Marca')}
+                        className="w-10 h-10 rounded-lg object-contain border border-gray-100 p-0.5"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center text-violet-700 font-bold">
+                        {String(brand.name ?? 'M').charAt(0)}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-gray-900 truncate">{String(brand.name ?? 'Marca sin nombre')}</p>
+                        <span className={cn(
+                          'text-[10px] px-2 py-0.5 rounded-full font-semibold',
+                          brand._role === 'Principal'
+                            ? 'bg-violet-100 text-violet-700'
+                            : 'bg-gray-100 text-gray-600'
+                        )}>
+                          {String(brand._role ?? 'Colaboradora')}
+                        </span>
+                      </div>
+                      {brand.website ? (
+                        <a href={String(brand.website)} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-600 hover:underline">
+                          {String(brand.website)}
+                        </a>
+                      ) : (
+                        <p className="text-xs text-gray-400">Sin sitio web</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+        </div>
+      )}
+
       {tab === 'locations' && (
         <div className="card p-6 space-y-5">
           <div className="flex items-center justify-between gap-3">

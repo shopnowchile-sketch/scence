@@ -71,7 +71,7 @@ export default function BrandDashboard() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/brand-campaigns')
+      const res = await fetch('/api/brand/campaigns')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setCampaigns(json.data ?? [])

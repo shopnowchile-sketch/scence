@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Building2, Plus, X, Globe, Mail, Phone, Target,
@@ -22,7 +22,9 @@ interface Brand {
   contact_phone: string | null
   notes: string | null
   created_at: string
+  status?: string | null
   last_sign_in_at?: string | null
+  user_id?: string | null
   campaigns?: Array<{ id: string; name: string; status: string; budget_total: number | null; currency: string }>
 }
 
@@ -208,6 +210,8 @@ export default function BrandsPage() {
   const [brands, setBrands]           = useState<Brand[]>([])
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('name_asc')
   const [showModal, setShowModal]     = useState(false)
   const [editing, setEditing]         = useState<Brand | null>(null)
   const [selected, setSelected]       = useState<Brand | null>(null)
@@ -276,6 +280,43 @@ export default function BrandsPage() {
     setLoadingInf(false)
   }
 
+  const statusLabel = (status?: string | null) => {
+    if (status === 'approved') return 'Aprobada'
+    if (status === 'suspended') return 'Suspendida'
+    return 'Pendiente'
+  }
+
+  const statusClass = (status?: string | null) => {
+    if (status === 'approved') return 'badge-green'
+    if (status === 'suspended') return 'badge-red'
+    return 'badge-orange'
+  }
+
+  const visibleBrands = useMemo(() => {
+    const rows = [...brands]
+
+    const filtered = statusFilter === 'all'
+      ? rows
+      : rows.filter(b => (b.status ?? 'pending_approval') === statusFilter)
+
+    filtered.sort((a, b) => {
+      const activeA = (a.campaigns ?? []).filter(c => c.status === 'active').length
+      const activeB = (b.campaigns ?? []).filter(c => c.status === 'active').length
+      const totalA = a.campaigns?.length ?? 0
+      const totalB = b.campaigns?.length ?? 0
+
+      if (sortBy === 'name_desc') return b.name.localeCompare(a.name)
+      if (sortBy === 'active_desc') return activeB - activeA
+      if (sortBy === 'campaigns_desc') return totalB - totalA
+      if (sortBy === 'recent_access') {
+        return new Date(b.last_sign_in_at ?? 0).getTime() - new Date(a.last_sign_in_at ?? 0).getTime()
+      }
+      return a.name.localeCompare(b.name)
+    })
+
+    return filtered
+  }, [brands, statusFilter, sortBy])
+
   function openCreate() {
     setEditing(null)
     setShowModal(true)
@@ -326,6 +367,29 @@ export default function BrandsPage() {
             onChange={e => handleSearchChange(e.target.value)}
           />
         </div>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="input-base text-sm w-44"
+        >
+          <option value="all">Todas las marcas</option>
+          <option value="pending_approval">Pendientes</option>
+          <option value="approved">Aprobadas</option>
+          <option value="suspended">Suspendidas</option>
+        </select>
+
+        <select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value)}
+          className="input-base text-sm w-44"
+        >
+          <option value="name_asc">Orden A-Z</option>
+          <option value="name_desc">Orden Z-A</option>
+          <option value="active_desc">Más activas</option>
+          <option value="campaigns_desc">Más campañas</option>
+          <option value="recent_access">Último acceso</option>
+        </select>
+
         <div className="flex rounded-lg border border-gray-200 overflow-hidden">
           <button onClick={() => setView('list')}
             className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === 'list' ? 'bg-violet-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
@@ -355,7 +419,7 @@ export default function BrandsPage() {
                 </div>
               ))}
             </div>
-          ) : brands.length === 0 ? (
+          ) : visibleBrands.length === 0 ? (
             <div className="card p-16 text-center max-w-md mx-auto">
               <Building2 className="h-12 w-12 text-gray-200 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-gray-900 mb-1">
@@ -379,13 +443,13 @@ export default function BrandsPage() {
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Marca', 'Industria', 'Contacto', 'Campañas activas', 'Total campañas', 'Última conexión', ''].map(h => (
+                    {['Marca', 'Estado', 'Industria', 'Contacto', 'Campañas activas', 'Total campañas', 'Última conexión', ''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {brands.map(b => {
+                  {visibleBrands.map((b: Brand) => {
                     const allCampaigns = (b.campaigns as Array<{id:string;name:string;status:string;budget_total:number|null;currency:string}>) ?? []
                     const activeCampaigns = allCampaigns.filter(camp => camp.status === 'active')
                     return (
@@ -403,6 +467,11 @@ export default function BrandsPage() {
                               {b.website && <a href={b.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-violet-500 hover:underline truncate max-w-[160px] block">{b.website.replace(/^https?:\/\//, '')}</a>}
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn('badge text-xs font-bold', statusClass(b.status))}>
+                            {statusLabel(b.status)}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-500">{b.industry ?? '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">
@@ -432,7 +501,7 @@ export default function BrandsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {brands.map(b => (
+              {visibleBrands.map((b: Brand) => (
                 <button
                   key={b.id}
                   onClick={() => { const next = selected?.id === b.id ? null : b; setSelected(next); if (next) loadBrandInfluencers(next) }}
@@ -589,6 +658,41 @@ export default function BrandsPage() {
                     </a>
                   ))}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                <button
+                  onClick={async () => {
+                    const res = await fetch(`/api/brands/${selected.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status: 'approved' }),
+                    })
+                    if (!res.ok) return toast.error('No se pudo aprobar')
+                    toast.success('Marca aprobada')
+                    load(search)
+                    setSelected({ ...selected, status: 'approved' })
+                  }}
+                  className="py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Aprobar marca
+                </button>
+                <button
+                  onClick={async () => {
+                    const res = await fetch(`/api/brands/${selected.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status: 'suspended' }),
+                    })
+                    if (!res.ok) return toast.error('No se pudo suspender')
+                    toast.success('Marca suspendida')
+                    load(search)
+                    setSelected({ ...selected, status: 'suspended' })
+                  }}
+                  className="py-2 text-xs font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  Suspender
+                </button>
               </div>
 
               {/* Actions */}

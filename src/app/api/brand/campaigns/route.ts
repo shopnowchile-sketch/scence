@@ -59,11 +59,17 @@ export async function POST(req: NextRequest) {
 
   const { data: brand } = await admin
     .from('brands')
-    .select('id, organization_id')
+    .select('id, organization_id, status')
     .eq('user_id', user.id)
     .single()
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (brand.status !== 'approved') {
+    return NextResponse.json(
+      { error: 'Tu marca está pendiente de aprobación. Aún no puedes crear campañas.' },
+      { status: 403 }
+    )
+  }
 
   let body: {
     name: string

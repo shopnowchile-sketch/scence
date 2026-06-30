@@ -120,7 +120,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
     status:   filters.status,
     type:     filters.type,
     platform: filters.platform,
-    apiBase:  isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
+    apiBase:  isBrandPortal ? '/api/brand-campaigns' : '/api/campaigns',
     search:   filters.search,
     limit:    100,
   })

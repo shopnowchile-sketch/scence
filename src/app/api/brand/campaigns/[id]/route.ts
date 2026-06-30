@@ -3,7 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string } }
 
-// GET /api/brand/campaigns/[id] — detalle de una campaña (solo si pertenece a la marca)
+// GET /api/brand-campaigns/[id] — detalle de campaña para marca principal o co-marca
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -20,15 +20,39 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
+  const { data: campaignBase, error: baseError } = await admin
+    .from('campaigns')
+    .select('id, brand_id')
+    .eq('id', params.id)
+    .single()
+
+  if (baseError) {
+    if (baseError.code === 'PGRST116') return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    return NextResponse.json({ error: baseError.message }, { status: 500 })
+  }
+
+  let hasAccess = campaignBase.brand_id === brand.id
+
+  if (!hasAccess) {
+    const { data: coBrand } = await admin
+      .from('campaign_brands')
+      .select('campaign_id')
+      .eq('campaign_id', params.id)
+      .eq('brand_id', brand.id)
+      .maybeSingle()
+
+    hasAccess = !!coBrand
+  }
+
+  if (!hasAccess) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+
   const { data, error } = await admin
     .from('campaigns')
     .select(`
-      id, name, description, type, status, visibility, application_deadline,
-      max_influencers, start_date, end_date,
-      budget_total, currency, hashtags, platforms, content_guidelines,
-      goals, created_at,
+      *,
+      brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
       campaign_influencers (
-        id, application_status, origin, message, fee, currency, notes,
+        id, application_status, status, origin, message, fee, currency, notes,
         influencer:influencers (
           id, display_name, avatar_url, city, country,
           influencer_social_profiles (platform, username, followers, engagement_rate)
@@ -36,18 +60,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ),
       campaign_deliverables (
         id, title, type, status, due_date, platform,
-        content_url, submitted_at, published_url, review_notes, progress,
+        content_url, submitted_at, published_url, published_at, review_notes, progress,
         influencer:influencers (id, display_name, avatar_url)
       )
     `)
     .eq('id', params.id)
-    .eq('brand_id', brand.id)   // seguridad: solo campañas de esta marca
     .single()
 
-  if (error) {
-    if (error.code === 'PGRST116') return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ data })
 }

@@ -3,7 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string } }
 
-// POST /api/brand/campaigns/[id]/invite
+// POST /api/brand-campaigns/[id]/invite
 // La marca invita a un influencer a una campaña (private u open).
 // Crea campaign_influencers con origin='invitation', application_status='pending'.
 // Los deliverables se crean automáticamente cuando el influencer acepta (PATCH applications).
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
 
   if (error) {
-    console.error('[POST /api/brand/campaigns/[id]/invite]', error)
+    console.error('[POST /api/brand-campaigns/[id]/invite]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

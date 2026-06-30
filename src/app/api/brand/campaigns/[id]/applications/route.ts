@@ -3,7 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string } }
 
-// GET /api/brand/campaigns/[id]/applications
+// GET /api/brand-campaigns/[id]/applications
 // Lista todas las invitaciones y postulaciones de la campaña
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
@@ -39,7 +39,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ data: data ?? [], visibility: campaign.visibility })
 }
 
-// PATCH /api/brand/campaigns/[id]/applications
+// PATCH /api/brand-campaigns/[id]/applications
 // La marca acepta o rechaza una invitación / postulación
 // Cuando acepta: crea campaign_deliverables desde deliverables_spec
 export async function PATCH(req: NextRequest, { params }: Params) {

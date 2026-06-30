@@ -3,7 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string } }
 
-// GET /api/brand/campaigns/[id]/barters — solo lectura, scoped a la marca del usuario
+// GET /api/brand-campaigns/[id]/barters — solo lectura, scoped a la marca del usuario
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .order('created_at', { ascending: false })
 
   if (error) {
-    console.error('[GET /api/brand/campaigns/[id]/barters]', error)
+    console.error('[GET /api/brand-campaigns/[id]/barters]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

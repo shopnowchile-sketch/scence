@@ -83,7 +83,7 @@ export default function InviteInfluencerPage() {
     if (!influencer) { toast.error('Selecciona un influencer'); return }
     setSending(true)
     try {
-      const res = await fetch(`/api/brand/campaigns/${campaignId}/invite`, {
+      const res = await fetch(`/api/brand-campaigns/${campaignId}/invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

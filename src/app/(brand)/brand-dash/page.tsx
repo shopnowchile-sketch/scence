@@ -71,7 +71,7 @@ export default function BrandDashboard() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/brand/campaigns')
+      const res = await fetch('/api/brand-campaigns')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setCampaigns(json.data ?? [])
@@ -144,7 +144,7 @@ export default function BrandDashboard() {
               return (
                 <Link
                   key={d.id}
-                  href={`/brand/campaigns/${camp?.id}`}
+                  href={`/brand-campaigns/${camp?.id}`}
                   className="flex items-center gap-3 bg-white rounded-xl px-4 py-3 hover:shadow-sm transition-shadow"
                 >
                   <div className="flex-1 min-w-0">
@@ -192,7 +192,7 @@ export default function BrandDashboard() {
               return (
                 <Link
                   key={c.id}
-                  href={`/brand/campaigns/${c.id}`}
+                  href={`/brand-campaigns/${c.id}`}
                   className="block bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md hover:-translate-y-0.5 transition-all"
                 >
                   <div className="flex items-start justify-between gap-4 mb-4">

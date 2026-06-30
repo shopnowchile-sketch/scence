@@ -147,7 +147,7 @@ export function BrandCampaignView({ id }: { id: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res  = await fetch(`/api/brand/campaigns/${id}`)
+      const res  = await fetch(`/api/brand-campaigns/${id}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setCampaign(json.data)
@@ -245,7 +245,7 @@ export function BrandCampaignView({ id }: { id: string }) {
       </div>
 
       {/* Canjes (solo lectura) */}
-      <BartersReadonly endpoint={`/api/brand/campaigns/${id}/barters`} />
+      <BartersReadonly endpoint={`/api/brand-campaigns/${id}/barters`} />
 
       {campaign.content_guidelines && (
         <div className="bg-violet-50 rounded-2xl border border-violet-100 p-5">

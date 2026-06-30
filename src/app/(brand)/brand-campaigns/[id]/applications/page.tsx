@@ -67,7 +67,7 @@ export default function ApplicationsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/brand/campaigns/${campaignId}/applications`)
+      const res = await fetch(`/api/brand-campaigns/${campaignId}/applications`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setApps(json.data ?? [])
@@ -83,7 +83,7 @@ export default function ApplicationsPage() {
   async function decide(applicationId: string, action: 'accept' | 'reject') {
     setActing(applicationId)
     try {
-      const res = await fetch(`/api/brand/campaigns/${campaignId}/applications`, {
+      const res = await fetch(`/api/brand-campaigns/${campaignId}/applications`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ application_id: applicationId, action }),
@@ -110,7 +110,7 @@ export default function ApplicationsPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
-        <button onClick={() => router.push(`/brand/campaigns/${campaignId}`)}
+        <button onClick={() => router.push(`/brand-campaigns/${campaignId}`)}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
           <ArrowLeft className="h-4 w-4" /> Volver a la campaña
         </button>
@@ -125,7 +125,7 @@ export default function ApplicationsPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => router.push(`/brand/influencers?campaignId=${campaignId}`)}
+              onClick={() => router.push(`/brand-influencers?campaignId=${campaignId}`)}
               className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-sm font-medium text-gray-600 rounded-xl hover:bg-gray-50 transition-colors"
             >
               <Users className="h-4 w-4" /> Invitar más
@@ -141,7 +141,7 @@ export default function ApplicationsPage() {
             {visibility === 'open' ? 'Aún no hay postulaciones' : 'Aún no hay invitaciones enviadas'}
           </p>
           <button
-            onClick={() => router.push(`/brand/influencers?campaignId=${campaignId}`)}
+            onClick={() => router.push(`/brand-influencers?campaignId=${campaignId}`)}
             className="mt-4 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
           >
             Invitar influencers

@@ -43,7 +43,7 @@ export function BrandCampaignForm() {
     if (!form.name.trim()) { toast.error('El nombre es requerido'); return }
     setLoading(true)
     try {
-      const res = await fetch('/api/brand/campaigns', {
+      const res = await fetch('/api/brand-campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -65,7 +65,7 @@ export function BrandCampaignForm() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       toast.success('Campaña creada')
-      router.push(`/brand/campaigns/${json.data.id}`)
+      router.push(`/brand-campaigns/${json.data.id}`)
     } catch (e) { toast.error((e as Error).message) }
     setLoading(false)
   }

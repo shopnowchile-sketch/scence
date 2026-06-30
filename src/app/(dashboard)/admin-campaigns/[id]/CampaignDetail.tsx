@@ -698,7 +698,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 flex-shrink-0">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 flex-shrink-0">
             <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
               <div className="text-2xl font-bold text-gray-900">{pct}%</div>
               <div className="text-[11px] text-gray-400">Completado</div>
@@ -706,6 +706,16 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
               <div className="text-2xl font-bold text-gray-900">{budgetPct}%</div>
               <div className="text-[11px] text-gray-400">Budget usado</div>
+            </div>
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
+              <div className="text-2xl font-bold text-gray-900">{campaignInfluencers.length}</div>
+              <div className="text-[11px] text-gray-400">Invitadas</div>
+            </div>
+            <div className="text-center bg-violet-50 rounded-xl p-3 min-w-[110px]">
+              <div className="text-base font-bold text-violet-700">
+                {((c as { visibility?: string | null }).visibility === 'open' || (c as { visibility?: string | null }).visibility === 'public') ? 'Pública' : 'Por invitación'}
+              </div>
+              <div className="text-[11px] text-violet-400">Visibilidad</div>
             </div>
           </div>
         </div>
@@ -914,7 +924,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <div className="card p-4 space-y-2">
               <h3 className="text-sm font-semibold text-gray-700 mb-1">Acciones rápidas</h3>
               {[
-                { label: '+ Agregar influencer', href: `/admin-campaigns/${id}/influencers/add`, color: 'text-violet-700 bg-violet-50 hover:bg-violet-100' },
+                { label: '+ Agregar influencer', href: isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`, color: 'text-violet-700 bg-violet-50 hover:bg-violet-100' },
                 { label: '📄 Ver contratos',      href: `/admin-contracts`,  color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
                 { label: '💳 Crear factura',      href: `/admin-billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
                 { label: '💸 Crear payroll run',  href: `/admin-billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
@@ -1075,7 +1085,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <p className="text-sm text-gray-500">
               {campaignInfluencers.filter(ci => ci.status !== 'applied').length} influencer{campaignInfluencers.length !== 1 ? 's' : ''} asignado{campaignInfluencers.length !== 1 ? 's' : ''}
             </p>
-            <Link href={`/admin-campaigns/${id}/influencers/add`}
+            <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors">
               + Agregar influencer
             </Link>
@@ -1085,7 +1095,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <div className="card p-12 text-center">
               <Users className="h-10 w-10 text-gray-200 mx-auto mb-3" />
               <p className="text-sm text-gray-400">Sin influencers asignados aún</p>
-              <Link href={`/admin-campaigns/${id}/influencers/add`}
+              <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
                 className="mt-3 inline-block text-sm text-violet-600 hover:underline font-medium">+ Agregar el primero</Link>
             </div>
           ) : (

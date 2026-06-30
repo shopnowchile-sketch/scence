@@ -32,7 +32,7 @@ const GRADIENTS = [
   'from-amber-400 to-orange-500', 'from-violet-400 to-indigo-500',
 ]
 
-type Tab = 'overview' | 'influencers' | 'brands' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
+type Tab = 'overview' | 'influencers' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
 
 // ── Deliverable card ─────────────────────────────────────────────────────────
 function DeliverableCard({
@@ -349,12 +349,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     is_public: false,
     notes: '',
   })
-  const [editMode, setEditMode] = useState(false)
-  const [editSaving, setEditSaving] = useState(false)
-  const [allBrands, setAllBrands] = useState<Array<{ id: string; name: string }>>([])
-  const [brandAssignOpen, setBrandAssignOpen] = useState(false)
-  const [brandAssignSearch, setBrandAssignSearch] = useState('')
-  const [brandAssignSaving, setBrandAssignSaving] = useState(false)
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id)
   const patchCampaign = usePatchCampaign(id)
@@ -464,121 +458,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     ...(((c as unknown as { campaign_brands?: Array<{ brand?: Record<string, unknown> }> }).campaign_brands ?? [])
       .map(cb => cb.brand ? { ...cb.brand, _role: 'Colaboradora' } : null)),
   ].filter(Boolean) as Array<Record<string, unknown>>
-
-  const campaignMeta = ((c as unknown as { metadata?: Record<string, unknown> }).metadata ?? {}) as Record<string, unknown>
-  const campaignLocation = (
-    (campaignMeta.primary_location as string | undefined)
-    ?? (campaignMeta.location as string | undefined)
-    ?? (campaignMeta.address as string | undefined)
-    ?? ''
-  ).trim()
-
-  const assignedBrandIds = new Set(campaignBrands.map(b => String(b.id ?? '')).filter(Boolean))
-  const assignableBrands = allBrands
-    .filter(b => !assignedBrandIds.has(String(b.id)))
-    .filter(b => !brandAssignSearch.trim() || b.name.toLowerCase().includes(brandAssignSearch.trim().toLowerCase()))
-    .slice(0, 8)
-
-  async function openInlineEditMode() {
-    setEditMode(true)
-
-    if (isBrandPortal || allBrands.length > 0) return
-
-    try {
-      const res = await fetch('/api/brands')
-      const json = await res.json().catch(() => ({}))
-      setAllBrands(Array.isArray(json.data) ? json.data : [])
-    } catch {
-      setAllBrands([])
-    }
-  }
-
-  async function loadAllBrandsForAssign() {
-    if (allBrands.length > 0) return
-
-    try {
-      const res = await fetch('/api/brands')
-      const json = await res.json().catch(() => ({}))
-      setAllBrands(Array.isArray(json.data) ? json.data : [])
-    } catch {
-      setAllBrands([])
-    }
-  }
-
-  async function handleAssignCampaignBrand(brandId: string) {
-    setBrandAssignSaving(true)
-    try {
-      const res = await fetch(`/api/campaigns/${id}/brands`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_id: brandId, role: 'collaborator' }),
-      })
-
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'Error al asignar marca')
-
-      toast.success('Marca asignada')
-      setBrandAssignOpen(false)
-      setBrandAssignSearch('')
-      await refetch()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al asignar marca')
-    } finally {
-      setBrandAssignSaving(false)
-    }
-  }
-
-  async function handleInlineCampaignSave(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-
-    const form = new FormData(e.currentTarget)
-    const platforms = String(form.get('platforms') ?? '')
-      .split(',')
-      .map(v => v.trim().toLowerCase())
-      .filter(Boolean)
-
-    const socialTags = String(form.get('social_tags') ?? '')
-      .split(',')
-      .map(v => v.trim())
-      .filter(Boolean)
-
-    const budgetRaw = String(form.get('budget_total') ?? '0')
-    const budget = Number(budgetRaw || 0)
-
-    setEditSaving(true)
-    try {
-      const res = await fetch(`/api/campaigns/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: String(form.get('name') ?? '').trim(),
-          description: String(form.get('description') ?? '').trim() || null,
-          status: String(form.get('status') ?? '').trim(),
-          type: String(form.get('type') ?? '').trim(),
-          start_date: String(form.get('start_date') ?? '').trim() || null,
-          end_date: String(form.get('end_date') ?? '').trim() || null,
-          budget_total: Number.isFinite(budget) ? budget : 0,
-          currency: String(form.get('currency') ?? 'CLP').trim() || 'CLP',
-          brief_url: String(form.get('brief_url') ?? '').trim() || null,
-          content_guidelines: String(form.get('content_guidelines') ?? '').trim() || null,
-          platforms,
-          social_tags: socialTags,
-          brand_id: String(form.get('brand_id') ?? '').trim() || null,
-        }),
-      })
-
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'Error al guardar campaña')
-
-      toast.success('Campaña actualizada')
-      setEditMode(false)
-      await refetch()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al guardar campaña')
-    } finally {
-      setEditSaving(false)
-    }
-  }
 
   async function reloadCampaignAssets() {
     const res = await fetch(`/api/campaigns/${id}/assets`)
@@ -723,7 +602,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-4 w-4" /> },
     { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-4 w-4" /> },
-    { id: 'brands',       label: `Marcas (${campaignBrands.length})`,           icon: <Target className="h-4 w-4" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-4 w-4" /> },
     ...(!isBrandPortal ? [
       { id: 'assets' as Tab,       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-4 w-4" /> },
@@ -749,15 +627,10 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
             <FileDown className="h-3.5 w-3.5" /> Reporte PDF
           </Link>
-          {!isBrandPortal && (
-            <button
-              type="button"
-              onClick={openInlineEditMode}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" /> Editar
-            </button>
-          )}
+          <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/admin-campaigns/${id}/edit`}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+            <Pencil className="h-3.5 w-3.5" /> Editar
+          </Link>
           {c.status === 'draft' && (
             <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
@@ -827,37 +700,15 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px]">
+          <div className="grid grid-cols-2 gap-3 flex-shrink-0">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
               <div className="text-2xl font-bold text-gray-900">{pct}%</div>
               <div className="text-[11px] text-gray-400">Completado</div>
             </div>
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px]">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
               <div className="text-2xl font-bold text-gray-900">{budgetPct}%</div>
               <div className="text-[11px] text-gray-400">Budget usado</div>
             </div>
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px]">
-              <div className="text-2xl font-bold text-gray-900">{campaignInfluencers.length}</div>
-              <div className="text-[11px] text-gray-400">Influencers</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setTab('brands')}
-              className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px] hover:bg-violet-50 transition-colors"
-            >
-              <div className="text-2xl font-bold text-gray-900">{campaignBrands.length}</div>
-              <div className="text-[11px] text-gray-400">Marcas</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('locations')}
-              className="text-center bg-gray-50 rounded-xl p-3 min-w-[82px] hover:bg-violet-50 transition-colors"
-            >
-              <div className="text-sm font-bold text-gray-900 truncate max-w-[110px]">
-                {campaignLocation || brandLocations.length || '—'}
-              </div>
-              <div className="text-[11px] text-gray-400">Lugar</div>
-            </button>
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-100">
@@ -1558,9 +1409,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Marcas de la campaña</h3>
-            <button type="button" onClick={openInlineEditMode} className="text-sm font-semibold text-violet-600 hover:underline">
+            <Link href={`/admin-campaigns/${id}/edit`} className="text-sm font-semibold text-violet-600 hover:underline">
               Editar campaña
-            </button>
+            </Link>
           </div>
 
           {campaignBrands.length === 0 ? (
@@ -1585,112 +1436,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       )}
 
       {/* ── LUGARES ────────────────────────────────────────────────────────── */}
-      {tab === 'brands' && (
-        <div className="card p-6 space-y-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700">Marcas participantes</h3>
-              <p className="text-xs text-gray-400 mt-0.5">
-                La marca principal vive en campaigns.brand_id. Las colaboradoras viven en campaign_brands.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
-                {campaignBrands.length} marca(s)
-              </span>
-              {!isBrandPortal && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setBrandAssignOpen(prev => !prev)
-                    await loadAllBrandsForAssign()
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700"
-                >
-                  + Agregar marca
-                </button>
-              )}
-            </div>
-          </div>
-
-          {brandAssignOpen && (
-            <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
-              <input
-                value={brandAssignSearch}
-                onChange={e => setBrandAssignSearch(e.target.value)}
-                className="input-base w-full bg-white text-sm"
-                placeholder="Buscar marca existente..."
-              />
-
-              {assignableBrands.length === 0 ? (
-                <p className="text-xs text-gray-500">
-                  No hay marcas disponibles con esa búsqueda. Por ahora crea la marca desde el módulo Marcas y luego vuelve a asignarla.
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {assignableBrands.map(b => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      disabled={brandAssignSaving}
-                      onClick={() => handleAssignCampaignBrand(b.id)}
-                      className="text-left rounded-lg border border-white bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:border-violet-200 hover:bg-violet-50 disabled:opacity-60"
-                    >
-                      {b.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {campaignBrands.length === 0 ? (
-            <p className="text-sm text-gray-400">Sin marcas asociadas todavía.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {campaignBrands.map((brand, idx) => (
-                <div key={`${brand.id ?? idx}`} className="rounded-xl border border-gray-100 p-4 bg-white">
-                  <div className="flex items-start gap-3">
-                    {brand.logo_url ? (
-                      <img
-                        src={String(brand.logo_url)}
-                        alt={String(brand.name ?? 'Marca')}
-                        className="w-10 h-10 rounded-lg object-contain border border-gray-100 p-0.5"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center text-violet-700 font-bold">
-                        {String(brand.name ?? 'M').charAt(0)}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-gray-900 truncate">{String(brand.name ?? 'Marca sin nombre')}</p>
-                        <span className={cn(
-                          'text-[10px] px-2 py-0.5 rounded-full font-semibold',
-                          brand._role === 'Principal'
-                            ? 'bg-violet-100 text-violet-700'
-                            : 'bg-gray-100 text-gray-600'
-                        )}>
-                          {String(brand._role ?? 'Colaboradora')}
-                        </span>
-                      </div>
-                      {brand.website ? (
-                        <a href={String(brand.website)} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-600 hover:underline">
-                          {String(brand.website)}
-                        </a>
-                      ) : (
-                        <p className="text-xs text-gray-400">Sin sitio web</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-        </div>
-      )}
-
       {tab === 'locations' && (
         <div className="card p-6 space-y-5">
           <div className="flex items-center justify-between gap-3">

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronLeft, Star, MapPin, Mail, Phone,
   CheckCircle2, ExternalLink, Edit2, Users, TrendingUp,
@@ -163,6 +163,8 @@ export function InfluencerProfile({ id }: { id: string }) {
   const { data: res, isLoading, error, refetch } = useInfluencer(id)
   const { isAdmin } = useIsAdmin()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const backHref = searchParams.get('from') || '/admin-influencers'
 
   async function handleStatusChange(newStatus: 'draft' | 'active' | 'inactive') {
     setDeactivating(true)
@@ -194,7 +196,7 @@ export function InfluencerProfile({ id }: { id: string }) {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'Error al eliminar')
       toast.success('Influencer eliminado permanentemente')
-      router.push('/influencers')
+      router.push('/admin-influencers')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al eliminar')
       setDeletingHard(false)
@@ -304,7 +306,7 @@ export function InfluencerProfile({ id }: { id: string }) {
   if (isLoading) {
     return (
       <div className="space-y-6 max-w-5xl">
-        <Link href="/influencers" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+        <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
           <ChevronLeft className="h-4 w-4" /> Influencers
         </Link>
         <div className="card p-6 flex items-center justify-center h-48">
@@ -318,13 +320,13 @@ export function InfluencerProfile({ id }: { id: string }) {
   if (error || !res?.data) {
     return (
       <div className="space-y-6 max-w-5xl">
-        <Link href="/influencers" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+        <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
           <ChevronLeft className="h-4 w-4" /> Influencers
         </Link>
         <div className="card p-12 text-center">
           <AlertCircle className="h-10 w-10 text-red-300 mx-auto mb-3" />
           <p className="text-gray-500 font-medium">Influencer no encontrado</p>
-          <Link href="/influencers" className="mt-4 inline-block text-sm text-violet-600 hover:underline">
+          <Link href={backHref} className="mt-4 inline-block text-sm text-violet-600 hover:underline">
             Volver al roster
           </Link>
         </div>
@@ -354,7 +356,7 @@ export function InfluencerProfile({ id }: { id: string }) {
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Back */}
-      <Link href="/influencers"
+      <Link href={backHref}
         className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
         <ChevronLeft className="h-4 w-4" /> Influencers
       </Link>
@@ -489,7 +491,7 @@ export function InfluencerProfile({ id }: { id: string }) {
                 )}
 
                 {/* Edit */}
-                <Link href={`/influencers/${id}/edit`}
+                <Link href={`/admin-influencers/${id}/edit`}
                   title="Editar influencer"
                   className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-gray-500">
                   <Edit2 className="h-4 w-4" />
@@ -716,7 +718,7 @@ export function InfluencerProfile({ id }: { id: string }) {
                 {campaignInfluencers.map(ci => (
                   <tr key={ci.id} className="hover:bg-gray-50/70 transition-colors">
                     <td className="px-4 py-3">
-                      <Link href={`/campaigns/${ci.campaign?.id}`}
+                      <Link href={`/admin-campaigns/${ci.campaign?.id}`}
                         className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors">
                         {ci.campaign?.name ?? '—'}
                       </Link>
@@ -786,7 +788,7 @@ export function InfluencerProfile({ id }: { id: string }) {
                   <div className="flex flex-wrap justify-center gap-2 mt-2">
                     {(influencer.campaign_influencers ?? []).slice(0,3).map(ci => (
                       <Link key={ci.id}
-                        href={`/campaigns/${ci.campaign?.id}/deliverables`}
+                        href={`/admin-campaigns/${ci.campaign?.id}`}
                         className="text-xs px-3 py-1.5 bg-violet-50 text-violet-600 rounded-lg hover:bg-violet-100 transition-colors font-medium">
                         + Agregar en {ci.campaign?.name ?? 'Campaña'}
                       </Link>

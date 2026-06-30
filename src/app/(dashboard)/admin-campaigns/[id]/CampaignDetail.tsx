@@ -325,6 +325,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const pathname = usePathname()
   const isBrandPortal = pathname.startsWith('/brand-campaigns')
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
+  const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [addingDeliverable, setAddingDeliverable] = useState(false)
 
@@ -356,6 +357,11 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const campaignInfluencers     = c.campaign_influencers ?? []
   const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.status !== 'applied')
   const campaignDeliverables = c.campaign_deliverables ?? []
+  const selectedInfluencerCI = confirmedInfluencers.find(ci => ci.influencer?.id === selectedInfluencerId) ?? confirmedInfluencers[0] ?? null
+  const selectedInfluencer = selectedInfluencerCI?.influencer ?? null
+  const selectedInfluencerDeliverables = selectedInfluencer
+    ? campaignDeliverables.filter(d => d.influencer?.id === selectedInfluencer.id)
+    : []
 
   const deliverableCount = campaignDeliverables.length
   const deliverableDone  = campaignDeliverables.filter(d => d.status === 'published').length
@@ -726,9 +732,13 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <Link href={`/influencers/${inf.id}`} className="text-sm font-semibold text-gray-900 hover:text-violet-700">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedInfluencerId(inf.id)}
+                          className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700"
+                        >
                           {inf.display_name}
-                        </Link>
+                        </button>
                         {inf.influencer_social_profiles?.[0] && (
                           <p className="text-xs text-gray-400">
                             @{inf.influencer_social_profiles[0].username} · {((inf.influencer_social_profiles[0].followers ?? 0)/1000).toFixed(0)}K
@@ -785,7 +795,8 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 className="mt-3 inline-block text-sm text-violet-600 hover:underline font-medium">+ Agregar el primero</Link>
             </div>
           ) : (
-            <div className="card overflow-x-auto">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start">
+              <div className="card overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-100">
@@ -812,7 +823,14 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                     const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
                     return (
-                      <tr key={ci.id} className="hover:bg-gray-50/70 transition-colors">
+                      <tr
+                        key={ci.id}
+                        onClick={() => setSelectedInfluencerId(inf.id)}
+                        className={cn(
+                          'hover:bg-gray-50/70 transition-colors cursor-pointer',
+                          selectedInfluencer?.id === inf.id ? 'bg-violet-50/70' : ''
+                        )}
+                      >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {inf.avatar_url ? (
@@ -823,10 +841,16 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                               </div>
                             )}
                             <div>
-                              <Link href={`/influencers/${inf.id}`}
-                                className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedInfluencerId(inf.id)
+                                }}
+                                className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
+                              >
                                 {inf.display_name}
-                              </Link>
+                              </button>
                               {primarySP?.username && <div className="text-xs text-gray-400">@{primarySP.username}</div>}
                             </div>
                           </div>
@@ -859,6 +883,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         </td>
                         <td className="px-4 py-3">
                           <select
+                            onClick={(e) => e.stopPropagation()}
                             value={ci.status ?? 'draft'}
                             onChange={async e => {
                               try {
@@ -887,7 +912,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                           </select>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             <a
                               href={`/api/campaigns/${id}/influencer-report?influencer_id=${inf.id}`}
                               target="_blank"
@@ -916,6 +941,115 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                   })}
                 </tbody>
               </table>
+              </div>
+
+              <div className="card p-4 xl:sticky xl:top-4">
+                {selectedInfluencer && selectedInfluencerCI ? (
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {selectedInfluencer.avatar_url ? (
+                          <img src={selectedInfluencer.avatar_url} alt={selectedInfluencer.display_name} className="w-14 h-14 rounded-2xl object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
+                            {selectedInfluencer.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <h3 className="text-base font-bold text-gray-900 truncate">{selectedInfluencer.display_name}</h3>
+                          <p className="text-xs text-gray-400">
+                            {[selectedInfluencer.city, selectedInfluencer.country].filter(Boolean).join(', ') || 'Sin ubicación'}
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        href={`/admin-influencers/${selectedInfluencer.id}?from=${encodeURIComponent(`/admin-campaigns/${id}?tab=influencers`)}`}
+                        className="text-xs font-semibold text-violet-600 hover:underline flex-shrink-0"
+                      >
+                        Ver perfil completo
+                      </Link>
+                    </div>
+
+                    {selectedInfluencer.influencer_social_profiles?.length ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Redes</p>
+                        {selectedInfluencer.influencer_social_profiles.slice(0, 3).map(sp => (
+                          <div key={`${sp.platform}-${sp.username ?? 'sin-usuario'}`} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+                            <div className="text-sm text-gray-700">
+                              {PLATFORM_ICONS[sp.platform]} <span className="font-semibold capitalize">{sp.platform}</span>
+                              {sp.username ? <span className="text-gray-400"> @{sp.username}</span> : null}
+                            </div>
+                            <div className="text-xs font-bold text-gray-900">
+                              {((sp.followers ?? 0) / 1000).toFixed(0)}K
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Fee</p>
+                        <p className="text-sm font-bold text-gray-900">{selectedInfluencerCI.fee ? formatCurrency(selectedInfluencerCI.fee, 'CLP') : '—'}</p>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Estado</p>
+                        <p className="text-sm font-bold text-gray-900">{selectedInfluencerCI.status ?? 'draft'}</p>
+                      </div>
+                    </div>
+
+                    {selectedInfluencerCI.notes && (
+                      <div className="rounded-xl bg-violet-50 border border-violet-100 p-3">
+                        <p className="text-[10px] font-bold text-violet-500 uppercase mb-1">Notas</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-line">{selectedInfluencerCI.notes}</p>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                        Deliverables de esta campaña ({selectedInfluencerDeliverables.length})
+                      </p>
+                      {selectedInfluencerDeliverables.length === 0 ? (
+                        <p className="text-sm text-gray-400 rounded-xl bg-gray-50 p-3">Sin deliverables asignados.</p>
+                      ) : (
+                        <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
+                          {selectedInfluencerDeliverables.map(d => {
+                            const cfg = DEL_CONFIG[d.status] ?? DEL_CONFIG.pending
+                            return (
+                              <div key={d.id} className="rounded-xl border border-gray-100 p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold text-gray-900">{d.title}</p>
+                                    <p className="text-xs text-gray-400">
+                                      {d.platform ? `${d.platform} · ` : ''}{d.due_date ? `Entrega ${formatDate(d.due_date)}` : 'Sin fecha'}
+                                    </p>
+                                  </div>
+                                  <span className={cn('badge text-[10px]', cfg.cls)}>{cfg.label}</span>
+                                </div>
+                                {(d.published_url || d.content_url) && (
+                                  <a
+                                    href={d.published_url || d.content_url || '#'}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:underline"
+                                  >
+                                    <ExternalLink className="h-3 w-3" /> Ver contenido
+                                  </a>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-10">
+                    <Users className="h-8 w-8 text-gray-200 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Selecciona una influencer para ver detalles.</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

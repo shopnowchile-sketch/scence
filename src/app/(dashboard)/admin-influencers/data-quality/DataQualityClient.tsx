@@ -220,7 +220,7 @@ export function DataQualityClient() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <Link href="/influencers" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+          <Link href="/admin-influencers" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
             <ChevronLeft className="h-4 w-4" /> Influencers
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight mt-1">Data Quality</h1>
@@ -342,7 +342,7 @@ export function DataQualityClient() {
                         className="text-violet-600" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <Link href={`/influencers/${inf.id}`} target="_blank"
+                          <Link href={`/admin-influencers/${inf.id}`} target="_blank"
                             className="text-sm font-medium text-gray-900 hover:text-violet-700 truncate">
                             {inf.display_name ?? '(sin nombre)'}
                           </Link>

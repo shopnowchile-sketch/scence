@@ -197,7 +197,7 @@ export function NewInfluencerForm() {
       }
       const { data: influencer } = await res.json()
       toast.success('Influencer agregado al roster')
-      router.push(`/influencers/${influencer.id}`)
+      router.push(`/admin-influencers/${influencer.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')
     } finally {

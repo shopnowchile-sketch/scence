@@ -169,7 +169,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
         throw new Error(err.error ?? 'Error al guardar')
       }
       toast.success('Influencer actualizado')
-      router.push(`/influencers/${id}`)
+      router.push(`/admin-influencers/${id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
@@ -190,7 +190,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
       <div className="card p-12 text-center max-w-lg mx-auto mt-12">
         <AlertCircle className="h-10 w-10 text-red-300 mx-auto mb-3" />
         <p className="text-gray-500 font-medium">Influencer no encontrado</p>
-        <Link href="/influencers" className="mt-4 inline-block text-sm text-violet-600 hover:underline">
+        <Link href="/admin-influencers" className="mt-4 inline-block text-sm text-violet-600 hover:underline">
           Volver al roster
         </Link>
       </div>
@@ -201,7 +201,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={`/influencers/${id}`}
+        <Link href={`/admin-influencers/${id}`}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
           <ChevronLeft className="h-5 w-5" />
         </Link>
@@ -447,7 +447,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
 
         {/* Actions */}
         <div className="flex justify-between">
-          <Link href={`/influencers/${id}`}
+          <Link href={`/admin-influencers/${id}`}
             className="px-4 py-2.5 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
             Cancelar
           </Link>

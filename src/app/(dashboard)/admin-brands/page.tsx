@@ -453,7 +453,7 @@ export default function BrandsPage() {
                     const allCampaigns = (b.campaigns as Array<{id:string;name:string;status:string;budget_total:number|null;currency:string}>) ?? []
                     const activeCampaigns = allCampaigns.filter(camp => camp.status === 'active')
                     return (
-                      <tr key={b.id} onClick={() => { const next = selected?.id === b.id ? null : b; setSelected(next); if (next) loadBrandInfluencers(next) }}
+                      <tr key={b.id} onClick={() => { window.location.href = `/admin-brands/${b.id}` }}
                         className={cn('cursor-pointer hover:bg-gray-50 transition-colors',
                           selected?.id === b.id ? 'bg-violet-50' : '')}>
                         <td className="px-4 py-3">
@@ -504,7 +504,7 @@ export default function BrandsPage() {
               {visibleBrands.map((b: Brand) => (
                 <button
                   key={b.id}
-                  onClick={() => { const next = selected?.id === b.id ? null : b; setSelected(next); if (next) loadBrandInfluencers(next) }}
+                  onClick={() => { window.location.href = `/admin-brands/${b.id}` }}
                   className={cn(
                     'card p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all',
                     selected?.id === b.id ? 'ring-2 ring-violet-400' : ''

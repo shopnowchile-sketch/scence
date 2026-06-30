@@ -1,44 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
-// ── GET /api/brands/[id] ──────────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
-  const { data, error } = await admin
+  const { data: brand, error: brandError } = await admin
     .from('brands')
-    .select(`
-      *,
-      campaigns (id, name, status, budget_total, currency, created_at)
-    `)
+    .select('*')
     .eq('id', params.id)
-    .eq('organization_id', orgId)
     .single()
 
-  if (error) {
-    if (error.code === 'PGRST116') return NextResponse.json({ error: 'Brand not found' }, { status: 404 })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (brandError) {
+    if (brandError.code === 'PGRST116') return NextResponse.json({ error: 'Brand not found' }, { status: 404 })
+    return NextResponse.json({ error: brandError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ data })
+  const { data: primaryCampaigns } = await admin
+    .from('campaigns')
+    .select('id, name, status, budget_total, currency, created_at')
+    .eq('brand_id', params.id)
+    .order('created_at', { ascending: false })
+
+  const { data: coBrandRows } = await admin
+    .from('campaign_brands')
+    .select('campaigns(id, name, status, budget_total, currency, created_at)')
+    .eq('brand_id', params.id)
+
+  const campaigns = [
+    ...(primaryCampaigns ?? []),
+    ...((coBrandRows ?? []).map((r: any) => r.campaigns).filter(Boolean)),
+  ]
+
+  const uniqueCampaigns = Array.from(new Map(campaigns.map((c: any) => [c.id, c])).values())
+
+  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns } })
 }
 
-// ── PATCH /api/brands/[id] ────────────────────────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
@@ -49,7 +58,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .from('brands')
     .update({ ...rest, updated_at: new Date().toISOString() })
     .eq('id', params.id)
-    .eq('organization_id', orgId)
     .select()
     .single()
 
@@ -57,20 +65,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ data })
 }
 
-// ── DELETE /api/brands/[id] ───────────────────────────────────────────────────
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
   const { error } = await admin
     .from('brands')
     .delete()
     .eq('id', params.id)
-    .eq('organization_id', orgId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })

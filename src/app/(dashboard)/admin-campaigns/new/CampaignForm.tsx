@@ -59,6 +59,7 @@ const schema = z.object({
   tags: z.array(z.string()).optional(),
   deliverable_templates: z.array(deliverableSchema).optional(),
   brand_id: z.string().optional(),
+  visibility: z.enum(['private', 'open']).default('private'),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -250,6 +251,27 @@ function Step1({ register, control, errors }: StepProps) {
         />
         {errors.platforms && <p className="text-xs text-red-500 mt-1">{errors.platforms.message}</p>}
       </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Visibilidad</label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-violet-300 transition-colors">
+            <input type="radio" value="private" {...register('visibility')} className="mt-1" />
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Privada</div>
+              <div className="text-xs text-gray-500 mt-0.5">Solo influencers invitadas o asignadas.</div>
+            </div>
+          </label>
+
+          <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-violet-300 transition-colors">
+            <input type="radio" value="open" {...register('visibility')} className="mt-1" />
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Pública</div>
+              <div className="text-xs text-gray-500 mt-0.5">Las influencers pueden postular desde su portal.</div>
+            </div>
+          </label>
+        </div>
+      </div>
     </div>
   )
 }
@@ -275,7 +297,7 @@ function BrandSelector({ register }: { register: UseFormRegister<FormValues> }) 
 }
 
 // ── Step 2 — Budget & Fechas ──────────────────────────────────────────────────
-function Step2({ register, control, errors }: StepProps) {
+function Step2({ register, control, errors, portal = 'admin' }: StepProps & { portal?: 'admin' | 'brand' }) {
   const watchedType = (control as unknown as { _formValues: { type: string } })._formValues?.type
   const isCommission = watchedType === 'commission'
   return (
@@ -291,7 +313,7 @@ function Step2({ register, control, errors }: StepProps) {
         </div>
       </div>
 
-      <BrandSelector register={register} />
+      {portal === 'admin' && <BrandSelector register={register} />}
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -512,7 +534,17 @@ function Step4({ values }: { values: FormValues }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export function CampaignForm() {
+interface CampaignFormProps {
+  apiEndpoint?: string
+  redirectBase?: string
+  portal?: 'admin' | 'brand'
+}
+
+export function CampaignForm({
+  apiEndpoint = '/api/campaigns',
+  redirectBase = '/admin-campaigns',
+  portal = 'admin',
+}: CampaignFormProps = {}) {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
@@ -528,6 +560,7 @@ export function CampaignForm() {
       tags: [],
       deliverable_templates: [],
       brand_id: '',
+      visibility: 'private',
     },
   })
 
@@ -547,7 +580,7 @@ export function CampaignForm() {
   async function onSubmit(data: FormValues) {
     setSaving(true)
     try {
-      const res = await fetch('/api/campaigns', {
+      const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -560,6 +593,7 @@ export function CampaignForm() {
           deliverable_templates: data.deliverable_templates ?? [],
           commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
           brand_id: data.brand_id || null,
+          visibility: data.visibility || 'private',
         }),
       })
       if (!res.ok) {
@@ -568,7 +602,7 @@ export function CampaignForm() {
       }
       const { data: campaign } = await res.json()
       toast.success('Campaña creada correctamente')
-      router.push(`/admin-campaigns/${campaign.id}`)
+      router.push(`${redirectBase}/${campaign.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
@@ -615,7 +649,7 @@ export function CampaignForm() {
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="card p-6">
           {step === 1 && <Step1 register={register} control={control} errors={errors} />}
-          {step === 2 && <Step2 register={register} control={control} errors={errors} />}
+          {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
           {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} />}
           {step === 4 && <Step4 values={getValues()} />}
         </div>

@@ -11,12 +11,16 @@
  *   <CampaignFormView mode="brand" />
  */
 
-import { CampaignForm }     from '@/app/(dashboard)/admin-campaigns/new/CampaignForm'
-import { BrandCampaignForm } from './CampaignFormView.brand'
+import { CampaignForm } from '@/app/(dashboard)/admin-campaigns/new/CampaignForm'
 
 export type CampaignFormMode = 'admin' | 'brand'
 
 export function CampaignFormView({ mode }: { mode: CampaignFormMode }) {
-  if (mode === 'brand') return <BrandCampaignForm />
-  return <CampaignForm />
+  return (
+    <CampaignForm
+      apiEndpoint={mode === 'brand' ? '/api/brand/campaigns' : '/api/campaigns'}
+      redirectBase={mode === 'brand' ? '/brand-campaigns' : '/admin-campaigns'}
+      portal={mode}
+    />
+  )
 }

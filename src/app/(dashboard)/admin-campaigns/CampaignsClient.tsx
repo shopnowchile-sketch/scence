@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
 import { useCampaignsList } from '@/hooks/useCampaignsList'
@@ -111,21 +111,101 @@ interface CampaignsClientProps {
   portal?: 'admin' | 'brand'
 }
 
+type CampaignColumnKey =
+  | 'campaign'
+  | 'type'
+  | 'platforms'
+  | 'influencers'
+  | 'progress'
+  | 'budget'
+  | 'dates'
+  | 'status'
+
+type SortKey = CampaignColumnKey
+type SortOrder = 'asc' | 'desc'
+
+const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
+  { key: 'campaign',    label: 'Campaña' },
+  { key: 'type',        label: 'Tipo' },
+  { key: 'platforms',   label: 'Plataformas' },
+  { key: 'influencers', label: 'Influencers' },
+  { key: 'progress',    label: 'Progreso' },
+  { key: 'budget',      label: 'Budget' },
+  { key: 'dates',       label: 'Fechas' },
+  { key: 'status',      label: 'Estado' },
+]
+
 export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   const isBrandPortal = portal === 'brand'
   const [filters, setFilters]   = useState<Partial<CampaignFiltersType>>({})
   const [showAIBuilder, setShowAIBuilder] = useState(false)
+  const [showColumns, setShowColumns] = useState(false)
+  const [visibleColumns, setVisibleColumns] = useState<Record<CampaignColumnKey, boolean>>({
+    campaign: true,
+    type: true,
+    platforms: true,
+    influencers: true,
+    progress: true,
+    budget: true,
+    dates: true,
+    status: true,
+  })
+  const [sortKey, setSortKey] = useState<SortKey>('dates')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
   const { data, isLoading, error } = useCampaignsList({
     status:   filters.status,
     type:     filters.type,
     platform: filters.platform,
-    apiBase:  isBrandPortal ? '/api/brand-campaigns' : '/api/campaigns',
+    apiBase:  isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
     search:   filters.search,
     limit:    100,
   })
 
-  const campaigns: Campaign[] = data?.data ?? []
+  const rawCampaigns: Campaign[] = data?.data ?? []
+
+  function toggleSort(key: SortKey) {
+    setSortOrder(prev => sortKey === key && prev === 'desc' ? 'asc' : 'desc')
+    setSortKey(key)
+  }
+
+  function toggleColumn(key: CampaignColumnKey) {
+    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const campaigns = useMemo(() => {
+    const sorted = [...rawCampaigns]
+    sorted.sort((a, b) => {
+      const progressA = a.deliverable_count ? ((a.deliverable_done ?? 0) / a.deliverable_count) : 0
+      const progressB = b.deliverable_count ? ((b.deliverable_done ?? 0) / b.deliverable_count) : 0
+
+      const getValue = (c: Campaign) => {
+        switch (sortKey) {
+          case 'campaign':    return c.name ?? ''
+          case 'type':        return c.type ?? ''
+          case 'platforms':   return c.platforms?.join(',') ?? ''
+          case 'influencers': return c.influencer_count ?? 0
+          case 'progress':    return c === a ? progressA : progressB
+          case 'budget':      return c.budget_total ?? 0
+          case 'dates':       return c.start_date ?? ''
+          case 'status':      return c.status ?? ''
+          default:            return ''
+        }
+      }
+
+      const av = getValue(a)
+      const bv = getValue(b)
+      const result = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv))
+
+      return sortOrder === 'asc' ? result : -result
+    })
+    return sorted
+  }, [rawCampaigns, sortKey, sortOrder])
+
+  const visibleColumnList = CAMPAIGN_COLUMNS.filter(c => visibleColumns[c.key])
+  const visibleColSpan = visibleColumnList.length + 1
 
   function setFilter(f: Partial<CampaignFiltersType>) {
     setFilters((prev: Partial<CampaignFiltersType>) => ({ ...prev, ...f }))
@@ -178,23 +258,60 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
             />
           </div>
 
+          {/* Columnas */}
+          <div className="relative flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowColumns(v => !v)}
+              className="px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+            >
+              Columnas
+            </button>
+
+            {showColumns && (
+              <div className="absolute right-0 top-11 z-20 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-3">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Mostrar columnas</div>
+                <div className="space-y-2">
+                  {CAMPAIGN_COLUMNS.map(col => (
+                    <label key={col.key} className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns[col.key]}
+                        onChange={() => toggleColumn(col.key)}
+                      />
+                      {col.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Tabla */}
           {isLoading ? <Skeleton /> : (
             <div className="card overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    {['Campaña', 'Tipo', 'Plataformas', 'Influencers', 'Progreso', 'Budget', 'Fechas', 'Estado', ''].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">
-                        {h}
+                    {visibleColumnList.map(col => (
+                      <th key={col.key} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(col.key)}
+                          className="flex items-center gap-1 hover:text-violet-600 transition-colors"
+                        >
+                          {col.label}
+                          {sortKey === col.key && <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>}
+                        </button>
                       </th>
                     ))}
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {campaigns.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400">
+                      <td colSpan={visibleColSpan} className="px-4 py-12 text-center text-sm text-gray-400">
                         No hay campañas. <Link href={isBrandPortal ? '/brand-campaigns/new' : '/admin-campaigns/new'} className="text-violet-600 hover:underline">Crea la primera</Link>
                       </td>
                     </tr>
@@ -206,58 +323,74 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
 
                     return (
                       <tr key={c.id} className="hover:bg-gray-50/70 transition-colors group">
-                        <td className="px-4 py-3 max-w-[200px]">
-                          <Link href={`${isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'}/${c.id}`} className="block">
-                            <div className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors line-clamp-1">{c.name}</div>
-                            {c.description && <div className="text-xs text-gray-400 line-clamp-1 mt-0.5">{c.description}</div>}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="badge badge-gray capitalize text-[11px]">{c.type.replace(/_/g, ' ')}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            {c.platforms?.map(p => <span key={p} className="text-base" title={p}>{PLATFORM_ICONS[p]}</span>)}
-                            {(!c.platforms || c.platforms.length === 0) && <span className="text-xs text-gray-300">—</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <AvatarGroup count={c.influencer_count ?? 0} campaignId={c.id} base={isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'} />
-                        </td>
-                        <td className="px-4 py-3 min-w-[140px]">
-                          {(c.deliverable_count ?? 0) > 0
-                            ? <ProgressBar done={c.deliverable_done ?? 0} total={c.deliverable_count ?? 0} pct={pct} />
-                            : <span className="text-xs text-gray-300">Sin deliverables</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          {c.budget_total ? (
-                            <div>
-                              <div className="text-sm font-semibold text-gray-900">{formatCurrency(c.budget_total, c.currency)}</div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                {formatCurrency(c.budget_spent, c.currency)} gastado
-                                {c.budget_total > 0 && (
-                                  <span className={budgetPct > 90 ? ' text-red-500 font-medium' : ''}> ({budgetPct}%)</span>
-                                )}
+                        {visibleColumns.campaign && (
+                          <td className="px-4 py-3 max-w-[200px]">
+                            <Link href={`${isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'}/${c.id}`} className="block">
+                              <div className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors line-clamp-1">{c.name}</div>
+                              {c.description && <div className="text-xs text-gray-400 line-clamp-1 mt-0.5">{c.description}</div>}
+                            </Link>
+                          </td>
+                        )}
+                        {visibleColumns.type && (
+                          <td className="px-4 py-3">
+                            <span className="badge badge-gray capitalize text-[11px]">{c.type.replace(/_/g, ' ')}</span>
+                          </td>
+                        )}
+                        {visibleColumns.platforms && (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              {c.platforms?.map(p => <span key={p} className="text-base" title={p}>{PLATFORM_ICONS[p]}</span>)}
+                              {(!c.platforms || c.platforms.length === 0) && <span className="text-xs text-gray-300">—</span>}
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.influencers && (
+                          <td className="px-4 py-3">
+                            <AvatarGroup count={c.influencer_count ?? 0} campaignId={c.id} base={isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'} />
+                          </td>
+                        )}
+                        {visibleColumns.progress && (
+                          <td className="px-4 py-3 min-w-[140px]">
+                            {(c.deliverable_count ?? 0) > 0
+                              ? <ProgressBar done={c.deliverable_done ?? 0} total={c.deliverable_count ?? 0} pct={pct} />
+                              : <span className="text-xs text-gray-300">Sin deliverables</span>}
+                          </td>
+                        )}
+                        {visibleColumns.budget && (
+                          <td className="px-4 py-3">
+                            {c.budget_total ? (
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{formatCurrency(c.budget_total, c.currency)}</div>
+                                <div className="text-xs text-gray-400 mt-0.5">
+                                  {formatCurrency(c.budget_spent, c.currency)} gastado
+                                  {c.budget_total > 0 && (
+                                    <span className={budgetPct > 90 ? ' text-red-500 font-medium' : ''}> ({budgetPct}%)</span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ) : <span className="text-xs text-gray-300">Sin budget</span>}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                          {c.start_date ? (
-                            <div>
-                              <div>{formatDate(c.start_date, 'd MMM yy')}</div>
-                              <div className="text-gray-300">→ {c.end_date ? formatDate(c.end_date, 'd MMM yy') : '—'}</div>
-                            </div>
-                          ) : <span className="text-gray-300">Sin fechas</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <CampaignStatusBadge status={c.status} />
-                    {c.brand && (
-                      <span className="text-xs text-gray-400 flex items-center gap-1">
-                        🏢 {c.brand.name}
-                      </span>
-                    )}
-                        </td>
+                            ) : <span className="text-xs text-gray-300">Sin budget</span>}
+                          </td>
+                        )}
+                        {visibleColumns.dates && (
+                          <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                            {c.start_date ? (
+                              <div>
+                                <div>{formatDate(c.start_date, 'd MMM yy')}</div>
+                                <div className="text-gray-300">→ {c.end_date ? formatDate(c.end_date, 'd MMM yy') : '—'}</div>
+                              </div>
+                            ) : <span className="text-gray-300">Sin fechas</span>}
+                          </td>
+                        )}
+                        {visibleColumns.status && (
+                          <td className="px-4 py-3">
+                            <CampaignStatusBadge status={c.status} />
+                            {c.brand && (
+                              <span className="text-xs text-gray-400 flex items-center gap-1">
+                                🏢 {c.brand.name}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <Link href={`${isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'}/${c.id}`}
                             className="opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium text-violet-600 hover:underline whitespace-nowrap">

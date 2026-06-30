@@ -1,9 +1,8 @@
 'use client'
 
-import { Search, Grid3X3, List, Trophy } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Search } from 'lucide-react'
 
-export type InfluencerView = 'grid' | 'list' | 'ranking'
+export type InfluencerView = 'list'
 
 type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name'
 
@@ -17,8 +16,6 @@ interface InfluencerFiltersProps {
   filters: Filters
   onChange: (filters: Partial<Filters>) => void
   onReset: () => void
-  view: InfluencerView
-  onViewChange: (view: InfluencerView) => void
   total: number
   filtered: number
 }
@@ -26,8 +23,6 @@ interface InfluencerFiltersProps {
 export function InfluencerFilters({
   filters,
   onChange,
-  view,
-  onViewChange,
   total,
   filtered,
 }: InfluencerFiltersProps) {
@@ -63,29 +58,7 @@ export function InfluencerFilters({
             <option value="engagement_rate:desc">Mayor engagement</option>
           </select>
 
-          <div className="flex items-center rounded-xl bg-gray-100 p-1">
-            <button
-              onClick={() => onViewChange('grid')}
-              className={cn('p-2 rounded-lg transition-colors', view === 'grid' ? 'bg-white text-violet-600 shadow-sm' : 'text-gray-400')}
-              title="Grilla"
-            >
-              <Grid3X3 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => onViewChange('list')}
-              className={cn('p-2 rounded-lg transition-colors', view === 'list' ? 'bg-white text-violet-600 shadow-sm' : 'text-gray-400')}
-              title="Lista"
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => onViewChange('ranking')}
-              className={cn('p-2 rounded-lg transition-colors', view === 'ranking' ? 'bg-white text-violet-600 shadow-sm' : 'text-gray-400')}
-              title="Ranking"
-            >
-              <Trophy className="h-4 w-4" />
-            </button>
-          </div>
+
         </div>
       </div>
 

@@ -213,8 +213,6 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
           filters={filters}
           onChange={updateFilter}
           onReset={resetFilters}
-          view={view}
-          onViewChange={setView}
           total={total}
           filtered={filtered}
         />

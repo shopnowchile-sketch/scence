@@ -3,9 +3,19 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string; locationId: string } }
 
-function isAdmin(user: any) {
+async function isAdmin(user: any, admin: any) {
   const role = user?.user_metadata?.role ?? user?.app_metadata?.role
-  return ['super_admin', 'agency_manager', 'admin'].includes(role)
+  if (['super_admin', 'agency_manager', 'admin'].includes(role)) return true
+
+  const { data } = await admin
+    .from('organization_members')
+    .select('role, is_owner')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+
+  return (data ?? []).some((m: any) =>
+    m.is_owner || ['super_admin', 'agency_manager', 'admin'].includes(m.role)
+  )
 }
 
 async function canEditBrand(user: any, brandId: string, admin: any) {
@@ -15,7 +25,7 @@ async function canEditBrand(user: any, brandId: string, admin: any) {
     .eq('id', brandId)
     .single()
 
-  return !!brand && (isAdmin(user) || brand.user_id === user.id)
+  return !!brand && ((await isAdmin(user, admin)) || brand.user_id === user.id)
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

@@ -27,7 +27,7 @@ interface Props {
 }
 
 export function CampaignDetailView({ id, mode, defaultTab = 'overview' }: Props) {
-  if (mode === 'admin')      return <CampaignDetail id={id} defaultTab={defaultTab} />
+  if (mode === 'admin')      return <CampaignDetail id={id} defaultTab={defaultTab as any} />
   if (mode === 'brand')      return <BrandCampaignView id={id} />
   return <InfluencerCampaignView id={id} />
 }

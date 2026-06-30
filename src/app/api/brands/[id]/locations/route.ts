@@ -3,9 +3,19 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string } }
 
-function isAdmin(user: any) {
+async function isAdmin(user: any, admin: any) {
   const role = user?.user_metadata?.role ?? user?.app_metadata?.role
-  return ['super_admin', 'agency_manager', 'admin'].includes(role)
+  if (['super_admin', 'agency_manager', 'admin'].includes(role)) return true
+
+  const { data } = await admin
+    .from('organization_members')
+    .select('role, is_owner')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+
+  return (data ?? []).some((m: any) =>
+    m.is_owner || ['super_admin', 'agency_manager', 'admin'].includes(m.role)
+  )
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -23,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const canSeePrivate = isAdmin(user) || brand.user_id === user.id
+  const canSeePrivate = await isAdmin(user, admin) || brand.user_id === user.id
 
   let query = admin
     .from('brand_locations')
@@ -53,7 +63,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
 
   if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!isAdmin(user) && brand.user_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isAdmin(user, admin)) && brand.user_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => null)
   if (!body?.name) return NextResponse.json({ error: 'Nombre requerido' }, { status: 422 })

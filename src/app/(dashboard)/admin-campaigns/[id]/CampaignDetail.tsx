@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -32,7 +32,7 @@ const GRADIENTS = [
   'from-amber-400 to-orange-500', 'from-violet-400 to-indigo-500',
 ]
 
-type Tab = 'overview' | 'influencers' | 'deliverables' | 'canjes' | 'history'
+type Tab = 'overview' | 'influencers' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
 
 // ── Deliverable card ─────────────────────────────────────────────────────────
 function DeliverableCard({
@@ -328,10 +328,89 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [addingDeliverable, setAddingDeliverable] = useState(false)
+  const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
+  const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
+  const [brandLocations, setBrandLocations] = useState<Array<Record<string, unknown>>>([])
+  const [campaignAssets, setCampaignAssets] = useState<Array<Record<string, unknown>>>([])
+  const [assetName, setAssetName] = useState('')
+  const [assetUrl, setAssetUrl] = useState('')
+  const [assetMode, setAssetMode] = useState<'file' | 'link'>('file')
+  const [assetFile, setAssetFile] = useState<File | null>(null)
+  const [assetFormOpen, setAssetFormOpen] = useState(false)
+  const [assetSaving, setAssetSaving] = useState(false)
+  const [locationFormOpen, setLocationFormOpen] = useState(false)
+  const [locationSaving, setLocationSaving] = useState(false)
+  const [locationForm, setLocationForm] = useState({
+    name: '',
+    address: '',
+    city: '',
+    region: '',
+    country: 'Chile',
+    is_public: false,
+    notes: '',
+  })
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id)
   const patchCampaign = usePatchCampaign(id)
   const removeInfluencer = useRemoveCampaignInfluencer(id)
+
+  const campaignForEffects = res?.data as (CampaignDetail & { brand?: { id?: string } | null }) | undefined
+  const primaryBrandId = campaignForEffects?.brand?.id
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadCampaignScopedData() {
+      try {
+        const [invoicesRes, templatesRes, assetsRes] = await Promise.all([
+          fetch(`/api/invoices?campaign_id=${id}&limit=50`),
+          fetch('/api/contracts/templates'),
+          fetch(`/api/campaigns/${id}/assets`),
+        ])
+
+        const invoicesJson = await invoicesRes.json().catch(() => ({}))
+        const templatesJson = await templatesRes.json().catch(() => ({}))
+        const assetsJson = await assetsRes.json().catch(() => ({}))
+
+        if (!cancelled) {
+          setCampaignInvoices(Array.isArray(invoicesJson.data) ? invoicesJson.data : [])
+          setContractTemplates(Array.isArray(templatesJson.data) ? templatesJson.data : [])
+          setCampaignAssets(Array.isArray(assetsJson.data) ? assetsJson.data : [])
+        }
+      } catch {
+        if (!cancelled) {
+          setCampaignInvoices([])
+          setContractTemplates([])
+          setCampaignAssets([])
+        }
+      }
+    }
+
+    void loadCampaignScopedData()
+    return () => { cancelled = true }
+  }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadBrandLocations() {
+      if (!primaryBrandId) {
+        setBrandLocations([])
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/brands/${primaryBrandId}/locations`)
+        const json = await res.json().catch(() => ({}))
+        if (!cancelled) setBrandLocations(Array.isArray(json.data) ? json.data : [])
+      } catch {
+        if (!cancelled) setBrandLocations([])
+      }
+    }
+
+    void loadBrandLocations()
+    return () => { cancelled = true }
+  }, [primaryBrandId])
 
   if (isLoading) {
     return (
@@ -374,6 +453,144 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     : 0
   const pct = avgProgress
   const budgetPct = c.budget_total ? Math.round((c.budget_spent / c.budget_total) * 100) : 0
+  const campaignBrands = [
+    c.brand ? { ...(c.brand as Record<string, unknown>), _role: 'Principal' } : null,
+    ...(((c as unknown as { campaign_brands?: Array<{ brand?: Record<string, unknown> }> }).campaign_brands ?? [])
+      .map(cb => cb.brand ? { ...cb.brand, _role: 'Colaboradora' } : null)),
+  ].filter(Boolean) as Array<Record<string, unknown>>
+
+  async function reloadCampaignAssets() {
+    const res = await fetch(`/api/campaigns/${id}/assets`)
+    const json = await res.json().catch(() => ({}))
+    setCampaignAssets(Array.isArray(json.data) ? json.data : [])
+  }
+
+  async function handleAddCampaignAsset(e: React.FormEvent) {
+    e.preventDefault()
+    if (assetMode === 'link' && !assetUrl.trim()) {
+      toast.error('Agrega una URL para el asset')
+      return
+    }
+
+    if (assetMode === 'file' && !assetFile) {
+      toast.error('Selecciona un archivo')
+      return
+    }
+
+    setAssetSaving(true)
+    try {
+      let res: Response
+
+      if (assetMode === 'file') {
+        const formData = new FormData()
+        if (assetName.trim()) formData.append('filename', assetName.trim())
+        if (assetFile) formData.append('file', assetFile)
+
+        res = await fetch(`/api/campaigns/${id}/assets`, {
+          method: 'POST',
+          body: formData,
+        })
+      } else {
+        res = await fetch(`/api/campaigns/${id}/assets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: assetName.trim() || assetUrl.trim(),
+            url: assetUrl.trim(),
+          }),
+        })
+      }
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar asset')
+
+      setAssetName('')
+      setAssetUrl('')
+      setAssetFile(null)
+      setAssetFormOpen(false)
+      await reloadCampaignAssets()
+      toast.success('Asset agregado')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al guardar asset')
+    } finally {
+      setAssetSaving(false)
+    }
+  }
+
+  async function handleDeleteCampaignAsset(assetId: string) {
+    if (!confirm('¿Eliminar este asset de la campaña?')) return
+
+    const res = await fetch(`/api/campaigns/${id}/assets/${assetId}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      toast.error(json.error ?? 'Error al eliminar asset')
+      return
+    }
+
+    await reloadCampaignAssets()
+    toast.success('Asset eliminado')
+  }
+
+  async function reloadBrandLocations() {
+    if (!primaryBrandId) {
+      setBrandLocations([])
+      return
+    }
+
+    const res = await fetch(`/api/brands/${primaryBrandId}/locations`)
+    const json = await res.json().catch(() => ({}))
+    setBrandLocations(Array.isArray(json.data) ? json.data : [])
+  }
+
+  async function handleAddBrandLocation(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (!primaryBrandId) {
+      toast.error('La campaña no tiene marca principal')
+      return
+    }
+
+    if (!locationForm.name.trim()) {
+      toast.error('Agrega el nombre del lugar')
+      return
+    }
+
+    setLocationSaving(true)
+    try {
+      const res = await fetch(`/api/brands/${primaryBrandId}/locations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: locationForm.name.trim(),
+          address: locationForm.address.trim() || null,
+          city: locationForm.city.trim() || null,
+          region: locationForm.region.trim() || null,
+          country: locationForm.country.trim() || 'Chile',
+          is_public: locationForm.is_public,
+          notes: locationForm.notes.trim() || null,
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Error al crear lugar')
+
+      setLocationForm({
+        name: '',
+        address: '',
+        city: '',
+        region: '',
+        country: 'Chile',
+        is_public: false,
+        notes: '',
+      })
+      setLocationFormOpen(false)
+      await reloadBrandLocations()
+      toast.success('Lugar agregado')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al crear lugar')
+    } finally {
+      setLocationSaving(false)
+    }
+  }
 
   async function handleStatusAction(action: string) {
     try {
@@ -386,7 +603,11 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-4 w-4" /> },
     { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-4 w-4" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-4 w-4" /> },
-    { id: 'canjes',       label: 'Canjes',        icon: <Gift className="h-4 w-4" /> },
+    ...(!isBrandPortal ? [
+      { id: 'assets' as Tab,       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-4 w-4" /> },
+      { id: 'locations' as Tab,    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-4 w-4" /> },
+      { id: 'billing' as Tab,      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-4 w-4" /> },
+    ] : []),
     { id: 'history',      label: 'Historial',     icon: <Clock className="h-4 w-4" /> },
   ]
 
@@ -519,6 +740,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
 
       {/* ── OVERVIEW ───────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
+        <>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="col-span-2 space-y-4">
             {c.goals && Object.keys(c.goals).length > 0 && (
@@ -706,6 +928,80 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             </div>
           </div>
         </div>
+
+        {!isBrandPortal && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+            <div className="card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700">Marcas</h3>
+                <span className="text-xs text-gray-400">{campaignBrands.length}</span>
+              </div>
+              {campaignBrands.length === 0 ? (
+                <p className="text-sm text-gray-400">Sin marcas asociadas.</p>
+              ) : (
+                <div className="space-y-2">
+                  {campaignBrands.slice(0, 4).map((brand, idx) => (
+                    <div key={`${brand.id ?? idx}`} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                      <span className="text-sm font-medium text-gray-800">{String(brand.name ?? 'Marca sin nombre')}</span>
+                      <span className="text-xs text-gray-400">{String(brand._role ?? '')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700">Assets</h3>
+                <span className="text-xs text-gray-400">{campaignAssets.length}</span>
+              </div>
+              <p className="text-sm text-gray-500">
+                Archivos y links de esta campaña.
+              </p>
+              <button
+                type="button"
+                onClick={() => setTab('assets')}
+                className="text-xs font-semibold text-violet-600 hover:underline text-left"
+              >
+                Ver assets
+              </button>
+            </div>
+
+            <div className="card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700">Contratos</h3>
+                <Link href="/admin-contracts" className="text-xs font-semibold text-violet-600 hover:underline">
+                  Administrar
+                </Link>
+              </div>
+              {contractTemplates.length === 0 ? (
+                <p className="text-sm text-gray-400">Sin plantillas todavía.</p>
+              ) : (
+                <div className="space-y-2">
+                  {contractTemplates.slice(0, 3).map(tpl => (
+                    <div key={String(tpl.id)} className="rounded-lg bg-gray-50 px-3 py-2">
+                      <p className="text-sm font-medium text-gray-800">{String(tpl.name ?? 'Plantilla')}</p>
+                      <p className="text-xs text-gray-400">{String(tpl.campaign_type ?? 'General')}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700">Canjes</h3>
+                <span className="text-xs text-gray-400">Resumen</span>
+              </div>
+              <p className="text-sm text-gray-500">
+                Los canjes de esta campaña se administran desde el módulo interno de canjes.
+              </p>
+            </div>
+          </div>
+        )}
+
+        </>
+
       )}
 
       {/* ── INFLUENCERS ─────────────────────────────────────────────────────── */}
@@ -1107,8 +1403,272 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       )}
 
       {/* ── HISTORIAL ────────────────────────────────────────────────────────── */}
+
+      {/* ── MARCAS ─────────────────────────────────────────────────────────── */}
+      {false && (
+        <div className="card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Marcas de la campaña</h3>
+            <Link href={`/admin-campaigns/${id}/edit`} className="text-sm font-semibold text-violet-600 hover:underline">
+              Editar campaña
+            </Link>
+          </div>
+
+          {campaignBrands.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin marcas asociadas.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {campaignBrands.map((brand, idx) => (
+                <div key={`${brand.id ?? idx}`} className="rounded-xl border border-gray-100 p-4">
+                  <p className="text-sm font-semibold text-gray-900">{String(brand.name ?? 'Marca sin nombre')}</p>
+                  <p className="text-xs text-gray-500 mt-1">{String(brand._role ?? '')}</p>
+                  {brand.contact_email ? <p className="text-xs text-gray-500 mt-2">{String(brand.contact_email)}</p> : null}
+                  {brand.website ? (
+                    <a href={String(brand.website)} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-600 hover:underline mt-2 inline-flex items-center gap-1">
+                      Website <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── LUGARES ────────────────────────────────────────────────────────── */}
+      {tab === 'locations' && (
+        <div className="card p-6 space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">Lugares asociados a la marca principal</h3>
+              <p className="text-xs text-gray-400 mt-1">
+                Estos lugares quedan guardados en la marca principal de esta campaña.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setLocationFormOpen(prev => !prev)}
+              className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 shrink-0"
+            >
+              {locationFormOpen ? 'Cerrar' : '+ Agregar lugar'}
+            </button>
+          </div>
+
+          {locationFormOpen && (
+            <form onSubmit={handleAddBrandLocation} className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  value={locationForm.name}
+                  onChange={e => setLocationForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="input-base w-full text-sm bg-white"
+                  placeholder="Nombre del lugar"
+                />
+                <input
+                  value={locationForm.address}
+                  onChange={e => setLocationForm(prev => ({ ...prev, address: e.target.value }))}
+                  className="input-base w-full text-sm bg-white"
+                  placeholder="Dirección"
+                />
+                <input
+                  value={locationForm.city}
+                  onChange={e => setLocationForm(prev => ({ ...prev, city: e.target.value }))}
+                  className="input-base w-full text-sm bg-white"
+                  placeholder="Ciudad / comuna"
+                />
+                <input
+                  value={locationForm.region}
+                  onChange={e => setLocationForm(prev => ({ ...prev, region: e.target.value }))}
+                  className="input-base w-full text-sm bg-white"
+                  placeholder="Región"
+                />
+                <input
+                  value={locationForm.country}
+                  onChange={e => setLocationForm(prev => ({ ...prev, country: e.target.value }))}
+                  className="input-base w-full text-sm bg-white"
+                  placeholder="País"
+                />
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={locationForm.is_public}
+                    onChange={e => setLocationForm(prev => ({ ...prev, is_public: e.target.checked }))}
+                  />
+                  Visible para marca/influencer
+                </label>
+              </div>
+
+              <textarea
+                value={locationForm.notes}
+                onChange={e => setLocationForm(prev => ({ ...prev, notes: e.target.value }))}
+                className="input-base w-full text-sm bg-white"
+                placeholder="Notas internas"
+                rows={3}
+              />
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={locationSaving}
+                  className="px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-60"
+                >
+                  {locationSaving ? 'Guardando...' : 'Guardar lugar'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {brandLocations.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin lugares asociados todavía.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {brandLocations.map((loc, idx) => (
+                <div key={`${loc.id ?? idx}`} className="rounded-xl border border-gray-100 p-4 bg-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{String(loc.name ?? loc.label ?? 'Lugar sin nombre')}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {[loc.address, loc.city, loc.region, loc.country].filter(Boolean).map(String).join(', ') || 'Sin dirección visible'}
+                      </p>
+                    </div>
+                    {loc.is_public ? (
+                      <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">Público</span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-500 font-semibold">Privado</span>
+                    )}
+                  </div>
+                  {loc.notes ? <p className="text-xs text-gray-400 mt-3">{String(loc.notes)}</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ASSETS ─────────────────────────────────────────────────────────── */}
+      {tab === 'assets' && (
+        <div className="card p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Assets de esta campaña</h3>
+            <span className="text-xs text-gray-400">{campaignAssets.length} asset(s)</span>
+          </div>
+
+          <form onSubmit={handleAddCampaignAsset} className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Nombre</label>
+              <input
+                value={assetName}
+                onChange={e => setAssetName(e.target.value)}
+                className="input-base w-full text-sm"
+                placeholder="Ej: Logo, brief, foto producto"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">URL del asset</label>
+              <input
+                value={assetUrl}
+                onChange={e => setAssetUrl(e.target.value)}
+                className="input-base w-full text-sm"
+                placeholder="https://..."
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={assetSaving}
+              className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-60"
+            >
+              {assetSaving ? 'Guardando...' : 'Agregar'}
+            </button>
+          </form>
+
+          {campaignAssets.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin assets cargados para esta campaña.</p>
+          ) : (
+            <div className="space-y-3">
+              {campaignAssets.map(asset => (
+                <div key={String(asset.id)} className="flex items-center justify-between rounded-xl border border-gray-100 p-4 gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{String(asset.filename ?? 'Asset')}</p>
+                    <p className="text-xs text-gray-400 truncate">{String(asset.storage_path ?? '')}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href={String(asset.signed_url ?? asset.storage_path)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold text-violet-600 hover:underline inline-flex items-center gap-1"
+                    >
+                      Abrir <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <button
+                      onClick={() => handleDeleteCampaignAsset(String(asset.id))}
+                      className="text-xs font-semibold text-red-500 hover:underline"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── BILLING ────────────────────────────────────────────────────────── */}
+      {tab === 'billing' && (
+        <div className="card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Facturas de esta campaña</h3>
+            <Link href={`/admin-billing?campaign_id=${id}`} className="text-sm font-semibold text-violet-600 hover:underline">
+              Ver en billing
+            </Link>
+          </div>
+
+          {campaignInvoices.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin facturas asociadas a esta campaña.</p>
+          ) : (
+            <div className="space-y-3">
+              {campaignInvoices.map(inv => (
+                <div key={String(inv.id)} className="rounded-xl border border-gray-100 p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{String(inv.invoice_number ?? 'Factura')}</p>
+                    <p className="text-xs text-gray-500">{String(inv.status ?? 'draft')}</p>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900">{formatCurrency(Number(inv.total ?? 0), String(inv.currency ?? 'CLP'))}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CONTRATOS ──────────────────────────────────────────────────────── */}
+      {false && (
+        <div className="card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Plantillas de contrato</h3>
+            <Link href="/admin-contracts" className="text-sm font-semibold text-violet-600 hover:underline">
+              Administrar contratos
+            </Link>
+          </div>
+
+          {contractTemplates.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin plantillas de contrato todavía.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {contractTemplates.map(tpl => (
+                <div key={String(tpl.id)} className="rounded-xl border border-gray-100 p-4">
+                  <p className="text-sm font-semibold text-gray-900">{String(tpl.name ?? 'Plantilla')}</p>
+                  <p className="text-xs text-gray-500 mt-1">{String(tpl.campaign_type ?? 'General')}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── CANJES ─────────────────────────────────────────────────────────── */}
-      {tab === 'canjes' && (
+      {false && (
         <BartersTab campaignId={id} campaignInfluencers={campaignInfluencers} />
       )}
 

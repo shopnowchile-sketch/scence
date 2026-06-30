@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const status    = searchParams.get('status')
+  const campaignId = searchParams.get('campaign_id')
   const search    = searchParams.get('search')
   const dateFrom  = searchParams.get('date_from')
   const dateTo    = searchParams.get('date_to')
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
     .range((page - 1) * limit, page * limit - 1)
 
   if (orgId)   query = query.eq('organization_id', orgId)
+  if (campaignId) query = query.eq('campaign_id', campaignId)
   if (status)  query = query.eq('status', status)
   if (dateFrom) query = query.gte('issue_date', dateFrom)
   if (dateTo)   query = query.lte('issue_date', dateTo)

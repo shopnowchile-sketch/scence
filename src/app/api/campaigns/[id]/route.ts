@@ -98,6 +98,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       *,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
+      campaign_brands (
+        id,
+        brand:brands (id, name, logo_url, website, contact_name, contact_email)
+      ),
       campaign_influencers (
         id, fee, status, notes,
         influencer:influencers (

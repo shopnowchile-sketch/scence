@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
-// GET /api/brand/campaigns — campañas de la marca autenticada
+// GET /api/brand-campaigns — campañas de la marca autenticada
 export async function GET() {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -18,6 +18,24 @@ export async function GET() {
     .single()
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
+  const { data: coBrandRows, error: coBrandError } = await admin
+    .from('campaign_brands')
+    .select('campaign_id')
+    .eq('brand_id', brand.id)
+
+  if (coBrandError) {
+    console.error('[GET /api/brand-campaigns] campaign_brands', coBrandError)
+    return NextResponse.json({ error: coBrandError.message }, { status: 500 })
+  }
+
+  const campaignIds = Array.from(new Set([
+    ...(coBrandRows ?? []).map(r => r.campaign_id),
+  ].filter(Boolean)))
+
+  const orFilter = campaignIds.length
+    ? `brand_id.eq.${brand.id},id.in.(${campaignIds.join(',')})`
+    : `brand_id.eq.${brand.id}`
 
   const { data, error } = await admin
     .from('campaigns')
@@ -37,18 +55,18 @@ export async function GET() {
         influencer:influencers (id, display_name, avatar_url)
       )
     `)
-    .eq('brand_id', brand.id)
+    .or(orFilter)
     .order('created_at', { ascending: false })
 
   if (error) {
-    console.error('[GET /api/brand/campaigns]', error)
+    console.error('[GET /api/brand-campaigns]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   return NextResponse.json({ data: data ?? [], brand })
 }
 
-// POST /api/brand/campaigns — crear campaña desde el portal de marca
+// POST /api/brand-campaigns — crear campaña desde el portal de marca
 export async function POST(req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -127,7 +145,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) {
-    console.error('[POST /api/brand/campaigns]', error)
+    console.error('[POST /api/brand-campaigns]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -144,7 +162,7 @@ export async function POST(req: NextRequest) {
       }))
     )
     const { error: delError } = await admin.from('campaign_deliverables').insert(deliverables)
-    if (delError) console.error('[POST /api/brand/campaigns] deliverables insert:', delError.message)
+    if (delError) console.error('[POST /api/brand-campaigns] deliverables insert:', delError.message)
   }
 
   return NextResponse.json({ data }, { status: 201 })

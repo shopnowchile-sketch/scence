@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
@@ -321,6 +322,8 @@ function AddDeliverableForm({
 }
 
 export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Tab }) {
+  const pathname = usePathname()
+  const isBrandPortal = pathname.startsWith('/brand-campaigns')
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [addingDeliverable, setAddingDeliverable] = useState(false)
@@ -342,7 +345,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       <div className="card p-12 text-center max-w-lg mx-auto mt-12">
         <AlertCircle className="h-10 w-10 text-red-300 mx-auto mb-3" />
         <p className="text-gray-500 font-medium">Campaña no encontrada</p>
-        <Link href="/admin-campaigns" className="mt-4 inline-block text-sm text-violet-600 hover:underline">
+        <Link href={isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'} className="mt-4 inline-block text-sm text-violet-600 hover:underline">
           Volver a campañas
         </Link>
       </div>
@@ -386,7 +389,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       {/* Breadcrumb + actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/admin-campaigns" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+          <Link href={isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
             <ArrowLeft className="h-4 w-4" /> Campañas
           </Link>
           <span className="text-gray-200">/</span>
@@ -397,7 +400,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
             <FileDown className="h-3.5 w-3.5" /> Reporte PDF
           </Link>
-          <Link href={`/campaigns/${id}/edit`}
+          <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/campaigns/${id}/edit`}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
             <Pencil className="h-3.5 w-3.5" /> Editar
           </Link>

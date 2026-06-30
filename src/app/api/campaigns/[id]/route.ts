@@ -4,6 +4,85 @@ import { getOrgId } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
+async function getBrandCampaignAccess(admin: any, userId: string, campaignId: string) {
+  const { data: brand } = await admin
+    .from('brands')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (!brand?.id) return { isBrand: false, canView: false, canEdit: false, brandId: null }
+
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .select('id, brand_id, created_by_brand_id')
+    .eq('id', campaignId)
+    .maybeSingle()
+
+  if (!campaign) return { isBrand: true, canView: false, canEdit: false, brandId: brand.id }
+
+  const isMainBrand = campaign.brand_id === brand.id
+  const isCreatorBrand = campaign.created_by_brand_id === brand.id
+
+  let isCoBrand = false
+  if (!isMainBrand && !isCreatorBrand) {
+    const { data: coBrand } = await admin
+      .from('campaign_brands')
+      .select('campaign_id')
+      .eq('campaign_id', campaignId)
+      .eq('brand_id', brand.id)
+      .maybeSingle()
+
+    isCoBrand = !!coBrand
+  }
+
+  return {
+    isBrand: true,
+    canView: isMainBrand || isCreatorBrand || isCoBrand,
+    canEdit: isMainBrand || isCreatorBrand,
+    brandId: brand.id,
+  }
+}
+
+async function getBrandAccess(admin: ReturnType<typeof createAdminClient>, userId: string, campaignId: string) {
+  const { data: profileBrand } = await admin
+    .from('brands')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (!profileBrand?.id) return { isBrand: false, canView: false, canEdit: false }
+
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .select('id, brand_id, created_by_brand_id')
+    .eq('id', campaignId)
+    .maybeSingle()
+
+  if (!campaign) return { isBrand: true, canView: false, canEdit: false }
+
+  const isMain = campaign.brand_id === profileBrand.id
+  const isCreator = campaign.created_by_brand_id === profileBrand.id || campaign.brand_id === profileBrand.id
+
+  let isCoBrand = false
+  if (!isMain) {
+    const { data: coBrand } = await admin
+      .from('campaign_brands')
+      .select('campaign_id')
+      .eq('campaign_id', campaignId)
+      .eq('brand_id', profileBrand.id)
+      .maybeSingle()
+    isCoBrand = !!coBrand
+  }
+
+  return {
+    isBrand: true,
+    canView: isMain || isCoBrand || isCreator,
+    canEdit: isCreator,
+  }
+}
+
+
 // ── GET /api/campaigns/[id] ───────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
@@ -33,7 +112,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       )
     `)
     .eq('id', params.id)
-    .eq('organization_id', orgId)
     .single()
 
   if (error) {
@@ -42,6 +120,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
     console.error('[GET /api/campaigns/[id]]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (user.user_metadata?.is_brand) {
+    const access = await getBrandAccess(admin, user.id, params.id)
+    if (!access.canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    return NextResponse.json({ data: { ...data, _brand_permissions: access } })
+  }
+
+  if (orgId && data.organization_id !== orgId) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
   return NextResponse.json({ data })
@@ -57,6 +145,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+
+  if (user.user_metadata?.is_brand) {
+    const access = await getBrandAccess(admin, user.id, params.id)
+    if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
+  }
 
   let body: Record<string, unknown>
   try {
@@ -97,6 +190,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+
+  if (user.user_metadata?.is_brand) {
+    const access = await getBrandAccess(admin, user.id, params.id)
+    if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
+  }
 
   let body: Record<string, unknown>
   try {
@@ -187,6 +285,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+
+  if (user.user_metadata?.is_brand) {
+    const access = await getBrandAccess(admin, user.id, params.id)
+    if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
+  }
 
   // Soft-delete: set status to canceled rather than hard delete
   // Scope to user's org for security

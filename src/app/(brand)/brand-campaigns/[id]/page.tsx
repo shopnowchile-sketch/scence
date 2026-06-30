@@ -1,5 +1,5 @@
-import { CampaignDetailView } from '@/components/campaigns/CampaignDetailView'
+import { CampaignDetail } from '@/app/(dashboard)/admin-campaigns/[id]/CampaignDetail'
 
 export default function BrandCampaignDetailPage({ params }: { params: { id: string } }) {
-  return <CampaignDetailView mode="brand" id={params.id} />
+  return <CampaignDetail id={params.id} defaultTab="overview" />
 }

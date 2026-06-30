@@ -603,11 +603,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-4 w-4" /> },
     { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-4 w-4" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-4 w-4" /> },
-    ...(!isBrandPortal ? [
-      { id: 'assets' as Tab,       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-4 w-4" /> },
-      { id: 'locations' as Tab,    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-4 w-4" /> },
-      { id: 'billing' as Tab,      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-4 w-4" /> },
-    ] : []),
+    { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-4 w-4" /> },
+    { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-4 w-4" /> },
+    { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-4 w-4" /> },
     { id: 'history',      label: 'Historial',     icon: <Clock className="h-4 w-4" /> },
   ]
 

@@ -6,9 +6,7 @@ import { toast } from 'sonner'
 import { useInfluencers } from '@/hooks/useInfluencers'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { InfluencerFilters } from '@/components/influencers/InfluencerFilters'
-import { InfluencerCard } from '@/components/influencers/InfluencerCard'
 import { InfluencerTable } from '@/components/influencers/InfluencerTable'
-import { InfluencerRanking } from '@/components/influencers/InfluencerRanking'
 import { BulkUploadModal } from '@/components/influencers/BulkUploadModal'
 import { formatFollowers } from '@/lib/utils'
 import type { Influencer } from '@/types'
@@ -16,7 +14,7 @@ import Link from 'next/link'
 
 interface InfluencersClientProps {
   portal?: 'admin' | 'brand'
-  initialView?: 'grid' | 'list' | 'ranking'
+  initialView?: 'list'
 }
 
 export function InfluencersClient({ portal = 'admin', initialView }: InfluencersClientProps) {
@@ -48,10 +46,10 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
   const initialViewApplied = useRef(false)
 
   useEffect(() => {
-    if (!initialView || initialViewApplied.current) return
-    setView(initialView)
+    if (initialViewApplied.current) return
+    setView('list')
     initialViewApplied.current = true
-  }, [initialView, setView])
+  }, [setView])
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -224,10 +222,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
 
       {/* Loading */}
       {loading && (
-        <div className={view === 'grid'
-          ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'
-          : 'space-y-2'
-        }>
+        <div className="space-y-2">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="card p-4 animate-pulse">
               <div className="flex items-center gap-3 mb-3">
@@ -254,31 +249,8 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
         </div>
       )}
 
-      {/* Vista Ranking */}
-      {!loading && !error && view === 'ranking' && (
-        <div className="animate-fade-in">
-          <InfluencerRanking influencers={influencers} loading={loading} />
-        </div>
-      )}
-
-      {/* Vista Grid */}
-      {!loading && !error && view === 'grid' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-fade-in">
-          {influencers.map(inf => (
-            <InfluencerCard key={inf.id} influencer={inf} />
-          ))}
-          {influencers.length === 0 && (
-            <div className="col-span-full card p-12 text-center">
-              <div className="text-4xl mb-3">👥</div>
-              <p className="text-gray-500 font-medium">No se encontraron influencers</p>
-              <p className="text-gray-400 text-sm mt-1">Prueba con otros filtros o agrega nuevos al roster</p>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Barra de selección (solo admin, vista lista) */}
-      {!isBrandPortal && view === 'list' && selectedIds.size > 0 && (
+      {!isBrandPortal && selectedIds.size > 0 && (
         <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-violet-600 text-white animate-fade-in">
           <div className="flex items-center gap-3 text-sm font-medium">
             <button onClick={clearSelection} className="p-1 rounded hover:bg-white/20"><X className="h-4 w-4" /></button>
@@ -301,7 +273,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
       )}
 
       {/* Vista Lista */}
-      {!loading && !error && view === 'list' && (
+      {!loading && !error && (
         <div className="animate-fade-in">
           <InfluencerTable
             influencers={influencers}

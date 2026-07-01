@@ -23,6 +23,7 @@
 | 2.0 | Auditoría en vivo contra producción (`scence-app.vercel.app`), 3 portales, 25 pantallas documentadas con mockups fieles, 9 bugs encontrados | 2026-07-01 |
 | 2.1 | Reestructurado a formato ejecutivo (control de documento, mapa de proceso, requisitos funcionales por portal, reportes, no-funcionales, notificaciones, glosario). Se corrigieron 6 de los 9 bugs encontrados (ver §12, Bugs) | 2026-07-01 |
 | 2.1 (deploy) | Los 6 fixes + reestructuración se pushearon a producción. Un fix (eliminación de `CampaignDetailView.brand.tsx`) se basó en un diagnóstico incorrecto y rompió el build; detectado vía Vercel antes de afectar usuarios, corregido y repusheado el mismo día. Se agrega hallazgo G-16 (ver Anexo C) | 2026-07-01 |
+| 2.1 (revisión Pri) | Pri revisó el FDD y reportó un problema real en BR-04 (comentario en Google Docs): tareas fantasma sin relación a deliverables. Se diagnosticó, corrigió el código (bug B-10) y se limpiaron 412 filas ya existentes en producción, con aprobación explícita de Pri para el alcance del borrado | 2026-07-01 |
 
 ### Sign-off
 
@@ -72,7 +73,7 @@ La siguiente tabla resume las reglas de negocio activas del sistema — el equiv
 | BR-01 | Multi-tenancy | Todo dato está scoped por `organization_id`, reforzado en cada query server-side. |
 | BR-02 | Roles de usuario | `super_admin`/`agency_manager` → Admin; `is_brand=true` → Marca; `is_influencer=true` → Influencer. `src/middleware.ts` enforza el routing por rol vía listas `ADMIN_ONLY`/`BRAND_ONLY`/`INFLUENCER_ONLY`. |
 | BR-03 | Campañas private vs. open | `private`: la marca agrega influencers por invitación. `open`: los influencers postulan y la marca decide. |
-| BR-04 | Auto-creación de deliverables | Al aceptar invitación/postulación se crean automáticamente los `campaign_deliverables` desde `deliverables_spec`; la campaña pasa a `active`. |
+| BR-04 | Auto-creación de deliverables | Al aceptar invitación/postulación (o al agregar un influencer a una campaña) se crean automáticamente los `campaign_deliverables` desde la plantilla de la campaña; la campaña pasa a `active`. Cada deliverable sincroniza 1:1 una `influencer_task` vinculada (`deliverable_id`) — es la única fuente de "tareas" que debe ver el influencer. **Corregido el 2026-07-01 (bug B-10):** antes también se creaban 4 tareas genéricas sin vincular a ningún deliverable real; ver Anexo A. |
 | BR-05 | `deliverables_spec` inmutable | Una vez creada la invitación, no se modifica — es el "contrato informal". Los `campaign_deliverables` son la fuente de verdad operacional. |
 | BR-06 | Visibilidad entre portales | La marca no ve: email/teléfono de influencers, tarifas históricas con otras marcas, campañas de otras marcas, base completa de influencers, notas internas, payroll interno. El influencer no ve: tarifas de otros influencers ni datos financieros de campaña. |
 | BR-07 | Status de campaña | Pasa a `active` con el primer influencer aceptado. No se puede invitar sobre campañas `completed`/`canceled`. |
@@ -431,7 +432,9 @@ Acceso: `user_metadata.is_influencer = true`. Rutas: `inf-*`. Creador de conteni
 #### IN-02 Entregables (Mis Tareas)
 ![Entregables](mockups/inf-tasks.png)
 
-**Navegación:** `inf-tasks` · **API:** `GET /api/influencer/tasks`, `PATCH /api/influencer/tasks/[id]`, `POST /api/influencer/deliverables/[id]/submit` · **Tabla:** `campaign_deliverables`
+**Navegación:** `inf-tasks` · **API:** `GET /api/influencer/tasks`, `PATCH /api/influencer/tasks/[id]`, `POST /api/influencer/deliverables/[id]/submit` · **Tabla:** `influencer_tasks` (no `campaign_deliverables` directamente — corregido en v2.1, error de documentación previo)
+
+`influencer_tasks` es una tabla genérica de checklist personal (`source_type: campaign | booking | event | manual`, `status: pending | in_progress | done | skipped`), con un campo `deliverable_id` que la vincula 1:1 a un `campaign_deliverables` real cuando la tarea viene de una campaña (BR-04). También se usa para tareas sin deliverable (confirmar asistencia a bookings/eventos vía `createInfluencerTasks()` en `lib/influencer-tasks.ts`) — eso sí es correcto y no se tocó.
 
 | Campo | Fuente | Para qué sirve |
 |---|---|---|
@@ -676,6 +679,7 @@ Se encontraron 9 bugs de producción en la auditoría en vivo del 2026-07-01. **
 | B-07 | 🟡 Media | Marca | Tab de postulaciones/invitaciones: `Unexpected token '<' ... is not valid JSON` | ✅ Corregido — el fetch apuntaba a `/api/brand-campaigns/...` en vez de `/api/brand/campaigns/...`. Se encontró y corrigió el mismo bug en el submit de "Invitar influencer" (no reportado antes) |
 | B-08 | 🟢 Baja | Marca | Botón "Data Quality" visible, apunta a herramienta admin-only | ✅ Corregido — oculto para Marca |
 | B-09 | 🔴 Alta | Influencer | Clic en campaña asignada → 404 (`/campaign/[id]` legacy) | ✅ Corregido — 4 ocurrencias actualizadas a `/inf-campaign/[id]` |
+| B-10 | 🟡 Media | Influencer | "Tareas pendientes" (`inf-dash`, `inf-tasks`) mostraba tareas fantasma sin relación a ningún deliverable real, mezcladas con las reales | ✅ Corregido — reportado por Pri revisando el FDD (BR-04). `POST /api/campaigns/[id]/influencers` creaba 4 `influencer_tasks` genéricas hardcodeadas (`createInfluencerTasks`) además de las sincronizadas 1:1 con `campaign_deliverables` (`syncDeliverableTask`). Se quitó la llamada genérica en ese flujo (no se tocó su uso legítimo en bookings/eventos) y se borraron 412 filas fantasma ya existentes en producción (348 sin interacción + 64 marcadas "done") |
 | — | 🟢 Muy baja | Marca | KPI "Total gastado" mostraba `$NaN` sin datos | ✅ Corregido — guard `?? 0` agregado |
 
 **Incidente post-deploy (corregido el mismo día):** en un primer intento se eliminó `CampaignDetailView.brand.tsx` asumiendo que era código muerto — un `grep` insuficiente (solo se miraron los nombres de archivo resultantes, no el contenido de las líneas) llevó a esa conclusión errónea. El archivo **sí tiene un import estático real** desde `CampaignDetailView.tsx` (`import { BrandCampaignView } from './CampaignDetailView.brand'`), así que borrarlo rompió la compilación de producción (deploy `dpl_CmzEp4WBZodkxNhFPD98HkJ4yCjM` → `ERROR`, detectado vía el conector de Vercel antes de que afectara a usuarios reales, ya que Vercel no promueve un build fallido al alias de producción). Se restauró el archivo, se corrigió en él el mismo bug de URL que B-07 (2 fetches), y se validó con un script que confirma 0 imports rotos (relativos y `@/`) en todo `src/` antes de repushear. Ver G-16 para el hallazgo funcional real detrás de este archivo.

@@ -2,12 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { User, Building2, Bell, Shield } from 'lucide-react'
+import { User, Building2, Users, MapPin, Bell, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const TABS = [
-  { href: '/admin-settings/profile',      label: 'Mi perfil',      icon: User },
-  { href: '/admin-settings/organization',  label: 'Organización',   icon: Building2 },
+    { href: '/admin-settings/profile', label: 'Mi perfil', icon: User },
+    { href: '/admin-settings/organization', label: 'Organización', icon: Building2 },
+    { href: '/admin-settings/users', label: 'Usuarios', icon: Users },
+    { href: '/admin-settings/locations', label: 'Lugares', icon: MapPin },
   { href: '/admin-settings/notifications', label: 'Notificaciones', icon: Bell,    soon: true },
   { href: '/admin-settings/security',      label: 'Seguridad',      icon: Shield,  soon: true },
 ]

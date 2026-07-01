@@ -396,7 +396,6 @@ export default function OrganizationSettingsPage() {
   return (
     <div className="space-y-8 max-w-2xl">
       <OrgSettingsForm />
-      <TeamMembers />
     </div>
   )
 }

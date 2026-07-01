@@ -26,6 +26,9 @@
 | 2.1 (revisión Pri) | Pri revisó el FDD y reportó un problema real en BR-04 (comentario en Google Docs): tareas fantasma sin relación a deliverables. Se diagnosticó, corrigió el código (bug B-10) y se limpiaron 412 filas ya existentes en producción, con aprobación explícita de Pri para el alcance del borrado | 2026-07-01 |
 | 2.1 (flujo open) | Pri pidió auditar de punta a punta el flujo de campaña pública/open (crear → ver → postular → aprobar → deliverables → tareas → email → visibilidad). Se encontró bug B-11 (faltaba sync de tareas + email al aprobar) y se corrigió, acotado a `PATCH /api/brand/campaigns/[id]/applications`. Resto del flujo confirmado correcto sin cambios | 2026-07-01 |
 | 2.1 (roles) | Pri confirmó por comentario en el FDD que `agency_manager` no es un rol real ("no existe"). Se auditó su uso real: solo 2 perfiles de prueba, 5 RLS policies, 10 archivos de código, y el trigger de signup lo asignaba por defecto (aunque `ensureOrg()` ya lo sobreescribía a `brand_manager` en casi todos los casos). Se reasignaron los 2 perfiles a `super_admin`, se corrigió el trigger, se actualizaron las 5 RLS y los 10 archivos, sin dropear el valor del enum en Postgres (innecesario). Modelo de roles vigente: `super_admin` / `brand_manager` / `influencer` | 2026-07-01 |
+| 2.1 (billing) | Pri pidió planes de suscripción para Marca iguales a "Montu" (Starter/Plus/Enterprise), con pasarela de pago real. Se encontraron 2 sistemas de billing ya existentes y desconectados: `organizations.subscription_*` + Stripe checkout/webhook/portal hardcodeados a un solo plan "pro" (nunca conectado a UI), y `subscription_plans`/`subscriptions` (multi-tier, desde baseline, 0 filas, sin API/UI). Se consolidó todo sobre el segundo (ya soportaba multi-tier); el primero se adaptó para ser plan-aware en vez de duplicarse. Cierra MK-12 (`brand-billing` ya no es "soon") | 2026-07-01 |
+| 2.1 (ranking filtrable) | Pri pidió (parking lot de sesiones previas) que agregar influencers a una campaña privada reutilice el ranking existente con filtros (comuna, fecha, campañas colaboradas) en vez de una vista reducida paralela. Auditoría encontró que `AddInfluencerClient.tsx` tenía su propia tabla ad-hoc (solo búsqueda libre). Se agregó una prop opcional `renderAction` a `InfluencerRanking` (columna de acción por fila) y se reemplazó la tabla ad-hoc, heredando sort por comuna/campañas/entregables/rating y filtro por plataforma/última conexión ya existentes, sin alterar el ranking admin general (prop opcional) | 2026-07-01 |
+| 2.1 (permisos marca) | Durante la auditoría del punto anterior se revisó también `brand-campaigns/[id]/invite`. Se encontró y corrigió un hallazgo de seguridad real: `GET /api/brand/influencers/[id]` — ver B-15 | 2026-07-01 |
 
 ### Sign-off
 
@@ -124,7 +127,7 @@ Usuario ──▶ Next.js 14 (App Router, Vercel)
 ### 2.4 Restricciones
 
 - Sin app móvil nativa.
-- Cobro a marcas vía Stripe: scaffold de datos listo, sin UI de checkout activa.
+- Cobro a marcas vía Stripe: UI y código plan-aware activos (MK-12); cobro real pendiente de Price IDs y API keys de producción.
 - Sin firma electrónica de contratos (DocuSign).
 - Sin tracking de performance post-publicación en tiempo real (views/likes).
 - Sin marketplace público de influencers.
@@ -408,8 +411,19 @@ Lista de postulaciones (campañas open) e invitaciones enviadas, con acciones Ac
 #### MK-11 Soporte
 **Navegación:** `brand-support` — solo tickets propios.
 
-#### MK-12 Billing (Marca) — 🔜 pendiente
-**Navegación:** `brand-billing` — marcado "soon" en v2.1 (antes 404 real — bug B-04). Requiere decisión de producto: qué facturas/datos financieros mostrar antes de construir la vista real.
+#### MK-12 Billing (Marca) — Planes de suscripción
+**Navegación:** `brand-billing` · **API:** `GET /api/brand/billing`, `POST /api/stripe/checkout`, `POST /api/stripe/portal` · **Tablas:** `subscription_plans`, `subscriptions`
+
+Construido 2026-07-01 (antes marcado "soon"; antes de eso, 404 real — bug B-04). 3 planes estilo "Montu": Starter ($59.990 CLP/mes), Plus ($119.990 CLP/mes), Enterprise (desde $249.990 CLP/mes + IVA, sin checkout — "Hablar con ventas").
+
+| Campo | Fuente | Para qué sirve |
+|---|---|---|
+| Cards de planes (nombre, precio, features, límites) | `subscription_plans` (activos) | Comparación de planes |
+| Plan actual + estado + próxima renovación | `subscriptions` join `subscription_plans` | Estado de la suscripción de la marca |
+| Contratar (Starter/Plus) | `POST /api/stripe/checkout` → Stripe Checkout | Alta de suscripción |
+| Gestionar suscripción | `POST /api/stripe/portal` → Stripe Customer Portal | Cambiar método de pago, cancelar |
+
+**Estado real de la pasarela de pago:** el código está completo y es plan-aware (`checkout`/`webhook`/`portal` leen `subscription_plans.stripe_price_id_monthly`), pero el cobro real no funciona hasta que Pri: (1) cree 2 Stripe Prices recurrentes reales (Starter/Plus) y pegue sus IDs en `subscription_plans.stripe_price_id_monthly`, (2) agregue `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` a Vercel, (3) registre el endpoint de webhook en su dashboard de Stripe. Mientras tanto, "Contratar" devuelve un error controlado (422) en vez de fallar en silencio.
 
 #### MK-13 Marcas colaboradoras — 🔜 pendiente
 **Navegación:** `brand-brands` — marcado "soon" en v2.1 (antes 404 real — bug B-05). Requiere decisión de producto: alcance de "solo nombre" de otras marcas por campaña compartida (BR-06).
@@ -569,7 +583,7 @@ SCENCE no usa temas visuales sobre planos (no aplica, a diferencia de un sistema
 | INT-01 | Google Calendar (Service Account) | Sincroniza `bookings` con eventos de calendario para la agenda operativa de Admin. | Entrada/Salida |
 | INT-02 | Apify (Instagram Sync) | Actualiza followers/engagement de `influencer_social_profiles` bajo demanda desde Data Quality. | Entrada |
 | INT-03 | Resend | Envío de emails transaccionales (ver §9). | Salida |
-| INT-04 | Stripe | Scaffold de columnas y modelo de datos presente (migración `stripe_resend_columns`), sin UI de checkout activa. | — (no activo) |
+| INT-04 | Stripe | Checkout/Webhook/Portal plan-aware, conectados a `subscription_plans`/`subscriptions` y a la UI real (`brand-billing`, MK-12). Cobro real pendiente de Price IDs y API keys de producción (ver MK-12). | Entrada/Salida |
 | INT-05 | Supabase Auth | Autenticación y sesión; `user_metadata` determina el portal (`is_brand`, `is_influencer`). | Entrada/Salida |
 
 ---
@@ -644,7 +658,7 @@ Asunto implícito: invitación de marca a campaña. Incluye nombre del influence
 | Migraciones de base de datos | Definición real de tablas (con drift conocido — ver nota) | `supabase/migrations/*.sql` |
 | Middleware de rutas | Enforcement de roles por portal | `src/middleware.ts` |
 
-**Nota de integridad:** durante esta auditoría se confirmó que las migraciones en el repo **no reflejan el 100% del schema real** de producción (ej. la tabla `brands` no tiene migración de creación en el repo, pero existe y está en uso — fue creada fuera del flujo de migraciones versionadas). Se recomienda una tarea futura de reconciliación schema-real vs. migraciones.
+**Nota de integridad:** durante esta auditoría se confirmó que las migraciones en el repo **no reflejan el 100% del schema real** de producción (ej. la tabla `brands` no tiene migración de creación en el repo, pero existe y está en uso — fue creada fuera del flujo de migraciones versionadas). Se recomienda una tarea futura de reconciliación schema-real vs. migraciones. **Actualización 2026-07-01:** se encontró y documentó el mismo patrón en `influencers.commune` (usada en código desde antes, sin migración versionada) — migración `20260701000003_document_commune_column.sql` agregada, aditiva, sin cambio de datos.
 
 ---
 
@@ -690,6 +704,9 @@ Se encontraron 9 bugs de producción en la auditoría en vivo del 2026-07-01. **
 | — | 🟢 Baja | Admin | Dropdown "Marca" en crear/editar campaña sin filtro (~30 marcas en una sola lista) ni forma de crear una marca nueva sin salir del form | ✅ Corregido — nuevo componente `BrandSelector.tsx` (combobox con búsqueda + "Crear marca X" inline), reemplaza el `<select>` plano duplicado en ambos forms. Reutiliza `GET/POST /api/brands` existente, sin cambios de backend |
 | — | 🟢 Baja | Influencer | No existía forma de ver el detalle de una campaña open (deliverables, presupuesto, brief) antes de postular — solo un botón "Aplicar" directo | ✅ Agregado — nuevo `GET /api/influencer/campaigns/[id]` (preview, mismo criterio de visibilidad que `/open` y `/apply`) + rama de solo-lectura en `CampaignDetailView.influencer.tsx` (reutiliza `/inf-campaign/[id]` existente en vez de crear una ruta nueva) |
 | — | 🟢 Baja | Admin | En las tablas de Influencers, Campañas y Marcas: la selección de columnas visibles y el orden no persistían (se perdían al recargar o navegar), y no todas las columnas eran ordenables por header | ✅ Corregido (parcial) — nuevo hook `useLocalStorageState` + componente compartido `SortableTH`. Influencers y Campañas quedaron con columnas+sort 100% persistentes. Marcas (`admin-brands`) solo quedó con el sort-preset y la vista (list/grid) persistentes — esa tabla no tenía toggle de columnas ni sort por header antes (usa un `<select>` con presets fijos); construir eso es una ampliación mayor, pendiente de confirmar prioridad |
+| — | 🟢 Feature | Marca | Planes de suscripción y cobro no existían en UI (2 sistemas de billing desconectados en el código, ver changelog "2.1 (billing)") | ✅ Construido — `subscription_plans` reestructurado a 3 tiers estilo Montu, `GET /api/brand/billing`, checkout/webhook/portal de Stripe unificados y plan-aware, página `brand-billing` real. Cierra MK-12. Cobro real pendiente de Price IDs/API keys (ver MK-12) |
+| — | 🟢 Feature | Admin | Agregar influencers a una campaña privada usaba una tabla ad-hoc sin filtros reales (solo búsqueda libre), en vez de reutilizar el ranking existente | ✅ Construido — `InfluencerRanking` ganó una prop opcional `renderAction` (columna de acción por fila); `AddInfluencerClient.tsx` la reutiliza en modo selección, heredando sort por comuna/campañas colaboradas/entregables/rating y filtros de plataforma/última conexión. Ranking admin general sin cambios de comportamiento (prop opcional) |
+| B-15 | 🔴 Alta (seguridad) | Marca | `GET /api/brand/influencers/[id]` (usado al cargar el influencer preseleccionado en `brand-campaigns/[id]/invite`) validaba solo `organization_id`, no la relación real con la marca — a diferencia de `/api/brand/influencers` y `/api/brand/influencers/ranking`, que sí cruzan por campañas propias/colaboradora/`brand_influencers`. Permitía a cualquier marca pedir por ID el perfil completo (bio, redes, rate cards) de cualquier influencer del roster de la organización, sin relación a sus campañas — contradice BR-06 | ✅ Corregido — se unificó con el mismo cruce (campañas propias + colaboradora + `brand_influencers`) que ya usan los otros 2 endpoints; IDs fuera de ese conjunto devuelven 404 genérico (no confirma existencia). De paso ahora también resuelve usuarios invitados (`metadata.brand_id`), antes solo owner (`user_id`). Encontrado en auditoría de `brand-campaigns/[id]/invite` pedida por Pri, reportado y corregido con su aprobación explícita |
 
 **Incidente post-deploy (corregido el mismo día):** en un primer intento se eliminó `CampaignDetailView.brand.tsx` asumiendo que era código muerto — un `grep` insuficiente (solo se miraron los nombres de archivo resultantes, no el contenido de las líneas) llevó a esa conclusión errónea. El archivo **sí tiene un import estático real** desde `CampaignDetailView.tsx` (`import { BrandCampaignView } from './CampaignDetailView.brand'`), así que borrarlo rompió la compilación de producción (deploy `dpl_CmzEp4WBZodkxNhFPD98HkJ4yCjM` → `ERROR`, detectado vía el conector de Vercel antes de que afectara a usuarios reales, ya que Vercel no promueve un build fallido al alias de producción). Se restauró el archivo, se corrigió en él el mismo bug de URL que B-07 (2 fetches), y se validó con un script que confirma 0 imports rotos (relativos y `@/`) en todo `src/` antes de repushear. Ver G-16 para el hallazgo funcional real detrás de este archivo.
 

@@ -14,7 +14,7 @@ import type { Campaign, CampaignFilters as CampaignFiltersType } from '@/types'
 function KPIs({ campaigns }: { campaigns: Campaign[] }) {
   const active      = campaigns.filter(c => c.status === 'active').length
   const totalBudget = campaigns.reduce((s, c) => s + (c.budget_total ?? 0), 0)
-  const totalSpent  = campaigns.reduce((s, c) => s + c.budget_spent, 0)
+  const totalSpent  = campaigns.reduce((s, c) => s + (c.budget_spent ?? 0), 0)
   const pending     = campaigns.reduce((s, c) => s + ((c.deliverable_count ?? 0) - (c.deliverable_done ?? 0)), 0)
 
   return (

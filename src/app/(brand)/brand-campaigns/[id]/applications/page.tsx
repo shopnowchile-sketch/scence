@@ -67,7 +67,7 @@ export default function ApplicationsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/brand-campaigns/${campaignId}/applications`)
+      const res = await fetch(`/api/brand/campaigns/${campaignId}/applications`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setApps(json.data ?? [])
@@ -83,7 +83,7 @@ export default function ApplicationsPage() {
   async function decide(applicationId: string, action: 'accept' | 'reject') {
     setActing(applicationId)
     try {
-      const res = await fetch(`/api/brand-campaigns/${campaignId}/applications`, {
+      const res = await fetch(`/api/brand/campaigns/${campaignId}/applications`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ application_id: applicationId, action }),

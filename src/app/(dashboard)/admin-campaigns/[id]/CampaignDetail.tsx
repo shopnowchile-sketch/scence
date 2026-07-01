@@ -853,15 +853,22 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               <div>
                 <h3 className="text-sm font-semibold text-gray-700">Visibilidad</h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {(c as {visibility?: string}).visibility === 'public'
+                  {(c as {visibility?: string}).visibility === 'open'
                     ? 'Las influencers pueden postular desde su portal'
                     : 'Solo por invitación del equipo'}
                 </p>
               </div>
               <button
                 onClick={async () => {
-                  const current = (c as {visibility?: string}).visibility ?? 'invite_only'
-                  const next = current === 'public' ? 'invite_only' : 'public'
+                  // FIX (2026-07-01): antes escribía 'public'/'invite_only', valores
+                  // que ningún otro endpoint reconoce (visibility es texto libre, sin
+                  // enum en BD). El resto del sistema (incl. GET /api/influencer/
+                  // campaigns/open) usa 'open'/'private'. Este botón nunca había sido
+                  // usado en producción (0 filas con 'public' hoy), pero de haberse
+                  // usado, la campaña habría dejado de aparecer para influencers sin
+                  // ningún error visible.
+                  const current = (c as {visibility?: string}).visibility ?? 'private'
+                  const next = current === 'open' ? 'private' : 'open'
                   await fetch(`/api/campaigns/${id}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
@@ -871,12 +878,12 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 }}
                 className={cn(
                   'text-xs font-bold px-3 py-1.5 rounded-full border transition-colors',
-                  (c as {visibility?: string}).visibility === 'public'
+                  (c as {visibility?: string}).visibility === 'open'
                     ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
                     : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
                 )}
               >
-                {(c as {visibility?: string}).visibility === 'public' ? '🌐 Pública' : '🔒 Invitación'}
+                {(c as {visibility?: string}).visibility === 'open' ? '🌐 Pública' : '🔒 Invitación'}
               </button>
             </div>
 

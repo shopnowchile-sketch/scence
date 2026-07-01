@@ -823,7 +823,7 @@ flowchart TD
 | Gap | Descripción | Impacto |
 |---|---|---|
 | G-01 | Influencer no tiene UI de "Invitaciones" separada de Campañas | Medio |
-| G-02 | No hay `/opportunities` dedicado para campañas open | Medio |
+| G-02 | ~~No hay `/opportunities` dedicado...~~ **Resuelto 2026-07-01 (aclarado con Pri):** no era un gap real de construcción — crear campañas `visibility: 'open'` ya funciona en Admin (`CampaignForm.tsx`) y Marca (`CampaignFormView.brand.tsx`, real en `brand-campaigns/new`), y los influencers de la misma organización ya las ven en `inf-dash` (sección "Campañas Disponibles", vía `/api/influencer/campaigns/open`) y pueden postular. Abierta = dentro de la organización, no marketplace público entre marcas. Pri confirmó que así está bien, no se necesita página dedicada | Cerrado |
 | G-06 | No hay notificaciones en tiempo real | Medio |
 | G-07 | `campaign_influencers.status` legacy convive con `application_status` | Técnico |
 | G-08 | ~~Emails de invitación y de confirmación de booking no se invocan...~~ **Resuelto 2026-07-01:** conectados ambos (ver §9, EMAIL-01/02) | Cerrado |

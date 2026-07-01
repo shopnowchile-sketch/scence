@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const returnUrl = body.return_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence.vercel.app'}/settings`
+  const returnUrl = body.return_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'}/brand-billing`
 
   const session = await getStripe().billingPortal.sessions.create({
     customer:   customerId,

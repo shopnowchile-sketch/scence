@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
-import { getStripe, PLANS } from '@/lib/stripe'
+import { getStripe } from '@/lib/stripe'
 
-// POST /api/stripe/checkout — create a Stripe Checkout session for Pro plan
+// POST /api/stripe/checkout — crea una Stripe Checkout session para el plan
+// elegido (body: { plan_id }). Antes estaba hardcodeado a un único plan
+// "pro" (PLANS.pro.priceId) — ahora es plan-aware, lee subscription_plans.
 export async function POST(request: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -13,8 +15,22 @@ export async function POST(request: NextRequest) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
 
-  if (!PLANS.pro.priceId) {
-    return NextResponse.json({ error: 'STRIPE_PRO_PRICE_ID not configured' }, { status: 500 })
+  const body = await request.json().catch(() => ({}))
+  const planId: string | undefined = body.plan_id
+  if (!planId) return NextResponse.json({ error: 'plan_id requerido' }, { status: 422 })
+
+  const { data: plan } = await admin
+    .from('subscription_plans')
+    .select('id, name, stripe_price_id_monthly')
+    .eq('id', planId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!plan) return NextResponse.json({ error: 'Plan no encontrado' }, { status: 404 })
+  if (!plan.stripe_price_id_monthly) {
+    return NextResponse.json({
+      error: `El plan "${plan.name}" todavía no tiene un Stripe Price ID configurado (subscription_plans.stripe_price_id_monthly)`,
+    }, { status: 422 })
   }
 
   // Get org to find/create Stripe customer
@@ -42,19 +58,18 @@ export async function POST(request: NextRequest) {
       .eq('id', orgId)
   }
 
-  const body = await request.json().catch(() => ({}))
-  const successUrl = body.success_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence.vercel.app'}/settings?upgraded=1`
-  const cancelUrl  = body.cancel_url  ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence.vercel.app'}/settings`
+  const successUrl = body.success_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'}/brand-billing?upgraded=1`
+  const cancelUrl  = body.cancel_url  ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'}/brand-billing`
 
   const session = await getStripe().checkout.sessions.create({
     customer:   customerId,
     mode:       'subscription',
-    line_items: [{ price: PLANS.pro.priceId, quantity: 1 }],
+    line_items: [{ price: plan.stripe_price_id_monthly, quantity: 1 }],
     success_url: successUrl,
     cancel_url:  cancelUrl,
-    metadata: { organization_id: orgId },
+    metadata: { organization_id: orgId, plan_id: plan.id },
     subscription_data: {
-      metadata: { organization_id: orgId },
+      metadata: { organization_id: orgId, plan_id: plan.id },
     },
     allow_promotion_codes: true,
   })

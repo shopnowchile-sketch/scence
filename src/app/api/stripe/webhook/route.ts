@@ -5,22 +5,52 @@ import type Stripe from 'stripe'
 
 // App Router: request.text() already returns raw body — no config needed
 
-async function updateOrgSubscription(
+// Upsert en subscriptions (multi-plan) — antes escribía campos hardcodeados
+// de un solo plan "pro" en organizations.subscription_status/subscription_plan,
+// que ningún otro código del proyecto llegó a leer nunca (confirmado por grep).
+// Se unifica sobre subscription_plans/subscriptions, que ya existían desde
+// la migración baseline pero nunca se usaron.
+async function upsertSubscription(
   admin: ReturnType<typeof createAdminClient>,
-  orgId: string,
-  update: {
-    subscription_status: string
-    subscription_plan: string
-    subscription_period_end: string | null
-    stripe_subscription_id?: string
+  params: {
+    organizationId: string
+    planId: string | null
+    status: string
+    currentPeriodStart: string
+    currentPeriodEnd: string
+    stripeSubscriptionId: string
+    stripeCustomerId: string | null
+    canceledAt?: string | null
   }
 ) {
-  const { error } = await admin
-    .from('organizations')
-    .update({ ...update, updated_at: new Date().toISOString() })
-    .eq('id', orgId)
+  if (!params.planId) {
+    console.error('[webhook] upsertSubscription: sin plan_id en metadata, no se puede vincular a un plan')
+    return
+  }
 
-  if (error) console.error('[webhook] updateOrgSubscription error:', error.message)
+  const { data: existing } = await admin
+    .from('subscriptions')
+    .select('id')
+    .eq('stripe_subscription_id', params.stripeSubscriptionId)
+    .maybeSingle()
+
+  const row = {
+    organization_id:       params.organizationId,
+    plan_id:               params.planId,
+    status:                params.status,
+    current_period_start:  params.currentPeriodStart,
+    current_period_end:    params.currentPeriodEnd,
+    stripe_subscription_id: params.stripeSubscriptionId,
+    stripe_customer_id:    params.stripeCustomerId,
+    canceled_at:           params.canceledAt ?? null,
+    updated_at:            new Date().toISOString(),
+  }
+
+  const { error } = existing
+    ? await admin.from('subscriptions').update(row).eq('id', existing.id)
+    : await admin.from('subscriptions').insert(row)
+
+  if (error) console.error('[webhook] upsertSubscription error:', error.message)
 }
 
 export async function POST(request: NextRequest) {
@@ -45,19 +75,20 @@ export async function POST(request: NextRequest) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session
       const orgId = session.metadata?.organization_id
+      const planId = session.metadata?.plan_id ?? null
       if (!orgId || session.mode !== 'subscription') break
 
-      // Subscription ID available in session.subscription
       const subId = session.subscription as string
       if (subId) {
         const sub = await getStripe().subscriptions.retrieve(subId)
-        await updateOrgSubscription(admin, orgId, {
-          subscription_status:     sub.status,
-          subscription_plan:       'pro',
-          stripe_subscription_id:  sub.id,
-          subscription_period_end: sub.current_period_end
-            ? new Date(sub.current_period_end * 1000).toISOString()
-            : null,
+        await upsertSubscription(admin, {
+          organizationId:       orgId,
+          planId:               planId ?? sub.metadata?.plan_id ?? null,
+          status:               sub.status,
+          currentPeriodStart:   new Date(sub.current_period_start * 1000).toISOString(),
+          currentPeriodEnd:     new Date(sub.current_period_end * 1000).toISOString(),
+          stripeSubscriptionId: sub.id,
+          stripeCustomerId:     typeof sub.customer === 'string' ? sub.customer : sub.customer?.id ?? null,
         })
       }
       break
@@ -69,13 +100,14 @@ export async function POST(request: NextRequest) {
       const orgId = sub.metadata?.organization_id
       if (!orgId) break
 
-      await updateOrgSubscription(admin, orgId, {
-        subscription_status:     sub.status,
-        subscription_plan:       'pro',
-        stripe_subscription_id:  sub.id,
-        subscription_period_end: sub.current_period_end
-          ? new Date(sub.current_period_end * 1000).toISOString()
-          : null,
+      await upsertSubscription(admin, {
+        organizationId:       orgId,
+        planId:               sub.metadata?.plan_id ?? null,
+        status:               sub.status,
+        currentPeriodStart:   new Date(sub.current_period_start * 1000).toISOString(),
+        currentPeriodEnd:     new Date(sub.current_period_end * 1000).toISOString(),
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId:     typeof sub.customer === 'string' ? sub.customer : sub.customer?.id ?? null,
       })
       break
     }
@@ -85,10 +117,15 @@ export async function POST(request: NextRequest) {
       const orgId = sub.metadata?.organization_id
       if (!orgId) break
 
-      await updateOrgSubscription(admin, orgId, {
-        subscription_status:     'canceled',
-        subscription_plan:       'free',
-        subscription_period_end: null,
+      await upsertSubscription(admin, {
+        organizationId:       orgId,
+        planId:               sub.metadata?.plan_id ?? null,
+        status:               'canceled',
+        currentPeriodStart:   new Date(sub.current_period_start * 1000).toISOString(),
+        currentPeriodEnd:     new Date(sub.current_period_end * 1000).toISOString(),
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId:     typeof sub.customer === 'string' ? sub.customer : sub.customer?.id ?? null,
+        canceledAt:           new Date().toISOString(),
       })
       break
     }
@@ -98,19 +135,10 @@ export async function POST(request: NextRequest) {
       const customerId = invoice.customer as string
       if (!customerId) break
 
-      const { data: orgs } = await admin
-        .from('organizations')
-        .select('id')
+      await admin
+        .from('subscriptions')
+        .update({ status: 'past_due', updated_at: new Date().toISOString() })
         .eq('stripe_customer_id', customerId)
-        .limit(1)
-
-      const orgId = orgs?.[0]?.id
-      if (orgId) {
-        await admin
-          .from('organizations')
-          .update({ subscription_status: 'past_due', updated_at: new Date().toISOString() })
-          .eq('id', orgId)
-      }
       break
     }
 

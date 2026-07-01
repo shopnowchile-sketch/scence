@@ -620,10 +620,10 @@ Sistema de emails transaccionales vía Resend (`src/lib/resend.ts`). Plantillas 
 
 **EMAIL-01 — Invitación a campaña** (`influencerInviteEmail`)
 Asunto implícito: invitación de marca a campaña. Incluye nombre del influencer, marca, campaña, mensaje opcional y link a la invitación.
-**Estado:** ⚠️ la función existe pero no se encontró ningún punto del código que la invoque — **no se está enviando en producción hoy** (relacionado con gap G-08, "email de invitación no se envía automático").
+**Estado:** ✅ **Corregido 2026-07-01 (gap G-08):** ahora se invoca desde `POST /api/brand/campaigns/[id]/invite` justo después de crear la invitación (`campaign_influencers`). No bloqueante — si el influencer no tiene email o el envío falla, la invitación queda creada igual.
 
 **EMAIL-02 — Confirmación de booking** (`bookingConfirmEmail` en `resend.ts`)
-**Estado:** ⚠️ misma situación — no invocada. Existe una plantilla distinta y sí activa (`bookingConfirmationEmail`, inline) en `src/app/api/bookings/send-confirmations/route.ts`, con botones de confirmar/rechazar. Duplicación a resolver: dos plantillas de booking, solo una en uso.
+**Estado:** ✅ **Corregido 2026-07-01 (gaps G-08 y G-14):** se confirmó que no era una duplicación real sino dos pasos de un mismo flujo: `bookingConfirmationEmail` (inline, en `send-confirmations/route.ts`) pide al influencer que confirme/decline vía botones; `bookingConfirmEmail` (`resend.ts`) ahora se invoca como recibo de confirmación en `GET /api/bookings/confirm` cuando el influencer hace clic en "confirmar". Flujo completo: Admin dispara `send-confirmations` desde `BookingsClient.tsx` → influencer confirma → recibe recibo.
 
 **EMAIL-03 — Estado de deliverable** (`deliverableStatusEmail`)
 **Estado:** ✅ activa, invocada desde `src/app/api/emails/deliverable-status/route.ts`. Notifica al influencer cuando su entrega es aprobada o rechazada, con notas de revisión si aplica.
@@ -826,12 +826,12 @@ flowchart TD
 | G-02 | No hay `/opportunities` dedicado para campañas open | Medio |
 | G-06 | No hay notificaciones en tiempo real | Medio |
 | G-07 | `campaign_influencers.status` legacy convive con `application_status` | Técnico |
-| G-08 | Emails de invitación y de confirmación de booking (plantilla `resend.ts`) no se invocan en ningún endpoint — confirmado por auditoría de código | Medio |
+| G-08 | ~~Emails de invitación y de confirmación de booking no se invocan...~~ **Resuelto 2026-07-01:** conectados ambos (ver §9, EMAIL-01/02) | Cerrado |
 | G-09 | No hay perfil público de influencer para marcas (`/brand-influencers/[id]`) | Bajo |
 | G-10 | Sin onboarding guiado para marcas nuevas | Bajo |
 | G-11 | "Campañas propias" del influencer no está en el modelo de permisos documentado | Medio — requiere decisión de producto |
 | G-13 | Configuración → Lugares es un stub sin funcionalidad, pese a que la tabla `locations` ya existe y se usa en campañas/marcas | Bajo |
-| G-14 (nuevo) | Duplicación de plantillas de email de booking (una activa inline, una muerta en `resend.ts`) | Bajo — limpieza técnica |
+| G-14 | ~~Duplicación de plantillas de email de booking...~~ **Resuelto 2026-07-01:** no era duplicación, eran 2 pasos de un mismo flujo (solicitud de confirmación + recibo). Se conectó el recibo (`bookingConfirmEmail`) que estaba muerto | Cerrado |
 | G-15 | ~~Migraciones del repo no reflejan `brands`...~~ **Resuelto 2026-07-01:** agregada migración baseline (`20260701000001_baseline_brands_table.sql`) documentando columnas, constraints, índices y RLS reales de `brands`, sin tocar producción (tabla ya existe ahí). **Hallazgo nuevo durante esta tarea (no corregido, requiere aprobación aparte):** las 4 RLS policies de `brands` comparan `organization_id` contra una subquery que también selecciona `brands.organization_id` (no `profiles.organization_id`, columna que no existe) — la condición es tautológica y en la práctica no filtra por organización a nivel RLS. Bajo riesgo real hoy porque las 20 rutas que tocan `brands` usan `createAdminClient()` (service role, bypassea RLS) con su propia lógica de autorización — pero es una brecha de defensa en profundidad si algo llega a consultar `brands` desde el browser con la key anon/authenticated | Cerrado (baseline). RLS de `brands` queda como hallazgo de seguridad pendiente de decisión — ver nota. |
 | G-16 | ~~`CampaignDetailView.tsx` soporta `mode="brand"`...~~ **Resuelto 2026-07-01:** confirmado por grep que ninguna ruta real usaba `mode="brand"` (Marca usa `CampaignDetail` directo). Se eliminó la rama y el archivo `CampaignDetailView.brand.tsx`, validado con script exhaustivo de imports (0 rotos) + `tsc --noEmit` (0 errores) antes de commitear | Cerrado |
 

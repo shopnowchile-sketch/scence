@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { getResend, FROM_EMAIL, bookingConfirmEmail } from '@/lib/resend'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -21,13 +22,23 @@ export async function GET(req: NextRequest) {
   // Update the most recent booking for this influencer
   const { data: bookings } = await admin
     .from('bookings')
-    .select('id, confirmation_token')
+    .select(`
+      id, confirmation_token, title, location, is_virtual, virtual_link, starts_at,
+      campaign:campaigns ( name, brand:brands!campaigns_brand_id_fkey ( name ) ),
+      influencer:influencers ( display_name, email )
+    `)
     .eq('influencer_id', influencer_id)
     .order('created_at', { ascending: false })
     .limit(1)
 
   if (bookings?.length) {
-    const booking = bookings[0]
+    const booking = bookings[0] as unknown as {
+      id: string; confirmation_token: string | null; title: string
+      location: string | null; is_virtual: boolean; virtual_link: string | null
+      starts_at: string
+      campaign: { name: string; brand: { name: string } | null } | null
+      influencer: { display_name: string; email: string | null } | null
+    }
 
     // Token validation: if a token is provided in the URL, it must match
     // If no token provided (legacy links), allow for backward compatibility
@@ -42,6 +53,31 @@ export async function GET(req: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', booking.id)
+
+    // ── Email de confirmación (gap G-08, cerrado 2026-07-01) ───────────────────
+    // No bloqueante: si falla, la confirmación en BD ya quedó registrada.
+    if (action === 'confirm' && booking.influencer?.email) {
+      try {
+        await getResend().emails.send({
+          from: FROM_EMAIL,
+          to: booking.influencer.email,
+          subject: `Booking confirmado: ${booking.title}`,
+          html: bookingConfirmEmail({
+            recipientName: booking.influencer.display_name,
+            campaignName:  booking.campaign?.name ?? 'Scence',
+            eventTitle:    booking.title,
+            eventDate:     new Date(booking.starts_at).toLocaleString('es-CL', {
+              dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Santiago',
+            }),
+            eventLocation: booking.is_virtual ? (booking.virtual_link ?? undefined) : (booking.location ?? undefined),
+            brandName:     booking.campaign?.brand?.name ?? 'Scence',
+            bookingUrl:    `${APP_URL}/inf-bookings`,
+          }),
+        })
+      } catch (e) {
+        console.error('[booking confirm email] non-fatal:', e)
+      }
+    }
   }
 
   // Redirect to a simple thank-you page

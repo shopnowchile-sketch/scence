@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
 
 type Params = { params: { id: string } }
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
 // POST /api/brand-campaigns/[id]/invite
 // La marca invita a un influencer a una campaña (private u open).
@@ -18,7 +21,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que la campaña pertenece a esta marca
   const { data: brand } = await admin
     .from('brands')
-    .select('id')
+    .select('id, name')
     .eq('user_id', user.id)
     .single()
 
@@ -26,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, status, brand_id, organization_id')
+    .select('id, name, status, brand_id, organization_id')
     .eq('id', params.id)
     .eq('brand_id', brand.id)
     .single()
@@ -59,7 +62,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que el influencer pertenece a la misma org
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id')
+    .select('id, display_name, email')
     .eq('id', influencer_id)
     .eq('organization_id', campaign.organization_id)
     .eq('is_active', true)
@@ -101,6 +104,28 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (error) {
     console.error('[POST /api/brand-campaigns/[id]/invite]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // ── Notificar al influencer por email (gap G-08, cerrado 2026-07-01) ─────────
+  // No bloqueante: si el influencer no tiene email o el envío falla, la invitación
+  // ya quedó creada — solo se pierde la notificación, no el flujo funcional.
+  if (influencer.email) {
+    try {
+      await getResend().emails.send({
+        from: FROM_EMAIL,
+        to: influencer.email,
+        subject: `${brand.name} te invitó a una campaña en Scence`,
+        html: influencerInviteEmail({
+          influencerName: influencer.display_name,
+          campaignName:   campaign.name,
+          brandName:      brand.name,
+          inviteUrl:      `${APP_URL}/inf-campaigns`,
+          message:        message,
+        }),
+      })
+    } catch (e) {
+      console.error('[invite email] non-fatal:', e)
+    }
   }
 
   return NextResponse.json({ data }, { status: 201 })

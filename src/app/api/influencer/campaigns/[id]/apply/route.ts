@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getResend, FROM_EMAIL, campaignNewApplicationEmail } from '@/lib/resend'
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
 type Params = { params: { id: string } }
 
@@ -14,7 +17,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, organization_id')
+    .select('id, organization_id, display_name')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
@@ -22,7 +25,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que la campaña existe, es open y está activa o en pending_approval
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, status, visibility, organization_id, application_deadline')
+    .select('id, name, status, visibility, organization_id, application_deadline, brand_id')
     .eq('id', params.id)
     .eq('organization_id', influencer.organization_id)
     .single()
@@ -75,6 +78,34 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Notificar a la marca por email de la nueva postulación (no bloqueante)
+  if (campaign.brand_id) {
+    try {
+      const { data: brand } = await admin
+        .from('brands')
+        .select('name, contact_name, contact_email')
+        .eq('id', campaign.brand_id)
+        .maybeSingle()
+
+      if (brand?.contact_email) {
+        await getResend().emails.send({
+          from: FROM_EMAIL,
+          to: brand.contact_email,
+          subject: `Nueva postulación a "${campaign.name}"`,
+          html: campaignNewApplicationEmail({
+            recipientName:  brand.contact_name || brand.name,
+            influencerName: influencer.display_name,
+            campaignName:   campaign.name,
+            message,
+            reviewUrl:      `${APP_URL}/brand-campaigns/${params.id}/applications`,
+          }),
+        })
+      }
+    } catch (e) {
+      console.error('[apply] notificación a marca non-fatal:', e)
+    }
+  }
 
   return NextResponse.json({ ok: true, id: data.id })
 }

@@ -1,6 +1,6 @@
-# SCENCE
-## Functional Design Document
-### Plataforma de gestión de campañas de influencer marketing
+**SCENCE — Functional Design Document**
+
+**Plataforma de gestión de campañas de influencer marketing**
 
 **Versión:** 2.1 | **Fecha de emisión:** 2026-07-01
 
@@ -28,35 +28,6 @@
 | Versión | Nombre | Rol | Fecha | Firma |
 |---|---|---|---|---|
 | | | | | |
-
----
-
-## Tabla de Contenidos
-
-1. Introducción
-   1.1 Resumen del producto
-   1.2 Objetivos
-   1.3 Impacto de arquitectura legacy
-2. Requisitos de Negocio
-   2.1 Mapa de Proceso
-   2.2 Flujo de Sistema (arquitectura)
-   2.3 Supuestos
-   2.4 Restricciones
-3. Requisitos Funcionales por Portal
-   3.1 Portal Admin
-   3.2 Portal Marca
-   3.3 Portal Influencer
-4. Reportes
-5. Convenciones de Estado y Color (Theming)
-6. Requisitos de Integración
-7. Datos e Importación Masiva
-8. Requisitos No-Funcionales
-9. Notificaciones por Email
-10. Documentos de Apoyo
-11. Glosario
-12. Anexo A — Bugs encontrados y su estado
-13. Anexo B — Diagramas de flujo detallados
-14. Anexo C — Matriz de permisos y estados
 
 ---
 
@@ -165,7 +136,7 @@ Usuario ──▶ Next.js 14 (App Router, Vercel)
 Acceso: `role: super_admin | agency_manager`. Rutas: `admin-*`. Equipo interno de SCENCE — acceso total a todos los datos de la plataforma.
 
 #### AD-01 Dashboard
-![Dashboard Admin](mockups/admin-dashboard.svg)
+![Dashboard Admin](mockups/admin-dashboard.png)
 
 **Navegación:** `admin-dash` · **API:** `GET /api/dashboard` · **Tablas:** `campaigns`, `influencers`, `brands`, `invoices`, `payroll_runs`, `campaign_deliverables`
 
@@ -182,7 +153,7 @@ Acceso: `role: super_admin | agency_manager`. Rutas: `admin-*`. Equipo interno d
 **Regla:** todo se filtra por `organization_id` del usuario.
 
 #### AD-02 Lista de Campañas
-![Lista Campañas Admin](mockups/admin-campaigns-list.svg)
+![Lista Campañas Admin](mockups/admin-campaigns-list.png)
 
 **Navegación:** `admin-campaigns` · **API:** `GET /api/campaigns` · **Tablas:** `campaigns`, `brands`, `campaign_influencers`, `campaign_deliverables`
 
@@ -195,7 +166,7 @@ Acceso: `role: super_admin | agency_manager`. Rutas: `admin-*`. Equipo interno d
 **Acciones:** Nueva campaña, Crear con IA (AI Campaign Builder vía Claude Haiku), abrir detalle, filtrar.
 
 #### AD-03 Nueva Campaña (wizard 4 pasos)
-![Nueva Campaña](mockups/admin-campaign-new.svg)
+![Nueva Campaña](mockups/admin-campaign-new.png)
 
 **Navegación:** `admin-campaigns/new` — mismo componente `CampaignForm.tsx` que usa Marca (`brand-campaigns/new`), API distinta por portal.
 
@@ -214,7 +185,7 @@ Acceso: `role: super_admin | agency_manager`. Rutas: `admin-*`. Equipo interno d
 | Resumen | 4 Confirmar | Revisión antes de crear (`status=draft`) |
 
 #### AD-04 Detalle de Campaña
-![Detalle Campaña Admin](mockups/admin-campaign-detail.svg)
+![Detalle Campaña Admin](mockups/admin-campaign-detail.png)
 
 **Navegación:** `admin-campaigns/[id]` · **Tabs:** Overview · Influencers · Deliverables · Assets · Lugares · Facturas · Historial
 
@@ -230,7 +201,7 @@ Acceso: `role: super_admin | agency_manager`. Rutas: `admin-*`. Equipo interno d
 **Reusado por Marca:** `brand-campaigns/[id]` reutiliza este mismo componente (`CampaignDetail`), filtrado por permisos — ver 3.2.
 
 #### AD-05 Lista de Influencers
-![Lista Influencers Admin](mockups/admin-influencers-list.svg)
+![Lista Influencers Admin](mockups/admin-influencers-list.png)
 
 **Navegación:** `admin-influencers` (1.450 registros) · **Tablas:** `influencers`, `influencer_social_profiles`
 
@@ -250,7 +221,7 @@ Acceso: `role: super_admin | agency_manager`. Rutas: `admin-*`. Equipo interno d
 Ficha completa: datos de contacto, redes sociales, historial de campañas, tarifas, notas internas (solo visibles para Admin).
 
 #### AD-07 Data Quality
-![Data Quality](mockups/admin-influencers-data-quality.svg)
+![Data Quality](mockups/admin-influencers-data-quality.png)
 
 **Navegación:** `admin-influencers/data-quality` · **API:** `GET /api/influencers/duplicates`, `POST /api/influencers/merge`, `DELETE /api/influencers/bulk-delete`, `POST /api/influencers/sync-instagram`
 
@@ -261,7 +232,7 @@ Ficha completa: datos de contacto, redes sociales, historial de campañas, tarif
 | Sincronizar Instagram | Llama Apify actor | Métricas frescas |
 
 #### AD-08 Ranking de Influencers
-![Ranking Admin](mockups/admin-influencers-ranking.svg)
+![Ranking Admin](mockups/admin-influencers-ranking.png)
 
 **Navegación:** `admin-influencers/ranking`
 
@@ -271,7 +242,7 @@ Ficha completa: datos de contacto, redes sociales, historial de campañas, tarif
 | Campañas / Entregables / Cumplimiento | `campaign_influencers`, `campaign_deliverables` | Desempeño histórico real |
 
 #### AD-09 Lista y Detalle de Marcas
-![Lista Marcas](mockups/admin-brands-list.svg) ![Detalle Marca](mockups/admin-brand-detail.svg)
+![Lista Marcas](mockups/admin-brands-list.png) ![Detalle Marca](mockups/admin-brand-detail.png)
 
 **Navegación:** `admin-brands`, `admin-brands/[id]` · **Tabs:** Overview · Campañas · Influencers · Lugares · Billing · Acceso · Historial
 
@@ -284,14 +255,14 @@ Ficha completa: datos de contacto, redes sociales, historial de campañas, tarif
 | Aprobar / Suspender | `PATCH brands.status` | Gate de acceso al portal marca |
 
 #### AD-10 Bookings
-![Bookings](mockups/admin-bookings.svg)
+![Bookings](mockups/admin-bookings.png)
 
 **Navegación:** `admin-bookings` · **API:** `lib/google-calendar.ts` (Service Account) · **Tabla:** `bookings`
 
 Vista mensual/lista sincronizada con Google Calendar. Agenda operativa de apariciones/eventos.
 
 #### AD-11 Billing (Facturas + Payroll)
-![Billing](mockups/admin-billing.svg)
+![Billing](mockups/admin-billing.png)
 
 **Navegación:** `admin-billing` (tabs Facturas/Payroll; `admin-payroll` redirige aquí) · **Tablas:** `invoices`, `payroll_runs`
 
@@ -302,42 +273,42 @@ Vista mensual/lista sincronizada con Google Calendar. Agenda operativa de aparic
 | Tabla Facturas | `invoices.*` join `brands`, `campaigns` | Gestión de cobranza (IVA 19% — BR-08) |
 
 #### AD-12 Contratos
-![Contratos](mockups/admin-contracts.svg)
+![Contratos](mockups/admin-contracts.png)
 
 **Navegación:** `admin-contracts` · **Tabla:** `contract_templates` (variables `{{primary_brand_name}}`, `{{campaign_name}}`, etc.)
 
 Plantillas de contrato reutilizables por tipo de campaña, con variables dinámicas.
 
 #### AD-13 Afiliados
-![Afiliados](mockups/admin-affiliates.svg)
+![Afiliados](mockups/admin-affiliates.png)
 
 **Navegación:** `admin-affiliates` · **API:** `/api/affiliates`, `/api/track/[code]` · **Tabla:** `affiliate_links`
 
 Links activos, clicks, conversiones y revenue por link de afiliado.
 
 #### AD-14 Eventos & Entradas
-![Eventos](mockups/admin-events.svg)
+![Eventos](mockups/admin-events.png)
 
 **Navegación:** `admin-events`, `admin-events/[id]` · **API:** `/api/events`, `/api/events/[id]/tickets`, `/api/events/[id]/sales`
 
 Módulo de venta de entradas para activaciones tipo evento: total eventos, entradas vendidas, revenue, próximos.
 
 #### AD-15 Analytics
-![Analytics](mockups/admin-analytics.svg)
+![Analytics](mockups/admin-analytics.png)
 
 **Navegación:** `admin-analytics` · **Tablas:** `invoices`, `payroll_runs`, `campaigns`, `campaign_deliverables`
 
 Vista financiera ejecutiva: revenue total, margen promedio, budget utilizado, tasa de completion, por periodo (1/3/6/12 meses).
 
 #### AD-16 Soporte
-![Soporte Admin](mockups/admin-support.svg)
+![Soporte Admin](mockups/admin-support.png)
 
 **Navegación:** `admin-support` (todos los tickets de la organización) · **Tabla:** `support_tickets`
 
 Triage por prioridad (P1-P3), estado (Abierto/En progreso/Cerrado), remitente y rol.
 
 #### AD-17 Configuración
-![Configuración Admin](mockups/admin-settings.svg)
+![Configuración Admin](mockups/admin-settings.png)
 
 **Navegación:** `admin-settings/*` · **Tabla:** `organizations`
 
@@ -356,7 +327,7 @@ Acceso: `user_metadata.is_brand = true`. Rutas: `brand-*`. Cliente B2B — gesti
 **Regla clave de producto:** el portal Marca reutiliza la experiencia Admin filtrada por permisos (no vistas paralelas reducidas). La Marca solo ve: sus campañas, influencers relacionados a sus campañas, marcas colaboradoras relacionadas (solo el nombre). La Marca NO ve: base completa de influencers SCENCE, notas internas, payroll interno, datos privados/direcciones, datos comerciales sensibles de otras marcas (BR-06).
 
 #### MK-01 Dashboard
-![Dashboard Marca](mockups/brand-dashboard.svg)
+![Dashboard Marca](mockups/brand-dashboard.png)
 
 **Navegación:** `brand-dash` · **API:** `GET /api/brand/campaigns` · **Tablas:** `brands`, `campaigns`, `campaign_influencers`, `campaign_deliverables`
 
@@ -368,7 +339,7 @@ Acceso: `user_metadata.is_brand = true`. Rutas: `brand-*`. Cliente B2B — gesti
 **Regla:** solo ve campañas donde `campaigns.brand_id = brand.id` (BR-06).
 
 #### MK-02 Lista de Campañas
-![Lista Campañas Marca](mockups/brand-campaigns-list.svg)
+![Lista Campañas Marca](mockups/brand-campaigns-list.png)
 
 **Navegación:** `brand-campaigns` · **API:** `GET /api/brand/campaigns` — lista real con los mismos filtros que Admin (búsqueda, tipo, plataforma, fecha, estado), reutilizando `CampaignsClient.tsx`.
 
@@ -381,7 +352,7 @@ Mismo wizard 4 pasos que AD-03 (`CampaignForm.tsx` compartido). **Regla:** `bran
 Mismo componente que AD-04 (`CampaignDetail`), reutilizado vía `brand-campaigns/[id]` — solo si `brand_id` = la propia. Acciones de edición solo si la marca es creadora. Datos de marcas colaboradoras (si las hubiera) se muestran solo por nombre.
 
 #### MK-05 Invitar Influencer
-![Invitar Influencer](mockups/brand-invite-influencer.svg)
+![Invitar Influencer](mockups/brand-invite-influencer.png)
 
 **Navegación:** `brand-campaigns/[id]/invite` · **API:** `POST /api/brand/campaigns/[id]/invite` · **Tabla:** `campaign_influencers`
 
@@ -402,7 +373,7 @@ Lista de postulaciones (campañas open) e invitaciones enviadas, con acciones Ac
 **Estado:** ✅ corregido en v2.1 — bug B-07, mismo root-cause que MK-05 (URL de fetch no coincidía con la ruta real de la API). Ver Anexo A.
 
 #### MK-07 Catálogo de Influencers
-![Catálogo Marca](mockups/brand-influencers-catalog.svg)
+![Catálogo Marca](mockups/brand-influencers-catalog.png)
 
 **Navegación:** `brand-influencers` — catálogo filtrado a los influencers relacionados con sus campañas (no el roster completo de 1.450, por BR-06).
 
@@ -417,7 +388,7 @@ Lista de postulaciones (campañas open) e invitaciones enviadas, con acciones Ac
 **Navegación:** `brand-influencers/ranking` — solo relacionados a sus campañas.
 
 #### MK-09 Perfil de Marca
-![Perfil Marca](mockups/brand-profile.svg)
+![Perfil Marca](mockups/brand-profile.png)
 
 **Navegación:** `brand-profile` · **Tabla:** `brands`
 
@@ -446,7 +417,7 @@ Lista de postulaciones (campañas open) e invitaciones enviadas, con acciones Ac
 Acceso: `user_metadata.is_influencer = true`. Rutas: `inf-*`. Creador de contenido — ve invitaciones/campañas, sube contenido, ve historial de pagos.
 
 #### IN-01 Dashboard
-![Dashboard Influencer](mockups/inf-dashboard.svg)
+![Dashboard Influencer](mockups/inf-dashboard.png)
 
 **Navegación:** `inf-dash` · **API:** `GET /api/influencer/campaigns`, `GET /api/influencer/tasks` · **Tablas:** `campaign_influencers`, `campaign_deliverables`, `bookings`
 
@@ -457,7 +428,7 @@ Acceso: `user_metadata.is_influencer = true`. Rutas: `inf-*`. Creador de conteni
 | Avance de campañas | `deliverables aprobados / total` | Seguimiento de cumplimiento |
 
 #### IN-02 Entregables (Mis Tareas)
-![Entregables](mockups/inf-tasks.svg)
+![Entregables](mockups/inf-tasks.png)
 
 **Navegación:** `inf-tasks` · **API:** `GET /api/influencer/tasks`, `PATCH /api/influencer/tasks/[id]`, `POST /api/influencer/deliverables/[id]/submit` · **Tabla:** `campaign_deliverables`
 
@@ -472,7 +443,7 @@ Acceso: `user_metadata.is_influencer = true`. Rutas: `inf-*`. Creador de conteni
 **Estado:** ✅ corregido en v2.1 — link a detalle de campaña apuntaba a ruta legacy (bug B-09, ver Anexo A).
 
 #### IN-03 Campañas
-![Campañas Influencer](mockups/inf-campaigns.svg)
+![Campañas Influencer](mockups/inf-campaigns.png)
 
 **Navegación:** `inf-campaigns` · **API:** `GET /api/influencer/campaigns`, `GET /api/influencer/my-campaigns`
 
@@ -487,14 +458,14 @@ Acceso: `user_metadata.is_influencer = true`. Rutas: `inf-*`. Creador de conteni
 **Navegación:** `inf-campaign/[id]` — reutiliza `CampaignDetailView.tsx` (mismo componente base, no el `CampaignDetail` de Admin).
 
 #### IN-05 Bookings
-![Bookings Influencer](mockups/inf-bookings.svg)
+![Bookings Influencer](mockups/inf-bookings.png)
 
 **Navegación:** `inf-bookings` · **Tabla:** `bookings`
 
 **Estado:** ✅ corregido en v2.1 — bug B-06. La query pedía un join directo `bookings → brands` que no existe en el schema real (`bookings` no tiene FK a `brands`); la relación correcta es `bookings.campaign_id → campaigns.brand_id → brands.id`. Corregido anidando `brand` dentro de `campaign` en el select y aplanándolo de vuelta en la respuesta. Ver Anexo A.
 
 #### IN-06 Perfil
-![Perfil Influencer](mockups/inf-profile.svg)
+![Perfil Influencer](mockups/inf-profile.png)
 
 **Navegación:** `inf-profile` · **Tabla:** `influencers`
 

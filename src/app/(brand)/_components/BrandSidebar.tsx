@@ -25,8 +25,8 @@ const navSections: NavSection[] = [
   {
     title: 'Gestión',
     items: [
-      { href: '/brand-billing', label: 'Billing', icon: CreditCard },
-      { href: '/brand-brands',  label: 'Marcas',  icon: Building2 },
+      { href: '/brand-billing', label: 'Billing', icon: CreditCard, soon: true },
+      { href: '/brand-brands',  label: 'Marcas',  icon: Building2, soon: true },
     ],
   },
   {

@@ -51,6 +51,7 @@ const schema = z.object({
   })).optional(),
   approval_required:     z.boolean(),
   brand_id:              z.string().optional(),
+  visibility:            z.enum(['private', 'open']).default('private'),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -111,6 +112,7 @@ export function CampaignEditForm({ id }: { id: string }) {
       social_tags: ['@influencers.snc'],
       deliverable_templates: [],
       brand_id:              '',
+      visibility:            'private',
     },
   })
 
@@ -133,6 +135,7 @@ export function CampaignEditForm({ id }: { id: string }) {
         deliverable_templates: (c.deliverable_templates as FormValues['deliverable_templates']) ?? [],
         brand_id:              (c.brand_id as string) ?? '',
         approval_required:     c.approval_required as boolean,
+        visibility:            (c.visibility as FormValues['visibility']) ?? 'private',
       })
     }
   }, [res, reset])
@@ -155,6 +158,7 @@ export function CampaignEditForm({ id }: { id: string }) {
         deliverable_templates: data.deliverable_templates ?? [],
         brand_id:              data.brand_id || null,
         approval_required:     data.approval_required,
+        visibility:            data.visibility || 'private',
       })
       toast.success('Campaña actualizada')
       router.push(`/admin-campaigns/${id}`)
@@ -264,6 +268,28 @@ export function CampaignEditForm({ id }: { id: string }) {
               </div>
             )} />
             {errors.platforms && <p className="text-xs text-red-500 mt-1">{errors.platforms.message}</p>}
+          </div>
+
+          {/* Visibilidad (fix urgente: faltaba en el form de edición) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Visibilidad</label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-violet-300 transition-colors">
+                <input type="radio" value="private" {...register('visibility')} className="mt-1" />
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">Privada</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Solo influencers invitadas o asignadas.</div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-violet-300 transition-colors">
+                <input type="radio" value="open" {...register('visibility')} className="mt-1" />
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">Pública</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Las influencers pueden postular desde su portal.</div>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Fechas */}

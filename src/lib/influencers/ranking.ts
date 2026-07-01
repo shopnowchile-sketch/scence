@@ -19,7 +19,10 @@ export type RankingInfluencerRow = {
   id: string
   display_name?: string | null
   email?: string | null
+  user_id?: string | null
+  last_sign_in_at?: string | null
   city?: string | null
+  commune?: string | null
   country?: string | null
   categories?: string[] | null
   rating?: number | null

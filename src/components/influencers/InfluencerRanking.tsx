@@ -22,6 +22,7 @@ type VisibleColumns = {
   deliverables: boolean
   completion: boolean
   city: boolean
+  lastConnection: boolean
 }
 
 const SORT_OPTIONS: { value: RankingSortBy; label: string; icon: React.ReactNode }[] = [
@@ -47,6 +48,7 @@ export function InfluencerRanking({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [search, setSearch] = useState('')
   const [platform, setPlatform] = useState('')
+  const [connectionFilter, setConnectionFilter] = useState('all')
   const [showColumns, setShowColumns] = useState(false)
   const [visible, setVisible] = useState<VisibleColumns>({
     followers: true,
@@ -55,7 +57,8 @@ export function InfluencerRanking({
     campaigns: true,
     deliverables: true,
     completion: true,
-    city: false,
+    city: true,
+    lastConnection: true,
   })
 
   const platforms = useMemo(() => {
@@ -76,7 +79,7 @@ export function InfluencerRanking({
       rows = rows.filter(inf =>
         String(inf.display_name ?? '').toLowerCase().includes(q) ||
         String(inf.email ?? '').toLowerCase().includes(q) ||
-        String(inf.city ?? '').toLowerCase().includes(q)
+        String(inf.commune ?? inf.city ?? '').toLowerCase().includes(q)
       )
     }
 
@@ -86,8 +89,24 @@ export function InfluencerRanking({
       )
     }
 
+    if (connectionFilter !== 'all') {
+      const now = Date.now()
+
+      rows = rows.filter(inf => {
+        const last = inf.last_sign_in_at ? new Date(inf.last_sign_in_at).getTime() : null
+
+        if (connectionFilter === 'connected_any') return Boolean(last)
+        if (connectionFilter === 'last_7_days') return Boolean(last && now - last <= 7 * 24 * 60 * 60 * 1000)
+        if (connectionFilter === 'last_30_days') return Boolean(last && now - last <= 30 * 24 * 60 * 60 * 1000)
+        if (connectionFilter === 'never_connected') return Boolean(inf.user_id) && !last
+        if (connectionFilter === 'no_access') return !inf.user_id
+
+        return true
+      })
+    }
+
     return sortRankingRows(rows, sortBy, sortDir)
-  }, [influencers, search, platform, sortBy, sortDir])
+  }, [influencers, search, platform, connectionFilter, sortBy, sortDir])
 
   function toggleSort(next: RankingSortBy) {
     if (sortBy === next) {
@@ -143,7 +162,7 @@ export function InfluencerRanking({
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar influencer, email o ciudad..."
+              placeholder="Buscar influencer, email o comuna..."
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
             />
           </div>
@@ -157,6 +176,19 @@ export function InfluencerRanking({
             {platforms.map(p => (
               <option key={p} value={p}>{p}</option>
             ))}
+          </select>
+
+          <select
+            value={connectionFilter}
+            onChange={e => setConnectionFilter(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white"
+          >
+            <option value="all">Todas las conexiones</option>
+            <option value="connected_any">Con conexión</option>
+            <option value="last_7_days">Últimos 7 días</option>
+            <option value="last_30_days">Últimos 30 días</option>
+            <option value="never_connected">Invitadas sin conexión</option>
+            <option value="no_access">Sin acceso</option>
           </select>
 
           <button
@@ -178,7 +210,8 @@ export function InfluencerRanking({
               campaigns: 'Campañas',
               deliverables: 'Entregables',
               completion: 'Cumplimiento',
-              city: 'Ciudad',
+              city: 'Comuna',
+              lastConnection: 'Última conexión',
             } satisfies Record<keyof VisibleColumns, string>).map(([key, label]) => (
               <label key={key} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 text-xs text-gray-600">
                 <input
@@ -209,7 +242,8 @@ export function InfluencerRanking({
               {visible.campaigns && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Campañas</th>}
               {visible.deliverables && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Entregables</th>}
               {visible.completion && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Cumplimiento</th>}
-              {visible.city && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Ciudad</th>}
+              {visible.city && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Comuna</th>}
+              {visible.lastConnection && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Última conexión</th>}
             </tr>
           </thead>
 
@@ -295,7 +329,21 @@ export function InfluencerRanking({
 
                   {visible.city && (
                     <td className="px-4 py-3 text-right text-sm text-gray-600">
-                      {inf.city ?? '—'}
+                      {inf.commune ?? inf.city ?? '—'}
+                    </td>
+                  )}
+
+                  {visible.lastConnection && (
+                    <td className="px-4 py-3 text-right text-sm text-gray-600">
+                      {inf.last_sign_in_at
+                        ? new Date(inf.last_sign_in_at).toLocaleDateString('es-CL', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : inf.user_id ? 'Sin conexión' : 'Sin acceso'}
                     </td>
                   )}
                 </tr>

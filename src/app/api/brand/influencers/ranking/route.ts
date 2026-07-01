@@ -110,9 +110,11 @@ export async function GET(req: NextRequest) {
     .from('influencers')
     .select(`
       id,
+      user_id,
       display_name,
       email,
       city,
+      commune,
       country,
       categories,
       rating,
@@ -151,7 +153,7 @@ export async function GET(req: NextRequest) {
     rows = rows.filter(inf =>
       String(inf.display_name ?? '').toLowerCase().includes(search) ||
       String(inf.email ?? '').toLowerCase().includes(search) ||
-      String(inf.city ?? '').toLowerCase().includes(search)
+      String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search)
     )
   }
 

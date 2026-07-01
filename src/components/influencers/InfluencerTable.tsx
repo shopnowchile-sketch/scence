@@ -1,6 +1,7 @@
 'use client'
 
-import { CheckCircle2, MapPin, Star, ArrowUpDown, ExternalLink, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { CheckCircle2, MapPin, Star, ArrowUpDown, ExternalLink, Trash2, Columns3 } from 'lucide-react'
 import Link from 'next/link'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { Influencer, InfluencerFilters } from '@/types'
@@ -59,6 +60,18 @@ export function InfluencerTable({
   selectable = false, selectedIds, onToggleSelect, onToggleAll, onDelete,
 }: Props) {
   const allSelected = selectable && influencers.length > 0 && influencers.every(i => selectedIds?.has(i.id))
+  const [showColumns, setShowColumns] = useState(false)
+  const [visible, setVisible] = useState({
+    platforms: true,
+    categories: true,
+    followers: true,
+    engagement: true,
+    rate: true,
+    rating: true,
+    status: true,
+    commune: true,
+    lastConnection: true,
+  })
 
   if (influencers.length === 0) {
     return (
@@ -72,6 +85,47 @@ export function InfluencerTable({
 
   return (
     <div className="card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white">
+        <p className="text-sm font-semibold text-gray-700">Lista de influencers</p>
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowColumns(prev => !prev)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            <Columns3 className="h-4 w-4" />
+            Columnas
+          </button>
+
+          {showColumns && (
+            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-2 z-20">
+              {([
+                ['platforms', 'Plataformas'],
+                ['categories', 'Categorías'],
+                ['followers', 'Seguidores'],
+                ['engagement', 'Engagement'],
+                ['rate', 'Rate base'],
+                ['rating', 'Rating'],
+                ['status', 'Estado'],
+                ['commune', 'Comuna'],
+                ['lastConnection', 'Última conexión'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600 rounded-lg hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={visible[key]}
+                    onChange={() => setVisible(prev => ({ ...prev, [key]: !prev[key] }))}
+                    className="rounded border-gray-300 text-violet-600"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -83,14 +137,15 @@ export function InfluencerTable({
                 </th>
               )}
               <TH col="display_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Influencer</TH>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataformas</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Categorías</th>
-              <TH col="followers" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Seguidores</TH>
-              <TH col="engagement_rate" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Engagement</TH>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Rate base</th>
-              <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Rating</TH>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Estado</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Última conexión</th>
+              {visible.platforms && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataformas</th>}
+              {visible.categories && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Categorías</th>}
+              {visible.followers && <TH col="followers" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Seguidores</TH>}
+              {visible.engagement && <TH col="engagement_rate" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Engagement</TH>}
+              {visible.rate && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Rate base</th>}
+              {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Rating</TH>}
+              {visible.status && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Estado</th>}
+              {visible.commune && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Comuna</th>}
+              {visible.lastConnection && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Última conexión</th>}
               <th className="px-4 py-3 bg-gray-50" />
             </tr>
           </thead>
@@ -142,7 +197,7 @@ export function InfluencerTable({
                             <>
                               <span>·</span>
                               <MapPin className="h-3 w-3" />
-                              <span>{[inf.city, inf.country].filter(Boolean).join(', ')}</span>
+                              <span>{[inf.commune ?? inf.city, inf.country].filter(Boolean).join(', ')}</span>
                             </>
                           )}
                         </div>
@@ -151,40 +206,47 @@ export function InfluencerTable({
                   </td>
 
                   {/* Plataformas */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      {inf.social_profiles?.slice(0, 4).map(sp => (
-                        <span key={sp.id} className="text-base" title={sp.platform}>
-                          {PLATFORM_ICONS[sp.platform]}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
+                  {visible.platforms && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        {inf.social_profiles?.slice(0, 4).map(sp => (
+                          <span key={sp.id} className="text-base" title={sp.platform}>
+                            {PLATFORM_ICONS[sp.platform]}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  )}
 
                   {/* Categorías */}
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {(inf.categories ?? []).slice(0, 2).map(cat => (
-                        <span key={cat} className="badge badge-purple text-[10px]">{cat}</span>
-                      ))}
-                      {(inf.categories ?? []).length > 2 && (
-                        <span className="badge badge-gray text-[10px]">+{(inf.categories ?? []).length - 2}</span>
-                      )}
-                    </div>
-                  </td>
+                  {visible.categories && (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(inf.categories ?? []).slice(0, 2).map(cat => (
+                          <span key={cat} className="badge badge-purple text-[10px]">{cat}</span>
+                        ))}
+                        {(inf.categories ?? []).length > 2 && (
+                          <span className="badge badge-gray text-[10px]">+{(inf.categories ?? []).length - 2}</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
 
                   {/* Seguidores */}
-                  <td className="px-4 py-3">
+                  {visible.followers && (
+                    <td className="px-4 py-3">
                     <div className="text-sm font-semibold text-gray-900">
                       {primaryProfile ? formatFollowers(primaryProfile.followers) : '—'}
                     </div>
                     {primaryProfile && (
                       <div className="text-xs text-gray-400 capitalize">{primaryProfile.platform}</div>
                     )}
-                  </td>
+                    </td>
+                  )}
 
                   {/* Engagement */}
-                  <td className="px-4 py-3">
+                  {visible.engagement && (
+                    <td className="px-4 py-3">
                     {primaryProfile ? (
                       <div className="flex items-center gap-1.5">
                         <div className="h-1.5 w-16 bg-gray-100 rounded-full overflow-hidden">
@@ -198,28 +260,34 @@ export function InfluencerTable({
                         </span>
                       </div>
                     ) : '—'}
-                  </td>
+                    </td>
+                  )}
 
                   {/* Rate base */}
-                  <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                  {visible.rate && (
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                     {inf.rate_cards?.[0]
                       ? `$${inf.rate_cards[0].base_rate.toLocaleString()} ${inf.rate_cards[0].currency}`
                       : <span className="text-gray-400">—</span>
                     }
-                  </td>
+                    </td>
+                  )}
 
                   {/* Rating */}
-                  <td className="px-4 py-3">
+                  {visible.rating && (
+                    <td className="px-4 py-3">
                     {(inf.rating ?? 0) > 0 ? (
                       <div className="flex items-center gap-1">
                         <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
                         <span className="text-sm font-semibold text-gray-900">{(inf.rating ?? 0).toFixed(1)}</span>
                       </div>
                     ) : <span className="text-gray-400 text-sm">—</span>}
-                  </td>
+                    </td>
+                  )}
 
                   {/* Estado */}
-                  <td className="px-4 py-3">
+                  {visible.status && (
+                    <td className="px-4 py-3">
                     <span className={cn('badge text-[11px]',
                       (inf.metadata as Record<string,unknown>|null)?.status === 'draft' ? 'badge-gray' :
                       inf.is_active ? 'badge-green' : 'badge-red'
@@ -227,14 +295,24 @@ export function InfluencerTable({
                       {(inf.metadata as Record<string,unknown>|null)?.status === 'draft' ? 'Draft' :
                        inf.is_active ? 'Activo' : 'Inactivo'}
                     </span>
-                  </td>
+                    </td>
+                  )}
+
+                  {/* Comuna */}
+                  {visible.commune && (
+                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                      {inf.commune ?? inf.city ?? '—'}
+                    </td>
+                  )}
 
                   {/* Última conexión */}
-                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                  {visible.lastConnection && (
+                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {inf.last_sign_in_at
                       ? new Date(inf.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : <span className="text-gray-300">Sin acceso</span>}
-                  </td>
+                    </td>
+                  )}
 
                   {/* Acciones */}
                   <td className="px-4 py-3">

@@ -451,7 +451,7 @@ export function DashboardClient() {
         fetchJson('/api/dashboard'),
         fetchJson('/api/analytics'),
         fetchJson('/api/campaigns'),
-        fetchJson('/api/influencers?limit=2000'),
+        fetchJson('/api/influencers?limit=100'),
         fetchJson('/api/brands'),
         fetchJson('/api/invoices'),
         fetchJson('/api/deliverables'),

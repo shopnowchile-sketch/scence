@@ -106,7 +106,7 @@ export function InfluencerCard({ influencer, compact = false }: Props) {
               <div className="flex items-center gap-1 mt-0.5">
                 <MapPin className="h-3 w-3 text-gray-300" />
                 <span className="text-xs text-gray-400">
-                  {[influencer.city, influencer.country].filter(Boolean).join(', ')}
+                  {[influencer.commune ?? influencer.city, influencer.country].filter(Boolean).join(', ')}
                 </span>
               </div>
             )}

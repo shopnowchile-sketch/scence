@@ -43,9 +43,11 @@ export async function GET(req: NextRequest) {
     .from('influencers')
     .select(`
       id,
+      user_id,
       display_name,
       email,
       city,
+      commune,
       country,
       categories,
       rating,
@@ -85,13 +87,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: delErr.message }, { status: 500 })
   }
 
-  let rows = buildRankingRows(influencers ?? [], campaignInfluencers ?? [], deliverables ?? [])
+  const userIds = (influencers ?? [])
+    .map(inf => inf.user_id)
+    .filter(Boolean) as string[]
+
+  const lastSeenMap: Record<string, string | null> = {}
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await admin
+      .from('profiles')
+      .select('id, last_seen_at')
+      .in('id', userIds)
+
+    for (const profile of profiles ?? []) {
+      lastSeenMap[profile.id as string] = (profile.last_seen_at as string | null) ?? null
+    }
+  }
+
+  const enrichedInfluencers = (influencers ?? []).map(inf => ({
+    ...inf,
+    last_sign_in_at: inf.user_id ? (lastSeenMap[inf.user_id] ?? null) : null,
+  }))
+
+  let rows = buildRankingRows(enrichedInfluencers, campaignInfluencers ?? [], deliverables ?? [])
 
   if (search) {
     rows = rows.filter(inf =>
       String(inf.display_name ?? '').toLowerCase().includes(search) ||
       String(inf.email ?? '').toLowerCase().includes(search) ||
-      String(inf.city ?? '').toLowerCase().includes(search)
+      String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search)
     )
   }
 

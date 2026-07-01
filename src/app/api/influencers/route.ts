@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const isActive   = searchParams.get('is_active')
   // Only allow columns that exist on the influencers table; derived fields like
   // 'followers' live in the join and cannot be used in .order() directly.
-  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'country', 'city'] as const
+  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'country', 'city', 'commune'] as const
   const rawSort    = searchParams.get('sort_by') ?? 'created_at'
   const sortBy     = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
   const sortDir    = searchParams.get('sort_dir') === 'asc' ? true : false
@@ -32,9 +32,44 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from('influencers')
     .select(`
-      *,
-      social_profiles:influencer_social_profiles (*),
-      rate_cards:influencer_rate_cards (*)
+      id,
+      user_id,
+      organization_id,
+      display_name,
+      bio,
+      avatar_url,
+      email,
+      phone,
+      whatsapp,
+      country,
+      city,
+      commune,
+      address,
+      categories,
+      tags,
+      is_verified,
+      is_active,
+      rating,
+      metadata,
+      created_at,
+      updated_at,
+      social_profiles:influencer_social_profiles (
+        id,
+        platform,
+        username,
+        profile_url,
+        followers,
+        engagement_rate,
+        is_primary,
+        verified
+      ),
+      rate_cards:influencer_rate_cards (
+        id,
+        deliverable_type,
+        base_rate,
+        currency,
+        is_active
+      )
     `, { count: 'exact' })
     .order(sortBy, { ascending: sortDir })
     .range((page - 1) * limit, page * limit - 1)
@@ -46,7 +81,7 @@ export async function GET(request: NextRequest) {
   if (isActive === 'true')  query = query.eq('is_active', true)
   if (search) {
     query = query.or(
-      `display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%`
+      `display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`
     )
   }
   if (category) {
@@ -68,13 +103,21 @@ export async function GET(request: NextRequest) {
       )
     : (data ?? [])
 
-  // Enriquecer con last_sign_in_at desde auth.users
+  // Enriquecer última conexión en batch, sin consultar auth.users uno por uno
   const userIds = filtered.map(inf => inf.user_id).filter(Boolean) as string[]
   const lastSeenMap: Record<string, string | null> = {}
-  for (const uid of userIds) {
-    const { data: u } = await admin.auth.admin.getUserById(uid)
-    if (u?.user) lastSeenMap[uid] = u.user.last_sign_in_at ?? null
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await admin
+      .from('profiles')
+      .select('id, last_seen_at')
+      .in('id', userIds)
+
+    for (const profile of profiles ?? []) {
+      lastSeenMap[profile.id as string] = (profile.last_seen_at as string | null) ?? null
+    }
   }
+
   const enriched = filtered.map(inf => ({
     ...inf,
     last_sign_in_at: inf.user_id ? (lastSeenMap[inf.user_id] ?? null) : null,
@@ -97,7 +140,7 @@ export async function POST(request: NextRequest) {
 
   const {
     display_name, email, phone,
-    bio, avatar_url, city, country, address, address_lat, address_lng,
+    bio, avatar_url, city, commune, country, address, address_lat, address_lng,
     categories, tags, is_verified = false, is_active = false,  // Default: draft
     social_profiles = [], rate_cards = [], organization_id,
     notes, first_name, last_name,
@@ -134,7 +177,7 @@ export async function POST(request: NextRequest) {
       organization_id: orgId,
       display_name,
       email: email ?? null, phone: phone ?? null, bio: bio ?? null,
-      avatar_url: avatar_url ?? null, city: city ?? null, country: country ?? null,
+      avatar_url: avatar_url ?? null, city: city ?? null, commune: body.commune ?? null, country: country ?? null,
       address: address ?? null, address_lat: address_lat ?? null, address_lng: address_lng ?? null,
       categories: categories ?? [], tags: tags ?? [],
       is_verified, is_active, notes: notes ?? null,

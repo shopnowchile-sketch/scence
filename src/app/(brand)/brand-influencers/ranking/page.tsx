@@ -17,7 +17,7 @@ export default function BrandInfluencersRankingPage() {
       setError(null)
 
       try {
-        const res = await fetch('/api/brand/influencers/ranking?limit=300&sort_by=followers&sort_dir=desc')
+        const res = await fetch('/api/brand/influencers/ranking?limit=150&sort_by=followers&sort_dir=desc')
         if (!res.ok) throw new Error('Error cargando ranking')
 
         const json = await res.json()

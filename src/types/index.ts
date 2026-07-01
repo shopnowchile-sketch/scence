@@ -56,6 +56,7 @@ export interface Influencer {
   whatsapp: string | null
   country: string | null
   city: string | null
+  commune: string | null
   address: string | null          // dirección completa para Google Maps
   address_lat: number | null      // coordenadas guardadas
   address_lng: number | null
@@ -124,6 +125,7 @@ export interface CampaignInfluencerDetail {
     display_name: string
     avatar_url: string | null
     city: string | null
+  commune: string | null
     country: string | null
     influencer_social_profiles: Array<{
       platform: string

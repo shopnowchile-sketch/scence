@@ -1,0 +1,58 @@
+<svg viewBox="0 0 1000 620" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arrowSolid" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#1a1a1a"/>
+    </marker>
+    <marker id="arrowDotted" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#333333"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+
+  <!-- Título -->
+  <text x="500" y="34" text-anchor="middle" font-size="18" font-weight="700" fill="#111827">SCENCE — Mapa de Proceso (Macro)</text>
+
+  <!-- Blue top box: Crear Campaña -->
+  <rect x="350" y="70" width="300" height="90" rx="4" fill="#4A6FA5"/>
+  <text x="500" y="108" text-anchor="middle" font-size="19" font-weight="700" fill="#ffffff">Crear Campaña</text>
+  <text x="500" y="132" text-anchor="middle" font-size="12" fill="#dbe6f5">Definir tipo, budget, visibilidad</text>
+
+  <!-- Yellow left box: Convocar Influencers -->
+  <rect x="60" y="290" width="330" height="90" rx="4" fill="#F0C36D"/>
+  <text x="225" y="330" text-anchor="middle" font-size="18" font-weight="700" fill="#3a2c00">Convocar Influencers</text>
+  <text x="225" y="352" text-anchor="middle" font-size="12" fill="#5c4a12">Invitación (private) o postulación (open)</text>
+
+  <!-- Yellow bottom box: Producir y Entregar Contenido -->
+  <rect x="345" y="480" width="310" height="90" rx="4" fill="#F0C36D"/>
+  <text x="500" y="520" text-anchor="middle" font-size="18" font-weight="700" fill="#3a2c00">Producir &amp; Entregar Contenido</text>
+  <text x="500" y="542" text-anchor="middle" font-size="12" fill="#5c4a12">Deliverables: pendiente → en revisión</text>
+
+  <!-- Orange right box: Aprobar, Facturar y Pagar -->
+  <rect x="720" y="290" width="260" height="90" rx="4" fill="#D68A54"/>
+  <text x="850" y="325" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">Aprobar, Facturar</text>
+  <text x="850" y="348" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">&amp; Pagar</text>
+
+  <!-- Solid: Crear Campaña -> Convocar Influencers (right-angle, como el ejemplo) -->
+  <path d="M 350,115 L 225,115 L 225,290" fill="none" stroke="#1a1a1a" stroke-width="2.5" marker-end="url(#arrowSolid)"/>
+
+  <!-- Solid: Crear Campaña -> Producir y Entregar (recto hacia abajo) -->
+  <line x1="500" y1="160" x2="500" y2="480" stroke="#1a1a1a" stroke-width="2.5" marker-end="url(#arrowSolid)"/>
+
+  <!-- Solid: Producir y Entregar -> Aprobar Facturar y Pagar -->
+  <path d="M 655,525 L 850,525 L 850,380" fill="none" stroke="#1a1a1a" stroke-width="2.5" marker-end="url(#arrowSolid)"/>
+
+  <!-- Dotted: Aprobar Facturar y Pagar -> Crear Campaña (loop de cierre) -->
+  <path d="M 850,290 L 850,180 L 650,115" fill="none" stroke="#333333" stroke-width="2.5" stroke-dasharray="6,5" marker-end="url(#arrowDotted)"/>
+
+  <!-- Small dotted self-loop: rechazo -> re-entrega -->
+  <path d="M 345,470 L 345,410 Q 345,395 380,395 L 460,395" fill="none" stroke="#333333" stroke-width="2.5" stroke-dasharray="6,5" marker-end="url(#arrowDotted)"/>
+  <text x="345" y="380" text-anchor="middle" font-size="11" fill="#4b5563">rechaza →</text>
+  <text x="345" y="393" text-anchor="middle" font-size="11" fill="#4b5563">re-entrega</text>
+
+  <!-- Leyenda -->
+  <line x1="640" y1="470" x2="670" y2="470" stroke="#1a1a1a" stroke-width="2.5"/>
+  <text x="678" y="474" font-size="11" fill="#4b5563">flujo principal</text>
+  <line x1="640" y1="490" x2="670" y2="490" stroke="#333333" stroke-width="2.5" stroke-dasharray="6,5"/>
+  <text x="678" y="494" font-size="11" fill="#4b5563">retro-alimentación / cierre</text>
+</svg>

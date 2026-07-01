@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { createInfluencerTasks, syncDeliverableTask } from '@/lib/influencer-tasks'
+import { syncDeliverableTask } from '@/lib/influencer-tasks'
 
 type Params = { params: { id: string } }
 
@@ -93,14 +93,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single()
 
     if (campaign) {
-      // Auto-tasks
-      await createInfluencerTasks(admin, {
-        organizationId: campaign.organization_id,
-        influencerId:   influencer_id as string,
-        sourceType:     'campaign',
-        sourceId:       params.id,
-        sourceDate:     campaign.start_date ?? new Date().toISOString(),
-      })
+      // NOTA (fix 2026-07-01): antes se llamaba createInfluencerTasks() acá,
+      // que insertaba 4 tareas genéricas hardcodeadas ("Aprobar brief",
+      // "Grabar contenido", "Entregar contenido", "Publicar en redes") sin
+      // vincular a ningún deliverable real (deliverable_id null). Quedaban
+      // mezcladas en "Tareas pendientes" del influencer junto a las tareas
+      // reales sincronizadas 1:1 desde campaign_deliverables (syncDeliverableTask
+      // más abajo), sin corresponder a nada que la marca haya pedido de verdad.
+      // Se quita: las únicas influencer_tasks que debe generar este flujo son
+      // las vinculadas a un deliverable real.
 
       // Auto-deliverables from templates
       const templates = Array.isArray(campaign.deliverable_templates)

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -211,11 +212,11 @@ export default function BrandsPage() {
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortBy, setSortBy] = useState('name_asc')
+  const [sortBy, setSortBy] = useLocalStorageState('scence:admin:brands:sortBy', 'name_asc')
   const [showModal, setShowModal]     = useState(false)
   const [editing, setEditing]         = useState<Brand | null>(null)
   const [selected, setSelected]       = useState<Brand | null>(null)
-  const [view, setView]               = useState<'list' | 'grid'>('list')
+  const [view, setView]               = useLocalStorageState<'list' | 'grid'>('scence:admin:brands:view', 'list')
   const [brandInfluencers, setBrandInfluencers] = useState<BrandInfluencer[]>([])
   const [loadingInf, setLoadingInf]   = useState(false)
 

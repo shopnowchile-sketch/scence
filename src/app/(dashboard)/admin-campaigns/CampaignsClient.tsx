@@ -9,6 +9,7 @@ import { CampaignFilters } from '@/components/campaigns/CampaignFilters'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
 import { formatCurrency, formatDate, PLATFORM_ICONS } from '@/lib/utils'
 import type { Campaign, CampaignFilters as CampaignFiltersType } from '@/types'
+import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 
 // ── KPI summary ───────────────────────────────────────
 function KPIs({ campaigns }: { campaigns: Campaign[] }) {
@@ -140,18 +141,21 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   const [filters, setFilters]   = useState<Partial<CampaignFiltersType>>({})
   const [showAIBuilder, setShowAIBuilder] = useState(false)
   const [showColumns, setShowColumns] = useState(false)
-  const [visibleColumns, setVisibleColumns] = useState<Record<CampaignColumnKey, boolean>>({
-    campaign: true,
-    type: true,
-    platforms: true,
-    influencers: true,
-    progress: true,
-    budget: true,
-    dates: true,
-    status: true,
-  })
-  const [sortKey, setSortKey] = useState<SortKey>('dates')
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [visibleColumns, setVisibleColumns] = useLocalStorageState<Record<CampaignColumnKey, boolean>>(
+    `scence:${portal}:campaigns:columns`,
+    {
+      campaign: true,
+      type: true,
+      platforms: true,
+      influencers: true,
+      progress: true,
+      budget: true,
+      dates: true,
+      status: true,
+    }
+  )
+  const [sortKey, setSortKey] = useLocalStorageState<SortKey>(`scence:${portal}:campaigns:sortKey`, 'dates')
+  const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>(`scence:${portal}:campaigns:sortOrder`, 'desc')
 
   const { data, isLoading, error } = useCampaignsList({
     status:   filters.status,

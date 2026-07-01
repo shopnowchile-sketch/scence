@@ -123,7 +123,7 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
         <div className="flex-1 min-w-0">
           {/* Campaign badge */}
           <button
-            onClick={() => router.push(`/campaign/${d.campaign_id}`)}
+            onClick={() => router.push(`/inf-campaign/${d.campaign_id}`)}
             className="text-[10px] font-semibold text-violet-600 hover:text-violet-700 hover:underline flex items-center gap-0.5 mb-1"
           >
             {d.campaign_name} <ChevronRight className="h-2.5 w-2.5" />

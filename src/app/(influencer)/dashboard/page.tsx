@@ -573,7 +573,7 @@ export default function InfluencerDashboard() {
                         )}
                       </div>
                     </div>
-                    <a href={`/campaign/${c.id}`} className="p-1 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0">
+                    <a href={`/inf-campaign/${c.id}`} className="p-1 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0">
                       <ExternalLink className="h-4 w-4 text-gray-400" />
                     </a>
                   </div>

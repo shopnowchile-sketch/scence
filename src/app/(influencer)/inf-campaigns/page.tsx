@@ -116,7 +116,7 @@ export default function MyCampaignsPage() {
       setForm({ name: '', brand_name: '', start_date: '', end_date: '', description: '' })
       // Navigate straight to the new campaign detail
       const newId = json.data?.campaign?.id
-      if (newId) router.push(`/campaign/${newId}`)
+      if (newId) router.push(`/inf-campaign/${newId}`)
       else load()
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Error') }
     setSaving(false)
@@ -264,7 +264,7 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
 
   return (
     <button
-      onClick={() => router.push(`/campaign/${c.id}`)}
+      onClick={() => router.push(`/inf-campaign/${c.id}`)}
       className="w-full bg-white rounded-2xl border border-gray-100 p-4 hover:border-violet-200 hover:shadow-sm transition-all text-left"
     >
       <div className="flex items-center gap-3">

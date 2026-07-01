@@ -47,7 +47,7 @@ export function InfluencerCard({ influencer, compact = false }: Props) {
 
   return (
     <Link
-      href={`/influencers/${influencer.id}`}
+      href={`/admin-influencers/${influencer.id}`}
       className="card block hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-200 group"
     >
       {/* Cover opcional */}

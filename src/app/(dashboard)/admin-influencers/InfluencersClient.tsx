@@ -123,13 +123,15 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
           <p className="text-sm text-gray-500 mt-0.5">Gestiona tu roster de talento</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/admin-influencers/data-quality"
-            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-          >
-            <ShieldCheck className="h-4 w-4" />
-            Data Quality
-          </Link>
+          {!isBrandPortal && (
+            <Link
+              href="/admin-influencers/data-quality"
+              className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Data Quality
+            </Link>
+          )}
           {!isBrandPortal && (
             <>
               <button
@@ -283,6 +285,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}
             onDelete={isAdmin ? deleteOne : undefined}
+            portal={portal}
           />
         </div>
       )}

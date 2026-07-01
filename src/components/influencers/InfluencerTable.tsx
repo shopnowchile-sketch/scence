@@ -16,6 +16,8 @@ interface Props {
   onToggleSelect?: (id: string) => void
   onToggleAll?: () => void
   onDelete?: (inf: Influencer) => void
+  /** admin: link a /admin-influencers/[id]. brand: sin perfil propio aun (gap G-09) -> no clickable. */
+  portal?: 'admin' | 'brand'
 }
 
 const AVATAR_GRADIENTS = [
@@ -58,6 +60,7 @@ function TH({ children, col, sortBy, sortOrder, onSort }: {
 export function InfluencerTable({
   influencers, onSort, sortBy, sortOrder,
   selectable = false, selectedIds, onToggleSelect, onToggleAll, onDelete,
+  portal = 'admin',
 }: Props) {
   const allSelected = selectable && influencers.length > 0 && influencers.every(i => selectedIds?.has(i.id))
   const [showColumns, setShowColumns] = useState(false)
@@ -181,12 +184,18 @@ export function InfluencerTable({
                       </div>
                       <div>
                         <div className="flex items-center gap-1">
-                          <Link
-                            href={`/influencers/${inf.id}`}
-                            className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
-                          >
-                            {inf.display_name}
-                          </Link>
+                          {portal === 'admin' ? (
+                            <Link
+                              href={`/admin-influencers/${inf.id}`}
+                              className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
+                            >
+                              {inf.display_name}
+                            </Link>
+                          ) : (
+                            <span className="text-sm font-semibold text-gray-900">
+                              {inf.display_name}
+                            </span>
+                          )}
                           {inf.is_verified && (
                             <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
                           )}
@@ -317,13 +326,15 @@ export function InfluencerTable({
                   {/* Acciones */}
                   <td className="px-4 py-3">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                      <Link
-                        href={`/influencers/${inf.id}`}
-                        className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                        title="Ver perfil"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
+                      {portal === 'admin' && (
+                        <Link
+                          href={`/admin-influencers/${inf.id}`}
+                          className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Ver perfil"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                      )}
                       {onDelete && (
                         <button
                           onClick={() => onDelete(inf)}

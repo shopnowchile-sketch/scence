@@ -6,6 +6,8 @@ import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, Columns3, Search, Star, Tr
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { RankingInfluencerRow, RankingSortBy } from '@/lib/influencers/ranking'
 import { getPrimarySocial, getRankingValue, sortRankingRows } from '@/lib/influencers/ranking'
+import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { SortableTH } from '@/components/ui/SortableTH'
 
 type Props = {
   influencers: RankingInfluencerRow[]
@@ -50,7 +52,7 @@ export function InfluencerRanking({
   const [platform, setPlatform] = useState('')
   const [connectionFilter, setConnectionFilter] = useState('all')
   const [showColumns, setShowColumns] = useState(false)
-  const [visible, setVisible] = useState<VisibleColumns>({
+  const [visible, setVisible] = useLocalStorageState<VisibleColumns>('scence:admin:influencer-ranking:columns', {
     followers: true,
     engagement: true,
     rating: true,
@@ -235,15 +237,15 @@ export function InfluencerRanking({
           <thead>
             <tr className="border-b border-gray-100">
               <th className="text-left text-xs font-semibold text-gray-400 px-4 py-3 w-12">#</th>
-              <th className="text-left text-xs font-semibold text-gray-400 px-4 py-3">Influencer</th>
-              {visible.followers && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Seguidores</th>}
-              {visible.engagement && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Engagement</th>}
-              {visible.rating && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Rating</th>}
-              {visible.campaigns && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Campañas</th>}
-              {visible.deliverables && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Entregables</th>}
-              {visible.completion && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Cumplimiento</th>}
-              {visible.city && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Comuna</th>}
-              {visible.lastConnection && <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3">Última conexión</th>}
+              <SortableTH col="display_name" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>Influencer</SortableTH>
+              {visible.followers && <SortableTH col="followers" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Seguidores</SortableTH>}
+              {visible.engagement && <SortableTH col="engagement" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Engagement</SortableTH>}
+              {visible.rating && <SortableTH col="rating" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Rating</SortableTH>}
+              {visible.campaigns && <SortableTH col="campaigns" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Campañas</SortableTH>}
+              {visible.deliverables && <SortableTH col="deliverables_completed" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Entregables</SortableTH>}
+              {visible.completion && <SortableTH col="completion_rate" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Cumplimiento</SortableTH>}
+              {visible.city && <SortableTH col="city" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Comuna</SortableTH>}
+              {visible.lastConnection && <SortableTH col="last_connection" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Última conexión</SortableTH>}
             </tr>
           </thead>
 

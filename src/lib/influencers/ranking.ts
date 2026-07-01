@@ -6,6 +6,8 @@ export type RankingSortBy =
   | 'deliverables_completed'
   | 'completion_rate'
   | 'display_name'
+  | 'city'
+  | 'last_connection'
 
 export type RankingSocialProfile = {
   platform?: string | null
@@ -60,6 +62,7 @@ export function getRankingValue(inf: RankingInfluencerRow, sortBy: RankingSortBy
   if (sortBy === 'campaigns') return Number(inf.campaign_count ?? 0)
   if (sortBy === 'deliverables_completed') return Number(inf.deliverables_completed ?? 0)
   if (sortBy === 'completion_rate') return Number(inf.completion_rate ?? 0)
+  if (sortBy === 'last_connection') return inf.last_sign_in_at ? new Date(inf.last_sign_in_at).getTime() : 0
 
   return 0
 }
@@ -128,6 +131,12 @@ export function sortRankingRows(
     if (sortBy === 'display_name') {
       const av = a.display_name ?? ''
       const bv = b.display_name ?? ''
+      return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+    }
+
+    if (sortBy === 'city') {
+      const av = a.commune ?? a.city ?? ''
+      const bv = b.commune ?? b.city ?? ''
       return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
     }
 

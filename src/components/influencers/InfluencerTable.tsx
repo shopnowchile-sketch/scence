@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, MapPin, Star, ArrowUpDown, ExternalLink, Trash2, Columns3 } from 'lucide-react'
+import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3 } from 'lucide-react'
 import Link from 'next/link'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { Influencer, InfluencerFilters } from '@/types'
+import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { SortableTH } from '@/components/ui/SortableTH'
 
 interface Props {
   influencers: Influencer[]
@@ -29,6 +31,8 @@ const AVATAR_GRADIENTS = [
   'from-violet-400 to-indigo-600',
 ]
 
+// TH sortable — reemplazado por el componente compartido SortableTH
+// (mismo patrón que usa InfluencerRanking.tsx). sortOrder -> sortDir.
 function TH({ children, col, sortBy, sortOrder, onSort }: {
   children: React.ReactNode
   col?: InfluencerFilters['sortBy']
@@ -37,23 +41,9 @@ function TH({ children, col, sortBy, sortOrder, onSort }: {
   onSort: (col: InfluencerFilters['sortBy']) => void
 }) {
   return (
-    <th
-      className={cn(
-        'px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50',
-        col && 'cursor-pointer hover:text-gray-600 select-none'
-      )}
-      onClick={() => col && onSort(col)}
-    >
-      <div className="flex items-center gap-1">
-        {children}
-        {col && (
-          <ArrowUpDown className={cn(
-            'h-3 w-3 flex-shrink-0',
-            sortBy === col ? 'text-violet-500' : 'text-gray-300'
-          )} />
-        )}
-      </div>
-    </th>
+    <SortableTH col={col} sortBy={sortBy} sortDir={sortOrder} onSort={onSort}>
+      {children}
+    </SortableTH>
   )
 }
 
@@ -64,7 +54,7 @@ export function InfluencerTable({
 }: Props) {
   const allSelected = selectable && influencers.length > 0 && influencers.every(i => selectedIds?.has(i.id))
   const [showColumns, setShowColumns] = useState(false)
-  const [visible, setVisible] = useState({
+  const [visible, setVisible] = useLocalStorageState('scence:admin:influencer-table:columns', {
     platforms: true,
     categories: true,
     followers: true,

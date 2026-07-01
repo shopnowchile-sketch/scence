@@ -14,6 +14,11 @@ type Props = {
   loading?: boolean
   basePath?: string
   initialSortBy?: RankingSortBy
+  // Cuando se provee, agrega una columna final de acción por fila (ej: botón
+  // "Invitar"/"Agregar" para seleccionar influencers hacia una campaña) sin
+  // alterar el comportamiento del ranking normal (que no pasa esta prop).
+  renderAction?: (inf: RankingInfluencerRow) => React.ReactNode
+  actionLabel?: string
 }
 
 type VisibleColumns = {
@@ -45,6 +50,8 @@ export function InfluencerRanking({
   loading,
   basePath = '/admin-influencers',
   initialSortBy = 'followers',
+  renderAction,
+  actionLabel = '',
 }: Props) {
   const [sortBy, setSortBy] = useState<RankingSortBy>(initialSortBy)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -246,6 +253,9 @@ export function InfluencerRanking({
               {visible.completion && <SortableTH col="completion_rate" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Cumplimiento</SortableTH>}
               {visible.city && <SortableTH col="city" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Comuna</SortableTH>}
               {visible.lastConnection && <SortableTH col="last_connection" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Última conexión</SortableTH>}
+              {renderAction && (
+                <th className="text-right text-xs font-semibold text-gray-400 px-4 py-3 uppercase tracking-wider">{actionLabel}</th>
+              )}
             </tr>
           </thead>
 
@@ -346,6 +356,12 @@ export function InfluencerRanking({
                             minute: '2-digit',
                           })
                         : inf.user_id ? 'Sin conexión' : 'Sin acceso'}
+                    </td>
+                  )}
+
+                  {renderAction && (
+                    <td className="px-4 py-3 text-right">
+                      {renderAction(inf)}
                     </td>
                   )}
                 </tr>

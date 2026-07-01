@@ -1,30 +1,55 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, Search, Plus, Loader2, Check } from 'lucide-react'
+import { ChevronLeft, Plus, Loader2, Check } from 'lucide-react'
 import { toast } from 'sonner'
-import { useInfluencersList } from '@/hooks/useInfluencersList'
-import { formatFollowers, PLATFORM_ICONS, cn } from '@/lib/utils'
+import { InfluencerRanking } from '@/components/influencers/InfluencerRanking'
+import type { RankingInfluencerRow } from '@/lib/influencers/ranking'
 
 interface Props {
   campaignId: string
 }
 
+// Antes esta vista tenía su propia tabla ad-hoc (solo búsqueda libre, sin sort
+// ni filtros de comuna/campañas colaboradas). Se reemplaza por InfluencerRanking
+// (mismo componente que /admin-influencers/ranking) en modo selección vía
+// renderAction, para reusar sort/filtros/columnas ya existentes sin duplicar
+// una vista reducida. No se toca el ranking admin general (mismo componente,
+// prop nueva opcional).
 export function AddInfluencerClient({ campaignId }: Props) {
-  const router = useRouter()
-  const [search, setSearch] = useState('')
+  const [influencers, setInfluencers] = useState<RankingInfluencerRow[]>([])
+  const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState<string | null>(null)
   const [added, setAdded] = useState<Set<string>>(new Set())
   const [fee, setFee] = useState<Record<string, string>>({})
 
-  const { data, isLoading } = useInfluencersList({
-    search: search || undefined,
-    limit: 30,
-  })
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [rankingRes, campaignInfRes] = await Promise.all([
+        fetch('/api/influencers/ranking?limit=500&sort_by=followers&sort_dir=desc'),
+        fetch(`/api/campaigns/${campaignId}/influencers`),
+      ])
 
-  const influencers = data?.data ?? []
+      const rankingJson = await rankingRes.json()
+      if (!rankingRes.ok) throw new Error(rankingJson.error ?? 'Error cargando influencers')
+      setInfluencers(rankingJson.data ?? [])
+
+      if (campaignInfRes.ok) {
+        const campaignInfJson = await campaignInfRes.json()
+        const existingIds = (campaignInfJson.data ?? [])
+          .map((ci: { influencer_id?: string | null }) => ci.influencer_id)
+          .filter(Boolean) as string[]
+        setAdded(new Set(existingIds))
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error cargando influencers')
+    }
+    setLoading(false)
+  }, [campaignId])
+
+  useEffect(() => { load() }, [load])
 
   async function handleAdd(influencerId: string) {
     setAdding(influencerId)
@@ -51,7 +76,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href={`/admin-campaigns/${campaignId}`}
@@ -60,113 +85,56 @@ export function AddInfluencerClient({ campaignId }: Props) {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Agregar influencer</h1>
-          <p className="text-sm text-gray-400">Busca y agrega influencers a esta campaña</p>
+          <p className="text-sm text-gray-400">Busca, filtra y agrega influencers a esta campaña</p>
         </div>
       </div>
 
-      {/* Búsqueda */}
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300" />
-        <input
-          type="text"
-          placeholder="Buscar por nombre, email o ciudad…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="input-base w-full pl-10"
-        />
-      </div>
+      <InfluencerRanking
+        influencers={influencers}
+        loading={loading}
+        basePath="/admin-influencers"
+        actionLabel="Agregar"
+        renderAction={inf => {
+          const isAdded = added.has(inf.id)
+          const isAdding = adding === inf.id
 
-      {/* Lista */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 text-violet-400 animate-spin" />
-        </div>
-      ) : (
-        <div className="card overflow-x-auto">
-          {influencers.length === 0 ? (
-            <p className="text-center text-gray-400 py-10 text-sm">
-              {search ? 'No se encontraron influencers' : 'Sin influencers en el roster'}
-            </p>
-          ) : (
-            <table className="w-full min-w-[640px]">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  {['Influencer', 'Plataforma principal', 'Seguidores', 'Fee (opcional)', ''].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {influencers.map(inf => {
-                  const primary = inf.social_profiles?.find(s => s.is_primary) ?? inf.social_profiles?.[0]
-                  const isAdded = added.has(inf.id)
-                  const isAdding = adding === inf.id
+          if (isAdded) {
+            return (
+              <span className="inline-flex items-center gap-1.5 text-emerald-600 text-sm font-semibold whitespace-nowrap">
+                <Check className="h-4 w-4" /> Agregado
+              </span>
+            )
+          }
 
-                  return (
-                    <tr key={inf.id} className={cn('transition-colors', isAdded ? 'bg-emerald-50/50' : 'hover:bg-gray-50/70')}>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 text-xs font-bold flex-shrink-0">
-                            {inf.display_name[0]?.toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{inf.display_name}</p>
-                            {inf.city && <p className="text-xs text-gray-400">{inf.city}</p>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {primary ? (
-                          <span className="flex items-center gap-1.5">
-                            {PLATFORM_ICONS[primary.platform]}
-                            {primary.username ? `@${primary.username}` : primary.platform}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                        {primary ? formatFollowers(primary.followers ?? 0) : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          placeholder="0.00"
-                          min="0"
-                          step="100"
-                          disabled={isAdded}
-                          value={fee[inf.id] ?? ''}
-                          onChange={e => setFee(prev => ({ ...prev, [inf.id]: e.target.value }))}
-                          className="input-base w-28 text-sm disabled:opacity-50"
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {isAdded ? (
-                          <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-semibold">
-                            <Check className="h-4 w-4" /> Agregado
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => handleAdd(inf.id)}
-                            disabled={!!adding}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors ml-auto"
-                          >
-                            {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                            Agregar
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+          return (
+            <div className="inline-flex items-center gap-2">
+              <input
+                type="number"
+                placeholder="Fee"
+                min="0"
+                step="100"
+                value={fee[inf.id] ?? ''}
+                onClick={e => e.stopPropagation()}
+                onChange={e => setFee(prev => ({ ...prev, [inf.id]: e.target.value }))}
+                className="w-20 px-2 py-1.5 rounded-lg border border-gray-200 text-xs"
+              />
+              <button
+                onClick={() => handleAdd(inf.id)}
+                disabled={!!adding}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Agregar
+              </button>
+            </div>
+          )
+        }}
+      />
 
       {/* Footer */}
       <div className="flex justify-between items-center">
         <p className="text-sm text-gray-400">
-          {added.size > 0 ? `${added.size} influencer${added.size !== 1 ? 's' : ''} agregado${added.size !== 1 ? 's' : ''}` : ''}
+          {added.size > 0 ? `${added.size} influencer${added.size !== 1 ? 's' : ''} en la campaña` : ''}
         </p>
         <Link href={`/admin-campaigns/${campaignId}`}
           className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors">

@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
 import { useCampaignDetail, usePatchCampaign } from '@/hooks/useCampaignsList'
+import { BrandSelector } from '@/components/campaigns/BrandSelector'
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 const nanToUndef = z.preprocess(
@@ -75,26 +76,6 @@ const CURRENCIES = [
   { value: 'BRL', label: 'BRL' }, { value: 'GBP', label: 'GBP' },
 ]
 
-
-// ── BrandSelector ─────────────────────────────────────────────────────────────
-function BrandSelector({ register }: { register: import('react-hook-form').UseFormRegister<FormValues> }) {
-  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([])
-  useEffect(() => {
-    fetch('/api/brands').then(r => r.json()).then(j => setBrands(j.data ?? [])).catch(() => {})
-  }, [])
-  if (!brands.length) return null
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        Marca <span className="text-gray-400 text-xs">(opcional)</span>
-      </label>
-      <select {...register('brand_id')} className="input-base w-full">
-        <option value="">Sin marca asignada</option>
-        {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-      </select>
-    </div>
-  )
-}
 
 export function CampaignEditForm({ id }: { id: string }) {
   const router = useRouter()
@@ -373,10 +354,14 @@ export function CampaignEditForm({ id }: { id: string }) {
             )} />
           </div>
 
+          {/* Marca */}
+          <Controller control={control} name="brand_id" render={({ field }) => (
+            <BrandSelector value={field.value ?? ''} onChange={field.onChange} />
+          )} />
+
           {/* Deliverable templates */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Deliverables requeridos</label>
-            <BrandSelector register={register} />
 
             <Controller control={control} name="deliverable_templates" render={({ field }) => (
               <div className="space-y-3">

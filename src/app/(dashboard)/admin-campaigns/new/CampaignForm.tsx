@@ -13,6 +13,7 @@ import {
 import { cn } from '@/lib/utils'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
 import { DeliverableTemplateBuilder, DELIVERABLE_TYPES, CAMPAIGN_DELIVERABLE_DEFAULTS } from '@/components/campaigns/DeliverableTemplateBuilder'
+import { BrandSelector } from '@/components/campaigns/BrandSelector'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const nanToUndef = z.preprocess(
@@ -276,26 +277,6 @@ function Step1({ register, control, errors }: StepProps) {
   )
 }
 
-// ── BrandSelector ────────────────────────────────────────────────────────────
-function BrandSelector({ register }: { register: UseFormRegister<FormValues> }) {
-  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([])
-  useEffect(() => {
-    fetch('/api/brands').then(r => r.json()).then(j => setBrands(j.data ?? [])).catch(() => {})
-  }, [])
-  if (!brands.length) return null
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        Marca <span className="text-gray-400 text-xs">(opcional)</span>
-      </label>
-      <select {...register('brand_id')} className="input-base w-full">
-        <option value="">Sin marca asignada</option>
-        {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-      </select>
-    </div>
-  )
-}
-
 // ── Step 2 — Budget & Fechas ──────────────────────────────────────────────────
 function Step2({ register, control, errors, portal = 'admin' }: StepProps & { portal?: 'admin' | 'brand' }) {
   const watchedType = (control as unknown as { _formValues: { type: string } })._formValues?.type
@@ -313,7 +294,11 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
         </div>
       </div>
 
-      {portal === 'admin' && <BrandSelector register={register} />}
+      {portal === 'admin' && (
+        <Controller control={control} name="brand_id" render={({ field }) => (
+          <BrandSelector value={field.value ?? ''} onChange={field.onChange} />
+        )} />
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div>

@@ -18,14 +18,18 @@ export async function GET() {
   if (!influencer) return NextResponse.json({ error: 'Not an influencer' }, { status: 403 })
 
   // Buscar en booking_influencers (multi-influencer)
+  // Nota (fix B-06): `bookings` no tiene FK directa a `brands` — la marca se
+  // alcanza vía bookings.campaign_id -> campaigns.brand_id -> brands.id.
+  // Por eso `brand` se anida dentro de `campaign` en el select y se
+  // "aplana" de vuelta a nivel superior en flattenBrand(), para no tener
+  // que tocar el frontend (que espera `booking.brand` como campo propio).
   const { data: biRows, error: biErr } = await admin
     .from('booking_influencers')
     .select(`
       id, status,
       booking:bookings (
         id, title, description, status, starts_at, ends_at, location,
-        campaign:campaigns (id, name),
-        brand:brands!brand_id (id, name, logo_url)
+        campaign:campaigns (id, name, brand:brands!brand_id (id, name, logo_url))
       )
     `)
     .eq('influencer_id', influencer.id)
@@ -38,11 +42,21 @@ export async function GET() {
     .from('bookings')
     .select(`
       id, title, description, status, starts_at, ends_at, location,
-      campaign:campaigns (id, name),
-      brand:brands!brand_id (id, name, logo_url)
+      campaign:campaigns (id, name, brand:brands!brand_id (id, name, logo_url))
     `)
     .eq('influencer_id', influencer.id)
     .order('starts_at', { ascending: false })
+
+  type CampaignWithBrand = { id: string; name: string; brand?: { id: string; name: string; logo_url: string | null } | null } | null
+
+  function flattenBrand(row: Record<string, unknown>): Record<string, unknown> {
+    const campaign = row.campaign as CampaignWithBrand
+    return {
+      ...row,
+      campaign: campaign ? { id: campaign.id, name: campaign.name } : null,
+      brand: campaign?.brand ?? null,
+    }
+  }
 
   // Merge y dedup por booking id
   const seen = new Set<string>()
@@ -54,13 +68,13 @@ export async function GET() {
     const bid = b.id as string
     if (seen.has(bid)) continue
     seen.add(bid)
-    merged.push({ ...b, my_status: row.status })
+    merged.push({ ...flattenBrand(b), my_status: row.status })
   }
 
   for (const b of directRows ?? []) {
     if (seen.has(b.id)) continue
     seen.add(b.id)
-    merged.push({ ...b, my_status: b.status })
+    merged.push({ ...flattenBrand(b as unknown as Record<string, unknown>), my_status: b.status })
   }
 
   // Ordenar por starts_at

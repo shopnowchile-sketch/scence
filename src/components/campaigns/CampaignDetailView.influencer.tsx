@@ -31,6 +31,20 @@ type CampaignRow = {
   } | null
 }
 
+// Preview de campaña open aún no postulada (GET /api/influencer/campaigns/[id])
+type PreviewCampaign = {
+  id: string; name: string; status: string; visibility: string
+  description: string | null; content_guidelines: string | null
+  start_date: string | null; end_date: string | null
+  budget_total: number | null; currency: string
+  hashtags: string[] | null; platforms: string[] | null
+  deliverable_templates: Array<{ type: string; quantity?: number; description?: string }> | null
+  application_deadline: string | null
+  brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
+  _applied: boolean
+  application_status: string | null
+}
+
 // ── Deliverable submit row ────────────────────────────────────────────────────
 function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void }) {
   const [open,   setOpen]   = useState(false)
@@ -185,7 +199,9 @@ function AddDeliverableForm({ campaignId, onAdded }: { campaignId: string; onAdd
 export function InfluencerCampaignView({ id }: { id: string }) {
   const router = useRouter()
   const [data,    setData]    = useState<CampaignRow | null>(null)
+  const [preview, setPreview] = useState<PreviewCampaign | null>(null)
   const [loading, setLoading] = useState(true)
+  const [applying, setApplying] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -193,18 +209,153 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       const res  = await fetch('/api/influencer/my-campaigns')
       const json = await res.json()
       const found = (json.data ?? []).find((ci: CampaignRow) => ci.campaign?.id === id || ci.id === id)
-      setData(found ?? null)
+      if (found) {
+        setData(found)
+        setPreview(null)
+      } else {
+        // No está entre mis campañas todavía — puede ser una campaña abierta
+        // que aún no postula. Traer preview de solo-lectura.
+        setData(null)
+        const pRes = await fetch(`/api/influencer/campaigns/${id}`)
+        setPreview(pRes.ok ? (await pRes.json()).data : null)
+      }
     } catch { toast.error('Error cargando campaña') }
     setLoading(false)
   }, [id])
 
   useEffect(() => { load() }, [load])
 
+  async function handleApply() {
+    if (!preview) return
+    if (!confirm(`¿Enviar solicitud para unirte a "${preview.name}"? El equipo la revisará y te confirmará.`)) return
+    setApplying(true)
+    try {
+      const res  = await fetch(`/api/influencer/campaigns/${id}/apply`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast.success('¡Solicitud enviada! El equipo te confirmará pronto.')
+      setPreview(p => p ? { ...p, _applied: true, application_status: 'pending' } : p)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al enviar solicitud')
+    }
+    setApplying(false)
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
     </div>
   )
+
+  if (!data?.campaign && preview) {
+    const p = preview
+    const templates = p.deliverable_templates ?? []
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-bold text-gray-900 truncate">{p.name}</h1>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
+            </div>
+            {p.brand && <p className="text-sm text-gray-400 mt-0.5">{p.brand.name}</p>}
+          </div>
+        </div>
+
+        {p.brand && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
+            {p.brand.logo_url
+              ? <img src={p.brand.logo_url} alt={p.brand.name} className="w-14 h-14 rounded-xl object-contain border border-gray-100" />
+              : <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-violet-400" />
+                </div>}
+            <div>
+              <p className="text-sm font-bold text-gray-900">{p.brand.name}</p>
+              {p.brand.website && (
+                <a href={p.brand.website} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-violet-600 hover:underline flex items-center gap-1 mt-0.5">
+                  <ExternalLink className="h-3 w-3" /> Sitio web
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {[
+            { label: 'Inicio',       value: fmtDate(p.start_date) },
+            { label: 'Fin',          value: fmtDate(p.end_date) },
+            { label: 'Presupuesto',  value: p.budget_total ? fmtMoney(p.budget_total, p.currency) : '—' },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
+              <p className="text-sm font-bold text-gray-900 mt-1">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {(p.description || p.content_guidelines) && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-gray-400" />
+              <h2 className="text-sm font-bold text-gray-900">Brief de la Campaña</h2>
+            </div>
+            {p.description && <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{p.description}</p>}
+            {p.content_guidelines && (
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-xs font-semibold text-gray-500 mb-1">Lineamientos de contenido</p>
+                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{p.content_guidelines}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {templates.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <h2 className="text-sm font-bold text-gray-900 mb-3">Deliverables requeridos</h2>
+            <div className="space-y-2">
+              {templates.map((t, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                  <Circle className="h-3 w-3 text-gray-300 flex-shrink-0" />
+                  {t.quantity ?? 1}× {t.description || t.type}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {((p.platforms?.length ?? 0) > 0 || (p.hashtags?.length ?? 0) > 0) && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-wrap gap-2">
+            {(p.platforms ?? []).map(pl => (
+              <span key={pl} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-violet-50 text-violet-600 capitalize">{pl}</span>
+            ))}
+            {(p.hashtags ?? []).map(h => (
+              <span key={h} className="text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-500">#{h.replace(/^#/, '')}</span>
+            ))}
+          </div>
+        )}
+
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          {p._applied ? (
+            <div className="flex items-center gap-2 text-sm font-semibold text-green-600">
+              <CheckCircle2 className="h-4 w-4" />
+              {p.application_status === 'pending'
+                ? 'Solicitud enviada — te avisaremos apenas la revisemos.'
+                : 'Ya estás vinculada a esta campaña.'}
+            </div>
+          ) : (
+            <button onClick={handleApply} disabled={applying}
+              className="w-full py-3 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
+              {applying ? 'Enviando…' : 'Postular a esta campaña'}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (!data?.campaign) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">

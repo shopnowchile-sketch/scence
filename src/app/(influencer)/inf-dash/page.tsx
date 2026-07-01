@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   CheckCircle2, Circle, Clock, AlertCircle,
   Target, CalendarDays, Banknote,
@@ -650,18 +651,24 @@ export default function InfluencerDashboard() {
                     )}
                   </div>
 
-                  {/* Apply button */}
-                  {c._applied ? (
-                    <span className="text-[10px] font-bold text-green-600 flex-shrink-0 mt-1">✓ Enviada</span>
-                  ) : (
-                    <button
-                      onClick={() => handleApply(c.id, c.name)}
-                      disabled={applying === c.id}
-                      className="flex-shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                    >
-                      {applying === c.id ? '…' : 'Aplicar'}
-                    </button>
-                  )}
+                  {/* Detalle + apply */}
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+                    <Link href={`/inf-campaign/${c.id}`}
+                      className="text-[10px] font-semibold text-gray-400 hover:text-violet-600 transition-colors">
+                      Ver detalles
+                    </Link>
+                    {c._applied ? (
+                      <span className="text-[10px] font-bold text-green-600">✓ Enviada</span>
+                    ) : (
+                      <button
+                        onClick={() => handleApply(c.id, c.name)}
+                        disabled={applying === c.id}
+                        className="text-xs font-bold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                      >
+                        {applying === c.id ? '…' : 'Aplicar'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

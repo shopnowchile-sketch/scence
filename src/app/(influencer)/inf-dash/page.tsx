@@ -447,6 +447,87 @@ export default function InfluencerDashboard() {
         })}
       </div>
 
+      {/* ── Campañas disponibles (arriba, a pedido de Pri) ──────────────────── */}
+      {openCampaigns.length > 0 && (
+        <Section title="Campañas Disponibles" icon={Sparkles} count={openCampaigns.length} badge="violet">
+          <div className="space-y-3">
+            {/* Brand filter */}
+            {(() => {
+              const brands = openCampaigns.map(c => c.brand?.name).filter((b): b is string => !!b)
+              const unique = brands.filter((b, i) => brands.indexOf(b) === i)
+              return unique.length > 1 ? (
+              <div className="flex gap-2 flex-wrap pb-1">
+                <button onClick={() => setBrandFilter('')}
+                  className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
+                    brandFilter === '' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
+                  Todas
+                </button>
+                {unique.map(brand => (
+                  <button key={brand} onClick={() => setBrandFilter(brand === brandFilter ? '' : brand)}
+                    className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
+                      brandFilter === brand ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
+                    {brand}
+                  </button>
+                ))}
+              </div>
+              ) : null
+            })()}
+
+            {openCampaigns
+              .filter(c => !brandFilter || c.brand?.name === brandFilter)
+              .map(c => (
+              <div key={c.id} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                <div className="flex items-start gap-3">
+                  {/* Brand logo */}
+                  {c.brand?.logo_url ? (
+                    <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
+                      {c.brand?.name?.charAt(0) ?? '?'}
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
+                    </div>
+                    {c.brand && <p className="text-xs font-medium text-violet-600 mt-0.5">{c.brand.name}</p>}
+                    {c.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{c.description}</p>}
+                    {(c.start_date || c.end_date) && (
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {c.start_date ? new Date(c.start_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '—'}
+                        {' → '}
+                        {c.end_date ? new Date(c.end_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Detalle + apply */}
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+                    <Link href={`/inf-campaign/${c.id}`}
+                      className="text-[10px] font-semibold text-gray-400 hover:text-violet-600 transition-colors">
+                      Ver detalles
+                    </Link>
+                    {c._applied ? (
+                      <span className="text-[10px] font-bold text-green-600">✓ Enviada</span>
+                    ) : (
+                      <button
+                        onClick={() => handleApply(c.id, c.name)}
+                        disabled={applying === c.id}
+                        className="text-xs font-bold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                      >
+                        {applying === c.id ? '…' : 'Aplicar'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* Gráfico de avance de campañas */}
       {activeCampaigns.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -594,87 +675,6 @@ export default function InfluencerDashboard() {
           </div>
         )}
       </Section>
-
-      {/* ── SECTION 3: Campañas disponibles ────────────────────────────────── */}
-      {openCampaigns.length > 0 && (
-        <Section title="Campañas Disponibles" icon={Sparkles} count={openCampaigns.length} badge="violet">
-          <div className="space-y-3">
-            {/* Brand filter */}
-            {(() => {
-              const brands = openCampaigns.map(c => c.brand?.name).filter((b): b is string => !!b)
-              const unique = brands.filter((b, i) => brands.indexOf(b) === i)
-              return unique.length > 1 ? (
-              <div className="flex gap-2 flex-wrap pb-1">
-                <button onClick={() => setBrandFilter('')}
-                  className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
-                    brandFilter === '' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
-                  Todas
-                </button>
-                {unique.map(brand => (
-                  <button key={brand} onClick={() => setBrandFilter(brand === brandFilter ? '' : brand)}
-                    className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
-                      brandFilter === brand ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
-                    {brand}
-                  </button>
-                ))}
-              </div>
-              ) : null
-            })()}
-
-            {openCampaigns
-              .filter(c => !brandFilter || c.brand?.name === brandFilter)
-              .map(c => (
-              <div key={c.id} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <div className="flex items-start gap-3">
-                  {/* Brand logo */}
-                  {c.brand?.logo_url ? (
-                    <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
-                  ) : (
-                    <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
-                      {c.brand?.name?.charAt(0) ?? '?'}
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
-                    </div>
-                    {c.brand && <p className="text-xs font-medium text-violet-600 mt-0.5">{c.brand.name}</p>}
-                    {c.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{c.description}</p>}
-                    {(c.start_date || c.end_date) && (
-                      <p className="text-[10px] text-gray-400 mt-1">
-                        {c.start_date ? new Date(c.start_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '—'}
-                        {' → '}
-                        {c.end_date ? new Date(c.end_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Detalle + apply */}
-                  <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-                    <Link href={`/inf-campaign/${c.id}`}
-                      className="text-[10px] font-semibold text-gray-400 hover:text-violet-600 transition-colors">
-                      Ver detalles
-                    </Link>
-                    {c._applied ? (
-                      <span className="text-[10px] font-bold text-green-600">✓ Enviada</span>
-                    ) : (
-                      <button
-                        onClick={() => handleApply(c.id, c.name)}
-                        disabled={applying === c.id}
-                        className="text-xs font-bold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                      >
-                        {applying === c.id ? '…' : 'Aplicar'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
 
       {/* ── SECTION 4: Próximos Eventos ─────────────────────────────────────── */}
       <Section title="Próximos Eventos" icon={CalendarDays} count={bookings.length + events.length} badge="blue">

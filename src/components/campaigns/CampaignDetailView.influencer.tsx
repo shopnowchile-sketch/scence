@@ -19,7 +19,7 @@ type Deliverable = {
 }
 
 type CampaignRow = {
-  id: string | null; status: string; fee: number | null; currency: string
+  id: string | null; status: string; application_status?: string | null; fee: number | null; currency: string
   _self_created?: boolean
   campaign: {
     id: string; name: string; status: string
@@ -367,12 +367,23 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
   const c            = data.campaign
   const isSelfCreated = data._self_created === true
+  const isPending    = data.application_status === 'pending'
   const campStatus   = CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
   const pending      = c.campaign_deliverables.filter(d => d.status !== 'approved' && d.status !== 'published')
   const done         = c.campaign_deliverables.filter(d => d.status === 'approved' || d.status === 'published')
 
   return (
     <div className="space-y-6">
+      {/* Postulación en revisión — aún no hay deliverables asignados */}
+      {isPending && (
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center gap-3">
+          <Clock className="h-5 w-5 text-amber-500 flex-shrink-0" />
+          <p className="text-sm text-amber-700 font-medium">
+            Tu postulación está en revisión — te avisaremos por email apenas la aprobemos.
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">

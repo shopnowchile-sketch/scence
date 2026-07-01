@@ -476,7 +476,10 @@ export default function InfluencerDashboard() {
             {openCampaigns
               .filter(c => !brandFilter || c.brand?.name === brandFilter)
               .map(c => (
-              <div key={c.id} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+              <div key={c.id} className={cn(
+                'rounded-xl p-4 border',
+                c._applied ? 'bg-amber-50/50 border-amber-100' : 'bg-gray-50 border-gray-100'
+              )}>
                 <div className="flex items-start gap-3">
                   {/* Brand logo */}
                   {c.brand?.logo_url ? (
@@ -490,10 +493,17 @@ export default function InfluencerDashboard() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
+                      {c._applied ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">En revisión</span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
+                      )}
                     </div>
                     {c.brand && <p className="text-xs font-medium text-violet-600 mt-0.5">{c.brand.name}</p>}
                     {c.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{c.description}</p>}
+                    {c._applied && (
+                      <p className="text-[10px] text-amber-600 mt-1">Ya postulaste — el equipo te confirmará pronto.</p>
+                    )}
                     {(c.start_date || c.end_date) && (
                       <p className="text-[10px] text-gray-400 mt-1">
                         {c.start_date ? new Date(c.start_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '—'}
@@ -510,7 +520,7 @@ export default function InfluencerDashboard() {
                       Ver detalles
                     </Link>
                     {c._applied ? (
-                      <span className="text-[10px] font-bold text-green-600">✓ Enviada</span>
+                      <span className="text-[10px] font-bold text-amber-600">⏳ En revisión</span>
                     ) : (
                       <button
                         onClick={() => handleApply(c.id, c.name)}

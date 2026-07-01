@@ -833,7 +833,7 @@ flowchart TD
 | G-13 | Configuración → Lugares es un stub sin funcionalidad, pese a que la tabla `locations` ya existe y se usa en campañas/marcas | Bajo |
 | G-14 (nuevo) | Duplicación de plantillas de email de booking (una activa inline, una muerta en `resend.ts`) | Bajo — limpieza técnica |
 | G-15 (nuevo) | Migraciones del repo no reflejan el 100% del schema real (`brands` sin migración de creación) | Medio — riesgo de drift entre entornos |
-| G-16 (nuevo) | `CampaignDetailView.tsx` soporta `mode="brand"` (renderiza `BrandCampaignView`), pero ninguna ruta real lo invoca — Marca usa `CampaignDetail` (el mismo componente de Admin) directamente en `brand-campaigns/[id]/page.tsx`. El archivo sigue siendo necesario para compilar (import estático), pero su UI nunca se muestra a un usuario real | Bajo — deuda técnica, no afecta funcionalidad. Recomendación: decidir si eliminar la rama `mode="brand"` completa (componente + import) o conectarla a una ruta real, en vez de dejarla como código alcanzable-solo-en-teoría |
+| G-16 | ~~`CampaignDetailView.tsx` soporta `mode="brand"`...~~ **Resuelto 2026-07-01:** confirmado por grep que ninguna ruta real usaba `mode="brand"` (Marca usa `CampaignDetail` directo). Se eliminó la rama y el archivo `CampaignDetailView.brand.tsx`, validado con script exhaustivo de imports (0 rotos) + `tsc --noEmit` (0 errores) antes de commitear | Cerrado |
 
 ---
 

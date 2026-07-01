@@ -1,12 +1,36 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { useInfluencers } from '@/hooks/useInfluencers'
 import { InfluencerRanking } from '@/components/influencers/InfluencerRanking'
+import type { RankingInfluencerRow } from '@/lib/influencers/ranking'
 
 export default function BrandInfluencersRankingPage() {
-  const { influencers, loading, error } = useInfluencers(undefined, '/api/brand/influencers')
+  const [influencers, setInfluencers] = useState<RankingInfluencerRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      setError(null)
+
+      try {
+        const res = await fetch('/api/brand/influencers/ranking?limit=300&sort_by=followers&sort_dir=desc')
+        if (!res.ok) throw new Error('Error cargando ranking')
+
+        const json = await res.json()
+        setInfluencers(json.data ?? [])
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Error cargando ranking')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void load()
+  }, [])
 
   return (
     <div className="space-y-5">
@@ -17,14 +41,14 @@ export default function BrandInfluencersRankingPage() {
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight mt-3">Ranking de influencers</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Ranking de influencers relacionadas a tus campañas.
+          Ranking configurable de influencers relacionadas a tus campañas.
         </p>
       </div>
 
       {error ? (
         <div className="card p-6 text-sm text-red-500">{error}</div>
       ) : (
-        <InfluencerRanking influencers={influencers} loading={loading} />
+        <InfluencerRanking influencers={influencers} loading={loading} basePath="/brand-influencers" />
       )}
     </div>
   )

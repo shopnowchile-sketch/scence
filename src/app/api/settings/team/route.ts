@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const { member_id, role } = await req.json()
-  const VALID_ROLES = ['super_admin', 'agency_manager', 'brand_manager', 'finance', 'influencer']
+  const VALID_ROLES = ['super_admin', 'brand_manager', 'finance', 'influencer']
   if (!VALID_ROLES.includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
 
   const { error } = await admin

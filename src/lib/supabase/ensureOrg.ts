@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type OrgRole = 'super_admin' | 'agency_manager' | 'brand_manager' | 'finance' | 'influencer'
+export type OrgRole = 'super_admin' | 'brand_manager' | 'finance' | 'influencer'
 
 /** Roles con acceso completo (billing, payroll, eliminación, settings de team) */
-export const ADMIN_ROLES: OrgRole[] = ['super_admin', 'agency_manager']
+export const ADMIN_ROLES: OrgRole[] = ['super_admin']
 
 /**
  * getUserRole — obtiene el rol del usuario en su organización.

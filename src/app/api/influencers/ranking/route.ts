@@ -3,7 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/influencers/ranking'
 
-const ADMIN_ROLES = ['super_admin', 'agency_manager']
+const ADMIN_ROLES = ['super_admin']
 
 async function isAdmin(userId: string, admin: ReturnType<typeof createAdminClient>) {
   const { data } = await admin

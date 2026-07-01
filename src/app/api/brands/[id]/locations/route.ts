@@ -5,7 +5,7 @@ type Params = { params: { id: string } }
 
 async function isAdmin(user: any, admin: any) {
   const role = user?.user_metadata?.role ?? user?.app_metadata?.role
-  if (['super_admin', 'agency_manager', 'admin'].includes(role)) return true
+  if (['super_admin', 'admin'].includes(role)) return true
 
   const { data } = await admin
     .from('organization_members')
@@ -14,7 +14,7 @@ async function isAdmin(user: any, admin: any) {
     .eq('is_active', true)
 
   return (data ?? []).some((m: any) =>
-    m.is_owner || ['super_admin', 'agency_manager', 'admin'].includes(m.role)
+    m.is_owner || ['super_admin', 'admin'].includes(m.role)
   )
 }
 

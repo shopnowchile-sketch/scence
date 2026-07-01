@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest) {
     .single()
 
   const role = member?.role ?? 'brand_manager'
-  const isAdmin = !!(member?.is_owner || ['super_admin', 'agency_manager'].includes(role))
+  const isAdmin = !!(member?.is_owner || ['super_admin'].includes(role))
 
   return NextResponse.json({ isAdmin, role, isOwner: member?.is_owner ?? false })
 }

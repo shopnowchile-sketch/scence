@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export type UserRole = 'super_admin' | 'agency_manager' | 'brand_manager' | 'influencer' | 'finance' | null
+export type UserRole = 'super_admin' | 'brand_manager' | 'influencer' | 'finance' | null
 
 export function useIsAdmin(): { isAdmin: boolean; role: UserRole; loading: boolean } {
   const [isAdmin, setIsAdmin] = useState(false)

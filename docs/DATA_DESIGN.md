@@ -543,7 +543,7 @@ Notificaciones in-app (tabla existe, UI pendiente).
 
 | Enum | Valores |
 |---|---|
-| user_role | super_admin, agency_manager, brand_manager, influencer, finance |
+| user_role | super_admin, brand_manager, influencer, finance (el valor `agency_manager` sigue existiendo físicamente en el enum de Postgres por compatibilidad, pero no se usa en ningún flujo activo desde 2026-07-01) |
 | org_type | brand, agency |
 | subscription_tier | starter, growth, pro, enterprise |
 | subscription_status | trialing, active, past_due, canceled, paused |

@@ -169,13 +169,13 @@ function OrgSettingsForm() {
 function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [email, setEmail]           = useState('')
   const [name, setName]             = useState('')
-  const [role, setRole]             = useState('agency_manager')
+  const [role, setRole]             = useState('brand_manager')
   const [sending, setSending]       = useState(false)
   const [actionLink, setActionLink] = useState<string | null>(null)
   const [copied, setCopied]         = useState(false)
 
   const ROLE_LABELS: Record<string, string> = {
-    super_admin: 'Super Admin', agency_manager: 'Agency Manager',
+    super_admin: 'Super Admin',
     brand_manager: 'Brand Manager', finance: 'Finanzas', influencer: 'Influencer',
   }
 
@@ -313,7 +313,6 @@ function TeamMembers() {
 
   const ROLE_LABELS: Record<string, string> = {
     super_admin:     'Super Admin',
-    agency_manager:  'Agency Manager',
     brand_manager:   'Brand Manager',
     finance:         'Finanzas',
     influencer:      'Influencer',

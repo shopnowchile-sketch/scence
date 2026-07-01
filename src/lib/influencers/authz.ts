@@ -2,9 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** Roles considerados administradores para acciones destructivas (borrado permanente).
  *  Debe coincidir con el enum user_role de la BD:
- *  'super_admin' | 'agency_manager' | 'brand_manager' | 'influencer' | 'finance'
+ *  'super_admin' | 'brand_manager' | 'influencer' | 'finance'
  */
-const ADMIN_ROLES = ['super_admin', 'agency_manager']
+const ADMIN_ROLES = ['super_admin']
 
 /**
  * Determina si el usuario es administrador autorizado de la organización.

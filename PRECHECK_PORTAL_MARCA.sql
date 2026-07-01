@@ -38,7 +38,8 @@ FROM organization_members
 GROUP BY role::TEXT
 ORDER BY cantidad DESC;
 
--- RESULTADO ESPERADO: mayoría agency_manager o super_admin.
+-- RESULTADO ESPERADO (histórico, al momento de este precheck): mayoría agency_manager o super_admin.
+-- NOTA (2026-07-01): agency_manager fue eliminado del modelo de roles activo; ver docs/SOLUTION_DESIGN.md.
 -- Si hay brand_manager: ya existen usuarios de marca — brand_id = NULL por ahora (correcto).
 -- Si no hay brand_manager: la columna brand_id se agrega limpia, sin impacto.
 

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
-  // Payroll: solo admins (super_admin, agency_manager, finance)
+  // Payroll: solo admins (super_admin, finance)
   const { isAdmin, role } = await getUserRole(user.id, orgId, admin)
   if (!isAdmin && role !== 'finance') {
     return NextResponse.json({ error: 'No tienes permisos para ver nóminas' }, { status: 403 })

@@ -1,5 +1,5 @@
 // ── ENUMS ────────────────────────────────────────────────
-export type UserRole = 'super_admin' | 'agency_manager' | 'brand_manager' | 'influencer' | 'finance'
+export type UserRole = 'super_admin' | 'brand_manager' | 'influencer' | 'finance'
 export type CampaignStatus = 'draft' | 'pending_approval' | 'active' | 'paused' | 'completed' | 'canceled'
 export type CampaignType = 'sponsored_post' | 'event_appearance' | 'ambassador' | 'product_seeding' | 'ugc' | 'live'
 export type BookingStatus = 'proposed' | 'confirmed' | 'completed' | 'canceled' | 'no_show'

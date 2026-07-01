@@ -24,6 +24,7 @@
 | 2.1 | Reestructurado a formato ejecutivo (control de documento, mapa de proceso, requisitos funcionales por portal, reportes, no-funcionales, notificaciones, glosario). Se corrigieron 6 de los 9 bugs encontrados (ver §12, Bugs) | 2026-07-01 |
 | 2.1 (deploy) | Los 6 fixes + reestructuración se pushearon a producción. Un fix (eliminación de `CampaignDetailView.brand.tsx`) se basó en un diagnóstico incorrecto y rompió el build; detectado vía Vercel antes de afectar usuarios, corregido y repusheado el mismo día. Se agrega hallazgo G-16 (ver Anexo C) | 2026-07-01 |
 | 2.1 (revisión Pri) | Pri revisó el FDD y reportó un problema real en BR-04 (comentario en Google Docs): tareas fantasma sin relación a deliverables. Se diagnosticó, corrigió el código (bug B-10) y se limpiaron 412 filas ya existentes en producción, con aprobación explícita de Pri para el alcance del borrado | 2026-07-01 |
+| 2.1 (roles) | Pri confirmó por comentario en el FDD que `agency_manager` no es un rol real ("no existe"). Se auditó su uso real: solo 2 perfiles de prueba, 5 RLS policies, 10 archivos de código, y el trigger de signup lo asignaba por defecto (aunque `ensureOrg()` ya lo sobreescribía a `brand_manager` en casi todos los casos). Se reasignaron los 2 perfiles a `super_admin`, se corrigió el trigger, se actualizaron las 5 RLS y los 10 archivos, sin dropear el valor del enum en Postgres (innecesario). Modelo de roles vigente: `super_admin` / `brand_manager` / `influencer` | 2026-07-01 |
 
 ### Sign-off
 
@@ -71,7 +72,7 @@ La siguiente tabla resume las reglas de negocio activas del sistema — el equiv
 | ID | Regla | Descripción |
 |---|---|---|
 | BR-01 | Multi-tenancy | Todo dato está scoped por `organization_id`, reforzado en cada query server-side. |
-| BR-02 | Roles de usuario | `super_admin`/`agency_manager` → Admin; `is_brand=true` → Marca; `is_influencer=true` → Influencer. `src/middleware.ts` enforza el routing por rol vía listas `ADMIN_ONLY`/`BRAND_ONLY`/`INFLUENCER_ONLY`. |
+| BR-02 | Roles de usuario | `super_admin` → Admin (ve todo); `is_brand=true` → Marca (`brand_manager`, owner); `is_influencer=true` → Influencer (sin sub-roles). `src/middleware.ts` enforza el routing por rol vía listas `ADMIN_ONLY`/`BRAND_ONLY`/`INFLUENCER_ONLY`. **Corregido 2026-07-01:** el rol `agency_manager` existía en el enum y en RLS/código (2 perfiles reales, ambos de prueba) pero no correspondía a ninguna persona del modelo de producto real; se eliminó de todo uso activo (ver changelog). |
 | BR-03 | Campañas private vs. open | `private`: la marca agrega influencers por invitación. `open`: los influencers postulan y la marca decide. |
 | BR-04 | Auto-creación de deliverables | Al aceptar invitación/postulación (o al agregar un influencer a una campaña) se crean automáticamente los `campaign_deliverables` desde la plantilla de la campaña; la campaña pasa a `active`. Cada deliverable sincroniza 1:1 una `influencer_task` vinculada (`deliverable_id`) — es la única fuente de "tareas" que debe ver el influencer. **Corregido el 2026-07-01 (bug B-10):** antes también se creaban 4 tareas genéricas sin vincular a ningún deliverable real; ver Anexo A. |
 | BR-05 | `deliverables_spec` inmutable | Una vez creada la invitación, no se modifica — es el "contrato informal". Los `campaign_deliverables` son la fuente de verdad operacional. |
@@ -135,7 +136,7 @@ Usuario ──▶ Next.js 14 (App Router, Vercel)
 
 ### 3.1 Portal Admin
 
-Acceso: `role: super_admin | agency_manager`. Rutas: `admin-*`. Equipo interno de SCENCE — acceso total a todos los datos de la plataforma.
+Acceso: `role: super_admin`. Rutas: `admin-*`. Equipo interno de SCENCE — acceso total a todos los datos de la plataforma.
 
 #### AD-01 Dashboard
 ![Dashboard Admin](mockups/admin-dashboard.png)
@@ -781,27 +782,29 @@ flowchart TD
 
 ### C.1 Matriz de permisos por rol
 
-| Recurso/Acción | super_admin | agency_manager | brand_manager (is_brand) | influencer (is_influencer) |
-|---|---|---|---|---|
-| Leer campaigns (todas) | ✅ | ✅ | ❌ (solo propias) | ❌ |
-| Crear campaign | ✅ | ✅ | ✅ | ⚠️ ver G-11 |
-| Editar campaign | ✅ | ✅ | ✅ (propia, pre-activa) | ❌ |
-| Borrar campaign | ✅ | ✅ | ❌ | ❌ |
-| Leer influencers (todos) | ✅ | ✅ | ✅ (limitado) | ❌ |
-| Crear/editar influencer | ✅ | ✅ | ❌ | ❌ |
-| Invitar influencer | ✅ | ✅ | ✅ | ❌ |
-| Postular (aplicar) | ❌ | ❌ | ❌ | ✅ |
-| Aceptar/rechazar postulación | ✅ | ✅ | ✅ | ❌ |
-| Aceptar/rechazar invitación | ✅ (forzar) | ✅ (forzar) | ❌ | ✅ |
-| Subir deliverable | ❌ | ❌ | ❌ | ✅ |
-| Aprobar deliverable | ✅ | ✅ | ✅ | ❌ |
-| Leer invoices | ✅ | ✅ | ✅ (propias) | ❌ |
-| Crear invoice | ✅ | ✅ | ❌ | ❌ |
-| Leer payroll | ✅ | ✅ | ❌ | ✅ (propio) |
-| Crear payroll | ✅ | ✅ | ❌ | ❌ |
-| Leer brands | ✅ | ✅ | ✅ (propia) | ❌ |
-| Leer analytics | ✅ | ✅ | ❌ | ❌ |
-| Sync Instagram | ✅ | ✅ | ❌ | ❌ |
+**Nota (2026-07-01):** se elimina la columna `agency_manager` — no correspondía a ningún rol real del producto (ver BR-02 y changelog). Modelo vigente: `super_admin` (Admin, ve todo) | `brand_manager` (Brand, owner) | `influencer` (sin sub-roles).
+
+| Recurso/Acción | super_admin | brand_manager (is_brand) | influencer (is_influencer) |
+|---|---|---|---|
+| Leer campaigns (todas) | ✅ | ❌ — solo propias + colaboradoras por invitación (`campaign_brands`), confirmado en `/api/brand/campaigns` | ❌ |
+| Crear campaign | ✅ | ✅ | ⚠️ ver G-11 |
+| Editar campaign | ✅ | ✅ (propia, pre-activa) | ❌ |
+| Borrar campaign | ✅ | ❌ | ❌ |
+| Leer influencers (todos) | ✅ | ✅ (limitado) | ❌ |
+| Crear/editar influencer | ✅ | ❌ | ❌ |
+| Invitar influencer | ✅ | ✅ | ❌ |
+| Postular (aplicar) | ❌ | ❌ | ✅ |
+| Aceptar/rechazar postulación | ✅ | ✅ | ❌ |
+| Aceptar/rechazar invitación | ✅ (forzar) | ❌ | ✅ |
+| Subir deliverable | ❌ | ❌ | ✅ |
+| Aprobar deliverable | ✅ | ✅ | ❌ |
+| Leer invoices | ✅ | ✅ (propias) | ❌ |
+| Crear invoice | ✅ | ❌ | ❌ |
+| Leer payroll | ✅ | ❌ | ✅ (propio) |
+| Crear payroll | ✅ | ❌ | ❌ |
+| Leer brands | ✅ | ✅ (propia) | ❌ |
+| Leer analytics | ✅ | ❌ | ❌ |
+| Sync Instagram | ✅ | ❌ | ❌ |
 
 ### C.2 Estados y transiciones
 

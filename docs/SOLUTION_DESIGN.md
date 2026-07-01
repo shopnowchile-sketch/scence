@@ -196,12 +196,15 @@ Redirect por rol (middleware lo detecta en siguiente request)
 | `is_influencer` | boolean | True si es usuario de portal influencer |
 
 ### Roles (organization_members.role ENUM)
-`super_admin | agency_manager | brand_manager | finance | influencer`
+`super_admin | brand_manager | finance | influencer`
+
+Modelo real (corregido 2026-07-01, ver changelog FDD): Admin = solo `super_admin` (ve todo). Brand = `brand_manager` (owner). Influencer = sin sub-roles. El valor `agency_manager` existía en el enum y en ~15 archivos de código/RLS pero no correspondía a ninguna persona real del producto — se eliminó de todo uso activo (perfiles reasignados a `super_admin`, RLS y checks de código actualizados). El valor del enum de Postgres no se dropeó físicamente (evita riesgo innecesario), pero ya no se escribe ni se lee en ningún flujo.
 
 ### Auto-provision de organización
 Función `ensureOrg()` en `src/lib/supabase/ensureOrg.ts`:
-- En el primer login de un usuario admin/agencia, crea automáticamente una `organization` y agrega al usuario como `owner`
-- Para brand users: `POST /api/brand/register` crea el registro en `brands` table
+- En el primer login, crea automáticamente una `organization` (type `brand`) y asigna `role: 'brand_manager'` al usuario como `owner` — corre para cualquier signup nuevo, sea marca o influencer, si aún no tiene `organization_id` en metadata.
+- Para brand users: `POST /api/brand/register` crea el registro en `brands` table.
+- El trigger de signup (`handle_new_user`, en `auth.users`) también crea un perfil + org de tipo `agency` como fallback; en la práctica casi siempre se sobreescribe por `ensureOrg()` en el primer login real. Su default de rol se corrigió a `brand_manager` (antes `agency_manager`).
 
 ---
 
@@ -212,7 +215,7 @@ Layout: `src/app/(dashboard)/layout.tsx`
 Sidebar: `src/components/layout/Sidebar.tsx`
 
 ### Acceso
-Solo `agency_manager` y `super_admin`. El middleware bloquea `brand_manager` e `influencer` de estas rutas.
+Solo `super_admin`. El middleware bloquea `brand_manager` e `influencer` de estas rutas.
 
 ### Patrón de componentes
 Cada módulo tiene:

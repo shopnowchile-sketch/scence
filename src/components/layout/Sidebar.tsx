@@ -23,7 +23,7 @@ export function Sidebar() {
     }).catch(() => {})
   }, [])
 
-  const isAdmin = role && (['super_admin', 'agency_manager', 'brand_manager'] as UserRole[]).includes(role as UserRole)
+  const isAdmin = role && (['super_admin', 'brand_manager'] as UserRole[]).includes(role as UserRole)
 
   const navSections: NavSection[] = [
     {

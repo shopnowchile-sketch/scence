@@ -12,11 +12,11 @@ import { getResend, FROM_EMAIL } from '@/lib/resend'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-const VALID_ROLES = ['super_admin', 'agency_manager', 'brand_manager', 'finance', 'influencer']
+const VALID_ROLES = ['super_admin', 'brand_manager', 'finance', 'influencer']
 
 function inviteEmail({ name, role, actionLink }: { name: string; role: string; actionLink: string }) {
   const roleLabel: Record<string, string> = {
-    super_admin: 'Super Admin', agency_manager: 'Agency Manager',
+    super_admin: 'Super Admin',
     brand_manager: 'Brand Manager', finance: 'Finanzas', influencer: 'Influencer',
   }
   return `<!DOCTYPE html>

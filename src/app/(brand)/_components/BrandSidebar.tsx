@@ -33,7 +33,7 @@ const navSections: NavSection[] = [
     title: 'Sistema',
     items: [
       { href: '/brand-support',          label: 'Soporte',       icon: Bug },
-      { href: '/brand-settings/profile', label: 'Configuración', icon: Settings },
+      { href: '/brand-settings/organization', label: 'Configuración', icon: Settings },
     ],
   },
 ]

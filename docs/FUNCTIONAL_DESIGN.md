@@ -22,6 +22,7 @@
 | 1.0 | Versión inicial del FDD | (previa a esta auditoría) |
 | 2.0 | Auditoría en vivo contra producción (`scence-app.vercel.app`), 3 portales, 25 pantallas documentadas con mockups fieles, 9 bugs encontrados | 2026-07-01 |
 | 2.1 | Reestructurado a formato ejecutivo (control de documento, mapa de proceso, requisitos funcionales por portal, reportes, no-funcionales, notificaciones, glosario). Se corrigieron 6 de los 9 bugs encontrados (ver §12, Bugs) | 2026-07-01 |
+| 2.1 (deploy) | Los 6 fixes + reestructuración se pushearon a producción. Un fix (eliminación de `CampaignDetailView.brand.tsx`) se basó en un diagnóstico incorrecto y rompió el build; detectado vía Vercel antes de afectar usuarios, corregido y repusheado el mismo día. Se agrega hallazgo G-16 (ver Anexo C) | 2026-07-01 |
 
 ### Sign-off
 
@@ -677,7 +678,7 @@ Se encontraron 9 bugs de producción en la auditoría en vivo del 2026-07-01. **
 | B-09 | 🔴 Alta | Influencer | Clic en campaña asignada → 404 (`/campaign/[id]` legacy) | ✅ Corregido — 4 ocurrencias actualizadas a `/inf-campaign/[id]` |
 | — | 🟢 Muy baja | Marca | KPI "Total gastado" mostraba `$NaN` sin datos | ✅ Corregido — guard `?? 0` agregado |
 
-**Limpieza adicional:** se eliminó `CampaignDetailView.brand.tsx`, componente con el mismo bug de URL que B-07 pero confirmado como código muerto (0 referencias en el repo) — la vista real de Marca reutiliza `CampaignDetail` de Admin, por diseño.
+**Incidente post-deploy (corregido el mismo día):** en un primer intento se eliminó `CampaignDetailView.brand.tsx` asumiendo que era código muerto — un `grep` insuficiente (solo se miraron los nombres de archivo resultantes, no el contenido de las líneas) llevó a esa conclusión errónea. El archivo **sí tiene un import estático real** desde `CampaignDetailView.tsx` (`import { BrandCampaignView } from './CampaignDetailView.brand'`), así que borrarlo rompió la compilación de producción (deploy `dpl_CmzEp4WBZodkxNhFPD98HkJ4yCjM` → `ERROR`, detectado vía el conector de Vercel antes de que afectara a usuarios reales, ya que Vercel no promueve un build fallido al alias de producción). Se restauró el archivo, se corrigió en él el mismo bug de URL que B-07 (2 fetches), y se validó con un script que confirma 0 imports rotos (relativos y `@/`) en todo `src/` antes de repushear. Ver G-16 para el hallazgo funcional real detrás de este archivo.
 
 **Patrón común (B-01, B-04, B-05, B-09):** residuos de la migración de rutas a los prefijos `admin-*/brand-*/inf-*`.
 
@@ -825,6 +826,7 @@ flowchart TD
 | G-13 | Configuración → Lugares es un stub sin funcionalidad, pese a que la tabla `locations` ya existe y se usa en campañas/marcas | Bajo |
 | G-14 (nuevo) | Duplicación de plantillas de email de booking (una activa inline, una muerta en `resend.ts`) | Bajo — limpieza técnica |
 | G-15 (nuevo) | Migraciones del repo no reflejan el 100% del schema real (`brands` sin migración de creación) | Medio — riesgo de drift entre entornos |
+| G-16 (nuevo) | `CampaignDetailView.tsx` soporta `mode="brand"` (renderiza `BrandCampaignView`), pero ninguna ruta real lo invoca — Marca usa `CampaignDetail` (el mismo componente de Admin) directamente en `brand-campaigns/[id]/page.tsx`. El archivo sigue siendo necesario para compilar (import estático), pero su UI nunca se muestra a un usuario real | Bajo — deuda técnica, no afecta funcionalidad. Recomendación: decidir si eliminar la rama `mode="brand"` completa (componente + import) o conectarla a una ruta real, en vez de dejarla como código alcanzable-solo-en-teoría |
 
 ---
 

@@ -327,6 +327,8 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+  const [notifying, setNotifying] = useState(false)
+  const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
   const [addingDeliverable, setAddingDeliverable] = useState(false)
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
   const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
@@ -886,6 +888,48 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 {(c as {visibility?: string}).visibility === 'open' ? '🌐 Pública' : '🔒 Invitación'}
               </button>
             </div>
+
+            {!isBrandPortal && (c as {visibility?: string}).visibility === 'open' && (
+              <div className="card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700">Notificar influencers</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Envía un email a las siguientes 50 influencers con más seguidores que aún no fueron notificadas de esta campaña
+                    </p>
+                  </div>
+                  <button
+                    disabled={notifying}
+                    onClick={async () => {
+                      setNotifying(true)
+                      setNotifyResult(null)
+                      try {
+                        const r = await fetch(`/api/campaigns/${id}/notify-influencers`, { method: 'POST' })
+                        const json = await r.json()
+                        if (!r.ok) throw new Error(json.error ?? 'Error al notificar')
+                        setNotifyResult(json)
+                        if (json.sent > 0) toast.success(`Email enviado a ${json.sent} influencer(s)`)
+                        else toast.success(json.message ?? 'No quedan influencers elegibles')
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'Error al notificar')
+                      }
+                      setNotifying(false)
+                    }}
+                    className="flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-full bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {notifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    Notificar siguiente batch
+                  </button>
+                </div>
+                {notifyResult && (
+                  <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
+                    Enviados: <strong className="text-gray-700">{notifyResult.sent}</strong>
+                    {notifyResult.failed > 0 && <> · Fallidos: <strong className="text-red-500">{notifyResult.failed}</strong></>}
+                    {' · '}Quedan por notificar: <strong className="text-gray-700">{notifyResult.remaining}</strong>
+                  </p>
+                )}
+              </div>
+            )}
 
             {c.content_guidelines && (
               <div className="card p-5">

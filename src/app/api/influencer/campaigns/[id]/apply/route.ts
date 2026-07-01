@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
 
-  // Verificar que la campaña existe, es open y está activa o en pending_influencers
+  // Verificar que la campaña existe, es open y está activa o en pending_approval
   const { data: campaign } = await admin
     .from('campaigns')
     .select('id, name, status, visibility, organization_id, application_deadline')
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   if (campaign.visibility !== 'open') return NextResponse.json({ error: 'Esta campaña no está abierta a postulaciones' }, { status: 422 })
-  if (!['active', 'pending_influencers', 'draft'].includes(campaign.status)) {
+  if (!['active', 'pending_approval', 'draft'].includes(campaign.status)) {
     return NextResponse.json({ error: 'Esta campaña no acepta postulaciones en este momento' }, { status: 422 })
   }
   if (campaign.application_deadline && new Date(campaign.application_deadline) < new Date()) {

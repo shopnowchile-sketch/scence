@@ -169,7 +169,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }
 
       // Actualizar status de campaña a 'active' si estaba en draft/pending
-      if (['draft', 'pending_influencers'].includes(campaign.status ?? '')) {
+      if (['draft', 'pending_approval'].includes(campaign.status ?? '')) {
         await admin
           .from('campaigns')
           .update({ status: 'active', updated_at: new Date().toISOString() })

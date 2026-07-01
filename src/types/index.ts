@@ -119,6 +119,8 @@ export interface CampaignInfluencerDetail {
   fee: number | null
   currency?: string | null
   status: string | null
+  application_status?: string | null
+  origin?: string | null
   notes: string | null
   influencer: {
     id: string

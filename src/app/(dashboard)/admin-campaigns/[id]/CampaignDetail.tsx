@@ -434,7 +434,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
 
   const c = res.data as CampaignDetail
   const campaignInfluencers     = c.campaign_influencers ?? []
-  const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.status !== 'applied')
+  const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status !== 'pending')
   const campaignDeliverables = c.campaign_deliverables ?? []
   const selectedInfluencerCI = confirmedInfluencers.find(ci => ci.influencer?.id === selectedInfluencerId) ?? confirmedInfluencers[0] ?? null
   const selectedInfluencer = selectedInfluencerCI?.influencer ?? null
@@ -1015,15 +1015,17 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       {/* ── INFLUENCERS ─────────────────────────────────────────────────────── */}
       {tab === 'influencers' && (
         <div className="space-y-4">
-          {/* Pending applications */}
-          {campaignInfluencers.filter(ci => ci.status === 'applied').length > 0 && (
+          {/* Pending applications (fix 2026-07-01: filtraba por ci.status === 'applied',
+              un valor que el flujo real de postulación nunca setea — el campo correcto
+              es application_status. Ver src/lib/campaign-applications.ts) */}
+          {campaignInfluencers.filter(ci => ci.application_status === 'pending').length > 0 && (
             <div className="card p-4 border-amber-200 bg-amber-50">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                {campaignInfluencers.filter(ci => ci.status === 'applied').length} solicitud(es) pendiente(s)
+                {campaignInfluencers.filter(ci => ci.application_status === 'pending').length} solicitud(es) pendiente(s)
               </p>
               <div className="space-y-2">
-                {campaignInfluencers.filter(ci => ci.status === 'applied').map(ci => {
+                {campaignInfluencers.filter(ci => ci.application_status === 'pending').map(ci => {
                   const inf = ci.influencer
                   if (!inf) return null
                   return (
@@ -1052,11 +1054,13 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={async () => {
-                            await fetch(`/api/campaigns/${id}/influencers`, {
+                            const res = await fetch(`/api/campaigns/${id}/applications`, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ influencer_id: inf.id, status: 'active' }),
+                              body: JSON.stringify({ application_id: ci.id, action: 'accept' }),
                             })
+                            if (res.ok) toast.success(`Postulación de ${inf.display_name} aceptada — se le notificó por email`)
+                            else toast.error('Error al aceptar la postulación')
                             void refetch()
                           }}
                           className="text-xs font-bold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700"
@@ -1066,7 +1070,12 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         <button
                           onClick={async () => {
                             if (!confirm(`¿Rechazar la solicitud de ${inf.display_name}?`)) return
-                            await fetch(`/api/campaigns/${id}/influencers?influencer_id=${inf.id}`, { method: 'DELETE' })
+                            const res = await fetch(`/api/campaigns/${id}/applications`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ application_id: ci.id, action: 'reject' }),
+                            })
+                            if (!res.ok) toast.error('Error al rechazar la postulación')
                             void refetch()
                           }}
                           className="text-xs font-bold bg-white text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50"

@@ -5,7 +5,7 @@ import { useIsAdmin, type UserRole } from '@/hooks/useIsAdmin'
 import {
   LayoutDashboard, Target, Users, CalendarDays,
   CreditCard, Banknote, FileText, BarChart3,
-  Building2, Link2, Bug, CalendarCheck, Trophy } from 'lucide-react'
+  Building2, Link2, Bug, CalendarCheck, Trophy, Contact } from 'lucide-react'
 import { AppSidebar, type NavSection } from './AppSidebar'
 
 export function Sidebar() {
@@ -55,6 +55,7 @@ export function Sidebar() {
     {
       title: 'Crecimiento',
       items: [
+        ...(isAdmin ? [{ href: '/admin-crm', label: 'CRM', icon: Contact }] : []),
         { href: '/admin-affiliates', label: 'Afiliados', icon: Link2 },
         { href: '/admin-events',     label: 'Eventos',   icon: CalendarCheck },
         { href: '/admin-support',    label: 'Soporte',   icon: Bug },

@@ -58,6 +58,50 @@ export function influencerInviteEmail({
 </html>`
 }
 
+// CRM — email de presentación a prospectos (leads) ofreciendo primera campaña gratis.
+export function crmIntroEmail({
+  contactName,
+  companyName,
+}: {
+  contactName: string
+  companyName: string
+}): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Conoce Scence</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:32px 0">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+    <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:32px;text-align:center">
+      <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 16px">
+        <span style="color:#fff;font-size:18px;font-weight:800;letter-spacing:-0.5px">SCENCE</span>
+        <span style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:600;background:rgba(255,255,255,0.15);border-radius:4px;padding:2px 6px">BETA</span>
+      </div>
+    </div>
+    <div style="padding:32px">
+      <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${contactName} 👋</h1>
+      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 20px">
+        Somos <strong style="color:#111827">Scence</strong>, la plataforma para que marcas como
+        <strong style="color:#111827">${companyName}</strong> gestionen campañas con influencers de principio a fin:
+        búsqueda, negociación, entregables y pagos, todo en un solo lugar.
+      </p>
+      <div style="background:#f3f4f6;border-radius:10px;padding:16px;margin-bottom:24px;font-size:14px;color:#374151;line-height:1.6">
+        🎁 Tu primera campaña es <strong>gratis</strong> — sin costo de setup, para que pruebes cómo funciona.
+      </div>
+      <a href="https://scence-app.vercel.app/register" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px;margin-bottom:24px">
+        Crear mi primera campaña gratis →
+      </a>
+      <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:0">
+        Si no te interesa, puedes ignorar este correo — no volveremos a escribirte por este medio.
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
+      <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence · Plataforma de gestión de campañas</p>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
 export function bookingConfirmEmail({
   recipientName,
   campaignName,

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
   ChevronLeft, Loader2, RefreshCw, AlertTriangle, Trash2, GitMerge,
-  Users, Instagram, Mail, ShieldCheck, Database, Zap,
+  Users, Instagram, Mail, ShieldCheck, Database, Zap, Send,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
@@ -141,23 +141,27 @@ export function DataQualityClient() {
     } finally { setBusy(null) }
   }
 
-  async function handleDeleteNoInstagram() {
+  // Antes eliminaba permanentemente a las influencers sin Instagram. Pri pidió
+  // cambiarlo: en vez de borrar, mandarles un email pidiendo que completen
+  // Instagram y/o dirección en su perfil (la mayoría sí tiene cuenta y puede
+  // hacerlo desde /inf-profile). El endpoint de borrado sigue existiendo por
+  // si se necesita en otro flujo, pero este botón ya no lo llama.
+  async function handleNotifyNoInstagram() {
     setBusy('no-instagram')
     try {
-      const dry = await fetch('/api/influencers/delete-no-instagram', {
+      const dry = await fetch('/api/influencers/notify-no-instagram', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: true }),
       }).then(r => r.json())
       if (!dry.count) { toast.info('No hay influencers sin Instagram'); setBusy(null); return }
-      if (!confirm(`Eliminar permanentemente ${dry.count} influencer(s) sin Instagram. Esta acción no se puede deshacer. ¿Continuar?`)) { setBusy(null); return }
-      const r = await fetch('/api/influencers/delete-no-instagram', {
+      if (!confirm(`Enviar email a ${dry.count} influencer(s) pidiendo que actualicen Instagram/dirección en su perfil. ¿Continuar?`)) { setBusy(null); return }
+      const r = await fetch('/api/influencers/notify-no-instagram', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error)
-      toast.success(`${j.deleted} influencer(s) sin Instagram eliminados`)
-      await load()
+      toast.success(`Email enviado a ${j.sent} influencer(s)${j.failed ? ` · ${j.failed} fallaron` : ''}`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally { setBusy(null) }
@@ -284,20 +288,20 @@ export function DataQualityClient() {
             </div>
           )}
 
-          {/* Acción: eliminar sin Instagram */}
+          {/* Acción: pedir a las influencers sin Instagram que actualicen su perfil */}
           {isAdmin && report && report.withoutInstagram > 0 && (
             <div className="card p-5 flex items-center justify-between border-amber-200 bg-amber-50/40">
               <div className="flex items-center gap-3">
                 <Instagram className="h-5 w-5 text-amber-500" />
                 <div>
                   <p className="text-sm font-semibold text-gray-900">{report.withoutInstagram} influencer(s) sin Instagram</p>
-                  <p className="text-xs text-gray-500">Instagram es el identificador obligatorio. Elimínalos antes de importar.</p>
+                  <p className="text-xs text-gray-500">Instagram es el identificador obligatorio. Pídeles que actualicen su perfil y dirección.</p>
                 </div>
               </div>
-              <button onClick={handleDeleteNoInstagram} disabled={busy === 'no-instagram'}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
-                {busy === 'no-instagram' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Eliminar sin Instagram
+              <button onClick={handleNotifyNoInstagram} disabled={busy === 'no-instagram'}
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
+                {busy === 'no-instagram' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Enviar email para actualizar perfil
               </button>
             </div>
           )}

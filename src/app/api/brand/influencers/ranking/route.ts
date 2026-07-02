@@ -76,6 +76,7 @@ export async function GET(req: NextRequest) {
       .from('campaign_influencers')
       .select('id, influencer_id, status, campaign_id, campaign:campaigns(name)')
       .in('campaign_id', campaignIds)
+      .limit(5000)
 
     if (ciErr) {
       return NextResponse.json({ error: ciErr.message }, { status: 500 })
@@ -134,6 +135,7 @@ export async function GET(req: NextRequest) {
       )
     `)
     .in('id', influencerIds)
+    .limit(5000)
 
   if (infErr) {
     return NextResponse.json({ error: infErr.message }, { status: 500 })
@@ -146,6 +148,7 @@ export async function GET(req: NextRequest) {
       .from('campaign_deliverables')
       .select('influencer_id, campaign_influencer_id, status, campaign_id')
       .in('campaign_id', campaignIds)
+      .limit(10000)
 
     if (delErr) {
       return NextResponse.json({ error: delErr.message }, { status: 500 })

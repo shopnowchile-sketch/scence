@@ -38,14 +38,17 @@ export async function GET(req: NextRequest) {
   // FIX (2026-07-02): el cap estaba en 500 — la org real tiene 1452 influencers,
   // así que ~950 nunca aparecían en /admin-influencers/ranking ni en "Agregar
   // influencer" (AddInfluencerClient, que pide limit=500 a este mismo endpoint).
-  // Se sube a 5000 (bien por sobre el roster actual). El fetch de influencers/
-  // campaign_influencers/deliverables ya traía todo sin límite — este cap solo
-  // recortaba la RESPUESTA final, no la query — así que subirlo no agrega carga
-  // extra a la base de datos.
+  // Se sube a 5000 (bien por sobre el roster actual).
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 5000)
 
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
+  // FIX (2026-07-02, UAT en vivo): el fix anterior subió el cap de RESPUESTA
+  // (500→5000) pero ninguna de estas 3 queries tenía `.limit()` explícito —
+  // PostgREST corta en su default de 1000 filas por query, así que con 1452
+  // influencers reales el fetch ya venía corto ANTES de sortear/cortar en JS
+  // (confirmado: "Mostrando 1000 influencers" en vez de 1452). Se agrega
+  // `.limit(5000)` a las 3 queries, mismo patrón que el fix de /api/dashboard.
   let infQuery = admin
     .from('influencers')
     .select(`
@@ -66,6 +69,7 @@ export async function GET(req: NextRequest) {
         is_primary
       )
     `)
+    .limit(5000)
 
   if (orgId) infQuery = infQuery.eq('organization_id', orgId)
 
@@ -79,6 +83,7 @@ export async function GET(req: NextRequest) {
   const { data: campaignInfluencersRaw, error: ciErr } = await admin
     .from('campaign_influencers')
     .select('id, influencer_id, status, campaign:campaigns(name)')
+    .limit(5000)
 
   if (ciErr) {
     console.error('[GET /api/influencers/ranking] campaign_influencers:', ciErr)
@@ -95,6 +100,7 @@ export async function GET(req: NextRequest) {
   const { data: deliverables, error: delErr } = await admin
     .from('campaign_deliverables')
     .select('influencer_id, campaign_influencer_id, status')
+    .limit(10000)
 
   if (delErr) {
     console.error('[GET /api/influencers/ranking] deliverables:', delErr)

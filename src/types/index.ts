@@ -312,7 +312,7 @@ export interface InfluencerFilters {
   // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
   // Columnas que sí ordenan de verdad server-side: display_name, rating, commune,
   // city, country, is_verified, created_at, updated_at.
-  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune'
+  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active'
   sortOrder: 'asc' | 'desc'
 }
 

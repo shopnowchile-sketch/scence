@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3 } from 'lucide-react'
+import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { Influencer, InfluencerFilters } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
@@ -54,6 +55,20 @@ export function InfluencerTable({
 }: Props) {
   const allSelected = selectable && influencers.length > 0 && influencers.every(i => selectedIds?.has(i.id))
   const [showColumns, setShowColumns] = useState(false)
+  const [invitingId, setInvitingId] = useState<string | null>(null)
+
+  async function handleInvite(inf: Influencer) {
+    setInvitingId(inf.id)
+    try {
+      const res = await fetch(`/api/influencers/${inf.id}/invite`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al invitar')
+      toast.success(json.message ?? 'Invitación enviada')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al invitar')
+    }
+    setInvitingId(null)
+  }
   const [visible, setVisible] = useLocalStorageState('scence:admin:influencer-table:columns', {
     platforms: true,
     categories: true,
@@ -136,7 +151,7 @@ export function InfluencerTable({
               {visible.engagement && <TH col="engagement_rate" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Engagement</TH>}
               {visible.rate && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Rate base</th>}
               {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Rating</TH>}
-              {visible.status && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Estado</th>}
+              {visible.status && <TH col="is_active" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Estado</TH>}
               {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Comuna</TH>}
               {visible.lastConnection && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Última conexión</th>}
               <th className="px-4 py-3 bg-gray-50" />
@@ -316,6 +331,16 @@ export function InfluencerTable({
                   {/* Acciones */}
                   <td className="px-4 py-3">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      {portal === 'admin' && !inf.last_sign_in_at && inf.email && (
+                        <button
+                          onClick={() => handleInvite(inf)}
+                          disabled={invitingId === inf.id}
+                          className="p-1.5 rounded-md hover:bg-violet-50 text-gray-400 hover:text-violet-600 transition-colors disabled:opacity-50"
+                          title={inf.user_id ? 'Reenviar invitación al portal' : 'Invitar al portal de influencer'}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       {portal === 'admin' && (
                         <Link
                           href={`/admin-influencers/${inf.id}`}

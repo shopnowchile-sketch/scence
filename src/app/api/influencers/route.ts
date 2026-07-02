@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const isActive   = searchParams.get('is_active')
   // Only allow columns that exist on the influencers table; derived fields like
   // 'followers' live in the join and cannot be used in .order() directly.
-  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'country', 'city', 'commune'] as const
+  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const rawSort    = searchParams.get('sort_by') ?? 'created_at'
   const sortBy     = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
   const sortDir    = searchParams.get('sort_dir') === 'asc' ? true : false

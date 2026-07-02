@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit    = Math.max(1, parseInt(searchParams.get('limit') ?? '48', 10))
 
-  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'country', 'city', 'commune'] as const
+  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
   // 1) campañas donde la marca es principal

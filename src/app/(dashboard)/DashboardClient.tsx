@@ -645,7 +645,11 @@ export function DashboardClient() {
             {computed.liveInfluencers.length ? (
               <div className="space-y-3">
                 {computed.liveInfluencers.map((person) => (
-                  <div key={person.id} className="flex items-center justify-between gap-4">
+                  <Link
+                    key={person.id}
+                    href={`/admin-influencers/${person.id}`}
+                    className="flex items-center justify-between gap-4 rounded-lg -mx-2 px-2 py-1 hover:bg-gray-50 transition-colors"
+                  >
                     <div className="flex items-center gap-3">
                       <span className="h-2 w-2 rounded-full bg-emerald-500" />
                       <div>
@@ -657,7 +661,7 @@ export function DashboardClient() {
                       <span>{person.time}</span>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (

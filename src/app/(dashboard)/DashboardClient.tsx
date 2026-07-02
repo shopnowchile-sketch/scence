@@ -536,9 +536,18 @@ export function DashboardClient() {
       time: 'hace instantes',
     }))
 
-    const influencersEntered =
-      deepNumber(state.dashboard, ['influencersEntered', 'influencersIngresaron', 'influencerPortalEntered'], 0) ||
-      state.influencers.filter(hasEnteredPortal).length
+    // FIX (2026-07-02): antes se derivaba del array capado /api/influencers?limit=100
+    // (con 1452 influencers reales, undercounteaba brutalmente — "35/99" en vez del
+    // roster real). Ahora /api/dashboard trae influencer_portal.{entered,pending}
+    // calculado server-side contra TODA la org, sin límite de fila. Se usa -1 como
+    // sentinel (no `|| fallback`) porque 0 es un valor real válido (org sin nadie
+    // conectado aún) y `0 || x` caería al fallback incorrectamente.
+    const influencersEnteredReal = deepNumber(state.dashboard, ['entered'], -1)
+    const influencersPendingReal = deepNumber(state.dashboard, ['pending'], -1)
+
+    const influencersEntered = influencersEnteredReal >= 0
+      ? influencersEnteredReal
+      : state.influencers.filter(hasEnteredPortal).length
 
     const influencersWithAccess =
       state.influencers.filter(hasPortalAccess).length || influencersTotal
@@ -571,7 +580,9 @@ export function DashboardClient() {
       marginPercent,
       liveInfluencers,
       influencersEntered,
-      influencersPending: Math.max(0, influencersWithAccess - influencersEntered),
+      influencersPending: influencersPendingReal >= 0
+        ? influencersPendingReal
+        : Math.max(0, influencersWithAccess - influencersEntered),
       brandsEntered,
       brandsPending: Math.max(0, brandsWithAccess - brandsEntered),
       campaignsForList,

@@ -2,7 +2,7 @@
 
 **Plataforma de gestión de campañas de influencer marketing**
 
-**Versión:** 2.1 | **Fecha de emisión:** 2026-07-02
+**Versión:** 2.2 | **Fecha de emisión:** 2026-07-02
 
 ---
 
@@ -34,6 +34,7 @@
 | 2.1 (permisos + notificaciones + escala) | Sesión larga a pedido de Pri: notificación por email al asignar directo a campaña (nueva `campaignAssignedEmail`); hallazgo de seguridad real corregido con aprobación explícita — panel de postulaciones pendientes de `CampaignDetail.tsx` no distinguía Admin/Marca y usaba siempre el endpoint admin (afecta solo a "Scence SpA", única org con >1 marca); mismo panel ahora muestra ciudad/país + Instagram clickeable. Filtro de comuna + header ordenable en la lista de Influencers (ya existía en Ranking). "Eliminar sin Instagram" en Data Quality reemplazado por email de actualización de perfil (no destructivo). Corregido bug crítico de escala: cap de 500/150 en los 2 endpoints de ranking ocultaba la mayoría del roster (1452 influencers reales) al agregar a campaña — subido a 5000. Construido heartbeat real para "Live influencers" (siempre daba 0: bug de nombre de campo + columna `last_seen_at` sin ningún write-path). Corregidos los 3 KPIs financieros del dashboard (siempre `$0`/`0%` por nombres de campo incorrectos contra la respuesta real de `/api/dashboard`), retirando además un concepto inexistente en el schema ("Costos recibidos" / `invoices.direction`, columna que no existe) | 2026-07-02 |
 | 2.1 (rediseño dashboard) | Pri pidió limpiar visualmente el dashboard admin ("los números están malos y la interfaz está fea"). Los números se corrigieron en la entrada anterior; para el diseño se preguntó alcance explícito y Pri lo acotó a: reordenar/agrupar tarjetas KPI, y rediseñar Live influencers + adopción de portal (sin overhaul general, sin mockups previos). Ambos puntos construidos — ver Anexo A | 2026-07-02 |
 | 2.1 (rediseño inf-dash) | Pri pidió simplificar la pantalla principal del portal Influencer a solo campañas + su estado (activa/postulada), dejando tareas/eventos/pagos en sus tabs. Se mostró mockup antes de construir (aprobado). Auditoría previa detectó que `/inf-dash` es la vista realmente viva (el archivo `(influencer)/dashboard/page.tsx` está muerto — el middleware ya redirige `/dashboard`→`/inf-dash` para influencers — no bloqueaba nada, solo se corrigió `LoginForm.tsx` que aún apuntaba ahí). Ver Anexo A para el detalle de qué se movió a qué tab | 2026-07-02 |
+| 2.2 (portal marca — tabs + sidebar + plan) | **Reestructuración del portal Marca:** (1) `brand-settings/*` ahora tiene tabs reales, cada uno con su componente independiente (fetch y save propios): `BrandOrgForm` (organización/contacto → `/brand-settings/organization`), `BrandAddressForm` (direcciones → `/brand-settings/locations`), `BrandMembersSection` (usuarios con acceso → `/brand-settings/users`). "Usuarios con acceso" fue removido del perfil all-in-one. (2) **Plan/Suscripción SaaS:** nuevo tab `Plan` en `brand-settings/layout.tsx`, nuevo componente `BrandPlanSettings` (`src/components/plan/BrandPlanSettings.tsx`) con UI de 3 tiers (Basic 99k/Growth 259k/Pro 699k CLP, sin Stripe en esta fase — CTAs a `mailto:`). Página `/brand-settings/plan`. `PlanUpgradeWall` apunta ahora a `/brand-settings/plan` (no a `/brand-billing`). (3) `/brand-billing` revertido a placeholder operativo ("Facturación próximamente") — ya NO es destino de suscripción. Separación explícita: Plan ≠ Billing ≠ Payroll. (4) `AppSidebar.tsx` (brand): link "Mi perfil" corregido de `/brand-profile` → `/brand-settings/profile`; active state corregido de `pathname === '/brand-profile'` → `pathname.startsWith('/brand-settings')`. (5) `InfluencersClient` (brand portal): header CTA cambiado de "Agregar influencer" → "Ir a mis campañas" (`/brand-campaigns`); empty state instructivo agregado cuando roster vacío. (6) `/brand-profile` conservado como fallback legacy (no eliminado), pero ya no es la entrada principal desde el sidebar. (7) **Nuevo documento de arquitectura:** `docs/BRAND_PORTAL_STRUCTURE.md` — regla permanente: rutas oficiales, sidebar rule, separación Plan/Billing/Payroll, flujo de influencers, plan limits, checklist de modificación, comando de verificación. No tocar Stripe, Transbank, DB, Payroll en esta fase | 2026-07-02 |
 
 ### Sign-off
 
@@ -397,40 +398,70 @@ Lista de postulaciones (campañas open) e invitaciones enviadas, con acciones Ac
 | Email / teléfono / tarifas históricas con otras marcas | ❌ (BR-06) |
 | Botón "Data Quality" | ❌ (ocultado en v2.1 — bug B-08, ver Anexo A) |
 | Nombre del influencer clickable a ficha admin | ❌ (ocultado en v2.1 — bug B-01, no hay ficha propia de marca aún — gap G-09) |
+| Botón "Agregar influencer" | ❌ — la marca no crea influencers globales (solo Admin). Reemplazado por CTA "Ir a mis campañas" → `/brand-campaigns` (v2.2) |
+
+**Empty state (v2.2):** cuando el roster está vacío, se muestra estado instructivo: "Aún no tienes influencers en tu roster — para sumar influencers, invítalas desde una campaña activa" + botón "Ir a mis campañas".
+
+**Regla arquitectural (v2.2):** la marca invita influencers existentes a sus campañas desde `/brand-campaigns/[id]/invite` — no desde este catálogo. Búsqueda en catálogo global pendiente de decisión de privacidad/permisos (ver `docs/BRAND_PORTAL_STRUCTURE.md`).
 
 #### MK-08 Ranking de Influencers
 **Navegación:** `brand-influencers/ranking` — solo relacionados a sus campañas.
 
-#### MK-09 Perfil de Marca
+#### MK-09 Perfil de Marca (legacy)
 ![Perfil Marca](mockups/brand-profile.png)
 
 **Navegación:** `brand-profile` · **Tabla:** `brands`
+
+> **v2.2 — Este es el fallback all-in-one.** Ya no es la entrada principal desde el sidebar (que ahora apunta a `/brand-settings/profile`). Conservado para no romper accesos directos. Los campos se acceden individualmente desde los tabs de `brand-settings/*`.
 
 | Campo | Fuente | Para qué sirve |
 |---|---|---|
 | Nombre empresa / RUT / Industria | `brands.name, tax_id, industry` | Ficha comercial editable por la propia marca |
 | Sitio web / Instagram | `brands.website, instagram_handle` | Presencia digital |
 | Dirección principal | `brands.address_*` | Facturación/logística — privado, no visible a otras marcas |
+| Usuarios con acceso | `members_list` | **Movido a `/brand-settings/users` en v2.2** — ya no aparece aquí |
 
 #### MK-10 Configuración
-**Navegación:** `brand-settings/*` — mismo patrón que Admin (Mi perfil, Organización, Usuarios 🔜, Lugares).
+**Navegación:** `brand-settings/*` · **Layout compartido:** `src/app/(brand)/brand-settings/layout.tsx`
+
+**v2.2 — Tabs reales con componente independiente cada uno:**
+
+| Tab | Ruta | Componente | Contenido |
+|---|---|---|---|
+| Mi perfil | `/brand-settings/profile` | re-export de `admin-settings/profile` | Perfil personal / auth del usuario |
+| Organización | `/brand-settings/organization` | `BrandOrgForm` | Empresa, RUT, industria, web, contacto |
+| Plan | `/brand-settings/plan` | `BrandPlanSettings` | Suscripción SaaS a SCENCE (Basic/Growth/Pro) |
+| Usuarios | `/brand-settings/users` | `BrandMembersSection` | Equipo con acceso al portal |
+| Lugares | `/brand-settings/locations` | `BrandAddressForm` | Dirección principal y secundaria |
+| Notificaciones | — | — | 🔜 soon |
+| Seguridad | — | — | 🔜 soon |
+
+Cada componente tiene su propio fetch desde `/api/brand/me` o `/api/brand/members` y su propio botón de guardado. **Regla:** cada tab renderiza SOLO su sección (sin duplicar datos de otros tabs).
 
 #### MK-11 Soporte
 **Navegación:** `brand-support` — solo tickets propios.
 
-#### MK-12 Billing (Marca) — Planes de suscripción
-**Navegación:** `brand-billing` · **API:** `GET /api/brand/billing`, `POST /api/stripe/checkout`, `POST /api/stripe/portal` · **Tablas:** `subscription_plans`, `subscriptions`
+#### MK-12 Billing (Marca) — Módulos separados
 
-Construido 2026-07-01 (antes marcado "soon"; antes de eso, 404 real — bug B-04). 3 planes estilo "Montu": Starter ($59.990 CLP/mes), Plus ($119.990 CLP/mes), Enterprise (desde $249.990 CLP/mes + IVA, sin checkout — "Hablar con ventas").
+> **v2.2 — Separación arquitectural: Plan ≠ Billing ≠ Payroll**
 
-| Campo | Fuente | Para qué sirve |
-|---|---|---|
-| Cards de planes (nombre, precio, features, límites) | `subscription_plans` (activos) | Comparación de planes |
-| Plan actual + estado + próxima renovación | `subscriptions` join `subscription_plans` | Estado de la suscripción de la marca |
-| Contratar (Starter/Plus) | `POST /api/stripe/checkout` → Stripe Checkout | Alta de suscripción |
-| Gestionar suscripción | `POST /api/stripe/portal` → Stripe Customer Portal | Cambiar método de pago, cancelar |
+**MK-12a — Plan / Suscripción SaaS**
+**Navegación:** `/brand-settings/plan` · **Componente:** `BrandPlanSettings` (`src/components/plan/BrandPlanSettings.tsx`) · **API:** `GET /api/brand/billing` · **Tablas:** `subscription_plans`, `subscriptions`
 
-**Estado real de la pasarela de pago:** el código está completo y es plan-aware (`checkout`/`webhook`/`portal` leen `subscription_plans.stripe_price_id_monthly`), pero el cobro real no funciona hasta que Pri: (1) cree 2 Stripe Prices recurrentes reales (Starter/Plus) y pegue sus IDs en `subscription_plans.stripe_price_id_monthly`, (2) agregue `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` a Vercel, (3) registre el endpoint de webhook en su dashboard de Stripe. Mientras tanto, "Contratar" devuelve un error controlado (422) en vez de fallar en silencio.
+Construido 2026-07-02. 3 tiers internos: Basic (99.000 CLP/mes), Growth (259.000 CLP/mes), Pro (699.000 CLP/mes). Sin Stripe en esta fase — los botones de "Contratar" disparan un `mailto:` a ventas. Plan efectivo resuelto por `resolveBrandPlan()` en `src/lib/plan-limits.ts` (lógica: `subscriptions` activa/trialing → `organizations.subscription_plan` como fallback).
+
+| Plan | Campañas activas | Influencers roster | Campañas open |
+|---|---|---|---|
+| Basic | 1 | 3 | ❌ |
+| Growth | 5 | 25 | ❌ |
+| Pro | ilimitadas | ilimitados | ✅ |
+
+`PlanUpgradeWall` (gating interno) apunta al CTA `/brand-settings/plan`.
+
+**MK-12b — Billing operativo**
+**Navegación:** `/brand-billing` — placeholder "Facturación próximamente". Historial de cobros y documentos tributarios entre Marca y SCENCE. **No implementado aún.** No confundir con Plan/Suscripción (MK-12a) ni con Payroll (módulo separado Admin).
+
+**Regla:** No tocar Stripe, Transbank, ni billing real hasta fase habilitada explícitamente por Pri.
 
 #### MK-13 Marcas colaboradoras — 🔜 pendiente
 **Navegación:** `brand-brands` — marcado "soon" en v2.1 (antes 404 real — bug B-05). Requiere decisión de producto: alcance de "solo nombre" de otras marcas por campaña compartida (BR-06).
@@ -590,7 +621,7 @@ SCENCE no usa temas visuales sobre planos (no aplica, a diferencia de un sistema
 | INT-01 | Google Calendar (Service Account) | Sincroniza `bookings` con eventos de calendario para la agenda operativa de Admin. | Entrada/Salida |
 | INT-02 | Apify (Instagram Sync) | Actualiza followers/engagement de `influencer_social_profiles` bajo demanda desde Data Quality. | Entrada |
 | INT-03 | Resend | Envío de emails transaccionales (ver §9). | Salida |
-| INT-04 | Stripe | Checkout/Webhook/Portal plan-aware, conectados a `subscription_plans`/`subscriptions` y a la UI real (`brand-billing`, MK-12). Cobro real pendiente de Price IDs y API keys de producción (ver MK-12). | Entrada/Salida |
+| INT-04 | Stripe | Checkout/Webhook/Portal plan-aware, conectados a `subscription_plans`/`subscriptions`. **v2.2:** UI de plan movida a `/brand-settings/plan` (MK-12a); `/brand-billing` es ahora solo el placeholder de billing operativo (MK-12b). Cobro real no habilitado en esta fase — botones de contratación disparan `mailto:` a ventas. | Entrada/Salida |
 | INT-05 | Supabase Auth | Autenticación y sesión; `user_metadata` determina el portal (`is_brand`, `is_influencer`). | Entrada/Salida |
 
 ---
@@ -667,6 +698,7 @@ Asunto implícito: invitación de marca a campaña. Incluye nombre del influence
 | Mockups de pantallas | 29 SVG reconstruidos de la auditoría en vivo | `docs/mockups/*.svg` |
 | Migraciones de base de datos | Definición real de tablas (con drift conocido — ver nota) | `supabase/migrations/*.sql` |
 | Middleware de rutas | Enforcement de roles por portal | `src/middleware.ts` |
+| Estructura portal Marca | Reglas permanentes: rutas oficiales, sidebar, separación Plan/Billing/Payroll, flujo influencers, plan limits, checklist pre-modificación. **Leer antes de tocar brand-settings, AppSidebar (brand) o BrandPlanSettings.** | `docs/BRAND_PORTAL_STRUCTURE.md` (repo) |
 
 **Nota de integridad:** durante esta auditoría se confirmó que las migraciones en el repo **no reflejan el 100% del schema real** de producción (ej. la tabla `brands` no tiene migración de creación en el repo, pero existe y está en uso — fue creada fuera del flujo de migraciones versionadas). Se recomienda una tarea futura de reconciliación schema-real vs. migraciones. **Actualización 2026-07-01:** se encontró y documentó el mismo patrón en `influencers.commune` (usada en código desde antes, sin migración versionada) — migración `20260701000003_document_commune_column.sql` agregada, aditiva, sin cambio de datos.
 

@@ -138,14 +138,25 @@ export async function GET() {
   const margin    = revenueThisMonth - payrollThisMonth
   const marginPct = revenueThisMonth > 0 ? Math.round((margin / revenueThisMonth) * 100) : 0
 
-  // Cruce influencers de la org ↔ profiles.last_seen_at (ver comentario arriba)
+  // Cruce influencers de la org ↔ acceso + presencia
+  // "entered" = tiene cuenta de portal (user_id IS NOT NULL) — más correcto
+  //   semánticamente que last_seen_at, que depende de que el heartbeat haya
+  //   disparado DESPUÉS del deploy. Con el criterio anterior el KPI siempre
+  //   daba 0 para influencers que ingresaron antes del deploy del heartbeat.
+  // "live" = last_seen_at dentro de los últimos 10 min (heartbeat real).
   const orgInfluencers = influencersRes.data ?? []
-  const userIds = orgInfluencers.map(i => i.user_id).filter((id): id is string => Boolean(id))
+  const influencersEntered = orgInfluencers.filter(i => i.user_id).length
 
+  const userIds = orgInfluencers.map(i => i.user_id).filter((id): id is string => Boolean(id))
   let lastSeenMap: Record<string, string | null> = {}
   if (userIds.length > 0) {
-    const { data: profs } = await db.from('profiles').select('id, last_seen_at').in('id', userIds)
-    lastSeenMap = Object.fromEntries((profs ?? []).map(p => [p.id as string, p.last_seen_at as string | null]))
+    // Paginar la query de profiles para evitar URLs demasiado largas con
+    // muchos IDs en el .in(). Se usa fetchAllRows igual que en influencers.
+    const profsRes = await fetchAllRows(
+      (from, to) => db.from('profiles').select('id, last_seen_at').in('id', userIds).range(from, to),
+      { maxRows: 5000 }
+    )
+    lastSeenMap = Object.fromEntries((profsRes.data ?? []).map(p => [p.id as string, p.last_seen_at as string | null]))
   }
 
   const tenMinAgoMs = Date.now() - 10 * 60 * 1000
@@ -153,7 +164,6 @@ export async function GET() {
     ...i,
     last_seen_at: i.user_id ? lastSeenMap[i.user_id] ?? null : null,
   }))
-  const influencersEntered = influencersWithSeen.filter(i => i.last_seen_at).length
   const liveInfluencers = influencersWithSeen
     .filter(i => i.last_seen_at && new Date(i.last_seen_at).getTime() > tenMinAgoMs)
     .sort((a, b) => new Date(b.last_seen_at as string).getTime() - new Date(a.last_seen_at as string).getTime())

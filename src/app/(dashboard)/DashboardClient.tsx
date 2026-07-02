@@ -4,16 +4,13 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
-  ArrowDownRight,
   ArrowUpRight,
   BarChart3,
   Building2,
   CalendarDays,
-  DollarSign,
   ExternalLink,
   Loader2,
   RefreshCw,
-  TrendingUp,
   UserCheck,
   Users,
 } from 'lucide-react'
@@ -156,10 +153,6 @@ function formatCLP(value: number) {
     currency: 'CLP',
     maximumFractionDigits: 0,
   }).format(Math.round(value || 0))
-}
-
-function formatPercent(value: number) {
-  return `${Math.round(value || 0)}%`
 }
 
 function formatShortDate(value: unknown) {
@@ -634,33 +627,6 @@ export function DashboardClient() {
               title="Marcas registradas"
               subtitle="en el sistema"
               tone="gray"
-            />
-          </div>
-        </section>
-
-        <section className="space-y-2 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
-          <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Finanzas este mes</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <KpiCard
-              icon={<DollarSign className="h-5 w-5" />}
-              value={formatCLP(computed.revenue)}
-              title="Facturado este mes"
-              subtitle="facturas Marca → Scence (pagadas o enviadas)"
-              tone="green"
-            />
-            <KpiCard
-              icon={<ArrowDownRight className="h-5 w-5" />}
-              value={formatCLP(computed.payroll)}
-              title="Payroll pagado"
-              subtitle="Scence → influencers, este mes"
-              tone="red"
-            />
-            <KpiCard
-              icon={<TrendingUp className="h-5 w-5" />}
-              value={formatPercent(computed.marginPercent)}
-              title="Margen bruto"
-              subtitle={`${formatCLP(Math.max(0, computed.margin))} neto`}
-              tone="yellow"
             />
           </div>
         </section>

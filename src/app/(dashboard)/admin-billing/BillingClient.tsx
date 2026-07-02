@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Plus, FileText, DollarSign, CheckCircle2,
-  AlertCircle, Send, Eye, Ban,
+  AlertCircle, Send, Eye, Ban, ArrowDownRight,
   TrendingUp, Users, CreditCard, X,
   ChevronDown, Trash2,
 } from 'lucide-react'
@@ -475,6 +475,61 @@ function NewPayrollModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Finanzas este mes (movido acá desde el dashboard admin, pedido por Pri) ──
+function MonthFinanceCards() {
+  const [data, setData] = useState<{ revenue_month: number; payroll_month: number; margin: number; margin_pct: number } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/dashboard')
+      .then(res => res.json())
+      .then(json => setData(json?.kpis ?? null))
+      .catch(() => setData(null))
+  }, [])
+
+  if (!data) return null
+
+  return (
+    <div className="space-y-2">
+      <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Finanzas este mes</h2>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="card p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+              <DollarSign className="h-4 w-4 text-emerald-600" />
+            </div>
+            <div>
+              <div className="text-xl font-bold text-gray-900">{formatCurrency(data.revenue_month, 'CLP')}</div>
+              <div className="text-xs text-gray-400">Facturado este mes</div>
+            </div>
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+              <ArrowDownRight className="h-4 w-4 text-red-600" />
+            </div>
+            <div>
+              <div className="text-xl font-bold text-gray-900">{formatCurrency(data.payroll_month, 'CLP')}</div>
+              <div className="text-xs text-gray-400">Payroll pagado, este mes</div>
+            </div>
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="h-4 w-4 text-amber-600" />
+            </div>
+            <div>
+              <div className="text-xl font-bold text-gray-900">{Math.round(data.margin_pct || 0)}%</div>
+              <div className="text-xs text-gray-400">Margen bruto — {formatCurrency(Math.max(0, data.margin), 'CLP')} neto</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function BillingClient() {
   const [tab, setTab] = useState<'invoices' | 'payroll'>('invoices')
@@ -551,6 +606,7 @@ export function BillingClient() {
         </button>
       </div>
 
+      <MonthFinanceCards />
       <BillingKPIs invoices={invoices} payrolls={payrolls} />
 
       {/* Tabs */}

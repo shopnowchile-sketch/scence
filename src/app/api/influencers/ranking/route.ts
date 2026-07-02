@@ -35,7 +35,14 @@ export async function GET(req: NextRequest) {
   const category = searchParams.get('category') ?? ''
   const sortBy = (searchParams.get('sort_by') ?? 'followers') as RankingSortBy
   const sortDir = searchParams.get('sort_dir') === 'asc' ? 'asc' : 'desc'
-  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 500)
+  // FIX (2026-07-02): el cap estaba en 500 — la org real tiene 1452 influencers,
+  // así que ~950 nunca aparecían en /admin-influencers/ranking ni en "Agregar
+  // influencer" (AddInfluencerClient, que pide limit=500 a este mismo endpoint).
+  // Se sube a 5000 (bien por sobre el roster actual). El fetch de influencers/
+  // campaign_influencers/deliverables ya traía todo sin límite — este cap solo
+  // recortaba la RESPUESTA final, no la query — así que subirlo no agrega carga
+  // extra a la base de datos.
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 5000)
 
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 

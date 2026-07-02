@@ -17,7 +17,8 @@ export default function AdminInfluencersRankingPage() {
       setError(null)
 
       try {
-        const res = await fetch('/api/influencers/ranking?limit=150&sort_by=followers&sort_dir=desc')
+        // FIX: limit=150 dejaba fuera a la mayoría del roster (1452 influencers reales).
+        const res = await fetch('/api/influencers/ranking?limit=5000&sort_by=followers&sort_dir=desc')
         if (!res.ok) throw new Error('Error cargando ranking')
 
         const json = await res.json()

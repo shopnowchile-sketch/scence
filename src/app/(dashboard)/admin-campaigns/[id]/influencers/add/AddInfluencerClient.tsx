@@ -28,7 +28,9 @@ export function AddInfluencerClient({ campaignId }: Props) {
     setLoading(true)
     try {
       const [rankingRes, campaignInfRes] = await Promise.all([
-        fetch('/api/influencers/ranking?limit=500&sort_by=followers&sort_dir=desc'),
+        // FIX: limit=500 dejaba fuera a ~950 influencers (la org tiene 1452 reales,
+        // el cap del endpoint recortaba la respuesta). Sube a 5000.
+        fetch('/api/influencers/ranking?limit=5000&sort_by=followers&sort_dir=desc'),
         fetch(`/api/campaigns/${campaignId}/influencers`),
       ])
 

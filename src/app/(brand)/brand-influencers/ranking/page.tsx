@@ -17,7 +17,8 @@ export default function BrandInfluencersRankingPage() {
       setError(null)
 
       try {
-        const res = await fetch('/api/brand/influencers/ranking?limit=150&sort_by=followers&sort_dir=desc')
+        // FIX: mismo cap bajo que el admin — sube a 5000 (bien sobre el roster real).
+        const res = await fetch('/api/brand/influencers/ranking?limit=5000&sort_by=followers&sort_dir=desc')
         if (!res.ok) throw new Error('Error cargando ranking')
 
         const json = await res.json()

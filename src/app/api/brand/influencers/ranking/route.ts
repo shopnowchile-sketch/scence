@@ -42,7 +42,9 @@ export async function GET(req: NextRequest) {
   const category = searchParams.get('category') ?? ''
   const sortBy = (searchParams.get('sort_by') ?? 'followers') as RankingSortBy
   const sortDir = searchParams.get('sort_dir') === 'asc' ? 'asc' : 'desc'
-  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 500)
+  // Mismo fix que /api/influencers/ranking: cap subido de 500 a 5000, la org
+  // real tiene 1452 influencers y el cap recortaba la respuesta, no la query.
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 5000)
 
   const { data: primaryCampaigns, error: primaryErr } = await admin
     .from('campaigns')

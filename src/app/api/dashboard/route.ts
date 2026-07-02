@@ -33,6 +33,7 @@ export async function GET() {
 
   const [
     campaignsRes,
+    influencersCountRes,
     influencersRes,
     invoicesMonthRes,
     payrollMonthRes,
@@ -45,17 +46,25 @@ export async function GET() {
       .eq('organization_id', orgId)
       .not('status', 'in', '("canceled","completed")'),
 
-    // FIX (2026-07-02): antes solo se hacía un count(head:true). "Live
-    // influencers" y "Acceso al portal de influencers" en el dashboard se
-    // calculaban en el cliente a partir de /api/influencers?limit=100 — con
-    // 1452 influencers reales eso undercounteaba brutalmente (ej. "35/99"
-    // en vez del roster completo). Acá se trae id/user_id/display_name de
-    // TODA la org (sin límite, solo 3 columnas) para calcular el real
-    // ingreso al portal + quién está online ahora, cruzando con
-    // profiles.last_seen_at (mismo dato que ya usa /api/influencers).
+    // Conteo exacto real (sin cap de fila) — usado para el KPI "Influencers en roster"
+    db.from('influencers')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId),
+
+    // FIX (2026-07-02): antes "Live influencers" y "Acceso al portal de
+    // influencers" se calculaban en el cliente a partir de
+    // /api/influencers?limit=100 — con 1452 influencers reales eso
+    // undercounteaba brutalmente (ej. "35/99" en vez del roster completo).
+    // Acá se trae id/user_id/display_name de TODA la org para cruzar con
+    // profiles.last_seen_at. FIX #2 (mismo día): sin `.limit()` explícito,
+    // PostgREST corta en su default (1000 filas) — con esta org en 1452
+    // influencers, el fetch igual quedaba corto (confirmado en UAT: el KPI
+    // de arriba mostró "1000" en vez de 1452). Se sube el límite a 5000,
+    // mismo patrón ya usado en el fix del cap de ranking.
     db.from('influencers')
       .select('id, user_id, display_name')
-      .eq('organization_id', orgId),
+      .eq('organization_id', orgId)
+      .limit(5000),
 
     db.from('invoices')
       .select('total, currency')
@@ -147,10 +156,12 @@ export async function GET() {
     .slice(0, 10)
     .map(i => ({ id: i.id, name: i.display_name, last_seen_at: i.last_seen_at }))
 
+  const totalInfluencers = influencersCountRes.count ?? orgInfluencers.length
+
   return NextResponse.json({
     kpis: {
       active_campaigns:  campaignsRes.data?.length ?? 0,
-      total_influencers: orgInfluencers.length,
+      total_influencers: totalInfluencers,
       revenue_month:     revenueThisMonth,
       payroll_month:     payrollThisMonth,
       margin,
@@ -158,7 +169,7 @@ export async function GET() {
     },
     influencer_portal: {
       entered: influencersEntered,
-      pending: Math.max(0, orgInfluencers.length - influencersEntered),
+      pending: Math.max(0, totalInfluencers - influencersEntered),
     },
     live_influencers: liveInfluencers,
     pending_deliverables: pendingDeliverablesRes.data ?? [],

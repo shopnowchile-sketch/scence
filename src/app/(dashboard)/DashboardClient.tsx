@@ -178,11 +178,15 @@ function isRecentlyOnline(record: UnknownRecord) {
 
   if (explicit) return true
 
+  // FIX (2026-07-02): /api/influencers enriquece cada fila con last_sign_in_at
+  // (viene de profiles.last_seen_at, ver esa ruta) pero nunca se chequeaba esa
+  // key acá — "Live influencers" siempre daba 0 sin importar la actividad real.
   const raw =
     readText(record, ['last_seen_at']) ||
     readText(record, ['last_activity_at']) ||
     readText(record, ['portal_last_seen_at']) ||
-    readText(record, ['portal_logged_in_at'])
+    readText(record, ['portal_logged_in_at']) ||
+    readText(record, ['last_sign_in_at'])
 
   if (!raw) return false
 

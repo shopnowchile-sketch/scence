@@ -43,13 +43,28 @@ export function ResetPasswordForm() {
     setLoading(true)
     setError(null)
     const { error } = await supabase.auth.updateUser({ password })
-    setLoading(false)
     if (error) {
+      setLoading(false)
       setError(error.message)
       return
     }
+
+    // FIX: redirigir directo al portal correcto en vez de "/" (dejaba a la
+    // persona en el inicio en vez de mandarla a su dashboard). Mismo
+    // criterio de rol que middleware.ts (user_metadata.is_influencer /
+    // is_brand; sin esos flags es cuenta admin interna).
+    const { data: { user } } = await supabase.auth.getUser()
+    const destination = user?.user_metadata?.is_influencer
+      ? '/inf-dash'
+      : user?.user_metadata?.is_brand
+        ? '/brand-dash'
+        : user
+          ? '/admin-dash'
+          : '/login'
+
+    setLoading(false)
     setDone(true)
-    setTimeout(() => router.push('/'), 2500)
+    setTimeout(() => router.push(destination), 2000)
   }
 
   if (validSession === null) {

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { syncDeliverableTask } from '@/lib/influencer-tasks'
+import { getResend, FROM_EMAIL, campaignAssignedEmail } from '@/lib/resend'
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
 type Params = { params: { id: string } }
 
@@ -57,6 +60,15 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
+  // Detectar si ya existía (para no reenviar el email de asignación en un re-add)
+  const { data: existingCi } = await admin
+    .from('campaign_influencers')
+    .select('id')
+    .eq('campaign_id', params.id)
+    .eq('influencer_id', influencer_id as string)
+    .maybeSingle()
+  const isNewAssignment = !existingCi
+
   // Upsert to handle duplicate adds gracefully
   const { data, error } = await admin
     .from('campaign_influencers')
@@ -73,7 +85,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .select(`
       *,
       influencer:influencers (
-        id, display_name, avatar_url, city, country,
+        id, display_name, avatar_url, city, country, email,
         influencer_social_profiles (platform, username, followers, engagement_rate)
       )
     `)
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { data: campaign } = await admin
       .from('campaigns')
-      .select('organization_id, start_date, deliverable_templates')
+      .select('organization_id, start_date, deliverable_templates, name, type')
       .eq('id', params.id)
       .single()
 
@@ -159,6 +171,36 @@ export async function POST(request: NextRequest, { params }: Params) {
   } catch (e) {
     // Non-fatal
     console.error('[auto-tasks/deliverables] failed:', e)
+  }
+
+  // ── Notificar por email a la influencer de la asignación directa (no bloqueante) ──
+  // Antes este flujo (a diferencia de aprobar una postulación, ver campaign-applications.ts)
+  // no enviaba ningún email — la influencer solo se enteraba si entraba a mirar el dashboard.
+  try {
+    const inf = (data as { influencer?: { display_name?: string | null; email?: string | null } | null }).influencer
+    const { data: camp } = await admin
+      .from('campaigns')
+      .select('name, type')
+      .eq('id', params.id)
+      .single()
+
+    if (isNewAssignment && inf?.email && camp?.name) {
+      const { error: emailErr } = await getResend().emails.send({
+        from: FROM_EMAIL,
+        to: inf.email,
+        subject: `Fuiste asignada a la campaña "${camp.name}"`,
+        html: campaignAssignedEmail({
+          influencerName: inf.display_name ?? 'Influencer',
+          campaignName:   camp.name,
+          campaignType:   camp.type,
+          campaignUrl:    `${APP_URL}/inf-campaign/${params.id}`,
+        }),
+      })
+      // Resend no lanza excepción en errores de API — hay que revisar `error`.
+      if (emailErr) console.error('[POST /api/campaigns/[id]/influencers] Resend devolvió error:', emailErr)
+    }
+  } catch (emailErr) {
+    console.error('[POST /api/campaigns/[id]/influencers] email notification failed (non-fatal):', emailErr)
   }
 
   return NextResponse.json({ data }, { status: 201 })

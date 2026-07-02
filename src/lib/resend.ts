@@ -224,6 +224,42 @@ export function campaignOpenAvailableEmail({
 </html>`
 }
 
+export function campaignAssignedEmail({
+  influencerName,
+  campaignName,
+  campaignType,
+  campaignUrl,
+}: {
+  influencerName: string
+  campaignName: string
+  campaignType?: string | null
+  campaignUrl: string
+}): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Nueva campaña asignada</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:32px 0">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+    <div style="background:linear-gradient(135deg,#059669,#10b981);padding:32px;text-align:center">
+      <div style="font-size:40px">🎬</div>
+    </div>
+    <div style="padding:32px">
+      <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">¡Felicidades, ${influencerName}!</h1>
+      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
+        Fuiste asignada a la campaña <strong style="color:#111827">${campaignName}</strong>${campaignType ? ` (${campaignType.replace(/_/g, ' ')})` : ''}. Ya puedes revisar los entregables y el brief.
+      </p>
+      <a href="${campaignUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px">
+        Ver campaña →
+      </a>
+    </div>
+    <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
+      <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence</p>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
 export function deliverableStatusEmail({
   influencerName,
   deliverableTitle,

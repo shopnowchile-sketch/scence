@@ -2,7 +2,10 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useForm, useFieldArray, Controller } from 'react-hook-form'
+import {
+  useForm, useFieldArray, Controller,
+  type Control, type UseFormRegister, type UseFormSetValue, type FieldErrors, type FieldArrayWithId,
+} from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
@@ -152,6 +155,344 @@ function TagInput({ value = [], onChange, placeholder }: { value?: string[]; onC
   )
 }
 
+// ── Step 1 — Datos personales ────────────────────────────────────────────────
+// FIX (2026-07-02): antes Step1..Step4 estaban definidos DENTRO de
+// NewInfluencerForm. Como el form usa watch() sin argumentos, cada tecla
+// re-renderiza el form completo y redefine esas funciones con una identidad
+// nueva -> React las trataba como un componente distinto y desmontaba/montaba
+// todo el bloque en cada tecla, botando el foco del input ("letra, click,
+// letra, click"). Se movieron a nivel de módulo (identidad estable) recibiendo
+// las props que necesitan. Mismo markup y lógica, sin tocar el schema ni el submit.
+type Step1Props = {
+  register: UseFormRegister<FormValues>
+  control: Control<FormValues>
+  setValue: UseFormSetValue<FormValues>
+  errors: FieldErrors<FormValues>
+}
+
+function Step1({ register, control, setValue, errors }: Step1Props) {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Nombre artístico / display name <span className="text-red-500">*</span>
+          </label>
+          <input {...register('display_name')} className="input-base w-full" placeholder="Valentina Reyes" />
+          {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre real</label>
+          <input {...register('first_name')} className="input-base w-full" placeholder="Valentina" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Apellido</label>
+          <input {...register('last_name')} className="input-base w-full" placeholder="Reyes" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+          <input {...register('email')} type="email" className="input-base w-full" placeholder="vale@talent.mx" />
+          {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Teléfono</label>
+          <input {...register('phone')} className="input-base w-full" placeholder="+52 55 0000 0000" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Bio</label>
+        <textarea {...register('bio')} rows={3} className="input-base w-full resize-none"
+          placeholder="Breve descripción del influencer…" />
+      </div>
+
+      {/* Location */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Ciudad</label>
+          <input {...register('city')} className="input-base w-full" placeholder="Ciudad de México" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">País</label>
+          <select {...register('country')} className="input-base w-full">
+            <option value="">Seleccionar…</option>
+            {COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección (Google Maps)</label>
+          <Controller
+            control={control}
+            name="address"
+            render={({ field }) => (
+              <AddressAutocomplete
+                value={field.value ?? ''}
+                onChange={field.onChange}
+                onSelect={(address, lat, lng) => {
+                  setValue('address', address)
+                  setValue('address_lat', lat)
+                  setValue('address_lng', lng)
+                }}
+              />
+            )}
+          />
+        </div>
+      </div>
+
+      {/* Categories */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-3">Categorías</label>
+        <Controller
+          control={control}
+          name="categories"
+          render={({ field }) => (
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_OPTIONS.map(cat => {
+                const active = field.value?.includes(cat)
+                return (
+                  <button key={cat} type="button"
+                    onClick={() => {
+                      const next = active
+                        ? (field.value ?? []).filter(v => v !== cat)
+                        : [...(field.value ?? []), cat]
+                      field.onChange(next)
+                    }}
+                    className={cn(
+                      'px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
+                      active ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    )}>
+                    {cat}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        />
+      </div>
+
+      {/* Tags */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Tags internos <span className="text-gray-400 text-xs">(opcional)</span>
+        </label>
+        <Controller control={control} name="tags"
+          render={({ field }) => <TagInput value={field.value} onChange={field.onChange} placeholder="nike, premium, cdmx" />}
+        />
+      </div>
+
+      {/* Verificado */}
+      <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
+        <Controller control={control} name="is_verified"
+          render={({ field }) => (
+            <button type="button" role="switch" aria-checked={field.value}
+              onClick={() => field.onChange(!field.value)}
+              className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0',
+                field.value ? 'bg-violet-600' : 'bg-gray-300')}>
+              <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                field.value ? 'translate-x-4' : 'translate-x-0.5')} />
+            </button>
+          )}
+        />
+        <div>
+          <div className="text-sm font-medium text-gray-800">Verificado</div>
+          <div className="text-xs text-gray-400">Marca el influencer como verificado y confiable</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Step 2 — Social profiles ─────────────────────────────────────────────────
+type Step2Props = {
+  register: UseFormRegister<FormValues>
+  control: Control<FormValues>
+  setValue: UseFormSetValue<FormValues>
+  errors: FieldErrors<FormValues>
+  profileFields: FieldArrayWithId<FormValues, 'social_profiles', 'id'>[]
+  socialProfiles: FormValues['social_profiles'] | undefined
+  removeProfile: (index: number) => void
+  addProfile: (value: FormValues['social_profiles'][number]) => void
+}
+
+function Step2({ register, control, setValue, errors, profileFields, socialProfiles, removeProfile, addProfile }: Step2Props) {
+  return (
+    <div className="space-y-5">
+      {profileFields.map((field, i) => (
+        <div key={field.id} className="card p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{PLATFORM_ICONS[socialProfiles?.[i]?.platform ?? 'instagram']}</span>
+              <span className="text-sm font-semibold text-gray-700">
+                {PLATFORM_LABELS[socialProfiles?.[i]?.platform ?? ''] ?? 'Red social'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Controller control={control} name={`social_profiles.${i}.is_primary`}
+                render={({ field: f }) => (
+                  <button type="button"
+                    onClick={() => {
+                      // Only one primary at a time
+                      profileFields.forEach((_, j) => setValue(`social_profiles.${j}.is_primary`, j === i))
+                    }}
+                    className={cn('text-xs font-medium px-2.5 py-1 rounded-full transition-all',
+                      f.value ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}>
+                    {f.value ? '★ Principal' : 'Marcar principal'}
+                  </button>
+                )}
+              />
+              {profileFields.length > 1 && (
+                <button type="button" onClick={() => removeProfile(i)}
+                  className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Plataforma</label>
+              <select {...register(`social_profiles.${i}.platform`)} className="input-base w-full text-sm">
+                {PLATFORMS.map(p => <option key={p} value={p}>{PLATFORM_LABELS[p] ?? p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Usuario / handle</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
+                <input {...register(`social_profiles.${i}.username`)}
+                  className="input-base w-full pl-7 text-sm" placeholder="usuario" />
+              </div>
+              {errors.social_profiles?.[i]?.username && (
+                <p className="text-xs text-red-500 mt-1">{errors.social_profiles[i]?.username?.message}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">URL del perfil</label>
+              <input {...register(`social_profiles.${i}.profile_url`)}
+                className="input-base w-full text-sm" placeholder="https://instagram.com/..." />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Seguidores</label>
+              <input type="number" {...register(`social_profiles.${i}.followers_count`, { valueAsNumber: true })}
+                className="input-base w-full text-sm" placeholder="100000" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Engagement rate (%)</label>
+              <input type="number" step="0.1" {...register(`social_profiles.${i}.engagement_rate`, { valueAsNumber: true })}
+                className="input-base w-full text-sm" placeholder="4.5" />
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <button type="button"
+        onClick={() => addProfile({ platform: 'tiktok', username: '', followers_count: 0, engagement_rate: 0, is_primary: false })}
+        className="flex items-center gap-2 w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm font-medium text-gray-500 hover:border-violet-300 hover:text-violet-600 transition-colors">
+        <Plus className="h-4 w-4" /> Agregar otra red social
+      </button>
+
+      {errors.social_profiles && typeof errors.social_profiles === 'object' && 'message' in errors.social_profiles && (
+        <p className="text-xs text-red-500">{(errors.social_profiles as { message: string }).message}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Step 3 — Rate cards ──────────────────────────────────────────────────────
+type Step3Props = {
+  register: UseFormRegister<FormValues>
+  errors: FieldErrors<FormValues>
+  rateFields: FieldArrayWithId<FormValues, 'rate_cards', 'id'>[]
+  removeRate: (index: number) => void
+  addRate: (value: NonNullable<FormValues['rate_cards']>[number]) => void
+}
+
+function Step3({ register, errors, rateFields, removeRate, addRate }: Step3Props) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">Define las tarifas base de este influencer. Se pueden ajustar por campaña.</p>
+
+      {rateFields.map((field, i) => (
+        <div key={field.id} className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-gray-700">Tarifa {i + 1}</span>
+            <button type="button" onClick={() => removeRate(i)}
+              className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">Tipo de servicio</label>
+              <select {...register(`rate_cards.${i}.service_type`)} className="input-base w-full text-sm">
+                {SERVICE_TYPES.map(s => (
+                  <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Moneda</label>
+              <select {...register(`rate_cards.${i}.currency`)} className="input-base w-full text-sm">
+                {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Tarifa base</label>
+              <input type="number" step="100"
+                {...register(`rate_cards.${i}.base_rate`, { valueAsNumber: true })}
+                className="input-base w-full text-sm" placeholder="2500" />
+              {errors.rate_cards?.[i]?.base_rate && (
+                <p className="text-xs text-red-500 mt-1">{errors.rate_cards[i]?.base_rate?.message}</p>
+              )}
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">Notas</label>
+              <input {...register(`rate_cards.${i}.notes`)}
+                className="input-base w-full text-sm" placeholder="Ej. Incluye 5 stories" />
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <button type="button"
+        onClick={() => addRate({ service_type: 'instagram_post', base_rate: 0, currency: 'CLP', notes: '' })}
+        className="flex items-center gap-2 w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm font-medium text-gray-500 hover:border-violet-300 hover:text-violet-600 transition-colors">
+        <Plus className="h-4 w-4" /> Agregar tarifa
+      </button>
+    </div>
+  )
+}
+
+// ── Step 4 — Resumen ─────────────────────────────────────────────────────────
+type Step4Props = { values: FormValues }
+
+function Step4({ values }: Step4Props) {
+  const primaryProfile = values.social_profiles?.find(sp => sp.is_primary) ?? values.social_profiles?.[0]
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">Confirma los datos antes de agregar al roster.</p>
+      <div className="card divide-y divide-gray-100">
+        {[
+          ['Nombre',       values.display_name],
+          ['Email',        values.email || '—'],
+          ['Ubicación',    [values.city, values.country].filter(Boolean).join(', ') || '—'],
+          ['Categorías',   values.categories?.join(', ') || '—'],
+          ['Redes sociales', values.social_profiles?.map(sp => `@${sp.username} (${PLATFORM_LABELS[sp.platform] ?? sp.platform})`).join(', ')],
+          ['Seguidores (principal)', primaryProfile ? primaryProfile.followers_count.toLocaleString('es-CL') : '—'],
+          ['Tarifas',      values.rate_cards?.length ? `${values.rate_cards.length} tarifa(s) definidas` : 'Sin tarifas'],
+          ['Verificado',   values.is_verified ? 'Sí' : 'No'],
+        ].map(([label, val]) => (
+          <div key={label as string} className="flex justify-between py-3 px-4 text-sm">
+            <span className="text-gray-400 font-medium">{label}</span>
+            <span className="text-gray-800 font-semibold text-right max-w-[55%] truncate">{val}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function NewInfluencerForm() {
   const router = useRouter()
@@ -205,309 +546,6 @@ export function NewInfluencerForm() {
     }
   }
 
-  // ── Step 1 — Datos personales ──────────────────────────────────────────────
-  function Step1() {
-    return (
-      <div className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Nombre artístico / display name <span className="text-red-500">*</span>
-            </label>
-            <input {...register('display_name')} className="input-base w-full" placeholder="Valentina Reyes" />
-            {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre real</label>
-            <input {...register('first_name')} className="input-base w-full" placeholder="Valentina" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Apellido</label>
-            <input {...register('last_name')} className="input-base w-full" placeholder="Reyes" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-            <input {...register('email')} type="email" className="input-base w-full" placeholder="vale@talent.mx" />
-            {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Teléfono</label>
-            <input {...register('phone')} className="input-base w-full" placeholder="+52 55 0000 0000" />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Bio</label>
-          <textarea {...register('bio')} rows={3} className="input-base w-full resize-none"
-            placeholder="Breve descripción del influencer…" />
-        </div>
-
-        {/* Location */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Ciudad</label>
-            <input {...register('city')} className="input-base w-full" placeholder="Ciudad de México" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">País</label>
-            <select {...register('country')} className="input-base w-full">
-              <option value="">Seleccionar…</option>
-              {COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-            </select>
-          </div>
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección (Google Maps)</label>
-            <Controller
-              control={control}
-              name="address"
-              render={({ field }) => (
-                <AddressAutocomplete
-                  value={field.value ?? ''}
-                  onChange={field.onChange}
-                  onSelect={(address, lat, lng) => {
-                    setValue('address', address)
-                    setValue('address_lat', lat)
-                    setValue('address_lng', lng)
-                  }}
-                />
-              )}
-            />
-          </div>
-        </div>
-
-        {/* Categories */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-3">Categorías</label>
-          <Controller
-            control={control}
-            name="categories"
-            render={({ field }) => (
-              <div className="flex flex-wrap gap-2">
-                {CATEGORY_OPTIONS.map(cat => {
-                  const active = field.value?.includes(cat)
-                  return (
-                    <button key={cat} type="button"
-                      onClick={() => {
-                        const next = active
-                          ? (field.value ?? []).filter(v => v !== cat)
-                          : [...(field.value ?? []), cat]
-                        field.onChange(next)
-                      }}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
-                        active ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      )}>
-                      {cat}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          />
-        </div>
-
-        {/* Tags */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Tags internos <span className="text-gray-400 text-xs">(opcional)</span>
-          </label>
-          <Controller control={control} name="tags"
-            render={({ field }) => <TagInput value={field.value} onChange={field.onChange} placeholder="nike, premium, cdmx" />}
-          />
-        </div>
-
-        {/* Verificado */}
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
-          <Controller control={control} name="is_verified"
-            render={({ field }) => (
-              <button type="button" role="switch" aria-checked={field.value}
-                onClick={() => field.onChange(!field.value)}
-                className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0',
-                  field.value ? 'bg-violet-600' : 'bg-gray-300')}>
-                <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                  field.value ? 'translate-x-4' : 'translate-x-0.5')} />
-              </button>
-            )}
-          />
-          <div>
-            <div className="text-sm font-medium text-gray-800">Verificado</div>
-            <div className="text-xs text-gray-400">Marca el influencer como verificado y confiable</div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Step 2 — Social profiles ───────────────────────────────────────────────
-  function Step2() {
-    return (
-      <div className="space-y-5">
-        {profileFields.map((field, i) => (
-          <div key={field.id} className="card p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{PLATFORM_ICONS[values.social_profiles?.[i]?.platform ?? 'instagram']}</span>
-                <span className="text-sm font-semibold text-gray-700">
-                  {PLATFORM_LABELS[values.social_profiles?.[i]?.platform ?? ''] ?? 'Red social'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Controller control={control} name={`social_profiles.${i}.is_primary`}
-                  render={({ field: f }) => (
-                    <button type="button"
-                      onClick={() => {
-                        // Only one primary at a time
-                        profileFields.forEach((_, j) => setValue(`social_profiles.${j}.is_primary`, j === i))
-                      }}
-                      className={cn('text-xs font-medium px-2.5 py-1 rounded-full transition-all',
-                        f.value ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}>
-                      {f.value ? '★ Principal' : 'Marcar principal'}
-                    </button>
-                  )}
-                />
-                {profileFields.length > 1 && (
-                  <button type="button" onClick={() => removeProfile(i)}
-                    className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Plataforma</label>
-                <select {...register(`social_profiles.${i}.platform`)} className="input-base w-full text-sm">
-                  {PLATFORMS.map(p => <option key={p} value={p}>{PLATFORM_LABELS[p] ?? p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Usuario / handle</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
-                  <input {...register(`social_profiles.${i}.username`)}
-                    className="input-base w-full pl-7 text-sm" placeholder="usuario" />
-                </div>
-                {errors.social_profiles?.[i]?.username && (
-                  <p className="text-xs text-red-500 mt-1">{errors.social_profiles[i]?.username?.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">URL del perfil</label>
-                <input {...register(`social_profiles.${i}.profile_url`)}
-                  className="input-base w-full text-sm" placeholder="https://instagram.com/..." />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Seguidores</label>
-                <input type="number" {...register(`social_profiles.${i}.followers_count`, { valueAsNumber: true })}
-                  className="input-base w-full text-sm" placeholder="100000" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Engagement rate (%)</label>
-                <input type="number" step="0.1" {...register(`social_profiles.${i}.engagement_rate`, { valueAsNumber: true })}
-                  className="input-base w-full text-sm" placeholder="4.5" />
-              </div>
-            </div>
-          </div>
-        ))}
-
-        <button type="button"
-          onClick={() => addProfile({ platform: 'tiktok', username: '', followers_count: 0, engagement_rate: 0, is_primary: false })}
-          className="flex items-center gap-2 w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm font-medium text-gray-500 hover:border-violet-300 hover:text-violet-600 transition-colors">
-          <Plus className="h-4 w-4" /> Agregar otra red social
-        </button>
-
-        {errors.social_profiles && typeof errors.social_profiles === 'object' && 'message' in errors.social_profiles && (
-          <p className="text-xs text-red-500">{(errors.social_profiles as { message: string }).message}</p>
-        )}
-      </div>
-    )
-  }
-
-  // ── Step 3 — Rate cards ────────────────────────────────────────────────────
-  function Step3() {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-gray-500">Define las tarifas base de este influencer. Se pueden ajustar por campaña.</p>
-
-        {rateFields.map((field, i) => (
-          <div key={field.id} className="card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-gray-700">Tarifa {i + 1}</span>
-              <button type="button" onClick={() => removeRate(i)}
-                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="block text-xs text-gray-500 mb-1">Tipo de servicio</label>
-                <select {...register(`rate_cards.${i}.service_type`)} className="input-base w-full text-sm">
-                  {SERVICE_TYPES.map(s => (
-                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Moneda</label>
-                <select {...register(`rate_cards.${i}.currency`)} className="input-base w-full text-sm">
-                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Tarifa base</label>
-                <input type="number" step="100"
-                  {...register(`rate_cards.${i}.base_rate`, { valueAsNumber: true })}
-                  className="input-base w-full text-sm" placeholder="2500" />
-                {errors.rate_cards?.[i]?.base_rate && (
-                  <p className="text-xs text-red-500 mt-1">{errors.rate_cards[i]?.base_rate?.message}</p>
-                )}
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs text-gray-500 mb-1">Notas</label>
-                <input {...register(`rate_cards.${i}.notes`)}
-                  className="input-base w-full text-sm" placeholder="Ej. Incluye 5 stories" />
-              </div>
-            </div>
-          </div>
-        ))}
-
-        <button type="button"
-          onClick={() => addRate({ service_type: 'instagram_post', base_rate: 0, currency: 'CLP', notes: '' })}
-          className="flex items-center gap-2 w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm font-medium text-gray-500 hover:border-violet-300 hover:text-violet-600 transition-colors">
-          <Plus className="h-4 w-4" /> Agregar tarifa
-        </button>
-      </div>
-    )
-  }
-
-  // ── Step 4 — Resumen ───────────────────────────────────────────────────────
-  function Step4() {
-    const primaryProfile = values.social_profiles?.find(sp => sp.is_primary) ?? values.social_profiles?.[0]
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-gray-500">Confirma los datos antes de agregar al roster.</p>
-        <div className="card divide-y divide-gray-100">
-          {[
-            ['Nombre',       values.display_name],
-            ['Email',        values.email || '—'],
-            ['Ubicación',    [values.city, values.country].filter(Boolean).join(', ') || '—'],
-            ['Categorías',   values.categories?.join(', ') || '—'],
-            ['Redes sociales', values.social_profiles?.map(sp => `@${sp.username} (${PLATFORM_LABELS[sp.platform] ?? sp.platform})`).join(', ')],
-            ['Seguidores (principal)', primaryProfile ? primaryProfile.followers_count.toLocaleString('es-CL') : '—'],
-            ['Tarifas',      values.rate_cards?.length ? `${values.rate_cards.length} tarifa(s) definidas` : 'Sin tarifas'],
-            ['Verificado',   values.is_verified ? 'Sí' : 'No'],
-          ].map(([label, val]) => (
-            <div key={label as string} className="flex justify-between py-3 px-4 text-sm">
-              <span className="text-gray-400 font-medium">{label}</span>
-              <span className="text-gray-800 font-semibold text-right max-w-[55%] truncate">{val}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
@@ -548,10 +586,23 @@ export function NewInfluencerForm() {
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="card p-6">
-          {step === 1 && <Step1 />}
-          {step === 2 && <Step2 />}
-          {step === 3 && <Step3 />}
-          {step === 4 && <Step4 />}
+          {step === 1 && <Step1 register={register} control={control} setValue={setValue} errors={errors} />}
+          {step === 2 && (
+            <Step2
+              register={register}
+              control={control}
+              setValue={setValue}
+              errors={errors}
+              profileFields={profileFields}
+              socialProfiles={values.social_profiles}
+              removeProfile={removeProfile}
+              addProfile={addProfile}
+            />
+          )}
+          {step === 3 && (
+            <Step3 register={register} errors={errors} rateFields={rateFields} removeRate={removeRate} addRate={addRate} />
+          )}
+          {step === 4 && <Step4 values={values} />}
         </div>
 
         <div className="flex justify-between mt-4">

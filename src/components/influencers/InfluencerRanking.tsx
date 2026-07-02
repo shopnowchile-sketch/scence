@@ -239,8 +239,14 @@ export function InfluencerRanking({
         Mostrando {ranked.length} influencers. Ranking según KPI seleccionado, sin score compuesto.
       </div>
 
-      <div className="card overflow-hidden">
-        <table className="w-full">
+      {/* FIX (2026-07-02): overflow-hidden recortaba silenciosamente las columnas
+          que no cabían (Cumplimiento, Comuna, Última conexión, y ahora la
+          columna de Acción del modo selección) sin ninguna forma de verlas —
+          Pri reportó "no tengo el botón de agregar" en /admin-campaigns/[id]/
+          influencers/add, que usa este mismo componente. overflow-x-auto +
+          min-width fuerza scroll horizontal real en vez de recorte silencioso. */}
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[1100px]">
           <thead>
             <tr className="border-b border-gray-100">
               <th className="text-left text-xs font-semibold text-gray-400 px-4 py-3 w-12">#</th>

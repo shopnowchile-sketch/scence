@@ -600,85 +600,100 @@ export function DashboardClient() {
           {state.error && <p className="mt-2 text-sm text-rose-500">{state.error}</p>}
         </header>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <KpiCard
-            icon={<CalendarDays className="h-5 w-5" />}
-            value={String(computed.campaignCount)}
-            title="Campañas en curso"
-            subtitle="este mes"
-            tone="purple"
-          />
-          <KpiCard
-            icon={<Users className="h-5 w-5" />}
-            value={String(computed.influencersTotal)}
-            title="Influencers en roster"
-            subtitle="total (activos + inactivos)"
-            tone="blue"
-          />
-          <KpiCard
-            icon={<Building2 className="h-5 w-5" />}
-            value={String(computed.brandsTotal)}
-            title="Marcas registradas"
-            subtitle="en el sistema"
-            tone="gray"
-          />
-          <KpiCard
-            icon={<DollarSign className="h-5 w-5" />}
-            value={formatCLP(computed.revenue)}
-            title="Facturado este mes"
-            subtitle="facturas Marca → Scence (pagadas o enviadas)"
-            tone="green"
-          />
-          <KpiCard
-            icon={<ArrowDownRight className="h-5 w-5" />}
-            value={formatCLP(computed.payroll)}
-            title="Payroll pagado"
-            subtitle="Scence → influencers, este mes"
-            tone="red"
-          />
-          <KpiCard
-            icon={<TrendingUp className="h-5 w-5" />}
-            value={formatPercent(computed.marginPercent)}
-            title="Margen bruto"
-            subtitle={`${formatCLP(Math.max(0, computed.margin))} neto`}
-            tone="yellow"
-          />
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Operación</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <KpiCard
+              icon={<CalendarDays className="h-5 w-5" />}
+              value={String(computed.campaignCount)}
+              title="Campañas en curso"
+              subtitle="este mes"
+              tone="purple"
+            />
+            <KpiCard
+              icon={<Users className="h-5 w-5" />}
+              value={String(computed.influencersTotal)}
+              title="Influencers en roster"
+              subtitle="total (activos + inactivos)"
+              tone="blue"
+            />
+            <KpiCard
+              icon={<Building2 className="h-5 w-5" />}
+              value={String(computed.brandsTotal)}
+              title="Marcas registradas"
+              subtitle="en el sistema"
+              tone="gray"
+            />
+          </div>
         </section>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-              <h2 className="text-base font-bold text-gray-950">Live influencers</h2>
-              <RefreshCw className="h-3.5 w-3.5 text-gray-300" />
-            </div>
-            <div className="text-3xl font-black text-gray-950">{computed.liveInfluencers.length}</div>
+        <section className="space-y-2 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+          <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Finanzas este mes</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <KpiCard
+              icon={<DollarSign className="h-5 w-5" />}
+              value={formatCLP(computed.revenue)}
+              title="Facturado este mes"
+              subtitle="facturas Marca → Scence (pagadas o enviadas)"
+              tone="green"
+            />
+            <KpiCard
+              icon={<ArrowDownRight className="h-5 w-5" />}
+              value={formatCLP(computed.payroll)}
+              title="Payroll pagado"
+              subtitle="Scence → influencers, este mes"
+              tone="red"
+            />
+            <KpiCard
+              icon={<TrendingUp className="h-5 w-5" />}
+              value={formatPercent(computed.marginPercent)}
+              title="Margen bruto"
+              subtitle={`${formatCLP(Math.max(0, computed.margin))} neto`}
+              tone="yellow"
+            />
           </div>
+        </section>
 
-          {computed.liveInfluencers.length ? (
-            <div className="space-y-3">
-              {computed.liveInfluencers.map((person) => (
-                <div key={person.id} className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    <div>
-                      <div className="text-sm font-bold text-gray-950">{person.name}</div>
-                      {person.username && <div className="text-xs text-gray-400">@{person.username.replace(/^@/, '')}</div>}
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <h2 className="text-base font-bold text-gray-950">Live influencers</h2>
+                <RefreshCw className="h-3.5 w-3.5 text-gray-300" />
+              </div>
+              <div className="text-3xl font-black text-gray-950">{computed.liveInfluencers.length}</div>
+            </div>
+
+            {computed.liveInfluencers.length ? (
+              <div className="space-y-3">
+                {computed.liveInfluencers.map((person) => (
+                  <div key={person.id} className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      <div>
+                        <div className="text-sm font-bold text-gray-950">{person.name}</div>
+                        {person.username && <div className="text-xs text-gray-400">@{person.username.replace(/^@/, '')}</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <span>{person.time}</span>
+                      <ExternalLink className="h-3.5 w-3.5" />
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    <span>{person.time}</span>
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-50 text-gray-300">
+                  <Activity className="h-4 w-4" />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center text-sm text-gray-400">No hay influencers conectadas ahora</div>
-          )}
-        </section>
+                <p className="text-sm text-gray-400">Nadie conectado ahora</p>
+                <p className="text-xs text-gray-300">Aparecen acá con el portal influencer abierto</p>
+              </div>
+            )}
+          </div>
 
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <PortalAccessCard
             title="Acceso al portal de influencers"
             subtitle={`${Math.round(((computed.influencersEntered) / Math.max(computed.influencersEntered + computed.influencersPending, 1)) * 100)}% del roster ha ingresado`}

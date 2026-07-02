@@ -3,7 +3,7 @@
 /**
  * PlanUpgradeWall — Bloqueador de feature por plan.
  * Muestra mensaje de límite alcanzado + CTA "Subir de plan".
- * Sin Stripe: el CTA enlaza a /brand-support.
+ * Sin Stripe: el CTA enlaza a /brand-billing.
  */
 
 import { Lock, ArrowUpRight } from 'lucide-react'
@@ -85,7 +85,7 @@ export function PlanUpgradeWall({
 
       {/* CTA */}
       <Link
-        href="/brand-support"
+        href="/brand-billing"
         className="inline-flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
       >
         Subir de plan

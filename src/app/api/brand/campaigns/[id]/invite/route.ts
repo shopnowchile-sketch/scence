@@ -111,7 +111,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // ya quedó creada — solo se pierde la notificación, no el flujo funcional.
   if (influencer.email) {
     try {
-      await getResend().emails.send({
+      const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: influencer.email,
         subject: `${brand.name} te invitó a una campaña en Scence`,
@@ -123,6 +123,8 @@ export async function POST(req: NextRequest, { params }: Params) {
           message:        message,
         }),
       })
+      // Resend no lanza excepción en errores de API — hay que revisar `error`.
+      if (emailErr) console.error('[invite email] Resend devolvió error:', emailErr)
     } catch (e) {
       console.error('[invite email] non-fatal:', e)
     }

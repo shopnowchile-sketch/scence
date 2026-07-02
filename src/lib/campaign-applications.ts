@@ -145,7 +145,11 @@ export async function acceptCampaignApplication(
         brandName = brand?.name ?? null
       }
 
-      await getResend().emails.send({
+      // NOTA: el SDK de Resend NO lanza excepción en errores de la API (key
+      // inválida, dominio no verificado, etc.) — devuelve { data, error } sin
+      // throw. Antes no se revisaba `error`, así que un fallo de Resend quedaba
+      // completamente silencioso (sin log, sin señal de que no llegó el email).
+      const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: app.influencer.email,
         subject: `¡Tu postulación a "${campaign.name}" fue aprobada!`,
@@ -156,6 +160,7 @@ export async function acceptCampaignApplication(
           appUrl:         `${APP_URL}/inf-campaigns`,
         }),
       })
+      if (emailErr) console.error('[acceptCampaignApplication] Resend devolvió error:', emailErr)
     } catch (e) {
       console.error('[acceptCampaignApplication] approval email non-fatal:', e)
     }

@@ -89,7 +89,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         .maybeSingle()
 
       if (brand?.contact_email) {
-        await getResend().emails.send({
+        const { error: emailErr } = await getResend().emails.send({
           from: FROM_EMAIL,
           to: brand.contact_email,
           subject: `Nueva postulación a "${campaign.name}"`,
@@ -101,6 +101,8 @@ export async function POST(req: NextRequest, { params }: Params) {
             reviewUrl:      `${APP_URL}/brand-campaigns/${params.id}/applications`,
           }),
         })
+        // Resend no lanza excepción en errores de API — hay que revisar `error`.
+        if (emailErr) console.error('[apply] notificación a marca — Resend devolvió error:', emailErr)
       }
     } catch (e) {
       console.error('[apply] notificación a marca non-fatal:', e)

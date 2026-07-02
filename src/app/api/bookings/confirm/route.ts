@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     // No bloqueante: si falla, la confirmación en BD ya quedó registrada.
     if (action === 'confirm' && booking.influencer?.email) {
       try {
-        await getResend().emails.send({
+        const { error: emailErr } = await getResend().emails.send({
           from: FROM_EMAIL,
           to: booking.influencer.email,
           subject: `Booking confirmado: ${booking.title}`,
@@ -74,6 +74,8 @@ export async function GET(req: NextRequest) {
             bookingUrl:    `${APP_URL}/inf-bookings`,
           }),
         })
+        // Resend no lanza excepción en errores de API — hay que revisar `error`.
+        if (emailErr) console.error('[booking confirm email] Resend devolvió error:', emailErr)
       } catch (e) {
         console.error('[booking confirm email] non-fatal:', e)
       }

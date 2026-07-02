@@ -104,7 +104,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         const campaignName = campaignData?.name ?? 'Campaña'
         const contentUrl = body.content_url
 
-        await getResend().emails.send({
+        const { error: sendErr } = await getResend().emails.send({
           from: FROM_EMAIL,
           to: adminProfile.email,
           subject: `Nueva entrega de contenido — ${influencerName} · ${deliverableTitle}`,
@@ -134,6 +134,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 </body>
 </html>`,
         })
+        // Resend no lanza excepción en errores de API — hay que revisar `error`.
+        if (sendErr) console.warn('[deliverable submit] Resend devolvió error:', sendErr)
       }
     }
   } catch (emailErr) {

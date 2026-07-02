@@ -85,7 +85,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             .from('organizations').select('name').eq('id', invoice.organization_id).single()
           
           const resend = getResend()
-          await resend.emails.send({
+          const { error: sendErr } = await resend.emails.send({
             from: FROM_EMAIL,
             to: String(send_to || invoice.client_email),
             subject: `Factura ${invoice.invoice_number} de ${orgData?.name ?? 'Scence'}`,
@@ -99,6 +99,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               note: note ? String(note) : undefined,
             }),
           })
+          // Resend no lanza excepción en errores de API — hay que revisar `error`.
+          if (sendErr) console.error('[invoice send email] Resend devolvió error:', sendErr)
         } catch(emailErr) {
           console.error('[invoice send email]', emailErr)
           // Email failed — still mark as sent (admin can resend)

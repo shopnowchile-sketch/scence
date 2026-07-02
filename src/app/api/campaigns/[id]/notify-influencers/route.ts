@@ -92,7 +92,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   for (const inf of batch) {
     try {
-      await getResend().emails.send({
+      const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: inf.email as string,
         subject: `Nueva campaña abierta: ${campaign.name}`,
@@ -103,6 +103,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
           applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
         }),
       })
+      // Resend no lanza excepción en errores de API (key inválida, dominio no
+      // verificado) — hay que revisar `error` explícitamente.
+      if (emailErr) throw new Error(emailErr.message ?? 'Resend error')
 
       await admin
         .from('campaign_influencer_notifications')

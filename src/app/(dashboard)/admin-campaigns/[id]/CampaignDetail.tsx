@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
@@ -338,8 +338,10 @@ function AddDeliverableForm({
 
 export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Tab }) {
   const pathname = usePathname()
+  const router = useRouter()
   const isBrandPortal = pathname.startsWith('/brand-campaigns')
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
+  const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [notifying, setNotifying] = useState(false)
@@ -620,6 +622,23 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     } catch { /* handled in hook */ }
   }
 
+  async function handleDeleteCampaign() {
+    if (!confirm(`¿Eliminar la campaña "${c.name}"? Quedará marcada como Cancelada (no se borra la data). Esta acción no se puede deshacer desde la interfaz.`)) return
+    setDeletingCampaign(true)
+    try {
+      const r = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' })
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Error al eliminar la campaña')
+      }
+      toast.success('Campaña eliminada')
+      router.push(isBrandPortal ? '/brand-campaigns' : '/admin-campaigns')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al eliminar la campaña')
+      setDeletingCampaign(false)
+    }
+  }
+
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-4 w-4" /> },
     { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-4 w-4" /> },
@@ -678,6 +697,12 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
               <Play className="h-3.5 w-3.5" /> Reabrir campaña
+            </button>
+          )}
+          {!isBrandPortal && c.status !== 'canceled' && (
+            <button onClick={handleDeleteCampaign} disabled={deletingCampaign}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> Eliminar
             </button>
           )}
         </div>

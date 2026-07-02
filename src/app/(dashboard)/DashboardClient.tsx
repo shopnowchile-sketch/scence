@@ -238,12 +238,14 @@ function KpiCard({
   title,
   subtitle,
   tone,
+  href,
 }: {
   icon: React.ReactNode
   value: string
   title: string
   subtitle: string
   tone: 'purple' | 'blue' | 'green' | 'red' | 'yellow' | 'gray'
+  href?: string
 }) {
   const tones = {
     purple: 'bg-purple-100 text-purple-600',
@@ -254,14 +256,28 @@ function KpiCard({
     gray: 'bg-gray-100 text-gray-600',
   }
 
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+  const content = (
+    <>
       <div className={`mb-5 flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone]}`}>
         {icon}
       </div>
       <div className="text-3xl font-black tracking-tight text-gray-950">{value}</div>
       <div className="mt-1 text-sm font-medium text-gray-500">{title}</div>
       <div className="mt-1 text-xs text-gray-300">{subtitle}</div>
+    </>
+  )
+
+  if (href) {
+    return (
+      <Link href={href} className="block rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hover:border-purple-300 hover:shadow-md transition-all">
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      {content}
     </div>
   )
 }
@@ -613,6 +629,7 @@ export function DashboardClient() {
               title="Campañas en curso"
               subtitle="este mes"
               tone="purple"
+              href="/admin-campaigns"
             />
             <KpiCard
               icon={<Users className="h-5 w-5" />}
@@ -620,6 +637,7 @@ export function DashboardClient() {
               title="Influencers en roster"
               subtitle="total (activos + inactivos)"
               tone="blue"
+              href="/admin-influencers"
             />
             <KpiCard
               icon={<Building2 className="h-5 w-5" />}
@@ -627,6 +645,7 @@ export function DashboardClient() {
               title="Marcas registradas"
               subtitle="en el sistema"
               tone="gray"
+              href="/admin-brands"
             />
           </div>
         </section>

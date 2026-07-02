@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+import { getPrimarySocial } from '@/lib/influencers/ranking'
+
+// 'followers' / 'engagement_rate' viven en la tabla join (influencer_social_profiles),
+// no son columnas de `influencers` — Postgres/PostgREST no puede hacer .order() por
+// ellas directamente. Pri reportó que el sort de "Más seguidores" en la lista
+// principal "se echaba a perder" (silenciosamente caía a created_at). Fix: para
+// estas 2 columnas se trae el dataset filtrado completo (sin cap de fila real,
+// vía fetchAllRows) y se ordena/pagina en JS usando el mismo criterio de "red
+// social primaria" que ya usa Ranking (getPrimarySocial).
+const JOIN_SORT_COLS = ['followers', 'engagement_rate'] as const
 
 // ── GET /api/influencers ──────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -18,8 +29,8 @@ export async function GET(request: NextRequest) {
   const commune    = searchParams.get('commune')
   const verified   = searchParams.get('verified')
   const isActive   = searchParams.get('is_active')
-  // Only allow columns that exist on the influencers table; derived fields like
-  // 'followers' live in the join and cannot be used in .order() directly.
+  // Columnas ordenables directo en Postgres. 'followers'/'engagement_rate' se
+  // manejan aparte (ver JOIN_SORT_COLS arriba) porque viven en la tabla join.
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const rawSort    = searchParams.get('sort_by') ?? 'created_at'
   const sortBy     = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
@@ -30,9 +41,7 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
-  let query = admin
-    .from('influencers')
-    .select(`
+  const SELECT = `
       id,
       user_id,
       organization_id,
@@ -71,42 +80,99 @@ export async function GET(request: NextRequest) {
         currency,
         is_active
       )
-    `, { count: 'exact' })
-    .order(sortBy, { ascending: sortDir })
-    .range((page - 1) * limit, page * limit - 1)
+    `
 
-  if (orgId)    query = query.eq('organization_id', orgId)
-  if (country)  query = query.eq('country', country)
-  if (commune)  query = query.eq('commune', commune)
-  if (verified === 'true')  query = query.eq('is_verified', true)
-  if (isActive === 'false') query = query.eq('is_active', false)
-  if (isActive === 'true')  query = query.eq('is_active', true)
-  if (search) {
-    query = query.or(
-      `display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`
+  const isJoinSort = (JOIN_SORT_COLS as readonly string[]).includes(rawSort)
+
+  let data: Record<string, unknown>[] = []
+  let count = 0
+  let queryError: { message: string } | null = null
+
+  if (isJoinSort) {
+    // Sort por followers/engagement_rate: traer todo el dataset filtrado
+    // (sin sort/paginación en la query) y ordenar/paginar en JS.
+    const { data: allRows, error } = await fetchAllRows<Record<string, unknown>>(
+      (from, to) => {
+        let q = admin.from('influencers').select(SELECT).range(from, to)
+        if (orgId)    q = q.eq('organization_id', orgId)
+        if (country)  q = q.eq('country', country)
+        if (commune)  q = q.eq('commune', commune)
+        if (verified === 'true')  q = q.eq('is_verified', true)
+        if (isActive === 'false') q = q.eq('is_active', false)
+        if (isActive === 'true')  q = q.eq('is_active', true)
+        if (search) {
+          q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
+        }
+        if (category) q = q.contains('categories', [category])
+        return q
+      },
+      { maxRows: 5000 }
     )
-  }
-  if (category) {
-    query = query.contains('categories', [category])
+    if (error) {
+      queryError = error as { message: string }
+    } else {
+      const withPlatform = platform
+        ? allRows.filter(inf => (inf.social_profiles as Array<{ platform: string }>).some(sp => sp.platform === platform))
+        : allRows
+
+      const joinField = rawSort === 'followers' ? 'followers' : 'engagement_rate'
+      const valueOf = (inf: Record<string, unknown>) => {
+        const primary = getPrimarySocial(inf as never) as { followers?: number | null; engagement_rate?: number | null } | null
+        return Number((joinField === 'followers' ? primary?.followers : primary?.engagement_rate) ?? 0)
+      }
+      const sorted = [...withPlatform].sort((a, b) => {
+        const va = valueOf(a)
+        const vb = valueOf(b)
+        return sortDir ? va - vb : vb - va
+      })
+
+      count = sorted.length
+      data = sorted.slice((page - 1) * limit, page * limit)
+    }
+  } else {
+    let query = admin
+      .from('influencers')
+      .select(SELECT, { count: 'exact' })
+      .order(sortBy, { ascending: sortDir })
+      .range((page - 1) * limit, page * limit - 1)
+
+    if (orgId)    query = query.eq('organization_id', orgId)
+    if (country)  query = query.eq('country', country)
+    if (commune)  query = query.eq('commune', commune)
+    if (verified === 'true')  query = query.eq('is_verified', true)
+    if (isActive === 'false') query = query.eq('is_active', false)
+    if (isActive === 'true')  query = query.eq('is_active', true)
+    if (search) {
+      query = query.or(
+        `display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`
+      )
+    }
+    if (category) {
+      query = query.contains('categories', [category])
+    }
+
+    const res = await query
+    queryError = res.error
+    data = (res.data ?? []) as unknown as Record<string, unknown>[]
+    count = res.count ?? 0
   }
 
-  const { data, error, count } = await query
-
-  if (error) {
-    console.error('[GET /api/influencers]', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (queryError) {
+    console.error('[GET /api/influencers]', queryError)
+    return NextResponse.json({ error: queryError.message }, { status: 500 })
   }
 
-  // Filter by platform post-query (social_profiles is a join)
-  const filtered = platform
-    ? (data ?? []).filter(inf =>
+  // Filter by platform post-query (social_profiles is a join) — ya aplicado
+  // arriba en la rama isJoinSort, acá cubre la rama normal.
+  const filtered = (!isJoinSort && platform)
+    ? data.filter(inf =>
         (inf.social_profiles as Array<{ platform: string }>)
           .some(sp => sp.platform === platform)
       )
-    : (data ?? [])
+    : data
 
   // Enriquecer última conexión en batch, sin consultar auth.users uno por uno
-  const userIds = filtered.map(inf => inf.user_id).filter(Boolean) as string[]
+  const userIds = filtered.map(inf => inf.user_id as string | null).filter(Boolean) as string[]
   const lastSeenMap: Record<string, string | null> = {}
 
   if (userIds.length > 0) {
@@ -120,10 +186,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const enriched = filtered.map(inf => ({
-    ...inf,
-    last_sign_in_at: inf.user_id ? (lastSeenMap[inf.user_id] ?? null) : null,
-  }))
+  const enriched = filtered.map(inf => {
+    const uid = inf.user_id as string | null | undefined
+    return {
+      ...inf,
+      last_sign_in_at: uid ? (lastSeenMap[uid] ?? null) : null,
+    }
+  })
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit })
 }

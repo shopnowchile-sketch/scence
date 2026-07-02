@@ -18,8 +18,13 @@ export function Sidebar() {
     fetch('/api/campaigns?limit=1').then(r => r.json()).then(d => { if (typeof d.total === 'number') setCampaignCount(d.total) }).catch(() => {})
     fetch('/api/bookings?limit=1').then(r => r.json()).then(d => { if (Array.isArray(d.data)) setBookingCount(d.data.length) }).catch(() => {})
     fetch('/api/dashboard').then(r => r.json()).then(d => {
-      const pending = (d?.pending_deliverables ?? []).filter((del: Record<string,unknown>) => del.status === 'in_review').length
-      if (pending > 0) setReviewCount(pending)
+      // Badge de "Campañas" = contenido para revisar + postulaciones/invitaciones
+      // pendientes de aceptar/rechazar (antes solo contaba lo primero — Pri
+      // reportó que no había ninguna señal de "X postularon" en el menú).
+      const pendingReview = (d?.pending_deliverables ?? []).filter((del: Record<string,unknown>) => del.status === 'in_review').length
+      const pendingApplications = Number(d?.pending_applications_count ?? 0)
+      const total = pendingReview + pendingApplications
+      if (total > 0) setReviewCount(total)
     }).catch(() => {})
   }, [])
 

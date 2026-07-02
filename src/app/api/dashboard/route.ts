@@ -20,6 +20,7 @@ export async function GET() {
     return NextResponse.json({
       kpis: { active_campaigns: 0, total_influencers: 0, revenue_month: 0, payroll_month: 0, margin: 0, margin_pct: 0 },
       pending_deliverables: [],
+      pending_applications_count: 0,
       recent_activity: [],
       revenue_chart: [],
     })
@@ -35,6 +36,7 @@ export async function GET() {
     payrollMonthRes,
     pendingDeliverablesRes,
     recentActivityRes,
+    pendingApplicationsRes,
   ] = await Promise.all([
     db.from('campaigns')
       .select('id, status', { count: 'exact', head: false })
@@ -74,6 +76,12 @@ export async function GET() {
       .eq('organization_id', orgId)
       .order('updated_at', { ascending: false })
       .limit(5),
+
+    // Postulaciones/invitaciones pendientes de gestionar (badge de "Campañas")
+    db.from('campaign_influencers')
+      .select('id, campaign:campaigns!inner(organization_id)', { count: 'exact', head: true })
+      .eq('application_status', 'pending')
+      .eq('campaign.organization_id', orgId),
   ])
 
   // Revenue chart — last 6 months
@@ -117,6 +125,7 @@ export async function GET() {
       margin_pct:        marginPct,
     },
     pending_deliverables: pendingDeliverablesRes.data ?? [],
+    pending_applications_count: pendingApplicationsRes.count ?? 0,
     recent_activity:      recentActivityRes.data ?? [],
     revenue_chart:        revenueChart,
   })

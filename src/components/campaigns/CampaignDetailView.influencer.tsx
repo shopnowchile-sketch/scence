@@ -21,13 +21,19 @@ type Deliverable = {
 type CampaignRow = {
   id: string | null; status: string; application_status?: string | null; fee: number | null; currency: string
   _self_created?: boolean
+  // FIX (2026-07-02): campaign_deliverables viene del backend como sibling de
+  // `campaign` (join separado sobre campaign_influencer_id), no anidado dentro
+  // de `campaign` — /api/influencer/my-campaigns siempre lo devuelve así, para
+  // asignadas Y para self-created. Antes el tipo lo declaraba anidado y
+  // `c.campaign_deliverables.filter(...)` tiraba "Cannot read properties of
+  // undefined" en TODA campaña asignada (bug real, encontrado por Pri en UAT).
+  campaign_deliverables: Deliverable[]
   campaign: {
     id: string; name: string; status: string
     description: string | null; brief: string | null
     start_date: string | null; end_date: string | null
     currency: string
     brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
-    campaign_deliverables: Deliverable[]
   } | null
 }
 
@@ -369,8 +375,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const isSelfCreated = data._self_created === true
   const isPending    = data.application_status === 'pending'
   const campStatus   = CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
-  const pending      = c.campaign_deliverables.filter(d => d.status !== 'approved' && d.status !== 'published')
-  const done         = c.campaign_deliverables.filter(d => d.status === 'approved' || d.status === 'published')
+  const deliverables = data.campaign_deliverables ?? []
+  const pending      = deliverables.filter(d => d.status !== 'approved' && d.status !== 'published')
+  const done         = deliverables.filter(d => d.status === 'approved' || d.status === 'published')
 
   return (
     <div className="space-y-6">

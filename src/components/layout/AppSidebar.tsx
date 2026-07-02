@@ -48,6 +48,11 @@ const PORTAL_CONFIG: Record<Portal, { label: string; badgeColor: string; avatarG
   influencer: { label: 'Influencer', badgeColor: 'bg-violet-50 text-violet-600', avatarGradient: 'from-pink-400 to-violet-500' },
 }
 
+// Jerarquía visual pedida por Pri: el nombre de la persona va primero y más
+// grande, el rol (Admin/Marca/Influencer) va después y más chico. Separado de
+// PORTAL_CONFIG.label porque ese campo significa otra cosa para admin ('Beta').
+const ROLE_LABEL: Record<Portal, string> = { admin: 'Admin', brand: 'Marca', influencer: 'Influencer' }
+
 // ── Sidebar content ───────────────────────────────────────────────────────────
 
 function SidebarContent({
@@ -166,8 +171,8 @@ function SidebarContent({
             {userInitial}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-gray-900 truncate">{userName || userEmail || '…'}</div>
-            <div className="text-[10px] text-gray-400 truncate">{userEmail}</div>
+            <div className="text-sm font-bold text-gray-900 truncate">{userName || userEmail || '…'}</div>
+            <div className="text-[10px] text-gray-400 truncate">{ROLE_LABEL[portal]} · {userEmail}</div>
           </div>
           <button onClick={onSignOut} className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600" title="Cerrar sesión">
             <LogOut className="h-3.5 w-3.5" />

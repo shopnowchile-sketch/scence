@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
+import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
 
 type Params = { params: { id: string } }
 
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que la campaña pertenece a esta marca
   const { data: brand } = await admin
     .from('brands')
-    .select('id, name')
+    .select('id, name, organization_id')
     .eq('user_id', user.id)
     .single()
 
@@ -58,6 +59,39 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { influencer_id, proposed_fee, message, deliverables_spec } = body
 
   if (!influencer_id) return NextResponse.json({ error: 'influencer_id requerido' }, { status: 422 })
+
+  // ── Roster limit gating ───────────────────────────────────────────────────
+  // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id)
+  const limits  = getPlanLimits(orgPlan)
+
+  // IDs de todas las campañas de esta marca
+  const { data: brandCampaigns } = await admin
+    .from('campaigns')
+    .select('id')
+    .eq('brand_id', brand.id)
+
+  const campaignIds = (brandCampaigns ?? []).map(c => c.id)
+
+  if (campaignIds.length > 0) {
+    // Influencers únicos en el roster (excluir rechazados)
+    const { data: rosterRows } = await admin
+      .from('campaign_influencers')
+      .select('influencer_id')
+      .in('campaign_id', campaignIds)
+      .not('application_status', 'eq', 'rejected')
+
+    const uniqueInRoster = new Set((rosterRows ?? []).map(r => r.influencer_id))
+
+    // Si el influencer ya está en el roster no consume cupo
+    if (!uniqueInRoster.has(influencer_id) && uniqueInRoster.size >= limits.max_roster_influencers) {
+      return NextResponse.json({
+        error: rosterLimitMessage(orgPlan),
+        code:  PLAN_ERROR_CODES.ROSTER_LIMIT,
+        plan:  orgPlan,
+      }, { status: 403 })
+    }
+  }
 
   // Verificar que el influencer pertenece a la misma org
   const { data: influencer } = await admin

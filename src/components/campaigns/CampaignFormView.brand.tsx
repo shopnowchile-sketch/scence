@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Globe, Lock, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { DeliverableTemplateBuilder, type DeliverableTemplate } from './DeliverableTemplateBuilder'
+import { PlanUpgradeWall } from '@/components/plan/PlanUpgradeWall'
+import { getPlanLimits, getPlanTier } from '@/lib/plan-limits'
 
 const CAMPAIGN_TYPES = [
   { value: 'sponsored_post',  label: 'Paid Post',        desc: 'Contenido patrocinado con tarifa fija' },
@@ -20,6 +22,9 @@ export function BrandCampaignForm() {
   const router  = useRouter()
   const [loading, setLoading] = useState(false)
   const [deliverableTemplates, setDeliverableTemplates] = useState<DeliverableTemplate[]>([])
+  const [orgPlan, setOrgPlan] = useState<string>('free')
+  const [atCampaignLimit, setAtCampaignLimit] = useState(false)
+  const [planReady, setPlanReady] = useState(false)
   const [form, setForm] = useState({
     name: '', type: 'sponsored_post',
     visibility: 'private' as 'private' | 'open',
@@ -28,6 +33,34 @@ export function BrandCampaignForm() {
     max_influencers: '', content_guidelines: '', hashtags: '',
     platforms: [] as string[],
   })
+
+  // Pre-check plan limits on mount so we can show upgrade wall before submission
+  useEffect(() => {
+    async function checkPlan() {
+      try {
+        const [meRes, camsRes] = await Promise.all([
+          fetch('/api/brand/me'),
+          fetch('/api/brand/campaigns'),
+        ])
+        const meJson  = meRes.ok  ? await meRes.json()  : null
+        const camsJson = camsRes.ok ? await camsRes.json() : null
+
+        const plan   = meJson?.data?.org_plan ?? 'free'
+        const limits = getPlanLimits(plan)
+        const active = (camsJson?.data ?? []).filter(
+          (c: { status: string }) => !['completed', 'canceled'].includes(c.status)
+        ).length
+
+        setOrgPlan(plan)
+        setAtCampaignLimit(active >= limits.max_active_campaigns)
+      } catch {
+        // Non-fatal: form will still work, backend will gate
+      } finally {
+        setPlanReady(true)
+      }
+    }
+    checkPlan()
+  }, [])
 
   function set(key: string, value: unknown) { setForm(f => ({ ...f, [key]: value })) }
 
@@ -43,7 +76,7 @@ export function BrandCampaignForm() {
     if (!form.name.trim()) { toast.error('El nombre es requerido'); return }
     setLoading(true)
     try {
-      const res = await fetch('/api/brand-campaigns', {
+      const res = await fetch('/api/brand/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -68,6 +101,28 @@ export function BrandCampaignForm() {
       router.push(`/brand-campaigns/${json.data.id}`)
     } catch (e) { toast.error((e as Error).message) }
     setLoading(false)
+  }
+
+  const limits   = getPlanLimits(orgPlan)
+  const canOpen  = limits.can_create_open_campaigns
+  const planTier = getPlanTier(orgPlan)
+
+  // Show upgrade wall if at campaign limit (only after plan check completes)
+  if (planReady && atCampaignLimit) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <button onClick={() => router.push('/brand/dashboard')}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+          <ArrowLeft className="h-4 w-4" /> Volver
+        </button>
+        <PlanUpgradeWall
+          title="Límite de campañas alcanzado"
+          description={`Tu plan ${limits.label} permite máximo ${limits.max_active_campaigns} campaña${limits.max_active_campaigns !== 1 ? 's' : ''} activa${limits.max_active_campaigns !== 1 ? 's' : ''}. Cancela una o sube de plan para crear más.`}
+          currentPlan={orgPlan}
+          requiredPlan={planTier === 'basic' ? 'growth' : 'pro'}
+        />
+      </div>
+    )
   }
 
   return (
@@ -116,20 +171,40 @@ export function BrandCampaignForm() {
         <div className="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
           <h2 className="text-sm font-bold text-gray-700">Visibilidad</h2>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { val: 'private', icon: Lock, color: 'violet', label: 'Privada', desc: 'Tú invitas a los influencers directamente' },
-              { val: 'open',   icon: Globe, color: 'emerald', label: 'Abierta', desc: 'Influencers pueden postular — tú apruebas' },
-            ].map(({ val, icon: Icon, color, label, desc }) => (
-              <button key={val} type="button" onClick={() => set('visibility', val)}
-                className={cn('flex flex-col items-start gap-1.5 px-4 py-3 rounded-xl border transition-all',
-                  form.visibility === val ? `border-${color}-400 bg-${color}-50` : 'border-gray-200 hover:border-gray-300')}>
-                <div className="flex items-center gap-2">
-                  <Icon className={cn('h-4 w-4', form.visibility === val ? `text-${color}-600` : 'text-gray-400')} />
-                  <span className={cn('text-sm font-semibold', form.visibility === val ? `text-${color}-700` : 'text-gray-700')}>{label}</span>
-                </div>
-                <p className="text-xs text-gray-400">{desc}</p>
-              </button>
-            ))}
+            {/* Privada — siempre disponible */}
+            <button type="button" onClick={() => set('visibility', 'private')}
+              className={cn('flex flex-col items-start gap-1.5 px-4 py-3 rounded-xl border transition-all',
+                form.visibility === 'private' ? 'border-violet-400 bg-violet-50' : 'border-gray-200 hover:border-gray-300')}>
+              <div className="flex items-center gap-2">
+                <Lock className={cn('h-4 w-4', form.visibility === 'private' ? 'text-violet-600' : 'text-gray-400')} />
+                <span className={cn('text-sm font-semibold', form.visibility === 'private' ? 'text-violet-700' : 'text-gray-700')}>Privada</span>
+              </div>
+              <p className="text-xs text-gray-400">Tú invitas a los influencers directamente</p>
+            </button>
+
+            {/* Abierta — solo Pro */}
+            <button
+              type="button"
+              disabled={!canOpen}
+              onClick={() => canOpen && set('visibility', 'open')}
+              className={cn(
+                'flex flex-col items-start gap-1.5 px-4 py-3 rounded-xl border transition-all relative',
+                !canOpen
+                  ? 'border-gray-100 bg-gray-50 cursor-not-allowed opacity-70'
+                  : form.visibility === 'open'
+                    ? 'border-emerald-400 bg-emerald-50'
+                    : 'border-gray-200 hover:border-gray-300',
+              )}>
+              {/* Pro badge */}
+              {!canOpen && (
+                <span className="absolute top-2 right-2 text-[10px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">Pro</span>
+              )}
+              <div className="flex items-center gap-2">
+                <Globe className={cn('h-4 w-4', form.visibility === 'open' && canOpen ? 'text-emerald-600' : 'text-gray-400')} />
+                <span className={cn('text-sm font-semibold', form.visibility === 'open' && canOpen ? 'text-emerald-700' : 'text-gray-700')}>Abierta</span>
+              </div>
+              <p className="text-xs text-gray-400">Influencers pueden postular — tú apruebas</p>
+            </button>
           </div>
           {form.visibility === 'open' && (
             <div className="grid grid-cols-2 gap-4 pt-2">

@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import {
+  resolveBrandPlan,
+  getPlanLimits,
+  campaignLimitMessage,
+  visibilityLimitMessage,
+  PLAN_ERROR_CODES,
+} from '@/lib/plan-limits'
 
 // GET /api/brand-campaigns — campañas de la marca autenticada
 export async function GET() {
@@ -89,6 +96,26 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // ── Plan gating ───────────────────────────────────────────────────────────
+  // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id)
+  const limits  = getPlanLimits(orgPlan)
+
+  // Contar campañas activas (draft, active, pending_approval, paused — todo excepto completed/canceled)
+  const { count: activeCampaignCount } = await admin
+    .from('campaigns')
+    .select('id', { count: 'exact', head: true })
+    .eq('brand_id', brand.id)
+    .not('status', 'in', '("completed","canceled")')
+
+  if ((activeCampaignCount ?? 0) >= limits.max_active_campaigns) {
+    return NextResponse.json({
+      error: campaignLimitMessage(orgPlan),
+      code:  PLAN_ERROR_CODES.CAMPAIGN_LIMIT,
+      plan:  orgPlan,
+    }, { status: 403 })
+  }
+
   let body: {
     name: string
     type: string
@@ -117,6 +144,15 @@ export async function POST(req: NextRequest) {
   if (!type) return NextResponse.json({ error: 'El tipo es requerido' }, { status: 422 })
   if (!['private', 'open'].includes(visibility)) {
     return NextResponse.json({ error: 'visibility debe ser private u open' }, { status: 422 })
+  }
+
+  // Bloquear campañas open si el plan no lo permite
+  if (visibility === 'open' && !limits.can_create_open_campaigns) {
+    return NextResponse.json({
+      error: visibilityLimitMessage(orgPlan),
+      code:  PLAN_ERROR_CODES.VISIBILITY_LIMIT,
+      plan:  orgPlan,
+    }, { status: 403 })
   }
 
   const { data, error } = await admin

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { resolveBrandPlan } from '@/lib/plan-limits'
 
 const BRAND_FIELDS = `
   id, name, logo_url, website, instagram, industry, rut,
@@ -30,7 +31,10 @@ export async function GET() {
     .single()
 
   if (error || !data) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  return NextResponse.json({ data })
+
+  // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
+  const orgPlan = await resolveBrandPlan(admin, data.organization_id)
+  return NextResponse.json({ data: { ...data, org_plan: orgPlan } })
 }
 
 // PATCH /api/brand/me — actualizar perfil completo

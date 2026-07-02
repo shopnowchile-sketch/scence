@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Briefcase, Building2, Calendar,
   ChevronRight, LogOut, RefreshCw,
-  CheckSquare, Sparkles,
+  CheckSquare, Sparkles, Instagram, AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -30,11 +30,27 @@ type Campaign = {
   campaign_deliverables: Array<{ id: string; status: string }>
 }
 
+type SocialProfile = {
+  id: string
+  platform: string
+  username: string | null
+  profile_url: string | null
+}
+
 type InfluencerProfile = {
   id: string
   display_name: string
   avatar_url: string | null
   email: string | null
+  influencer_social_profiles?: SocialProfile[]
+}
+
+function hasInstagram(profile: InfluencerProfile | null) {
+  return Boolean(
+    profile?.influencer_social_profiles?.some(
+      sp => sp.platform === 'instagram' && (sp.username || sp.profile_url)
+    )
+  )
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -75,6 +91,9 @@ export default function InfluencerDashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
+  const [igInput,   setIgInput]   = useState('')
+  const [igSaving,  setIgSaving]  = useState(false)
+  const [igError,   setIgError]   = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -109,6 +128,35 @@ export default function InfluencerDashboard() {
     router.push('/login')
   }
 
+  async function handleSaveInstagram() {
+    const raw = igInput.trim()
+    if (!raw) { setIgError('Ingresa tu usuario de Instagram.'); return }
+    const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '').split('?')[0]
+    if (!username) { setIgError('Usuario de Instagram inválido.'); return }
+
+    setIgSaving(true)
+    setIgError(null)
+    try {
+      const res = await fetch('/api/influencer/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          social_profiles: [{ platform: 'instagram', username, profile_url: `https://instagram.com/${username}` }],
+        }),
+      })
+      if (!res.ok) {
+        const { error: e } = await res.json()
+        setIgError(e ?? 'No se pudo guardar. Intenta de nuevo.')
+        setIgSaving(false)
+        return
+      }
+      await load()
+    } catch {
+      setIgError('Error de conexión. Intenta de nuevo.')
+    }
+    setIgSaving(false)
+  }
+
   // ── Loading / error states ─────────────────────────────────────────────────
 
   if (loading) {
@@ -134,6 +182,44 @@ export default function InfluencerDashboard() {
           <p className="text-sm text-gray-500 mb-6">{error}</p>
           <button onClick={handleSignOut} className="btn-secondary text-sm flex items-center gap-2 mx-auto">
             <LogOut className="h-4 w-4" /> Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Gate: sin Instagram no puede avanzar en el portal.
+  if (profile && !hasInstagram(profile)) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-100 p-6 text-center">
+          <div className="w-12 h-12 rounded-full bg-pink-50 flex items-center justify-center mx-auto mb-4">
+            <Instagram className="h-6 w-6 text-pink-500" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900">Falta tu Instagram</h1>
+          <p className="text-sm text-gray-400 mt-1 mb-5">
+            Para continuar en el portal necesitamos al menos tu usuario de Instagram.
+          </p>
+          <input
+            value={igInput}
+            onChange={e => setIgInput(e.target.value)}
+            placeholder="@tuusuario"
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-center outline-none focus:border-violet-400 mb-3"
+          />
+          {igError && (
+            <p className="text-xs text-red-500 flex items-center justify-center gap-1 mb-3">
+              <AlertCircle className="h-3.5 w-3.5" /> {igError}
+            </p>
+          )}
+          <button
+            onClick={handleSaveInstagram}
+            disabled={igSaving}
+            className="btn-primary w-full text-sm justify-center disabled:opacity-60"
+          >
+            {igSaving ? 'Guardando…' : 'Guardar y continuar'}
+          </button>
+          <button onClick={handleSignOut} className="mt-3 text-xs text-gray-400 hover:text-gray-600">
+            Cerrar sesión
           </button>
         </div>
       </div>

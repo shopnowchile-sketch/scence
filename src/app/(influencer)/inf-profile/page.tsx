@@ -29,8 +29,20 @@ type InfluencerProfile = {
   city: string | null
   country: string | null
   address: string | null
+  commune: string | null
   categories: string[] | null
   influencer_social_profiles: SocialProfile[] | null
+}
+
+// Perfil obligatorio: Instagram + comuna + dirección. Se usa para forzar la
+// edición al entrar al portal si falta alguno (ver useEffect más abajo).
+function isProfileComplete(p: InfluencerProfile) {
+  const hasAddress   = !!(p.address && p.address.trim())
+  const hasCommune   = !!(p.commune && p.commune.trim())
+  const hasInstagram = (p.influencer_social_profiles ?? []).some(
+    sp => sp.platform === 'instagram' && sp.username && sp.username.trim()
+  )
+  return hasAddress && hasCommune && hasInstagram
 }
 
 type Task     = { id: string; status: string }
@@ -92,7 +104,7 @@ export default function ProfilePage() {
   const [loading,   setLoading]   = useState(true)
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
-  const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', city: '', country: '', address: '', categories: '' })
+  const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', city: '', country: '', address: '', commune: '', categories: '' })
   const [socials,   setSocials]   = useState<SocialProfile[]>([])
 
   const load = useCallback(async () => {
@@ -116,6 +128,14 @@ export default function ProfilePage() {
 
   useEffect(() => { load() }, [load])
 
+  // Perfil obligatorio: si falta Instagram, comuna o dirección, se fuerza el
+  // modo edición al entrar (no se puede navegar el portal con el perfil
+  // incompleto — ver ProfileCompletionGate en el layout, que ya redirige acá).
+  useEffect(() => {
+    if (profile && !isProfileComplete(profile) && !editing) startEdit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile])
+
   function startEdit() {
     if (!profile) return
     setEditForm({
@@ -125,13 +145,32 @@ export default function ProfilePage() {
       city: profile.city ?? '',
       country: profile.country ?? '',
       address: profile.address ?? '',
+      commune: profile.commune ?? '',
       categories: (profile.categories ?? []).join(', '),
     })
-    setSocials((profile.influencer_social_profiles ?? []).map(sp => ({ ...sp })))
+    const existingSocials = (profile.influencer_social_profiles ?? []).map(sp => ({ ...sp }))
+    if (!existingSocials.some(sp => sp.platform === 'instagram')) {
+      existingSocials.unshift({ platform: 'instagram', username: '', followers: 0, engagement_rate: null, profile_url: null })
+    }
+    setSocials(existingSocials)
     setEditing(true)
   }
 
+  function findMissingRequired(): string[] {
+    const missing: string[] = []
+    if (!editForm.address.trim()) missing.push('Dirección')
+    if (!editForm.commune.trim()) missing.push('Comuna')
+    const hasInstagram = socials.some(s => !s._delete && s.platform === 'instagram' && s.username.trim())
+    if (!hasInstagram) missing.push('Instagram (usuario)')
+    return missing
+  }
+
   async function saveProfile() {
+    const missing = findMissingRequired()
+    if (missing.length > 0) {
+      toast.error(`Completa los campos obligatorios: ${missing.join(', ')}`)
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch('/api/influencer/me', {
@@ -176,6 +215,7 @@ export default function ProfilePage() {
   const currency        = payments.completed[0]?.currency ?? payments.pending[0]?.currency ?? 'CLP'
   const socialProfiles  = profile.influencer_social_profiles ?? []
   const activeSocials   = socials.filter(s => !s._delete)
+  const profileComplete = isProfileComplete(profile)
 
   return (
     <div className="space-y-6">
@@ -187,9 +227,11 @@ export default function ProfilePage() {
           {!editing && <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><RefreshCw className="h-4 w-4" /></button>}
           {editing ? (
             <>
-              <button onClick={() => setEditing(false)} className="flex items-center gap-1 text-sm text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-100">
-                <X className="h-4 w-4" /> Cancelar
-              </button>
+              {profileComplete && (
+                <button onClick={() => setEditing(false)} className="flex items-center gap-1 text-sm text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-100">
+                  <X className="h-4 w-4" /> Cancelar
+                </button>
+              )}
               <button onClick={saveProfile} disabled={saving} className="flex items-center gap-1 text-sm font-semibold bg-violet-600 text-white px-4 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">
                 <Save className="h-4 w-4" /> {saving ? 'Guardando…' : 'Guardar'}
               </button>
@@ -221,7 +263,7 @@ export default function ProfilePage() {
                 {profile.email && <div className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.email}</span></div>}
                 {profile.phone && <div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.phone}</span></div>}
                 {profile.address && <div className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.address}</span></div>}
-                {(profile.city || profile.country) && <div className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{[profile.city, profile.country].filter(Boolean).join(', ')}</span></div>}
+                {(profile.commune || profile.city || profile.country) && <div className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{[profile.commune, profile.city, profile.country].filter(Boolean).join(', ')}</span></div>}
                 {profile.categories && profile.categories.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap pt-1">
                     <Tag className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
@@ -289,6 +331,12 @@ export default function ProfilePage() {
       {/* EDIT MODE */}
       {editing && (
         <div className="space-y-5">
+          {!profileComplete && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              Para usar el portal necesitas completar Instagram, comuna y dirección.
+            </div>
+          )}
           <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /> Información personal</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -331,16 +379,17 @@ export default function ProfilePage() {
 
           <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-400" /> Dirección y ubicación</h2>
-            <Field label="Dirección completa" value={editForm.address} onChange={v => setEditForm(f => ({ ...f, address: v }))} placeholder="Av. Providencia 1234, Depto 5" />
+            <Field label="Dirección completa *" value={editForm.address} onChange={v => setEditForm(f => ({ ...f, address: v }))} placeholder="Av. Providencia 1234, Depto 5" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Comuna *" value={editForm.commune} onChange={v => setEditForm(f => ({ ...f, commune: v }))} placeholder="Providencia" />
               <Field label="Ciudad" value={editForm.city} onChange={v => setEditForm(f => ({ ...f, city: v }))} placeholder="Santiago" />
-              <Field label="País" value={editForm.country} onChange={v => setEditForm(f => ({ ...f, country: v }))} placeholder="Chile" />
             </div>
+            <Field label="País" value={editForm.country} onChange={v => setEditForm(f => ({ ...f, country: v }))} placeholder="Chile" />
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Share2 className="h-4 w-4 text-gray-400" /> Redes Sociales</h2>
+              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Share2 className="h-4 w-4 text-gray-400" /> Redes Sociales <span className="text-red-500 font-normal">(Instagram obligatorio)</span></h2>
               <button onClick={() => setSocials(prev => [...prev, { platform: 'instagram', username: '', followers: 0, engagement_rate: null, profile_url: null }])}
                 className="flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700">
                 <Plus className="h-3.5 w-3.5" /> Agregar red
@@ -364,7 +413,7 @@ export default function ProfilePage() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase">Usuario</label>
+                        <label className="text-[10px] font-semibold text-gray-400 uppercase">Usuario{sp.platform === 'instagram' ? ' *' : ''}</label>
                         <input type="text" value={sp.username} onChange={e => updateSocial(idx, 'username', e.target.value)} placeholder="@usuario"
                           className="w-full mt-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 outline-none focus:border-violet-400" />
                       </div>

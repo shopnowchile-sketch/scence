@@ -164,6 +164,9 @@ export interface CampaignDetail extends Campaign {
   social_tags: string[] | null
   deliverable_templates: Array<{ type: string; quantity: number; description?: string; due_date?: string }> | null
   commission_rate: number | null
+  // Solo presente cuando GET /api/campaigns/[id] lo resuelve para un usuario de Marca
+  // (ver getBrandAccess en esa ruta) — no existe para Admin.
+  _brand_permissions?: { isBrand: boolean; canView: boolean; canEdit: boolean } | null
 }
 
 // computed helpers

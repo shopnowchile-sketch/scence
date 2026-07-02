@@ -17,6 +17,21 @@ import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus } fro
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer } from '@/hooks/useCampaignsList'
 import { toast } from 'sonner'
 
+// ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
+function buildProfileUrl(platform: string, username: string | null): string | null {
+  if (!username) return null
+  const u = username.replace(/^@/, '')
+  switch (platform) {
+    case 'instagram': return `https://instagram.com/${u}`
+    case 'tiktok':    return `https://tiktok.com/@${u}`
+    case 'youtube':   return `https://youtube.com/@${u}`
+    case 'twitter':   return `https://twitter.com/${u}`
+    case 'facebook':  return `https://facebook.com/${u}`
+    case 'linkedin':  return `https://linkedin.com/in/${u}`
+    default:          return null
+  }
+}
+
 // ── Deliverable status config ────────────────────────────────────────────────
 const DEL_CONFIG: Record<DeliverableStatus, { label: string; cls: string; icon: React.ReactNode }> = {
   pending:    { label: 'Pendiente',   cls: 'badge-gray',   icon: <Clock className="h-3 w-3" /> },
@@ -438,7 +453,11 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const campaignInfluencers     = c.campaign_influencers ?? []
   const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status !== 'pending')
   const campaignDeliverables = c.campaign_deliverables ?? []
-  const selectedInfluencerCI = confirmedInfluencers.find(ci => ci.influencer?.id === selectedInfluencerId) ?? confirmedInfluencers[0] ?? null
+  // FIX: antes buscaba solo en confirmedInfluencers — clickear una postulante
+  // pendiente en el panel de "solicitudes pendientes" no la encontraba (estaba
+  // filtrada afuera) y el panel derecho caía silenciosamente a mostrar la
+  // primera influencer confirmada en su lugar, sin ningún indicio del error.
+  const selectedInfluencerCI = campaignInfluencers.find(ci => ci.influencer?.id === selectedInfluencerId) ?? confirmedInfluencers[0] ?? null
   const selectedInfluencer = selectedInfluencerCI?.influencer ?? null
   const selectedInfluencerDeliverables = selectedInfluencer
     ? campaignDeliverables.filter(d => d.influencer?.id === selectedInfluencer.id)
@@ -1068,8 +1087,19 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
         <div className="space-y-4">
           {/* Pending applications (fix 2026-07-01: filtraba por ci.status === 'applied',
               un valor que el flujo real de postulación nunca setea — el campo correcto
-              es application_status. Ver src/lib/campaign-applications.ts) */}
-          {campaignInfluencers.filter(ci => ci.application_status === 'pending').length > 0 && (
+              es application_status. Ver src/lib/campaign-applications.ts)
+
+              FIX (2026-07-02, permisos): en Marca este panel y sus botones Aceptar/Rechazar
+              pegaban siempre a /api/campaigns/[id]/applications (endpoint Admin, solo valida
+              organization_id) en vez de /api/brand/campaigns/[id]/applications (que sí valida
+              brand_id). En una organización con más de una marca (hoy solo "Scence SpA" tiene
+              ese caso) una marca colaboradora podía aprobar/rechazar postulaciones de una
+              campaña que no creó. Regla de Pri: "solo la marca que creó la campaña puede
+              aprobar y ver quién postuló" — ahora el panel completo (no solo los botones) se
+              oculta en Marca si _brand_permissions.canEdit es false, y los botones pegan al
+              endpoint correcto según el portal. */}
+          {campaignInfluencers.filter(ci => ci.application_status === 'pending').length > 0
+            && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card p-4 border-amber-200 bg-amber-50">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
@@ -1079,6 +1109,11 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 {campaignInfluencers.filter(ci => ci.application_status === 'pending').map(ci => {
                   const inf = ci.influencer
                   if (!inf) return null
+                  const primarySP = inf.influencer_social_profiles?.[0]
+                  const igUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
+                  const applicationsEndpoint = isBrandPortal
+                    ? `/api/brand/campaigns/${id}/applications`
+                    : `/api/campaigns/${id}/applications`
                   return (
                     <div key={ci.id} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-amber-100">
                       {inf.avatar_url ? (
@@ -1096,16 +1131,33 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         >
                           {inf.display_name}
                         </button>
-                        {inf.influencer_social_profiles?.[0] && (
-                          <p className="text-xs text-gray-400">
-                            @{inf.influencer_social_profiles[0].username} · {((inf.influencer_social_profiles[0].followers ?? 0)/1000).toFixed(0)}K
-                          </p>
-                        )}
+                        <p className="text-xs text-gray-400 truncate">
+                          {[inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
+                          {primarySP?.username && (
+                            <>
+                              {' · '}
+                              {igUrl ? (
+                                <a
+                                  href={igUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  className="text-violet-600 hover:underline"
+                                >
+                                  {PLATFORM_ICONS[primarySP.platform] ?? ''} @{primarySP.username}
+                                </a>
+                              ) : (
+                                <span>{PLATFORM_ICONS[primarySP.platform] ?? ''} @{primarySP.username}</span>
+                              )}
+                              {' · '}{((primarySP.followers ?? 0)/1000).toFixed(0)}K
+                            </>
+                          )}
+                        </p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={async () => {
-                            const res = await fetch(`/api/campaigns/${id}/applications`, {
+                            const res = await fetch(applicationsEndpoint, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ application_id: ci.id, action: 'accept' }),
@@ -1121,7 +1173,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         <button
                           onClick={async () => {
                             if (!confirm(`¿Rechazar la solicitud de ${inf.display_name}?`)) return
-                            const res = await fetch(`/api/campaigns/${id}/applications`, {
+                            const res = await fetch(applicationsEndpoint, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ application_id: ci.id, action: 'reject' }),
@@ -1337,17 +1389,26 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                     {selectedInfluencer.influencer_social_profiles?.length ? (
                       <div className="space-y-2">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Redes</p>
-                        {selectedInfluencer.influencer_social_profiles.slice(0, 3).map(sp => (
-                          <div key={`${sp.platform}-${sp.username ?? 'sin-usuario'}`} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
-                            <div className="text-sm text-gray-700">
-                              {PLATFORM_ICONS[sp.platform]} <span className="font-semibold capitalize">{sp.platform}</span>
-                              {sp.username ? <span className="text-gray-400"> @{sp.username}</span> : null}
+                        {selectedInfluencer.influencer_social_profiles.slice(0, 3).map(sp => {
+                          const profileUrl = buildProfileUrl(sp.platform, sp.username)
+                          return (
+                            <div key={`${sp.platform}-${sp.username ?? 'sin-usuario'}`} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+                              <div className="text-sm text-gray-700">
+                                {PLATFORM_ICONS[sp.platform]} <span className="font-semibold capitalize">{sp.platform}</span>
+                                {sp.username ? (
+                                  profileUrl ? (
+                                    <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline"> @{sp.username}</a>
+                                  ) : (
+                                    <span className="text-gray-400"> @{sp.username}</span>
+                                  )
+                                ) : null}
+                              </div>
+                              <div className="text-xs font-bold text-gray-900">
+                                {((sp.followers ?? 0) / 1000).toFixed(0)}K
+                              </div>
                             </div>
-                            <div className="text-xs font-bold text-gray-900">
-                              {((sp.followers ?? 0) / 1000).toFixed(0)}K
-                            </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     ) : null}
 

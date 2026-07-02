@@ -21,7 +21,7 @@ export async function GET() {
   const { data, error } = await admin
     .from('campaign_influencers')
     .select(`
-      id, status, fee, currency,
+      id, status, application_status, fee, currency,
       campaign:campaigns (
         id, name, status, description, start_date, end_date,
         budget_total, currency,

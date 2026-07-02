@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   Plus, X, Building2, Calendar, RefreshCw,
-  FileText, ChevronRight, Loader2,
+  FileText, ChevronRight, Loader2, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -21,6 +22,17 @@ type Campaign = {
   deliverables_total: number
   deliverables_done: number
   self_created: boolean
+}
+
+type OpenCampaign = {
+  id: string
+  name: string
+  status: string
+  description: string | null
+  start_date: string | null
+  end_date: string | null
+  brand: { id: string; name: string; logo_url: string | null } | null
+  _applied?: boolean
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -80,20 +92,42 @@ export default function MyCampaignsPage() {
   const [form, setForm] = useState({
     name: '', brand_name: '', start_date: '', end_date: '', description: '',
   })
+  const [openCampaigns, setOpenCampaigns] = useState<OpenCampaign[]>([])
+  const [applying,      setApplying]      = useState<string | null>(null)
+  const [brandFilter,   setBrandFilter]   = useState<string>('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res  = await fetch('/api/influencer/my-campaigns')
+      const [res, openRes] = await Promise.all([
+        fetch('/api/influencer/my-campaigns'),
+        fetch('/api/influencer/campaigns/open'),
+      ])
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       const rows = (json.data ?? []).map(toRow).filter(Boolean) as Campaign[]
       setCampaigns(rows)
+      setOpenCampaigns(openRes.ok ? (await openRes.json()).data ?? [] : [])
     } catch { toast.error('Error cargando campañas') }
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function handleApply(campaignId: string, campaignName: string) {
+    if (!confirm(`¿Enviar solicitud para unirte a "${campaignName}"? El equipo la revisará y te confirmará.`)) return
+    setApplying(campaignId)
+    try {
+      const res = await fetch(`/api/influencer/campaigns/${campaignId}/apply`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast.success('¡Solicitud enviada! El equipo te confirmará pronto.')
+      setOpenCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, _applied: true } : c))
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al enviar solicitud')
+    }
+    setApplying(null)
+  }
 
   async function create() {
     if (!form.name.trim()) { toast.error('El nombre es requerido'); return }
@@ -211,6 +245,95 @@ export default function MyCampaignsPage() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               {saving ? 'Creando…' : 'Crear campaña'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Campañas disponibles para postular */}
+      {openCampaigns.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-violet-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" /> Disponibles para postular ({openCampaigns.length})
+          </p>
+
+          {(() => {
+            const brands = openCampaigns.map(c => c.brand?.name).filter((b): b is string => !!b)
+            const unique = brands.filter((b, i) => brands.indexOf(b) === i)
+            return unique.length > 1 ? (
+              <div className="flex gap-2 flex-wrap pb-3">
+                <button onClick={() => setBrandFilter('')}
+                  className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
+                    brandFilter === '' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
+                  Todas
+                </button>
+                {unique.map(brand => (
+                  <button key={brand} onClick={() => setBrandFilter(brand === brandFilter ? '' : brand)}
+                    className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
+                      brandFilter === brand ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
+                    {brand}
+                  </button>
+                ))}
+              </div>
+            ) : null
+          })()}
+
+          <div className="space-y-3">
+            {openCampaigns
+              .filter(c => !brandFilter || c.brand?.name === brandFilter)
+              .map(c => (
+              <div key={c.id} className={cn(
+                'rounded-xl p-4 border',
+                c._applied ? 'bg-amber-50/50 border-amber-100' : 'bg-white border-gray-100'
+              )}>
+                <div className="flex items-start gap-3">
+                  {c.brand?.logo_url ? (
+                    <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
+                      {c.brand?.name?.charAt(0) ?? '?'}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
+                      {c._applied ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">En revisión</span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
+                      )}
+                    </div>
+                    {c.brand && <p className="text-xs font-medium text-violet-600 mt-0.5">{c.brand.name}</p>}
+                    {c.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{c.description}</p>}
+                    {c._applied && (
+                      <p className="text-[10px] text-amber-600 mt-1">Ya postulaste — el equipo te confirmará pronto.</p>
+                    )}
+                    {(c.start_date || c.end_date) && (
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {c.start_date ? new Date(c.start_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '—'}
+                        {' → '}
+                        {c.end_date ? new Date(c.end_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+                    <Link href={`/inf-campaign/${c.id}`} className="text-[10px] font-semibold text-gray-400 hover:text-violet-600 transition-colors">
+                      Ver detalles
+                    </Link>
+                    {c._applied ? (
+                      <span className="text-[10px] font-bold text-amber-600">⏳ En revisión</span>
+                    ) : (
+                      <button
+                        onClick={() => handleApply(c.id, c.name)}
+                        disabled={applying === c.id}
+                        className="text-xs font-bold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                      >
+                        {applying === c.id ? '…' : 'Aplicar'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

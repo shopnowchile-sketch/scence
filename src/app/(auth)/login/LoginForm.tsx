@@ -46,7 +46,7 @@ export function LoginForm() {
     try {
       const meRes = await fetch('/api/influencer/me')
       if (meRes.ok) {
-        router.push('/dashboard')
+        router.push('/inf-dash')
         router.refresh()
         return
       }

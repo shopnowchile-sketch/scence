@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   const platform   = searchParams.get('platform')
   const category   = searchParams.get('category')
   const country    = searchParams.get('country')
+  const commune    = searchParams.get('commune')
   const verified   = searchParams.get('verified')
   const isActive   = searchParams.get('is_active')
   // Only allow columns that exist on the influencers table; derived fields like
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
 
   if (orgId)    query = query.eq('organization_id', orgId)
   if (country)  query = query.eq('country', country)
+  if (commune)  query = query.eq('commune', commune)
   if (verified === 'true')  query = query.eq('is_verified', true)
   if (isActive === 'false') query = query.eq('is_active', false)
   if (isActive === 'true')  query = query.eq('is_active', true)

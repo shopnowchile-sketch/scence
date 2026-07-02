@@ -217,6 +217,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
           onReset={resetFilters}
           total={total}
           filtered={filtered}
+          apiBase={isBrandPortal ? '/api/brand/influencers' : '/api/influencers'}
         />
       </div>
 

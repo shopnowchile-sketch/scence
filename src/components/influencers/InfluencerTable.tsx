@@ -137,7 +137,7 @@ export function InfluencerTable({
               {visible.rate && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Rate base</th>}
               {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Rating</TH>}
               {visible.status && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Estado</th>}
-              {visible.commune && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Comuna</th>}
+              {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Comuna</TH>}
               {visible.lastConnection && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Última conexión</th>}
               <th className="px-4 py-3 bg-gray-50" />
             </tr>

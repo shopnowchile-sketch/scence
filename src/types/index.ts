@@ -300,13 +300,19 @@ export interface InfluencerFilters {
   categories: string[]
   tier: InfluencerTier | ''
   country: string
+  commune: string
   minFollowers: number
   maxFollowers: number
   minEngagement: number
   isVerified: boolean | null
   isActive: boolean | null
   statusFilter: 'all' | 'active' | 'draft' | 'inactive'
-  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at'
+  // followers/engagement_rate quedan en el tipo por compatibilidad con la UI histórica,
+  // pero /api/influencers no puede ordenar por ellos (viven en el join
+  // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
+  // Columnas que sí ordenan de verdad server-side: display_name, rating, commune,
+  // city, country, is_verified, created_at, updated_at.
+  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune'
   sortOrder: 'asc' | 'desc'
 }
 
@@ -316,6 +322,7 @@ export const DEFAULT_INFLUENCER_FILTERS: InfluencerFilters = {
   categories: [],
   tier: '',
   country: '',
+  commune: '',
   minFollowers: 0,
   maxFollowers: 10_000_000,
   minEngagement: 0,

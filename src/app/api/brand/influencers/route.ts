@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
   const platform = searchParams.get('platform')
   const category = searchParams.get('category')
   const country  = searchParams.get('country')
+  const commune  = searchParams.get('commune')
   const verified = searchParams.get('verified')
   const isActive = searchParams.get('is_active')
   const rawSort  = searchParams.get('sort_by') ?? 'created_at'
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit    = Math.max(1, parseInt(searchParams.get('limit') ?? '48', 10))
 
-  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'country', 'city'] as const
+  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'country', 'city', 'commune'] as const
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
   // 1) campañas donde la marca es principal
@@ -138,6 +139,7 @@ export async function GET(req: NextRequest) {
     .range((page - 1) * limit, page * limit - 1)
 
   if (country) query = query.eq('country', country)
+  if (commune) query = query.eq('commune', commune)
   if (verified === 'true') query = query.eq('is_verified', true)
   if (isActive === 'false') query = query.eq('is_active', false)
   if (isActive === 'true') query = query.eq('is_active', true)

@@ -22,11 +22,12 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
     platforms: filters.platforms.length === 1 ? filters.platforms[0] : null,
     categories: filters.categories.length === 1 ? filters.categories[0] : null,
     country: filters.country,
+    commune: filters.commune,
     isVerified: filters.isVerified,
     isActive: filters.isActive,
     sortBy: filters.sortBy,
     sortOrder: filters.sortOrder,
-  }), [filters.platforms, filters.categories, filters.country, filters.isVerified, filters.isActive, filters.sortBy, filters.sortOrder])
+  }), [filters.platforms, filters.categories, filters.country, filters.commune, filters.isVerified, filters.isActive, filters.sortBy, filters.sortOrder])
 
   const fetchInfluencers = useCallback(async (
     currentPage: number,
@@ -44,6 +45,7 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
       if (currentFilters.platforms.length === 1)      params.set('platform', currentFilters.platforms[0])
       if (currentFilters.categories.length === 1)     params.set('category', currentFilters.categories[0])
       if (currentFilters.country)                     params.set('country', currentFilters.country)
+      if (currentFilters.commune)                     params.set('commune', currentFilters.commune)
       if (currentFilters.isVerified !== null)         params.set('verified', String(currentFilters.isVerified))
       if (currentFilters.isActive === false)          params.set('is_active', 'false')
       else if (currentFilters.isActive === true)      params.set('is_active', 'true')

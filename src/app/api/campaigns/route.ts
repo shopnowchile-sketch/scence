@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 // ── GET /api/campaigns ────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -29,8 +29,14 @@ export async function GET(request: NextRequest) {
     .order('created_at', { ascending: false })
     .range((page - 1) * limit, page * limit - 1)
 
-  // Scope: by org if available, otherwise by creator
-  if (orgId) {
+  // Scope: admin/super_admin/owner de Scence ve todas las campañas, sin
+  // filtrar por organization_id — necesario porque las marcas auto-registradas
+  // quedan con su propia organization_id aislada (distinta a la de Scence),
+  // y sus campañas quedaban invisibles para admin. Fix 2026-07-02.
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  if (isAdmin) {
+    // sin filtro de organization_id: vista global
+  } else if (orgId) {
     query = query.eq('organization_id', orgId)
   } else {
     query = query.eq('created_by', user.id)

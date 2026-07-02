@@ -31,6 +31,7 @@ export type RankingInfluencerRow = {
   social_profiles?: RankingSocialProfile[]
   influencer_social_profiles?: RankingSocialProfile[]
   campaign_count: number
+  campaign_names: string[]
   deliverables_total: number
   deliverables_completed: number
   completion_rate: number
@@ -40,6 +41,7 @@ type CampaignInfluencerRow = {
   id?: string | null
   influencer_id?: string | null
   status?: string | null
+  campaign_name?: string | null
 }
 
 type DeliverableRow = {
@@ -74,6 +76,7 @@ export function buildRankingRows(
 ): RankingInfluencerRow[] {
   const ciById = new Map<string, CampaignInfluencerRow>()
   const campaignsByInfluencer = new Map<string, Set<string>>()
+  const campaignNamesByInfluencer = new Map<string, Set<string>>()
   const deliverablesByInfluencer = new Map<string, { total: number; completed: number }>()
 
   for (const ci of campaignInfluencers) {
@@ -86,6 +89,13 @@ export function buildRankingRows(
     }
 
     campaignsByInfluencer.get(ci.influencer_id)?.add(ci.id)
+
+    if (ci.campaign_name) {
+      if (!campaignNamesByInfluencer.has(ci.influencer_id)) {
+        campaignNamesByInfluencer.set(ci.influencer_id, new Set())
+      }
+      campaignNamesByInfluencer.get(ci.influencer_id)?.add(ci.campaign_name)
+    }
   }
 
   for (const d of deliverables) {
@@ -115,6 +125,7 @@ export function buildRankingRows(
       ...(raw as RankingInfluencerRow),
       social_profiles: (raw.social_profiles ?? raw.influencer_social_profiles ?? []) as RankingSocialProfile[],
       campaign_count: campaignsByInfluencer.get(id)?.size ?? 0,
+      campaign_names: Array.from(campaignNamesByInfluencer.get(id) ?? []).sort(),
       deliverables_total: total,
       deliverables_completed: completed,
       completion_rate: total > 0 ? Math.round((completed / total) * 100) : 0,

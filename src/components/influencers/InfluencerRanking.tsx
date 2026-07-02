@@ -57,6 +57,8 @@ export function InfluencerRanking({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [search, setSearch] = useState('')
   const [platform, setPlatform] = useState('')
+  const [category, setCategory] = useState('')
+  const [campaignFilter, setCampaignFilter] = useState('')
   const [connectionFilter, setConnectionFilter] = useState('all')
   const [showColumns, setShowColumns] = useState(false)
   const [visible, setVisible] = useLocalStorageState<VisibleColumns>('scence:admin:influencer-ranking:columns', {
@@ -80,6 +82,26 @@ export function InfluencerRanking({
     return Array.from(values).sort()
   }, [influencers])
 
+  const categories = useMemo(() => {
+    const values = new Set<string>()
+    for (const inf of influencers) {
+      for (const c of inf.categories ?? []) {
+        if (c) values.add(c)
+      }
+    }
+    return Array.from(values).sort()
+  }, [influencers])
+
+  const campaignNames = useMemo(() => {
+    const values = new Set<string>()
+    for (const inf of influencers) {
+      for (const c of inf.campaign_names ?? []) {
+        if (c) values.add(c)
+      }
+    }
+    return Array.from(values).sort()
+  }, [influencers])
+
   const ranked = useMemo(() => {
     let rows = [...influencers]
 
@@ -96,6 +118,14 @@ export function InfluencerRanking({
       rows = rows.filter(inf =>
         inf.social_profiles?.some(sp => sp.platform === platform)
       )
+    }
+
+    if (category) {
+      rows = rows.filter(inf => (inf.categories ?? []).includes(category))
+    }
+
+    if (campaignFilter) {
+      rows = rows.filter(inf => (inf.campaign_names ?? []).includes(campaignFilter))
     }
 
     if (connectionFilter !== 'all') {
@@ -115,7 +145,7 @@ export function InfluencerRanking({
     }
 
     return sortRankingRows(rows, sortBy, sortDir)
-  }, [influencers, search, platform, connectionFilter, sortBy, sortDir])
+  }, [influencers, search, platform, category, campaignFilter, connectionFilter, sortBy, sortDir])
 
   function toggleSort(next: RankingSortBy) {
     if (sortBy === next) {
@@ -184,6 +214,28 @@ export function InfluencerRanking({
             <option value="">Todas las plataformas</option>
             {platforms.map(p => (
               <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+
+          <select
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white"
+          >
+            <option value="">Todas las categorías</option>
+            {categories.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+
+          <select
+            value={campaignFilter}
+            onChange={e => setCampaignFilter(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white"
+          >
+            <option value="">Todas las campañas</option>
+            {campaignNames.map(c => (
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
 

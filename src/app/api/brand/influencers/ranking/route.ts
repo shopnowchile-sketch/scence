@@ -67,19 +67,24 @@ export async function GET(req: NextRequest) {
     ...(collaboratorRows ?? []).map(r => r.campaign_id),
   ].filter(Boolean)))
 
-  let campaignInfluencers: Array<{ id?: string | null; influencer_id?: string | null; status?: string | null }> = []
+  let campaignInfluencers: Array<{ id?: string | null; influencer_id?: string | null; status?: string | null; campaign_name?: string | null }> = []
 
   if (campaignIds.length > 0) {
     const { data: ciRows, error: ciErr } = await admin
       .from('campaign_influencers')
-      .select('id, influencer_id, status, campaign_id')
+      .select('id, influencer_id, status, campaign_id, campaign:campaigns(name)')
       .in('campaign_id', campaignIds)
 
     if (ciErr) {
       return NextResponse.json({ error: ciErr.message }, { status: 500 })
     }
 
-    campaignInfluencers = ciRows ?? []
+    campaignInfluencers = (ciRows ?? []).map(ci => ({
+      id: ci.id,
+      influencer_id: ci.influencer_id,
+      status: ci.status,
+      campaign_name: (ci.campaign as { name?: string | null } | null)?.name ?? null,
+    }))
   }
 
   let directInfluencerIds: string[] = []

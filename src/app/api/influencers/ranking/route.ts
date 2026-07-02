@@ -69,14 +69,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: infErr.message }, { status: 500 })
   }
 
-  const { data: campaignInfluencers, error: ciErr } = await admin
+  const { data: campaignInfluencersRaw, error: ciErr } = await admin
     .from('campaign_influencers')
-    .select('id, influencer_id, status')
+    .select('id, influencer_id, status, campaign:campaigns(name)')
 
   if (ciErr) {
     console.error('[GET /api/influencers/ranking] campaign_influencers:', ciErr)
     return NextResponse.json({ error: ciErr.message }, { status: 500 })
   }
+
+  const campaignInfluencers = (campaignInfluencersRaw ?? []).map(ci => ({
+    id: ci.id,
+    influencer_id: ci.influencer_id,
+    status: ci.status,
+    campaign_name: (ci.campaign as { name?: string | null } | null)?.name ?? null,
+  }))
 
   const { data: deliverables, error: delErr } = await admin
     .from('campaign_deliverables')

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-import { ensureOrg } from '@/lib/supabase/ensureOrg'
+import { ensureOrg, ensureInfluencerRow } from '@/lib/supabase/ensureOrg'
 import { InfluencerSidebar } from './_components/InfluencerSidebar'
 import { PresenceHeartbeat } from './_components/PresenceHeartbeat'
 import { ProfileCompletionGate } from './_components/ProfileCompletionGate'
@@ -40,6 +40,10 @@ export default async function InfluencerLayout({ children }: { children: React.R
   if (!user) redirect('/login')
 
   await ensureOrg(user)
+  // FIX (B-18): auto-repara creadores auto-registrados que no tienen fila en
+  // `influencers` (ver ensureInfluencerRow en ensureOrg.ts). No-op para
+  // cuentas que ya tienen su fila.
+  await ensureInfluencerRow(user)
   const profileComplete = await isInfluencerProfileComplete(user.id)
 
   return (

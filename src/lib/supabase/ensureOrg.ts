@@ -116,3 +116,72 @@ export async function ensureOrg(user: User): Promise<string | null> {
 
   return org.id
 }
+
+/**
+ * ensureInfluencerRow — auto-provision an `influencers` row for a
+ * self-registered creador on first portal entry.
+ *
+ * FIX (B-18, 2026-07-02): el trigger de DB `handle_new_user()` crea una
+ * organización nueva y aislada por cada signup (brand o influencer, sin
+ * distinguir) y nunca toca la tabla `influencers` — un creador que se
+ * auto-registra queda con login funcional pero invisible en ranking, lista
+ * de influencers y dashboard, porque esas vistas filtran por
+ * `organization_id` de la organización real (Scence SpA), no por la
+ * organización huérfana que el trigger le asignó.
+ *
+ * Esto es el fix de ENTRADA AL PORTAL (mismo patrón que ensureOrg, usado acá
+ * mismo, y que /api/brand/register ya usa para marcas). No corrige el
+ * trigger ni repara cuentas históricas — eso es una migración aparte.
+ *
+ * Usa la organización más antigua (Scence SpA) como destino, NO
+ * user_metadata.organization_id, que para signups self-service apunta a la
+ * organización huérfana creada por el trigger.
+ */
+export async function ensureInfluencerRow(user: User): Promise<{ id: string; display_name: string } | null> {
+  if (!user.user_metadata?.is_influencer) return null
+
+  const admin = createAdminClient()
+
+  const { data: existing } = await admin
+    .from('influencers')
+    .select('id, display_name')
+    .eq('user_id', user.id)
+    .single()
+
+  if (existing) return existing
+
+  const { data: org } = await admin
+    .from('organizations')
+    .select('id')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .single()
+
+  if (!org) {
+    console.error('[ensureInfluencerRow] organización principal no encontrada')
+    return null
+  }
+
+  const displayName = (user.user_metadata?.display_name as string | undefined)
+    ?? (user.user_metadata?.full_name as string | undefined)
+    ?? user.email
+    ?? 'Creador'
+
+  const { data: influencer, error } = await admin
+    .from('influencers')
+    .insert({
+      organization_id: org.id,
+      user_id:         user.id,
+      display_name:    displayName,
+      email:            user.email ?? null,
+    })
+    .select('id, display_name')
+    .single()
+
+  if (error) {
+    console.error('[ensureInfluencerRow] failed to create influencer row:', error.message)
+    return null
+  }
+
+  return influencer
+}

@@ -14,6 +14,12 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.ap
 // selección que /api/influencers/delete-no-instagram (loadScan), que sigue
 // existiendo por si se necesita en otro flujo, pero el botón de Data Quality
 // ya no lo usa.
+//
+// FIX (2026-07-02): el portal influencer ahora exige Instagram + comuna +
+// dirección para poder entrar (ProfileCompletionGate en el layout). Antes
+// este aviso solo cubría "sin Instagram" — se amplía para incluir también a
+// quienes ya tienen Instagram pero les falta comuna o dirección, si no
+// quedarían bloqueadas del portal sin haber recibido aviso.
 export async function POST(req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -28,26 +34,39 @@ export async function POST(req: NextRequest) {
 
   try {
     const scan = await loadScan(admin, orgId)
-    const noInstagram = scan.filter(i => !i.instagram_url && !i.instagram_username && i.email)
+    const missingInstagram = scan.filter(i => !i.instagram_url && !i.instagram_username && i.email)
+
+    const { data: addrRows } = await admin
+      .from('influencers')
+      .select('id, display_name, email, address, commune')
+      .eq('organization_id', orgId)
+    const missingAddressOrCommune = (addrRows ?? []).filter(
+      r => r.email && (!r.address || !String(r.address).trim() || !r.commune || !String(r.commune).trim())
+    )
+
+    const targetsById = new Map<string, { id: string; display_name: string | null; email: string | null }>()
+    for (const i of missingInstagram) targetsById.set(i.id, { id: i.id, display_name: i.display_name, email: i.email })
+    for (const r of missingAddressOrCommune) targetsById.set(r.id, { id: r.id, display_name: r.display_name, email: r.email })
+    const targets = Array.from(targetsById.values())
 
     if (body.dryRun) {
       return NextResponse.json({
         dryRun: true,
-        count: noInstagram.length,
-        preview: noInstagram.slice(0, 20).map(i => ({ id: i.id, display_name: i.display_name, email: i.email })),
+        count: targets.length,
+        preview: targets.slice(0, 20).map(i => ({ id: i.id, display_name: i.display_name, email: i.email })),
       })
     }
 
-    if (!noInstagram.length) return NextResponse.json({ success: true, sent: 0, failed: 0 })
+    if (!targets.length) return NextResponse.json({ success: true, sent: 0, failed: 0 })
 
     let sent = 0
     let failed = 0
-    for (const inf of noInstagram) {
+    for (const inf of targets) {
       try {
         const { error: emailErr } = await getResend().emails.send({
           from: FROM_EMAIL,
           to: inf.email as string,
-          subject: 'Actualiza tu perfil en Scence',
+          subject: 'Acción requerida: completa tu perfil en Scence',
           html: requestProfileUpdateEmail({
             influencerName: inf.display_name ?? 'Influencer',
             profileUrl: `${APP_URL}/inf-profile`,

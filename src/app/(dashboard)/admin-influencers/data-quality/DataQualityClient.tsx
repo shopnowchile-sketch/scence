@@ -153,8 +153,8 @@ export function DataQualityClient() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: true }),
       }).then(r => r.json())
-      if (!dry.count) { toast.info('No hay influencers sin Instagram'); setBusy(null); return }
-      if (!confirm(`Enviar email a ${dry.count} influencer(s) pidiendo que actualicen Instagram/dirección en su perfil. ¿Continuar?`)) { setBusy(null); return }
+      if (!dry.count) { toast.info('No hay influencers con Instagram, comuna o dirección pendientes'); setBusy(null); return }
+      if (!confirm(`Enviar email a ${dry.count} influencer(s) pidiendo que completen Instagram/comuna/dirección en su perfil. ¿Continuar?`)) { setBusy(null); return }
       const r = await fetch('/api/influencers/notify-no-instagram', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
@@ -288,20 +288,25 @@ export function DataQualityClient() {
             </div>
           )}
 
-          {/* Acción: pedir a las influencers sin Instagram que actualicen su perfil */}
-          {isAdmin && report && report.withoutInstagram > 0 && (
+          {/* Acción: pedir a las influencers con Instagram/comuna/dirección incompletos que
+              actualicen su perfil. Instagram, comuna y dirección son obligatorios para
+              entrar al portal (ProfileCompletionGate). El conteo de la tarjeta de abajo es
+              solo "sin Instagram" (viene del report), pero el envío real usa dry-run del
+              endpoint, que también detecta a quienes tienen Instagram y les falta comuna o
+              dirección — por eso no se oculta el botón cuando withoutInstagram es 0. */}
+          {isAdmin && report && (
             <div className="card p-5 flex items-center justify-between border-amber-200 bg-amber-50/40">
               <div className="flex items-center gap-3">
                 <Instagram className="h-5 w-5 text-amber-500" />
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{report.withoutInstagram} influencer(s) sin Instagram</p>
-                  <p className="text-xs text-gray-500">Instagram es el identificador obligatorio. Pídeles que actualicen su perfil y dirección.</p>
+                  <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / comuna / dirección)</p>
+                  <p className="text-xs text-gray-500">{report.withoutInstagram} sin Instagram · puede haber más sin comuna o dirección. Los tres son obligatorios para usar el portal.</p>
                 </div>
               </div>
               <button onClick={handleNotifyNoInstagram} disabled={busy === 'no-instagram'}
                 className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
                 {busy === 'no-instagram' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar email para actualizar perfil
+                Enviar email para completar perfil
               </button>
             </div>
           )}

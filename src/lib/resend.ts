@@ -322,7 +322,10 @@ export function requestProfileUpdateEmail({
     <div style="padding:32px">
       <h1 style="font-size:20px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${influencerName} 👋</h1>
       <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
-        Nos falta tu <strong style="color:#111827">Instagram</strong> y/o tu <strong style="color:#111827">dirección</strong> en tu perfil de Scence. Actualízalos para que podamos considerarte en más campañas.
+        Nos falta tu <strong style="color:#111827">Instagram</strong>, tu <strong style="color:#111827">comuna</strong> y/o tu <strong style="color:#111827">dirección</strong> en tu perfil de Scence.
+      </p>
+      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
+        A partir de ahora estos datos son obligatorios para usar el portal — sin ellos no podrás entrar a tus campañas hasta completarlos. Tómate 1 minuto para actualizarlos.
       </p>
       <a href="${profileUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px">
         Actualizar mi perfil →

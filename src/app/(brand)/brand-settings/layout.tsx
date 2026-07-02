@@ -2,16 +2,17 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { User, Building2, Users, MapPin, Bell, Shield } from 'lucide-react'
+import { User, Building2, Users, MapPin, Bell, Shield, CreditCard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const TABS = [
-    { href: '/brand-settings/profile', label: 'Mi perfil', icon: User },
-    { href: '/brand-settings/organization', label: 'Organización', icon: Building2 },
-    { href: '/brand-settings/users', label: 'Usuarios', icon: Users, soon: true },
-    { href: '/brand-settings/locations', label: 'Lugares', icon: MapPin },
-  { href: '/brand-settings/notifications', label: 'Notificaciones', icon: Bell,    soon: true },
-  { href: '/brand-settings/security',      label: 'Seguridad',      icon: Shield,  soon: true },
+  { href: '/brand-settings/profile',       label: 'Mi perfil',      icon: User },
+  { href: '/brand-settings/organization',  label: 'Organización',   icon: Building2 },
+  { href: '/brand-settings/plan',          label: 'Plan',           icon: CreditCard },
+  { href: '/brand-settings/users',         label: 'Usuarios',       icon: Users },
+  { href: '/brand-settings/locations',     label: 'Lugares',        icon: MapPin },
+  { href: '/brand-settings/notifications', label: 'Notificaciones', icon: Bell,     soon: true },
+  { href: '/brand-settings/security',      label: 'Seguridad',      icon: Shield,   soon: true },
 ]
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

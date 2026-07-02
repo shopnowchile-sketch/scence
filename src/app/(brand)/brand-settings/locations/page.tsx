@@ -1,3 +1,6 @@
-import BrandProfilePage from '@/app/(brand)/brand-profile/page'
+// Direcciones principal y secundaria de la marca
+import { BrandAddressForm } from '@/components/brand/BrandAddressForm'
 
-export default BrandProfilePage
+export default function BrandLocationsPage() {
+  return <BrandAddressForm />
+}

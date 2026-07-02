@@ -1,2 +1,6 @@
-// Datos de la empresa, dirección, RUT, Instagram y usuarios del portal
-export { default } from '@/app/(brand)/brand-profile/page'
+// Datos de empresa y contacto de la organización
+import { BrandOrgForm } from '@/components/brand/BrandOrgForm'
+
+export default function BrandOrganizationPage() {
+  return <BrandOrgForm />
+}

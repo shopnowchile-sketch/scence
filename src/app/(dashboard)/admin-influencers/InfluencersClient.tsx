@@ -150,6 +150,15 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
               </Link>
             </>
           )}
+          {isBrandPortal && (
+            <Link
+              href="/brand-campaigns"
+              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Ir a mis campañas
+            </Link>
+          )}
         </div>
       </div>
       {showBulk && (
@@ -270,6 +279,26 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Empty state marca: sin influencers en roster */}
+      {!loading && !error && isBrandPortal && influencers.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-gray-100 text-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center">
+            <Users className="h-6 w-6 text-violet-400" />
+          </div>
+          <p className="text-sm font-semibold text-gray-700">Aún no tienes influencers en tu roster</p>
+          <p className="text-xs text-gray-400 max-w-xs">
+            Para sumar influencers, invítalas desde una campaña activa.
+          </p>
+          <Link
+            href="/brand-campaigns"
+            className="mt-2 flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Ir a mis campañas
+          </Link>
         </div>
       )}
 

@@ -155,8 +155,8 @@ function SidebarContent({
           </Link>
         )}
         {portal === 'brand' && (
-          <Link href="/brand-profile" onClick={onNavClick}
-            className={cn('nav-link', pathname === '/brand-profile' && 'active')}>
+          <Link href="/brand-settings/profile" onClick={onNavClick}
+            className={cn('nav-link', pathname.startsWith('/brand-settings') && 'active')}>
             <Settings className="h-4 w-4" /> Mi perfil
           </Link>
         )}

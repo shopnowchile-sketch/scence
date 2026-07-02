@@ -85,7 +85,7 @@ export function PlanUpgradeWall({
 
       {/* CTA */}
       <Link
-        href="/brand-billing"
+        href="/brand-settings/plan"
         className="inline-flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
       >
         Subir de plan

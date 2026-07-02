@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-import { ensureOrg, ensureInfluencerRow } from '@/lib/supabase/ensureOrg'
+import { ensureInfluencerRow } from '@/lib/supabase/ensureOrg'
 import { InfluencerSidebar } from './_components/InfluencerSidebar'
 import { PresenceHeartbeat } from './_components/PresenceHeartbeat'
 import { ProfileCompletionGate } from './_components/ProfileCompletionGate'
@@ -39,7 +39,15 @@ export default async function InfluencerLayout({ children }: { children: React.R
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  await ensureOrg(user)
+  // FIX (2026-07-02, seguimiento trigger): antes se llamaba ensureOrg(user)
+  // acá, que era no-op mientras el trigger handle_new_user() stampeaba
+  // organization_id en el metadata del usuario. Al corregir el trigger para
+  // que ya no cree organizaciones huérfanas, ensureOrg() dejó de ser no-op y
+  // volvía a crear una org basura (nombrada por dominio de email) en cada
+  // login de influencer, además de pisar profiles.role de vuelta a
+  // 'brand_manager'. Se remueve: ensureInfluencerRow() ya resuelve la
+  // organización real (Scence SpA) por su cuenta y no depende de
+  // organization_id en metadata.
   // FIX (B-18): auto-repara creadores auto-registrados que no tienen fila en
   // `influencers` (ver ensureInfluencerRow en ensureOrg.ts). No-op para
   // cuentas que ya tienen su fila.

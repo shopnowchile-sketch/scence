@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/influencers/ranking'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -72,14 +73,17 @@ export async function GET(req: NextRequest) {
   let campaignInfluencers: Array<{ id?: string | null; influencer_id?: string | null; status?: string | null; campaign_name?: string | null }> = []
 
   if (campaignIds.length > 0) {
-    const { data: ciRows, error: ciErr } = await admin
-      .from('campaign_influencers')
-      .select('id, influencer_id, status, campaign_id, campaign:campaigns(name)')
-      .in('campaign_id', campaignIds)
-      .limit(5000)
+    const { data: ciRows, error: ciErr } = await fetchAllRows(
+      (from, to) => admin
+        .from('campaign_influencers')
+        .select('id, influencer_id, status, campaign_id, campaign:campaigns(name)')
+        .in('campaign_id', campaignIds)
+        .range(from, to),
+      { maxRows: 5000 }
+    )
 
     if (ciErr) {
-      return NextResponse.json({ error: ciErr.message }, { status: 500 })
+      return NextResponse.json({ error: (ciErr as Error).message ?? 'Error' }, { status: 500 })
     }
 
     campaignInfluencers = (ciRows ?? []).map(ci => ({
@@ -114,43 +118,49 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: [], total: 0, sort_by: sortBy, sort_dir: sortDir })
   }
 
-  const { data: influencers, error: infErr } = await admin
-    .from('influencers')
-    .select(`
-      id,
-      user_id,
-      display_name,
-      city,
-      commune,
-      country,
-      categories,
-      rating,
-      social_profiles:influencer_social_profiles (
-        platform,
-        username,
-        followers,
-        engagement_rate,
-        is_primary
-      )
-    `)
-    .in('id', influencerIds)
-    .limit(5000)
+  const { data: influencers, error: infErr } = await fetchAllRows(
+    (from, to) => admin
+      .from('influencers')
+      .select(`
+        id,
+        user_id,
+        display_name,
+        city,
+        commune,
+        country,
+        categories,
+        rating,
+        social_profiles:influencer_social_profiles (
+          platform,
+          username,
+          followers,
+          engagement_rate,
+          is_primary
+        )
+      `)
+      .in('id', influencerIds)
+      .range(from, to),
+    { maxRows: 5000 }
+  )
 
   if (infErr) {
-    return NextResponse.json({ error: infErr.message }, { status: 500 })
+    return NextResponse.json({ error: (infErr as Error).message ?? 'Error' }, { status: 500 })
   }
 
   let deliverables: Array<{ influencer_id?: string | null; campaign_influencer_id?: string | null; status?: string | null }> = []
 
   if (campaignIds.length > 0) {
-    const { data: delRows, error: delErr } = await admin
-      .from('campaign_deliverables')
-      .select('influencer_id, campaign_influencer_id, status, campaign_id')
-      .in('campaign_id', campaignIds)
-      .limit(10000)
+    const { data: delRows, error: delErr } = await fetchAllRows(
+      (from, to) => admin
+        .from('campaign_deliverables')
+        .select('influencer_id, campaign_influencer_id, status, campaign_id')
+        .in('campaign_id', campaignIds)
+        .range(from, to),
+      { maxRows: 10000 }
+    )
 
     if (delErr) {
-      return NextResponse.json({ error: delErr.message }, { status: 500 })
+      return NextResponse.json({ error: (delErr as Error).message ?? 'Error' }, { status: 500 })
     }
 
     deliverables = delRows ?? []

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, Columns3, Search, Star, TrendingUp, Users } from 'lucide-react'
+import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, Columns3, Search, Star, TrendingUp, Users, Send } from 'lucide-react'
+import { toast } from 'sonner'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { RankingInfluencerRow, RankingSortBy } from '@/lib/influencers/ranking'
 import { getPrimarySocial, getRankingValue, sortRankingRows } from '@/lib/influencers/ranking'
@@ -61,6 +62,7 @@ export function InfluencerRanking({
   const [campaignFilter, setCampaignFilter] = useState('')
   const [connectionFilter, setConnectionFilter] = useState('all')
   const [showColumns, setShowColumns] = useState(false)
+  const [bulkInviting, setBulkInviting] = useState(false)
   const [visible, setVisible] = useLocalStorageState<VisibleColumns>('scence:admin:influencer-ranking:columns', {
     followers: true,
     engagement: true,
@@ -160,6 +162,26 @@ export function InfluencerRanking({
     setVisible(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
+  // Invitación/reenvío masivo — reutiliza el mismo endpoint que el botón
+  // individual "Invitar" (POST /api/influencers/[id]/invite), aplicado a
+  // todas las filas visibles bajo el filtro de conexión activo.
+  async function handleBulkInvite() {
+    const targets = ranked.filter(inf => !inf.last_sign_in_at)
+    if (targets.length === 0) return
+    if (!confirm(`¿Enviar invitación/reenvío a ${targets.length} influencer(s) sin conexión?`)) return
+
+    setBulkInviting(true)
+    let sent = 0, failed = 0
+    for (const inf of targets) {
+      try {
+        const r = await fetch(`/api/influencers/${inf.id}/invite`, { method: 'POST' })
+        if (r.ok) sent++; else failed++
+      } catch { failed++ }
+    }
+    setBulkInviting(false)
+    toast.success(`Invitaciones enviadas: ${sent}${failed ? ` · ${failed} fallaron` : ''}`)
+  }
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -251,6 +273,18 @@ export function InfluencerRanking({
             <option value="never_connected">Invitadas sin conexión</option>
             <option value="no_access">Sin acceso</option>
           </select>
+
+          {basePath === '/admin-influencers' && connectionFilter !== 'all' && connectionFilter !== 'connected_any' && ranked.some(inf => !inf.last_sign_in_at) && (
+            <button
+              type="button"
+              onClick={handleBulkInvite}
+              disabled={bulkInviting}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-violet-200 bg-violet-50 text-sm font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+            >
+              <Send className="h-3.5 w-3.5" />
+              {bulkInviting ? 'Enviando…' : `Invitar a ${ranked.filter(inf => !inf.last_sign_in_at).length}`}
+            </button>
+          )}
 
           <button
             type="button"

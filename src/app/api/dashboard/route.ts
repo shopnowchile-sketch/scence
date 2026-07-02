@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
 // ── GET /api/dashboard — aggregated KPIs ──────────────────────────────────────
 export async function GET() {
@@ -56,15 +57,18 @@ export async function GET() {
     // /api/influencers?limit=100 — con 1452 influencers reales eso
     // undercounteaba brutalmente (ej. "35/99" en vez del roster completo).
     // Acá se trae id/user_id/display_name de TODA la org para cruzar con
-    // profiles.last_seen_at. FIX #2 (mismo día): sin `.limit()` explícito,
-    // PostgREST corta en su default (1000 filas) — con esta org en 1452
-    // influencers, el fetch igual quedaba corto (confirmado en UAT: el KPI
-    // de arriba mostró "1000" en vez de 1452). Se sube el límite a 5000,
-    // mismo patrón ya usado en el fix del cap de ranking.
-    db.from('influencers')
-      .select('id, user_id, display_name')
-      .eq('organization_id', orgId)
-      .limit(5000),
+    // profiles.last_seen_at. FIX #2 (2026-07-03, reportado por Pri): un
+    // `.limit(5000)` del lado cliente NO evita el tope de Max Rows del
+    // proyecto Supabase (1000 por defecto, se aplica siempre) — confirmado
+    // que el KPI seguía en "1000". Se pagina con fetchAllRows para traer el
+    // roster completo real.
+    fetchAllRows(
+      (from, to) => db.from('influencers')
+        .select('id, user_id, display_name')
+        .eq('organization_id', orgId)
+        .range(from, to),
+      { maxRows: 5000 }
+    ),
 
     db.from('invoices')
       .select('total, currency')

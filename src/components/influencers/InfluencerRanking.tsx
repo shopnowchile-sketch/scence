@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, Columns3, Search, Star, TrendingUp, Users, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
@@ -46,6 +47,22 @@ function formatPercent(value: number) {
   return `${Math.round(value)}%`
 }
 
+// Mismo helper que InfluencerProfile.tsx (admin-influencers/[id]) — no se
+// extrajo a lib/utils para mantener este cambio acotado a este archivo.
+function buildProfileUrl(platform: string | null | undefined, username: string | null | undefined): string | null {
+  if (!username) return null
+  const u = username.replace(/^@/, '')
+  switch (platform) {
+    case 'instagram': return `https://instagram.com/${u}`
+    case 'tiktok':    return `https://tiktok.com/@${u}`
+    case 'youtube':   return `https://youtube.com/@${u}`
+    case 'twitter':   return `https://twitter.com/${u}`
+    case 'facebook':  return `https://facebook.com/${u}`
+    case 'linkedin':  return `https://linkedin.com/in/${u}`
+    default:          return null
+  }
+}
+
 export function InfluencerRanking({
   influencers,
   loading,
@@ -54,6 +71,11 @@ export function InfluencerRanking({
   renderAction,
   actionLabel = '',
 }: Props) {
+  // FIX (2026-07-02): al entrar a la ficha desde el Ranking, "volver" caía al
+  // default de InfluencerProfile.tsx (/admin-influencers) en vez de traer de
+  // vuelta al Ranking. Se pasa ?from=<pathname actual> — mismo mecanismo que
+  // ya usa CampaignDetail.tsx al linkear a una ficha de influencer.
+  const pathname = usePathname()
   const [sortBy, setSortBy] = useState<RankingSortBy>(initialSortBy)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [search, setSearch] = useState('')
@@ -370,17 +392,32 @@ export function InfluencerRanking({
                   </td>
 
                   <td className="px-4 py-3">
-                    <Link href={`${basePath}/${inf.id}`} className="flex items-center gap-3 hover:underline">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        {inf.display_name?.[0]?.toUpperCase() ?? '?'}
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">{inf.display_name}</div>
-                        <div className="text-xs text-gray-400">
-                          {primary ? `${PLATFORM_ICONS[primary.platform ?? 'instagram'] ?? ''} @${primary.username ?? '—'}` : inf.email ?? '—'}
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={`${basePath}/${inf.id}?from=${encodeURIComponent(pathname)}`}
+                        className="flex items-center gap-3 hover:underline"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {inf.display_name?.[0]?.toUpperCase() ?? '?'}
                         </div>
+                        <div className="text-sm font-semibold text-gray-900">{inf.display_name}</div>
+                      </Link>
+                      <div className="text-xs text-gray-400">
+                        {primary && buildProfileUrl(primary.platform, primary.username) ? (
+                          <a
+                            href={buildProfileUrl(primary.platform, primary.username)!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="hover:text-violet-600 hover:underline"
+                          >
+                            {PLATFORM_ICONS[primary.platform ?? 'instagram'] ?? ''} @{primary.username}
+                          </a>
+                        ) : (
+                          primary ? `@${primary.username ?? '—'}` : inf.email ?? '—'
+                        )}
                       </div>
-                    </Link>
+                    </div>
                   </td>
 
                   {visible.followers && (

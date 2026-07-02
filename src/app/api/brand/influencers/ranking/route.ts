@@ -120,7 +120,6 @@ export async function GET(req: NextRequest) {
       id,
       user_id,
       display_name,
-      email,
       city,
       commune,
       country,
@@ -162,7 +161,6 @@ export async function GET(req: NextRequest) {
   if (search) {
     rows = rows.filter(inf =>
       String(inf.display_name ?? '').toLowerCase().includes(search) ||
-      String(inf.email ?? '').toLowerCase().includes(search) ||
       String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search)
     )
   }

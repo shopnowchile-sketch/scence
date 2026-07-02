@@ -127,12 +127,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: [], total: 0, page, limit })
   }
 
+  // Columnas explícitas — NUNCA '*'. La marca no debe recibir email, phone,
+  // whatsapp, notes, metadata ni user_id (mismo criterio que /api/brand/influencers/[id]).
   let query = admin
     .from('influencers')
     .select(`
-      *,
-      social_profiles:influencer_social_profiles (*),
-      rate_cards:influencer_rate_cards (*)
+      id,
+      display_name,
+      bio,
+      avatar_url,
+      country,
+      city,
+      commune,
+      categories,
+      tags,
+      is_verified,
+      is_active,
+      rating,
+      created_at,
+      updated_at,
+      social_profiles:influencer_social_profiles (
+        id, platform, username, profile_url, followers, engagement_rate, is_primary, verified
+      ),
+      rate_cards:influencer_rate_cards (
+        id, deliverable_type, base_rate, currency, is_active
+      )
     `, { count: 'exact' })
     .in('id', influencerIds)
     .order(sortBy, { ascending: sortDir })

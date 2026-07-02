@@ -413,7 +413,7 @@ export default function EventDetailPage() {
       <div className="card p-12 text-center max-w-lg mx-auto mt-12">
         <AlertCircle className="h-10 w-10 text-red-300 mx-auto mb-3" />
         <p className="text-gray-500 font-medium">{error ?? 'Evento no encontrado'}</p>
-        <Link href="/events" className="mt-4 inline-block text-sm text-violet-600 hover:underline">
+        <Link href="/admin-events" className="mt-4 inline-block text-sm text-violet-600 hover:underline">
           Volver a eventos
         </Link>
       </div>
@@ -441,7 +441,7 @@ export default function EventDetailPage() {
       {/* Breadcrumb + actions */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Link href="/events" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+          <Link href="/admin-events" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
             <ArrowLeft className="h-4 w-4" /> Eventos
           </Link>
           <span className="text-gray-200">/</span>

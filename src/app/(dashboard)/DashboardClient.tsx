@@ -502,28 +502,29 @@ export function DashboardClient() {
     const brandsTotal =
       deepNumber(state.dashboard, ['totalBrands', 'brandsTotal', 'registeredBrands'], state.brands.length)
 
-    const outboundRevenueFromInvoices = state.invoices
-      .filter((invoice) => readText(invoice, ['direction'], 'outbound') !== 'inbound')
-      .reduce((sum, invoice) => sum + (readNumber(invoice.amount) ?? readNumber(invoice.total) ?? readNumber(invoice.amount_total) ?? 0), 0)
-
-    const inboundCostsFromInvoices = state.invoices
-      .filter((invoice) => readText(invoice, ['direction'], '') === 'inbound')
-      .reduce((sum, invoice) => sum + (readNumber(invoice.amount) ?? readNumber(invoice.total) ?? readNumber(invoice.amount_total) ?? 0), 0)
-
+    // FIX (2026-07-02): estas 3 métricas siempre daban $0/0% — buscaban keys
+    // ('revenue', 'facturado', 'payroll', 'inboundCosts', etc.) que no existen
+    // en la respuesta real de /api/dashboard (kpis.revenue_month, kpis.payroll_month,
+    // kpis.margin, kpis.margin_pct — ver esa ruta). Se agregan esos nombres reales.
+    // Además: "Costos recibidos" describía un concepto que no existe en el schema
+    // (invoices no tiene columna `direction`; Scence no recibe "facturas" de la
+    // marca, la marca le paga a Scence — eso YA es "Facturado"). Esa tarjeta se
+    // repropone más abajo como "Payroll pagado" (costo real: pago a influencers).
     const revenue =
-      deepNumber(state.dashboard, ['outboundRevenue', 'revenue', 'facturado', 'totalRevenue'], 0) ||
-      deepNumber(state.analytics, ['outboundRevenue', 'revenue', 'facturado', 'totalRevenue'], outboundRevenueFromInvoices)
-
-    const costs =
-      deepNumber(state.dashboard, ['inboundCosts', 'costsReceived', 'costosRecibidos', 'receivedCosts'], 0) ||
-      deepNumber(state.analytics, ['inboundCosts', 'costsReceived', 'costosRecibidos', 'receivedCosts'], inboundCostsFromInvoices)
+      deepNumber(state.dashboard, ['revenue_month', 'outboundRevenue', 'revenue', 'facturado', 'totalRevenue'], 0) ||
+      deepNumber(state.analytics, ['revenue_month', 'outboundRevenue', 'revenue', 'facturado', 'totalRevenue'], 0)
 
     const payroll =
-      deepNumber(state.dashboard, ['payroll', 'totalPayroll', 'payrollTotal'], 0) ||
-      deepNumber(state.analytics, ['payroll', 'totalPayroll', 'payrollTotal'], 0)
+      deepNumber(state.dashboard, ['payroll_month', 'payroll', 'totalPayroll', 'payrollTotal'], 0) ||
+      deepNumber(state.analytics, ['payroll_month', 'payroll', 'totalPayroll', 'payrollTotal'], 0)
 
-    const margin = revenue - costs - payroll
-    const marginPercent = revenue > 0 ? Math.max(0, Math.round((margin / revenue) * 100)) : 0
+    const margin =
+      deepNumber(state.dashboard, ['margin'], revenue - payroll) ||
+      (revenue - payroll)
+
+    const marginPercent =
+      deepNumber(state.dashboard, ['margin_pct', 'marginPercent'], 0) ||
+      (revenue > 0 ? Math.max(0, Math.round((margin / revenue) * 100)) : 0)
 
     const liveFromDashboard = pickArray(state.dashboard, ['liveInfluencers', 'live_influencers', 'onlineInfluencers'])
     const liveSource = liveFromDashboard.length ? liveFromDashboard : state.influencers.filter(isRecentlyOnline)
@@ -565,8 +566,8 @@ export function DashboardClient() {
       influencersTotal,
       brandsTotal,
       revenue,
-      costs,
       payroll,
+      margin,
       marginPercent,
       liveInfluencers,
       influencersEntered,
@@ -611,7 +612,7 @@ export function DashboardClient() {
             icon={<Users className="h-5 w-5" />}
             value={String(computed.influencersTotal)}
             title="Influencers en roster"
-            subtitle="activos"
+            subtitle="total (activos + inactivos)"
             tone="blue"
           />
           <KpiCard
@@ -624,22 +625,22 @@ export function DashboardClient() {
           <KpiCard
             icon={<DollarSign className="h-5 w-5" />}
             value={formatCLP(computed.revenue)}
-            title="Facturado (outbound)"
-            subtitle={`${formatCLP(computed.payroll)} payroll`}
+            title="Facturado este mes"
+            subtitle="facturas Marca → Scence (pagadas o enviadas)"
             tone="green"
           />
           <KpiCard
             icon={<ArrowDownRight className="h-5 w-5" />}
-            value={formatCLP(computed.costs)}
-            title="Costos recibidos"
-            subtitle="facturas Marca → SCENCE"
+            value={formatCLP(computed.payroll)}
+            title="Payroll pagado"
+            subtitle="Scence → influencers, este mes"
             tone="red"
           />
           <KpiCard
             icon={<TrendingUp className="h-5 w-5" />}
             value={formatPercent(computed.marginPercent)}
             title="Margen bruto"
-            subtitle={`${formatCLP(Math.max(0, computed.revenue - computed.costs - computed.payroll))} neto`}
+            subtitle={`${formatCLP(Math.max(0, computed.margin))} neto`}
             tone="yellow"
           />
         </section>

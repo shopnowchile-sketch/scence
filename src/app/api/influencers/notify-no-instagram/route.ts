@@ -59,6 +59,13 @@ export async function POST(req: NextRequest) {
 
     if (!targets.length) return NextResponse.json({ success: true, sent: 0, failed: 0 })
 
+    // FIX (2026-07-02, B-17): Resend limita a 10 req/seg por cuenta. Un envío
+    // masivo sin pausa saturaba el límite (429 en cascada) y de paso bloqueaba
+    // otros correos de la misma cuenta de Resend, incluido el de confirmación
+    // de registro (Supabase Auth usa el mismo SMTP). Se agrega una pausa de
+    // 150ms entre envíos (~6-7 req/seg) para quedar bajo el límite.
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
     let sent = 0
     let failed = 0
     for (const inf of targets) {
@@ -83,6 +90,7 @@ export async function POST(req: NextRequest) {
         failed++
         console.error('[notify-no-instagram] envío falló:', inf.id, e)
       }
+      await sleep(150)
     }
 
     return NextResponse.json({ success: true, sent, failed })

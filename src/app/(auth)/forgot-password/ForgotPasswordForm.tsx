@@ -8,6 +8,11 @@ import { z } from 'zod'
 import { Mail, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react'
 import { createBrowserClient } from '@/lib/supabase/client'
 
+// Misma convención que /api/influencers/notify-no-instagram: URL estable de
+// producción con fallback, en vez de window.location.origin (que puede variar
+// según el dominio/preview desde el que se cargue la página).
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+
 const schema = z.object({
   email: z.string().email('Email inválido'),
 })
@@ -27,11 +32,15 @@ export function ForgotPasswordForm() {
     setLoading(true)
     setError(null)
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+      redirectTo: `${APP_URL}/auth/callback?next=/reset-password`,
     })
     setLoading(false)
     if (error) {
-      setError(error.message)
+      // Log real para debug (Vercel/consola); al usuario no se le muestra el
+      // mensaje crudo de Supabase — evita filtrar detalles de infraestructura
+      // y mantiene el mismo mensaje exista o no el email (no enumeration).
+      console.error('[forgot-password] resetPasswordForEmail error:', error)
+      setError('No pudimos enviar el correo. Intenta nuevamente en unos minutos.')
       return
     }
     setSent(true)

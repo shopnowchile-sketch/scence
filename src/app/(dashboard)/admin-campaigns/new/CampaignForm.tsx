@@ -517,6 +517,9 @@ export function CampaignForm({
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
+  const [draftSaving, setDraftSaving] = useState(false)
+  const [campaignId, setCampaignId] = useState<string | null>(null)
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
 
   const { register, control, handleSubmit, getValues, setValue, trigger, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -536,6 +539,55 @@ export function CampaignForm({
   // Must be after useForm so control is defined
   const campaignType = useWatch({ control, name: 'type' })
 
+  // Arma el payload de campaña a partir de los valores actuales del form
+  function buildPayload(data: FormValues) {
+    return {
+      ...data,
+      start_date: data.start_date || null,
+      end_date: data.end_date || null,
+      budget_total: (data.budget_total !== undefined && !isNaN(data.budget_total as number)) ? data.budget_total : (data.type === 'commission' ? 0 : null),
+      goals: data.goals ?? {},
+      social_tags: data.social_tags ?? [],
+      deliverable_templates: data.deliverable_templates ?? [],
+      commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
+      brand_id: data.brand_id || null,
+      visibility: data.visibility || 'private',
+    }
+  }
+
+  // Auto-guardado: crea (o actualiza) la campaña como 'draft' al avanzar de paso,
+  // para que quede guardada aunque el usuario no llegue a "Crear campaña".
+  async function saveDraft() {
+    if (draftSaving) return
+    setDraftSaving(true)
+    try {
+      const payload = buildPayload(getValues())
+      if (!campaignId) {
+        const res = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (res.ok) {
+          const { data: campaign } = await res.json()
+          setCampaignId(campaign.id)
+          setDraftSavedAt(new Date())
+        }
+      } else {
+        const res = await fetch(`${apiEndpoint}/${campaignId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (res.ok) setDraftSavedAt(new Date())
+      }
+    } catch {
+      // Silencioso: el auto-guardado no debe bloquear el flujo del wizard.
+    } finally {
+      setDraftSaving(false)
+    }
+  }
+
   async function goNext() {
     const fieldsPerStep: Record<number, (keyof FormValues)[]> = {
       1: ['name', 'type', 'platforms'],
@@ -543,27 +595,20 @@ export function CampaignForm({
       3: [],
     }
     const ok = await trigger(fieldsPerStep[step] ?? [])
-    if (ok) setStep(s => s + 1)
+    if (!ok) return
+    await saveDraft()
+    setStep(s => s + 1)
   }
 
   async function onSubmit(data: FormValues) {
     setSaving(true)
     try {
-      const res = await fetch(apiEndpoint, {
-        method: 'POST',
+      const payload = buildPayload(data)
+      const isUpdate = !!campaignId
+      const res = await fetch(isUpdate ? `${apiEndpoint}/${campaignId}` : apiEndpoint, {
+        method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...data,
-          start_date: data.start_date || null,
-          end_date: data.end_date || null,
-          budget_total: (data.budget_total !== undefined && !isNaN(data.budget_total as number)) ? data.budget_total : (data.type === 'commission' ? 0 : null),
-          goals: data.goals ?? {},
-          social_tags: data.social_tags ?? [],
-          deliverable_templates: data.deliverable_templates ?? [],
-          commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
-          brand_id: data.brand_id || null,
-          visibility: data.visibility || 'private',
-        }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -571,7 +616,7 @@ export function CampaignForm({
       }
       const { data: campaign } = await res.json()
       toast.success('Campaña creada correctamente')
-      router.push(`${redirectBase}/${campaign.id}`)
+      router.push(`${redirectBase}/${campaign?.id ?? campaignId}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
@@ -593,7 +638,10 @@ export function CampaignForm({
         </button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Nueva campaña</h1>
-          <p className="text-sm text-gray-400">Paso {step} de {STEPS.length}</p>
+          <p className="text-sm text-gray-400">
+            Paso {step} de {STEPS.length}
+            {draftSavedAt && <span className="text-emerald-500"> · Borrador guardado ✓</span>}
+          </p>
         </div>
       </div>
 
@@ -635,8 +683,8 @@ export function CampaignForm({
           </button>
 
           {step < STEPS.length ? (
-            <button type="button" onClick={goNext}
-              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors">
+            <button type="button" onClick={goNext} disabled={draftSaving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
               Siguiente <ChevronRight className="h-4 w-4" />
             </button>
           ) : (

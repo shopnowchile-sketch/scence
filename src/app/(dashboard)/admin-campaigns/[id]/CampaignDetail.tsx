@@ -692,10 +692,16 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
             <FileDown className="h-3.5 w-3.5" /> Reporte PDF
           </Link>
-          <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/admin-campaigns/${id}/edit`}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <Pencil className="h-3.5 w-3.5" /> Editar
-          </Link>
+          {/* Editar: en portal marca solo la marca creadora puede editar —
+              mismo criterio que ya usa el panel de postulaciones más abajo
+              (_brand_permissions.canEdit). Antes se mostraba siempre, aunque
+              el backend igual lo rechazaba con 403 al guardar. */}
+          {(!isBrandPortal || c._brand_permissions?.canEdit) && (
+            <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/admin-campaigns/${id}/edit`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <Pencil className="h-3.5 w-3.5" /> Editar
+            </Link>
+          )}
           {c.status === 'draft' && (
             <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">

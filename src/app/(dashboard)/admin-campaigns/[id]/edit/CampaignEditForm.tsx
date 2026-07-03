@@ -77,12 +77,21 @@ const CURRENCIES = [
 ]
 
 
-export function CampaignEditForm({ id }: { id: string }) {
+export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?: 'admin' | 'brand' }) {
   const router = useRouter()
+  const isBrandPortal = portal === 'brand'
+  const basePath = isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'
   const [saving, setSaving] = useState(false)
 
   const { data: res, isLoading, error } = useCampaignDetail(id)
   const patchCampaign = usePatchCampaign(id)
+
+  // Permiso: en portal marca, solo la marca creadora puede editar (mismo
+  // criterio que ya aplica el backend en PUT/PATCH /api/campaigns/[id] vía
+  // getBrandAccess). Esto evita que una co-marca colaboradora, que sí puede
+  // VER la campaña, llegue a un formulario que igual le rechazaría el guardado.
+  const brandPermissions = (res?.data as unknown as { _brand_permissions?: { canEdit: boolean } } | undefined)?._brand_permissions
+  const brandCanEdit = !isBrandPortal || !brandPermissions || brandPermissions.canEdit
 
   const { register, control, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -137,12 +146,14 @@ export function CampaignEditForm({ id }: { id: string }) {
         content_guidelines:    data.content_guidelines ?? null,
         social_tags:           data.social_tags ?? [],
         deliverable_templates: data.deliverable_templates ?? [],
-        brand_id:              data.brand_id || null,
+        // brand_id: campo admin-only (reasignar la marca dueña). En portal
+        // marca no se envía — se mantiene el valor cargado sin cambios.
+        brand_id:              isBrandPortal ? ((res?.data as unknown as { brand_id?: string })?.brand_id ?? null) : (data.brand_id || null),
         approval_required:     data.approval_required,
         visibility:            data.visibility || 'private',
       })
       toast.success('Campaña actualizada')
-      router.push(`/admin-campaigns/${id}`)
+      router.push(`${basePath}/${id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
@@ -163,8 +174,20 @@ export function CampaignEditForm({ id }: { id: string }) {
       <div className="card p-12 text-center max-w-lg mx-auto mt-12">
         <AlertCircle className="h-10 w-10 text-red-300 mx-auto mb-3" />
         <p className="text-gray-500 font-medium">Campaña no encontrada</p>
-        <Link href="/admin-campaigns" className="mt-4 inline-block text-sm text-violet-600 hover:underline">
+        <Link href={basePath} className="mt-4 inline-block text-sm text-violet-600 hover:underline">
           Volver a campañas
+        </Link>
+      </div>
+    )
+  }
+
+  if (!brandCanEdit) {
+    return (
+      <div className="card p-12 text-center max-w-lg mx-auto mt-12">
+        <AlertCircle className="h-10 w-10 text-amber-300 mx-auto mb-3" />
+        <p className="text-gray-500 font-medium">Solo la marca creadora puede editar esta campaña</p>
+        <Link href={`${basePath}/${id}`} className="mt-4 inline-block text-sm text-violet-600 hover:underline">
+          Volver al detalle de la campaña
         </Link>
       </div>
     )
@@ -174,7 +197,7 @@ export function CampaignEditForm({ id }: { id: string }) {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={`/admin-campaigns/${id}`}
+        <Link href={`${basePath}/${id}`}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
           <ChevronLeft className="h-5 w-5" />
         </Link>
@@ -354,10 +377,13 @@ export function CampaignEditForm({ id }: { id: string }) {
             )} />
           </div>
 
-          {/* Marca */}
-          <Controller control={control} name="brand_id" render={({ field }) => (
-            <BrandSelector value={field.value ?? ''} onChange={field.onChange} />
-          )} />
+          {/* Marca — admin-only. En portal marca no tiene sentido reasignar
+              la marca dueña de su propia campaña. */}
+          {!isBrandPortal && (
+            <Controller control={control} name="brand_id" render={({ field }) => (
+              <BrandSelector value={field.value ?? ''} onChange={field.onChange} />
+            )} />
+          )}
 
           {/* Deliverable templates */}
           <div>
@@ -451,7 +477,7 @@ export function CampaignEditForm({ id }: { id: string }) {
 
         {/* Actions */}
         <div className="flex justify-between">
-          <Link href={`/admin-campaigns/${id}`}
+          <Link href={`${basePath}/${id}`}
             className="px-4 py-2.5 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
             Cancelar
           </Link>

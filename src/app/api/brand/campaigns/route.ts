@@ -9,11 +9,20 @@ import {
 } from '@/lib/plan-limits'
 
 // GET /api/brand-campaigns — campañas de la marca autenticada
-export async function GET() {
+// Acepta los mismos filtros que /api/campaigns (status/type/platform/visibility/search)
+// para que CampaignsClient.tsx (compartido admin/marca) funcione igual en ambos portales.
+export async function GET(req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const sp         = req.nextUrl.searchParams
+  const status     = sp.get('status')
+  const type       = sp.get('type')
+  const platform   = sp.get('platform')
+  const visibility = sp.get('visibility')
+  const search     = sp.get('search')
 
   const admin = createAdminClient()
 
@@ -44,11 +53,11 @@ export async function GET() {
     ? `brand_id.eq.${brand.id},id.in.(${campaignIds.join(',')})`
     : `brand_id.eq.${brand.id}`
 
-  const { data, error } = await admin
+  let query = admin
     .from('campaigns')
     .select(`
       id, name, description, type, status, visibility, application_deadline,
-      max_influencers, start_date, end_date,
+      max_influencers, start_date, end_date, created_at,
       budget_total, currency, hashtags, platforms, content_guidelines,
       campaign_influencers (
         id, application_status, fee, currency,
@@ -65,12 +74,41 @@ export async function GET() {
     .or(orFilter)
     .order('created_at', { ascending: false })
 
+  // Mismos filtros que /api/campaigns — antes esta ruta los ignoraba por
+  // completo (CampaignsClient mandaba status/type/platform/search y acá no
+  // se aplicaban, quedaban muertos del lado marca).
+  if (status)     query = query.eq('status', status)
+  if (type)       query = query.eq('type', type)
+  if (platform)   query = query.contains('platforms', [platform])
+  if (visibility) query = query.eq('visibility', visibility)
+  if (search)     query = query.ilike('name', `%${search}%`)
+
+  const { data, error } = await query
+
   if (error) {
     console.error('[GET /api/brand-campaigns]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ data: data ?? [], brand })
+  // influencer_count/deliverable_count/deliverable_done calculados desde los
+  // mismos arrays ya traídos (sin queries extra) — mismo shape que ya
+  // devuelve /api/campaigns para que CampaignsClient.tsx (compartido) los
+  // pinte igual en ambos portales. Se agregan sin quitar los arrays
+  // anidados, porque brand-dash/page.tsx y brand/dashboard/page.tsx ya
+  // dependen de ellos completos.
+  type Row = { campaign_influencers?: unknown[]; campaign_deliverables?: Array<{ status: string }> }
+  const enriched = (data ?? []).map(c => {
+    const row = c as Row
+    const deliverables = row.campaign_deliverables ?? []
+    return {
+      ...c,
+      influencer_count:  row.campaign_influencers?.length ?? 0,
+      deliverable_count: deliverables.length,
+      deliverable_done:  deliverables.filter(d => d.status === 'published' || d.status === 'approved').length,
+    }
+  })
+
+  return NextResponse.json({ data: enriched, total: enriched.length, brand })
 }
 
 // POST /api/brand-campaigns — crear campaña desde el portal de marca

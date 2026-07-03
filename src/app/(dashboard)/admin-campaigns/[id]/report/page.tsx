@@ -1,17 +1,6 @@
 import { notFound } from 'next/navigation'
-import { createAdminClient } from '@/lib/supabase/server'
 
 // ── Types ────────────────────────────────────────────────────────────────────
-interface Brand {
-  id: string
-  name: string
-  logo_url: string | null
-  website: string | null
-  contact_name: string | null
-  contact_email: string | null
-  contact_phone: string | null
-}
-
 interface Influencer {
   id: string
   display_name: string
@@ -63,7 +52,6 @@ interface CampaignReport {
   hashtags: string[]
   platforms: string[]
   content_guidelines: string | null
-  brand: Brand | null
   campaign_influencers: CampaignInfluencer[]
   campaign_deliverables: Deliverable[]
   created_at: string
@@ -102,26 +90,50 @@ const TYPE_LABELS: Record<string, string> = {
   live: 'Live',
 }
 
-const DEL_STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendiente',
-  in_review: 'En revisión',
-  approved: 'Aprobado',
-  rejected: 'Rechazado',
-  published: 'Publicado',
+// Etiqueta corta por tipo de deliverable — usada para "Reel: URL", "Story 1: URL", etc.
+const DELIVERABLE_SHORT_LABELS: Record<string, string> = {
+  instagram_reel: 'Reel',
+  instagram_story: 'Story',
+  instagram_post: 'Post',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+  youtube_short: 'YouTube Short',
+  blog: 'Blog',
+  podcast: 'Podcast',
+  event_appearance: 'Evento',
+  live_stream: 'Live',
+  ugc_video: 'UGC Video',
+  ugc_photo: 'UGC Foto',
 }
 
-const DEL_STATUS_COLORS: Record<string, string> = {
-  pending: '#6b7280',
-  in_review: '#d97706',
-  approved: '#2563eb',
-  rejected: '#dc2626',
-  published: '#059669',
+function deliverableShortLabel(type: string | null) {
+  if (!type) return 'Deliverable'
+  return DELIVERABLE_SHORT_LABELS[type] ?? type.replace(/_/g, ' ')
 }
 
 function formatFollowers(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
   return n.toString()
+}
+
+// Agrupa los deliverables de un influencer por tipo y les asigna numeración
+// solo cuando hay más de uno del mismo tipo (Reel: URL / Story 1: URL / Story 2: URL).
+function labelDeliverables(items: Deliverable[]): Array<{ label: string; deliverable: Deliverable }> {
+  const byType = new Map<string, Deliverable[]>()
+  for (const d of items) {
+    const key = d.type ?? '—'
+    if (!byType.has(key)) byType.set(key, [])
+    byType.get(key)!.push(d)
+  }
+  const result: Array<{ label: string; deliverable: Deliverable }> = []
+  Array.from(byType.entries()).forEach(([type, group]) => {
+    const base = deliverableShortLabel(type === '—' ? null : type)
+    group.forEach((d: Deliverable, idx: number) => {
+      result.push({ label: group.length > 1 ? `${base} ${idx + 1}` : base, deliverable: d })
+    })
+  })
+  return result
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -134,7 +146,6 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
     .from('campaigns')
     .select(`
       *,
-      brand:brands!campaigns_brand_id_fkey (id, name, logo_url, website, contact_name, contact_email, contact_phone),
       campaign_influencers (
         id, fee, status, notes,
         influencer:influencers (
@@ -167,6 +178,11 @@ export default async function CampaignReportPage({ params }: { params: { id: str
   const totalCount = deliverables.length
   const progressPct = totalCount > 0 ? Math.round((totalDone / totalCount) * 100) : 0
 
+  const showBudgetTotal = campaign.budget_total != null && campaign.budget_total > 0
+  const showBudgetSpent = (campaign.budget_spent ?? 0) > 0
+
+  const hasBrief = !!(campaign.description || campaign.content_guidelines)
+
   const today = new Date().toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' })
 
   return (
@@ -183,7 +199,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
           .page { max-width: 100%; box-shadow: none; }
           .no-print { display: none !important; }
           .section { page-break-inside: avoid; }
-          table { page-break-inside: avoid; }
+          .inf-card { page-break-inside: avoid; }
         }
 
         /* Top bar */
@@ -205,18 +221,16 @@ export default async function CampaignReportPage({ params }: { params: { id: str
         .section { margin-bottom: 32px; }
         .section-title { font-size: 13px; font-weight: 700; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid #ede9fe; }
 
+        /* Brief */
+        .brief-box { font-size: 13px; color: #4b5563; line-height: 1.7; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 8px; padding: 14px 16px; }
+        .brief-box + .brief-box { margin-top: 10px; }
+        .brief-subtitle { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+
         /* Info grid */
         .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
         .info-card { background: #fafafa; border: 1px solid #f0f0f0; border-radius: 10px; padding: 14px 16px; }
         .info-label { font-size: 11px; color: #9ca3af; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
         .info-value { font-size: 15px; font-weight: 700; color: #1a1a2e; }
-
-        /* Brand box */
-        .brand-box { display: flex; align-items: center; gap: 16px; background: #f9f7ff; border: 1px solid #ede9fe; border-radius: 10px; padding: 16px 20px; }
-        .brand-logo { width: 52px; height: 52px; border-radius: 8px; object-fit: contain; background: white; border: 1px solid #e5e7eb; }
-        .brand-initials { width: 52px; height: 52px; border-radius: 8px; background: #7c3aed; color: white; font-size: 20px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-        .brand-name { font-size: 17px; font-weight: 700; color: #1a1a2e; }
-        .brand-contact { font-size: 12px; color: #6b7280; margin-top: 2px; }
 
         /* Progress bar */
         .progress-summary { display: flex; align-items: center; gap: 20px; background: #f9f7ff; border: 1px solid #ede9fe; border-radius: 10px; padding: 16px 20px; }
@@ -227,23 +241,19 @@ export default async function CampaignReportPage({ params }: { params: { id: str
         .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #a78bfa); border-radius: 6px; transition: width 0.3s; }
         .progress-stats { font-size: 12px; color: #6b7280; }
 
-        /* Influencer table */
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        thead th { background: #7c3aed; color: white; padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        thead th:first-child { border-radius: 8px 0 0 0; }
-        thead th:last-child { border-radius: 0 8px 0 0; }
-        tbody tr { border-bottom: 1px solid #f3f4f6; }
-        tbody tr:last-child { border-bottom: none; }
-        tbody tr:hover { background: #faf9ff; }
-        tbody td { padding: 11px 14px; vertical-align: middle; color: #374151; }
-        .influencer-name { font-weight: 600; color: #1a1a2e; }
-        .influencer-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
-        .status-pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-        .fee-value { font-weight: 700; color: #7c3aed; }
-
-        /* Deliverable table */
-        .del-row-published td { background: #f0fdf4; }
-        .del-row-rejected td { background: #fff7f7; }
+        /* Influencer card (por-influencer, reemplaza las 2 tablas separadas) */
+        .inf-card { border: 1px solid #f0f0f0; border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
+        .inf-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #fafafa; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; flex-wrap: wrap; }
+        .inf-name { font-size: 14px; font-weight: 700; color: #1a1a2e; }
+        .inf-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
+        .inf-pct { font-size: 13px; font-weight: 700; color: #7c3aed; background: #f3f0ff; padding: 4px 12px; border-radius: 20px; flex-shrink: 0; }
+        .inf-body { padding: 12px 16px; }
+        .inf-uploaded { font-size: 12px; color: #6b7280; margin-bottom: 10px; }
+        .deliverable-row { display: flex; align-items: baseline; gap: 6px; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed #f3f4f6; }
+        .deliverable-row:last-child { border-bottom: none; }
+        .deliverable-label { font-weight: 600; color: #374151; min-width: 90px; flex-shrink: 0; }
+        .deliverable-link { color: #7c3aed; font-weight: 600; text-decoration: none; word-break: break-all; }
+        .deliverable-pending { color: #d1d5db; font-style: italic; }
 
         /* Footer */
         .footer { background: #1a1a2e; color: white; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; }
@@ -251,7 +261,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
         .footer-text { font-size: 11px; opacity: 0.5; }
 
         /* Print button */
-        .print-btn { position: fixed; bottom: 24px; right: 24px; background: #7c3aed; color: white; border: none; border-radius: 12px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(124,58,237,0.4); z-index: 100; display: flex; align-items: center; gap-8px; gap: 8px; }
+        .print-btn { position: fixed; bottom: 24px; right: 24px; background: #7c3aed; color: white; border: none; border-radius: 12px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(124,58,237,0.4); z-index: 100; display: flex; align-items: center; gap: 8px; }
         .print-btn:hover { background: #6d28d9; }
       `}</style>
 
@@ -282,7 +292,26 @@ export default async function CampaignReportPage({ params }: { params: { id: str
 
         <div className="body">
 
-          {/* Campaign Info */}
+          {/* Brief / lineamientos — primero, como pide el nuevo orden */}
+          {hasBrief && (
+            <div className="section">
+              <div className="section-title">Brief de la Campaña</div>
+              {campaign.description && (
+                <div className="brief-box">
+                  {campaign.content_guidelines && <div className="brief-subtitle">Descripción</div>}
+                  {campaign.description}
+                </div>
+              )}
+              {campaign.content_guidelines && (
+                <div className="brief-box">
+                  <div className="brief-subtitle">Lineamientos de contenido</div>
+                  {campaign.content_guidelines}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Campaign Info — presupuesto oculto si es 0 o no está definido */}
           <div className="section">
             <div className="section-title">Información de la Campaña</div>
             <div className="info-grid">
@@ -294,16 +323,20 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                 <div className="info-label">Fecha de cierre</div>
                 <div className="info-value">{fmtDate(campaign.end_date)}</div>
               </div>
-              <div className="info-card">
-                <div className="info-label">Presupuesto total</div>
-                <div className="info-value" style={{ color: '#7c3aed' }}>
-                  {campaign.budget_total != null ? fmtCurrency(campaign.budget_total, campaign.currency) : '—'}
+              {showBudgetTotal && (
+                <div className="info-card">
+                  <div className="info-label">Presupuesto total</div>
+                  <div className="info-value" style={{ color: '#7c3aed' }}>
+                    {fmtCurrency(campaign.budget_total as number, campaign.currency)}
+                  </div>
                 </div>
-              </div>
-              <div className="info-card">
-                <div className="info-label">Presupuesto ejecutado</div>
-                <div className="info-value">{fmtCurrency(campaign.budget_spent ?? 0, campaign.currency)}</div>
-              </div>
+              )}
+              {showBudgetSpent && (
+                <div className="info-card">
+                  <div className="info-label">Presupuesto ejecutado</div>
+                  <div className="info-value">{fmtCurrency(campaign.budget_spent, campaign.currency)}</div>
+                </div>
+              )}
               <div className="info-card">
                 <div className="info-label">Influencers</div>
                 <div className="info-value">{influencers.length}</div>
@@ -313,41 +346,9 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                 <div className="info-value">{deliverables.length}</div>
               </div>
             </div>
-            {campaign.description && (
-              <div style={{ marginTop: 14, padding: '12px 16px', background: '#f9fafb', borderRadius: 8, fontSize: 13, color: '#4b5563', lineHeight: 1.6, borderLeft: '3px solid #ede9fe' }}>
-                {campaign.description}
-              </div>
-            )}
           </div>
 
-          {/* Brand */}
-          {campaign.brand && (
-            <div className="section">
-              <div className="section-title">Marca</div>
-              <div className="brand-box">
-                {campaign.brand.logo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={campaign.brand.logo_url} alt={campaign.brand.name} className="brand-logo" />
-                ) : (
-                  <div className="brand-initials">
-                    {campaign.brand.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div>
-                  <div className="brand-name">{campaign.brand.name}</div>
-                  <div className="brand-contact">
-                    {[campaign.brand.contact_name, campaign.brand.contact_email, campaign.brand.contact_phone]
-                      .filter(Boolean).join(' · ')}
-                  </div>
-                  {campaign.brand.website && (
-                    <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>{campaign.brand.website}</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Progress Summary */}
+          {/* Progress Summary — avance agregado de toda la campaña */}
           <div className="section">
             <div className="section-title">Avance de la Campaña</div>
             <div className="progress-summary">
@@ -361,177 +362,68 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                 </div>
                 <div className="progress-stats">
                   {totalDone} de {totalCount} deliverables publicados
-                  {deliverables.filter(d => d.status === 'in_review').length > 0 && (
-                    <> · {deliverables.filter(d => d.status === 'in_review').length} en revisión</>
-                  )}
-                  {deliverables.filter(d => d.status === 'pending').length > 0 && (
-                    <> · {deliverables.filter(d => d.status === 'pending').length} pendientes</>
-                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Influencers */}
+          {/* Por influencer — reemplaza las tablas separadas de influencers y deliverables */}
           {influencers.length > 0 && (
             <div className="section">
-              <div className="section-title">Influencers Asignados ({influencers.length})</div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Influencer</th>
-                    <th>Ubicación</th>
-                    <th>Red Social</th>
-                    <th>Seguidores</th>
-                    <th>Fee</th>
-                    <th>Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {influencers.map(ci => {
-                    const inf = ci.influencer
-                    if (!inf) return null
-                    const primaryProfile = inf.influencer_social_profiles?.[0]
-                    return (
-                      <tr key={ci.id}>
-                        <td>
-                          <div className="influencer-name">{inf.display_name}</div>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: 12, color: '#6b7280' }}>
-                            {[inf.city, inf.country].filter(Boolean).join(', ') || '—'}
-                          </div>
-                        </td>
-                        <td>
-                          {primaryProfile ? (
-                            <div>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'capitalize' }}>
-                                {primaryProfile.platform}
-                              </div>
-                              {primaryProfile.username && (
-                                <div style={{ fontSize: 11, color: '#9ca3af' }}>@{primaryProfile.username}</div>
+              <div className="section-title">Influencers ({influencers.length})</div>
+              {influencers.map(ci => {
+                const inf = ci.influencer
+                if (!inf) return null
+
+                const infDeliverables = deliverables.filter(d => d.influencer?.id === inf.id)
+                const doneCount = infDeliverables.filter(d => d.status === 'published').length
+                const pct = infDeliverables.length > 0 ? Math.round((doneCount / infDeliverables.length) * 100) : 0
+                const uploadedDates = infDeliverables.map(d => d.published_at).filter(Boolean) as string[]
+                const lastUploaded = uploadedDates.length > 0
+                  ? uploadedDates.reduce((a, b) => (new Date(a) > new Date(b) ? a : b))
+                  : null
+
+                const primaryProfile = inf.influencer_social_profiles?.[0]
+                const labeled = labelDeliverables(infDeliverables)
+
+                return (
+                  <div key={ci.id} className="inf-card">
+                    <div className="inf-card-header">
+                      <div>
+                        <div className="inf-name">{inf.display_name}</div>
+                        <div className="inf-meta">
+                          {primaryProfile
+                            ? `${primaryProfile.platform}${primaryProfile.username ? ` · @${primaryProfile.username}` : ''}${primaryProfile.followers ? ` · ${formatFollowers(primaryProfile.followers)} seguidores` : ''}`
+                            : 'Sin red social registrada'}
+                        </div>
+                      </div>
+                      <span className="inf-pct">{pct}% completado</span>
+                    </div>
+                    <div className="inf-body">
+                      <div className="inf-uploaded">
+                        Fecha de contenido subido: {lastUploaded ? fmtDate(lastUploaded) : 'Pendiente'}
+                      </div>
+                      {labeled.length === 0 ? (
+                        <div className="deliverable-row"><span className="deliverable-pending">Sin deliverables asignados</span></div>
+                      ) : (
+                        labeled.map(({ label, deliverable: d }) => {
+                          const url = d.content_url || d.published_url
+                          return (
+                            <div key={d.id} className="deliverable-row">
+                              <span className="deliverable-label">{label}:</span>
+                              {url ? (
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="deliverable-link">{url}</a>
+                              ) : (
+                                <span className="deliverable-pending">Pendiente</span>
                               )}
                             </div>
-                          ) : '—'}
-                        </td>
-                        <td>
-                          {primaryProfile ? (
-                            <span style={{ fontWeight: 600, color: '#1a1a2e' }}>
-                              {formatFollowers(primaryProfile.followers)}
-                              {primaryProfile.engagement_rate != null && (
-                                <span style={{ fontWeight: 400, color: '#6b7280', fontSize: 11, marginLeft: 4 }}>
-                                  ({primaryProfile.engagement_rate.toFixed(1)}% ER)
-                                </span>
-                              )}
-                            </span>
-                          ) : '—'}
-                        </td>
-                        <td>
-                          <span className="fee-value">
-                            {ci.fee != null ? fmtCurrency(ci.fee, campaign.currency) : '—'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="status-pill" style={{
-                            background: ci.status === 'confirmed' ? '#ecfdf5' : ci.status === 'canceled' ? '#fef2f2' : '#f3f4f6',
-                            color: ci.status === 'confirmed' ? '#065f46' : ci.status === 'canceled' ? '#991b1b' : '#374151',
-                          }}>
-                            {ci.status ?? 'propuesto'}
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Deliverables */}
-          {deliverables.length > 0 && (
-            <div className="section">
-              <div className="section-title">Deliverables ({deliverables.length})</div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Título</th>
-                    <th>Influencer</th>
-                    <th>Tipo</th>
-                    <th>Entrega</th>
-                    <th>Estado</th>
-                    <th>Contenido</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deliverables.map(d => (
-                    <tr key={d.id} className={d.status === 'published' ? 'del-row-published' : d.status === 'rejected' ? 'del-row-rejected' : ''}>
-                      <td>
-                        <div style={{ fontWeight: 600, color: '#1a1a2e', fontSize: 13 }}>{d.title}</div>
-                        {d.review_notes && (
-                          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>💬 {d.review_notes}</div>
-                        )}
-                      </td>
-                      <td style={{ fontSize: 12, color: '#374151' }}>
-                        {d.influencer?.display_name ?? '—'}
-                      </td>
-                      <td>
-                        {d.type ? (
-                          <span style={{ fontSize: 11, background: '#f3f4f6', padding: '2px 8px', borderRadius: 10, color: '#374151', fontWeight: 500 }}>
-                            {d.type.replace(/_/g, ' ')}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td style={{ fontSize: 12, color: '#6b7280' }}>
-                        {fmtDate(d.due_date)}
-                      </td>
-                      <td>
-                        <span className="status-pill" style={{
-                          background: DEL_STATUS_COLORS[d.status] + '18',
-                          color: DEL_STATUS_COLORS[d.status],
-                        }}>
-                          {DEL_STATUS_LABELS[d.status] ?? d.status}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: 11 }}>
-                        {(d.published_url || d.content_url) ? (
-                          <a href={d.published_url || d.content_url!} target="_blank" rel="noopener noreferrer"
-                            style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>
-                            Ver publicación ↗
-                          </a>
-                        ) : d.published_at ? (
-                          <span style={{ color: '#059669' }}>Pub. {fmtDate(d.published_at)}</span>
-                        ) : (
-                          <span style={{ color: '#d1d5db' }}>—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Hashtags */}
-          {campaign.hashtags?.length > 0 && (
-            <div className="section">
-              <div className="section-title">Hashtags</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {campaign.hashtags.map(h => (
-                  <span key={h} style={{ background: '#f3f0ff', color: '#7c3aed', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
-                    #{h.replace(/^#/, '')}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Content guidelines */}
-          {campaign.content_guidelines && (
-            <div className="section">
-              <div className="section-title">Lineamientos de Contenido</div>
-              <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.7, background: '#f9fafb', border: '1px solid #f0f0f0', borderRadius: 8, padding: '14px 16px' }}>
-                {campaign.content_guidelines}
-              </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
 

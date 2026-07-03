@@ -194,6 +194,7 @@ export interface Campaign {
   brief_url: string | null
   type: CampaignType
   status: CampaignStatus
+  visibility?: 'private' | 'open'
   start_date: string | null
   end_date: string | null
   budget_total: number | null
@@ -286,12 +287,14 @@ export interface CampaignFilters {
   status: CampaignStatus | ''
   type: CampaignType | ''
   platform: SocialPlatform | ''
+  visibility: 'private' | 'open' | ''
+  brandId: string
   dateFrom: string
   dateTo: string
 }
 
 export const DEFAULT_CAMPAIGN_FILTERS: CampaignFilters = {
-  search: '', status: '', type: '', platform: '', dateFrom: '', dateTo: '',
+  search: '', status: '', type: '', platform: '', visibility: '', brandId: '', dateFrom: '', dateTo: '',
 }
 
 export interface InfluencerFilters {

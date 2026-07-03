@@ -1,13 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
 import { useCampaignsList } from '@/hooks/useCampaignsList'
 import { AICampaignBuilder } from '@/components/campaigns/AICampaignBuilder'
 import { CampaignFilters } from '@/components/campaigns/CampaignFilters'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
-import { formatCurrency, formatDate, PLATFORM_ICONS } from '@/lib/utils'
+import { SortableTH } from '@/components/ui/SortableTH'
+import { formatCurrency, formatDate, formatDatetime, PLATFORM_ICONS } from '@/lib/utils'
 import type { Campaign, CampaignFilters as CampaignFiltersType } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 
@@ -115,11 +116,13 @@ interface CampaignsClientProps {
 type CampaignColumnKey =
   | 'campaign'
   | 'type'
+  | 'visibility'
   | 'platforms'
   | 'influencers'
   | 'progress'
   | 'budget'
   | 'dates'
+  | 'createdAt'
   | 'status'
 
 type SortKey = CampaignColumnKey
@@ -128,11 +131,13 @@ type SortOrder = 'asc' | 'desc'
 const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
   { key: 'campaign',    label: 'Campaña' },
   { key: 'type',        label: 'Tipo' },
+  { key: 'visibility',  label: 'Público/Privado' },
   { key: 'platforms',   label: 'Plataformas' },
   { key: 'influencers', label: 'Influencers' },
   { key: 'progress',    label: 'Progreso' },
   { key: 'budget',      label: 'Budget' },
   { key: 'dates',       label: 'Fechas' },
+  { key: 'createdAt',   label: 'Fecha creación' },
   { key: 'status',      label: 'Estado' },
 ]
 
@@ -146,11 +151,13 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
     {
       campaign: true,
       type: true,
+      visibility: true,
       platforms: true,
       influencers: true,
       progress: true,
       budget: true,
       dates: true,
+      createdAt: true,
       status: true,
     }
   )
@@ -158,15 +165,39 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>(`scence:${portal}:campaigns:sortOrder`, 'desc')
 
   const { data, isLoading, error } = useCampaignsList({
-    status:   filters.status,
-    type:     filters.type,
-    platform: filters.platform,
-    apiBase:  isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
-    search:   filters.search,
-    limit:    100,
+    status:     filters.status,
+    type:       filters.type,
+    platform:   filters.platform,
+    visibility: filters.visibility,
+    brandId:    filters.brandId,
+    apiBase:    isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
+    search:     filters.search,
+    limit:      100,
   })
 
   const rawCampaigns: Campaign[] = data?.data ?? []
+
+  // Lista de marcas para el filtro (solo admin) — reutiliza /api/brands, ya
+  // usado por BrandSelector en el form de creación/edición.
+  const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    if (isBrandPortal) return
+    fetch('/api/brands')
+      .then(r => r.json())
+      .then(j => setBrands((j.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name }))))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Contador de "Pendientes de aprobación" para la pestaña (admin only) —
+  // reusa el mismo endpoint/filtro que ya existe, solo pide el total.
+  const { data: pendingApprovalData } = useCampaignsList({
+    status:  'pending_approval',
+    apiBase: '/api/campaigns',
+    limit:   1,
+    enabled: !isBrandPortal,
+  })
+  const pendingApprovalCount = isBrandPortal ? 0 : (pendingApprovalData?.total ?? 0)
 
   function toggleSort(key: SortKey) {
     setSortOrder(prev => sortKey === key && prev === 'desc' ? 'asc' : 'desc')
@@ -187,11 +218,13 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
         switch (sortKey) {
           case 'campaign':    return c.name ?? ''
           case 'type':        return c.type ?? ''
+          case 'visibility':  return c.visibility ?? ''
           case 'platforms':   return c.platforms?.join(',') ?? ''
           case 'influencers': return c.influencer_count ?? 0
           case 'progress':    return c === a ? progressA : progressB
           case 'budget':      return c.budget_total ?? 0
           case 'dates':       return c.start_date ?? ''
+          case 'createdAt':   return c.created_at ?? ''
           case 'status':      return c.status ?? ''
           default:            return ''
         }
@@ -244,6 +277,41 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
 
       {showAIBuilder && <AICampaignBuilder onClose={() => setShowAIBuilder(false)} />}
 
+      {/* Pestañas: Todas / Pendientes de aprobación — solo admin. Reutiliza el
+          mismo filtro por status que ya funciona (pill "En aprobación" en
+          CampaignFilters), solo le da un lugar más visible y con contador. */}
+      {!isBrandPortal && (
+        <div className="flex items-center gap-1 border-b border-gray-100">
+          <button
+            type="button"
+            onClick={() => setFilter({ status: '' })}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+              filters.status !== 'pending_approval'
+                ? 'border-violet-600 text-violet-700'
+                : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            Todas las campañas
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter({ status: 'pending_approval' })}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5 ${
+              filters.status === 'pending_approval'
+                ? 'border-violet-600 text-violet-700'
+                : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            Pendientes de aprobación
+            {pendingApprovalCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold">
+                {pendingApprovalCount}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
       {error ? (
         <div className="card p-6 text-center text-sm text-red-500">
           Error al cargar campañas. Verifica tu conexión a Supabase.
@@ -255,10 +323,11 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
           {/* Filtros */}
           <div className="card p-4">
             <CampaignFilters
-              filters={{ search: '', status: '', type: '', platform: '', dateFrom: '', dateTo: '', ...filters } as CampaignFiltersType}
+              filters={{ search: '', status: '', type: '', platform: '', visibility: '', brandId: '', dateFrom: '', dateTo: '', ...filters } as CampaignFiltersType}
               onChange={setFilter}
               onReset={resetFilters}
               total={campaigns.length}
+              brands={isBrandPortal ? undefined : brands}
             />
           </div>
 
@@ -298,16 +367,9 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                 <thead>
                   <tr className="border-b border-gray-100">
                     {visibleColumnList.map(col => (
-                      <th key={col.key} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort(col.key)}
-                          className="flex items-center gap-1 hover:text-violet-600 transition-colors"
-                        >
-                          {col.label}
-                          {sortKey === col.key && <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>}
-                        </button>
-                      </th>
+                      <SortableTH key={col.key} col={col.key} sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort}>
+                        {col.label}
+                      </SortableTH>
                     ))}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50" />
                   </tr>
@@ -338,6 +400,15 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                         {visibleColumns.type && (
                           <td className="px-4 py-3">
                             <span className="badge badge-gray capitalize text-[11px]">{c.type.replace(/_/g, ' ')}</span>
+                          </td>
+                        )}
+                        {visibleColumns.visibility && (
+                          <td className="px-4 py-3">
+                            {c.visibility ? (
+                              <span className={`badge text-[11px] ${c.visibility === 'open' ? 'badge-green' : 'badge-gray'}`}>
+                                {c.visibility === 'open' ? 'Pública' : 'Privada'}
+                              </span>
+                            ) : <span className="text-xs text-gray-300">—</span>}
                           </td>
                         )}
                         {visibleColumns.platforms && (
@@ -383,6 +454,11 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                                 <div className="text-gray-300">→ {c.end_date ? formatDate(c.end_date, 'd MMM yy') : '—'}</div>
                               </div>
                             ) : <span className="text-gray-300">Sin fechas</span>}
+                          </td>
+                        )}
+                        {visibleColumns.createdAt && (
+                          <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                            {c.created_at ? formatDatetime(c.created_at) : <span className="text-gray-300">—</span>}
                           </td>
                         )}
                         {visibleColumns.status && (

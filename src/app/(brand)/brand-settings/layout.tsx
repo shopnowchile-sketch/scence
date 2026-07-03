@@ -11,7 +11,7 @@ const TABS = [
   { href: '/brand-settings/plan',          label: 'Plan',           icon: CreditCard },
   { href: '/brand-settings/users',         label: 'Usuarios',       icon: Users },
   { href: '/brand-settings/locations',     label: 'Lugares',        icon: MapPin },
-  { href: '/brand-settings/notifications', label: 'Notificaciones', icon: Bell,     soon: true },
+  { href: '/brand-settings/notifications', label: 'Notificaciones', icon: Bell },
   { href: '/brand-settings/security',      label: 'Seguridad',      icon: Shield,   soon: true },
 ]
 

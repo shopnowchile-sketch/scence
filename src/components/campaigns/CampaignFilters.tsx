@@ -29,6 +29,11 @@ const PLATFORMS: { value: SocialPlatform; label: string }[] = [
   { value: 'youtube',   label: 'YouTube' },
 ]
 
+const VISIBILITY_OPTIONS: { value: 'private' | 'open'; label: string }[] = [
+  { value: 'open',    label: 'Pública' },
+  { value: 'private', label: 'Privada' },
+]
+
 const STATUS_COLORS: Record<CampaignStatus, string> = {
   draft:            'bg-gray-100 text-gray-600 border-gray-200',
   pending_approval: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -43,10 +48,12 @@ interface Props {
   onChange: (f: Partial<CampaignFilters>) => void
   onReset: () => void
   total: number
+  /** Marcas para el filtro por marca — solo se muestra si viene una lista (admin). */
+  brands?: { id: string; name: string }[]
 }
 
-export function CampaignFilters({ filters, onChange, onReset, total }: Props) {
-  const hasActive = filters.search || filters.status || filters.type || filters.platform
+export function CampaignFilters({ filters, onChange, onReset, total, brands }: Props) {
+  const hasActive = filters.search || filters.status || filters.type || filters.platform || filters.visibility || filters.brandId
 
   return (
     <div className="space-y-3">
@@ -97,6 +104,36 @@ export function CampaignFilters({ filters, onChange, onReset, total }: Props) {
           </select>
           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
         </div>
+
+        {/* Público / Privado */}
+        <div className="relative">
+          <select
+            value={filters.visibility}
+            onChange={e => onChange({ visibility: e.target.value as 'private' | 'open' | '' })}
+            className={cn('input-base appearance-none pr-8 cursor-pointer',
+              filters.visibility && 'border-violet-400 text-violet-700')}
+          >
+            <option value="">Pública y privada</option>
+            {VISIBILITY_OPTIONS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+        </div>
+
+        {/* Marca — solo admin (viene la lista de marcas) */}
+        {brands && brands.length > 0 && (
+          <div className="relative">
+            <select
+              value={filters.brandId}
+              onChange={e => onChange({ brandId: e.target.value })}
+              className={cn('input-base appearance-none pr-8 cursor-pointer max-w-[180px]',
+                filters.brandId && 'border-violet-400 text-violet-700')}
+            >
+              <option value="">Todas las marcas</option>
+              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+          </div>
+        )}
 
         {/* Fechas */}
         <div className="flex items-center gap-2">

@@ -7,20 +7,25 @@ interface ListParams {
   status?: string
   type?: string
   platform?: string
+  visibility?: string
+  brandId?: string
   search?: string
   page?: number
   limit?: number
   apiBase?: string
+  enabled?: boolean
 }
 
 async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; total: number }> {
   const sp = new URLSearchParams()
-  if (params.status)   sp.set('status', params.status)
-  if (params.type)     sp.set('type', params.type)
-  if (params.platform) sp.set('platform', params.platform)
-  if (params.search)   sp.set('search', params.search)
-  if (params.page)     sp.set('page', String(params.page))
-  if (params.limit)    sp.set('limit', String(params.limit))
+  if (params.status)     sp.set('status', params.status)
+  if (params.type)       sp.set('type', params.type)
+  if (params.platform)   sp.set('platform', params.platform)
+  if (params.visibility) sp.set('visibility', params.visibility)
+  if (params.brandId)    sp.set('brandId', params.brandId)
+  if (params.search)     sp.set('search', params.search)
+  if (params.page)       sp.set('page', String(params.page))
+  if (params.limit)      sp.set('limit', String(params.limit))
 
   const base = params.apiBase ?? '/api/campaigns'
   const res = await fetch(`${base}?${sp.toString()}`)
@@ -32,6 +37,7 @@ export function useCampaignsList(params: ListParams = {}) {
   return useQuery({
     queryKey: ['campaigns', params],
     queryFn:  () => fetchCampaigns(params),
+    enabled:  params.enabled ?? true,
   })
 }
 

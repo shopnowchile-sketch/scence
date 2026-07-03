@@ -12,12 +12,14 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url)
-  const status   = searchParams.get('status')
-  const type     = searchParams.get('type')
-  const platform = searchParams.get('platform')
-  const search   = searchParams.get('search')
-  const page     = parseInt(searchParams.get('page') ?? '1', 10)
-  const limit    = parseInt(searchParams.get('limit') ?? '50', 10)
+  const status     = searchParams.get('status')
+  const type       = searchParams.get('type')
+  const platform   = searchParams.get('platform')
+  const visibility = searchParams.get('visibility')
+  const brandId    = searchParams.get('brandId')
+  const search     = searchParams.get('search')
+  const page       = parseInt(searchParams.get('page') ?? '1', 10)
+  const limit      = parseInt(searchParams.get('limit') ?? '50', 10)
 
   // Use admin client to bypass RLS — we apply our own filtering below
   const admin = createAdminClient()
@@ -42,10 +44,26 @@ export async function GET(request: NextRequest) {
     query = query.eq('created_by', user.id)
   }
 
-  if (status)   query = query.eq('status', status)
-  if (type)     query = query.eq('type', type)
-  if (platform) query = query.contains('platforms', [platform])
-  if (search)   query = query.ilike('name', `%${search}%`)
+  if (status)     query = query.eq('status', status)
+  if (type)       query = query.eq('type', type)
+  if (platform)   query = query.contains('platforms', [platform])
+  if (visibility) query = query.eq('visibility', visibility)
+  if (search)     query = query.ilike('name', `%${search}%`)
+
+  // Filtro por marca: incluye tanto la marca principal (brand_id) como
+  // co-marcas colaboradoras (campaign_brands) — mismo criterio que ya usa
+  // /api/brand/campaigns para resolver "mis campañas" desde el lado marca.
+  if (brandId) {
+    const { data: coBrandRows } = await admin
+      .from('campaign_brands')
+      .select('campaign_id')
+      .eq('brand_id', brandId)
+    const coBrandCampaignIds = (coBrandRows ?? []).map(r => r.campaign_id)
+    const orFilter = coBrandCampaignIds.length
+      ? `brand_id.eq.${brandId},id.in.(${coBrandCampaignIds.join(',')})`
+      : `brand_id.eq.${brandId}`
+    query = query.or(orFilter)
+  }
 
   const { data, error, count } = await query
 

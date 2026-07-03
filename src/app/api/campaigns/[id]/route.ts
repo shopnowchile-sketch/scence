@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { notifyAllInfluencersOfOpenCampaign } from '@/lib/campaign-notifications'
+
+// Margen extra: al activar una campaña pública este endpoint puede enviar
+// el aviso a todas las influencers del sistema (en batches) antes de responder.
+export const maxDuration = 60
 
 type Params = { params: { id: string } }
 
@@ -274,6 +279,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       // Non-fatal — invoice creation failure should not block campaign completion
       console.error('[auto-invoice] failed to create invoice on campaign complete:', e)
     }
+  }
+
+  // ── Avisa a todas las influencers del sistema cuando se activa una
+  // campaña pública (visibility=open). Reutiliza el mismo template y la
+  // misma tabla de idempotencia que el botón manual de notificación —
+  // si alguien ya fue avisada (por este envío o por el botón manual) no
+  // se le vuelve a escribir. No bloquea la respuesta si falla el email.
+  if (action === 'activate' && data && (data as Record<string, unknown>).visibility === 'open') {
+    // Se espera (await) a propósito: en un entorno serverless el proceso
+    // puede cortarse apenas se devuelve la respuesta, así que un
+    // "fire and forget" arriesga a que el envío nunca se complete.
+    // La función interna ya captura sus propios errores — nunca lanza.
+    await notifyAllInfluencersOfOpenCampaign(params.id, admin)
   }
 
   return NextResponse.json({ data })

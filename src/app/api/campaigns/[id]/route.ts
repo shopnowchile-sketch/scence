@@ -175,6 +175,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // Strip server-managed fields
   const { id: _id, created_at: _ca, created_by: _cb, organization_id: _oi, budget_spent: _bs, ...rest } = body
 
+  // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
+  // propia campaña, aunque el formulario ya no muestre ese campo.
+  if (user.user_metadata?.is_brand) {
+    delete rest.brand_id
+  }
+
   // Scope update to the user's own org — salvo admin/super_admin/owner de
   // Scence, que puede editar cualquier campaña (mismo criterio que GET).
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
@@ -220,6 +226,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const { action, ...fields } = body
+
+  // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
+  // propia campaña vía PATCH, aunque el formulario ya no muestre ese campo.
+  if (user.user_metadata?.is_brand) {
+    delete fields.brand_id
+  }
 
   // Handle named actions
   if (action === 'pause') {

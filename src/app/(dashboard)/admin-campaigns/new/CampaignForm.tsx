@@ -624,8 +624,25 @@ export function CampaignForm({
     }
   }
 
-  function onInvalid() {
-    toast.error('Revisa los campos marcados en rojo antes de crear la campaña')
+  // Mapea cada campo del schema al paso del wizard donde se edita, para poder
+  // devolver al usuario al paso correcto cuando falla la validación final.
+  const STEP_BY_FIELD: Record<string, number> = {
+    name: 1, type: 1, platforms: 1, visibility: 1,
+    start_date: 2, end_date: 2, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
+    hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
+  }
+
+  function onInvalid(formErrors: FieldErrors<FormValues>) {
+    console.error('[CampaignForm] validación falló:', formErrors)
+    const firstField = Object.keys(formErrors)[0]
+    const firstError = firstField ? (formErrors as Record<string, { message?: string }>)[firstField] : undefined
+    const targetStep = firstField ? (STEP_BY_FIELD[firstField] ?? 1) : 1
+    setStep(targetStep)
+    toast.error(
+      firstError?.message
+        ? `Paso ${targetStep}: ${firstError.message}`
+        : 'Revisa los campos marcados en rojo antes de crear la campaña'
+    )
   }
 
   return (

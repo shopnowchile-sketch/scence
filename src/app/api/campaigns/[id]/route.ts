@@ -307,7 +307,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 }
 
 // ── DELETE /api/campaigns/[id] ────────────────────────────────────────────────
-export async function DELETE(_req: NextRequest, { params }: Params) {
+// ?hard=1 → borrado permanente (solo admin/super_admin/owner). Sin ese
+// parámetro, se mantiene el comportamiento original: soft-delete (canceled).
+export async function DELETE(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
@@ -322,10 +324,47 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
 
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+
+  const hard = new URL(req.url).searchParams.get('hard') === '1'
+
+  if (hard) {
+    // Borrado permanente: nunca disponible para marcas, solo para
+    // admin/super_admin/owner de Scence.
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Solo un administrador puede borrar una campaña por completo' }, { status: 403 })
+    }
+
+    const [{ count: facturas }, { count: payroll }] = await Promise.all([
+      admin.from('invoices').select('id', { count: 'exact', head: true }).eq('campaign_id', params.id),
+      admin.from('payroll_runs').select('id', { count: 'exact', head: true }).eq('campaign_id', params.id),
+    ])
+
+    const confirmBilling = req.headers.get('x-confirm-billing') === '1'
+    if (((facturas ?? 0) > 0 || (payroll ?? 0) > 0) && !confirmBilling) {
+      return NextResponse.json(
+        { requiresConfirmation: true, facturas: facturas ?? 0, payroll: payroll ?? 0 },
+        { status: 409 }
+      )
+    }
+
+    // Los FKs de campaigns ya definen el comportamiento en DB: tablas
+    // operativas (campaign_influencers, campaign_brands, deliverables,
+    // assets, notifications, status_history) se borran en cascada;
+    // facturas/payroll/barters/bookings/etc. quedan con campaign_id = null.
+    const { error: hardError } = await admin.from('campaigns').delete().eq('id', params.id)
+
+    if (hardError) {
+      console.error('[DELETE /api/campaigns/[id]?hard=1]', hardError)
+      return NextResponse.json({ error: hardError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, hard: true })
+  }
+
   // Soft-delete: set status to canceled rather than hard delete
   // Scope to user's org for security — salvo admin/super_admin/owner de
   // Scence, que puede eliminar cualquier campaña.
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   let query = admin
     .from('campaigns')
     .update({ status: 'canceled', updated_at: new Date().toISOString() })

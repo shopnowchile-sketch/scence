@@ -639,6 +639,33 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     }
   }
 
+  async function handleHardDeleteCampaign() {
+    if (!confirm(`¿Borrar la campaña "${c.name}" de forma PERMANENTE?\n\nSe eliminarán también los influencers asignados, deliverables, assets y notificaciones de esta campaña.\n\nEsta acción NO se puede deshacer.`)) return
+    setDeletingCampaign(true)
+    try {
+      let r = await fetch(`/api/campaigns/${id}?hard=1`, { method: 'DELETE' })
+      if (r.status === 409) {
+        const info = await r.json().catch(() => ({} as { facturas?: number; payroll?: number }))
+        const partes = [
+          info.facturas ? `${info.facturas} factura(s)` : null,
+          info.payroll ? `${info.payroll} registro(s) de payroll` : null,
+        ].filter(Boolean).join(' y ')
+        const ok = confirm(`Esta campaña tiene ${partes} asociado(s).\n\nAl borrarla, esos registros financieros se conservan pero quedan sin campaña asociada.\n\n¿Confirmas el borrado permanente?`)
+        if (!ok) { setDeletingCampaign(false); return }
+        r = await fetch(`/api/campaigns/${id}?hard=1`, { method: 'DELETE', headers: { 'x-confirm-billing': '1' } })
+      }
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Error al borrar la campaña')
+      }
+      toast.success('Campaña borrada permanentemente')
+      router.push(isBrandPortal ? '/brand-campaigns' : '/admin-campaigns')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al borrar la campaña')
+      setDeletingCampaign(false)
+    }
+  }
+
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-4 w-4" /> },
     { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-4 w-4" /> },
@@ -703,6 +730,13 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <button onClick={handleDeleteCampaign} disabled={deletingCampaign}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
               <Trash2 className="h-3.5 w-3.5" /> Eliminar
+            </button>
+          )}
+          {!isBrandPortal && (
+            <button onClick={handleHardDeleteCampaign} disabled={deletingCampaign}
+              title="Borrado permanente — no se puede deshacer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" /> Borrar por completo
             </button>
           )}
         </div>

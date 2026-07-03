@@ -29,7 +29,16 @@ export async function GET() {
     .order('invited_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data: data ?? [] })
+
+  // Owner siempre primero (sort estable: mantiene el orden por invited_at desc
+  // dentro de cada grupo) — mismo criterio que ya usa /api/settings/team con is_owner.
+  const sorted = (data ?? []).slice().sort((a, b) => {
+    if (a.role === 'owner' && b.role !== 'owner') return -1
+    if (a.role !== 'owner' && b.role === 'owner') return 1
+    return 0
+  })
+
+  return NextResponse.json({ data: sorted })
 }
 
 // POST /api/brand/members — invitar nuevo usuario

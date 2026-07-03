@@ -276,7 +276,7 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 }
 
 // ── Team Members ──────────────────────────────────────────────────────────────
-function TeamMembers() {
+export function TeamMembers() {
   const [members, setMembers] = useState<Array<{
     id: string; user_id: string; role: string; is_owner: boolean;
     profile: { display_name: string | null; email: string | null } | null

@@ -689,8 +689,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
         </div>
         <div className="flex items-center gap-2">
           <Link href={isBrandPortal ? `/brand-campaigns/${id}/report` : `/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
+            title="Reporte PDF"
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
-            <FileDown className="h-3.5 w-3.5" /> Reporte PDF
+            <FileDown className="h-3.5 w-3.5" /> Reporte
           </Link>
           {/* Editar: en portal marca solo la marca creadora puede editar —
               mismo criterio que ya usa el panel de postulaciones más abajo
@@ -704,8 +705,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
           )}
           {c.status === 'draft' && (
             <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
+              title="Enviar a aprobación"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
-              <Check className="h-3.5 w-3.5" /> Enviar a aprobación
+              <Check className="h-3.5 w-3.5" /> Enviar
             </button>
           )}
           {(c.status === 'pending_approval' || c.status === 'paused') && (
@@ -721,8 +723,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 <Pause className="h-3.5 w-3.5" /> Pausar
               </button>
               <button onClick={() => handleStatusAction('complete')} disabled={patchCampaign.isPending}
+                title="Marcar campaña como completada"
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors">
-                <Check className="h-3.5 w-3.5" /> Marcar completada
+                <Check className="h-3.5 w-3.5" /> Completar
               </button>
             </>
           )}
@@ -734,6 +737,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
           )}
           {!isBrandPortal && c.status !== 'canceled' && (
             <button onClick={handleDeleteCampaign} disabled={deletingCampaign}
+              title="Marcar como cancelada (no borra datos)"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
               <Trash2 className="h-3.5 w-3.5" /> Eliminar
             </button>
@@ -742,7 +746,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <button onClick={handleHardDeleteCampaign} disabled={deletingCampaign}
               title="Borrado permanente — no se puede deshacer"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" /> Borrar por completo
+              <Trash2 className="h-3.5 w-3.5" /> Borrar todo
             </button>
           )}
         </div>

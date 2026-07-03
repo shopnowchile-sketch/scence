@@ -445,22 +445,6 @@ function Step3({ register, control, setValue, campaignType }: StepProps) {
           render={({ field }) => <TagInput value={field.value} onChange={field.onChange} placeholder="Ej. q2, verano, nike" />} />
       </div>
 
-      {/* Visibility toggle */}
-      <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
-        <Controller control={control} name={"visibility" as never}
-          render={({ field }) => (
-            <button type="button" role="switch" aria-checked={field.value === 'public'}
-              onClick={() => field.onChange(field.value === 'public' ? 'invite_only' : 'public')}
-              className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0', field.value === 'public' ? 'bg-violet-600' : 'bg-gray-300')}>
-              <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', field.value === 'public' ? 'translate-x-4' : 'translate-x-0.5')} />
-            </button>
-          )} />
-        <div>
-          <div className="text-sm font-medium text-gray-800">Campaña pública 🌐</div>
-          <div className="text-xs text-gray-400">Las influencers pueden postular desde su portal marketplace</div>
-        </div>
-      </div>
-
       <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
         <Controller control={control} name="approval_required"
           render={({ field }) => (
@@ -595,6 +579,10 @@ export function CampaignForm({
     }
   }
 
+  function onInvalid() {
+    toast.error('Revisa los campos marcados en rojo antes de crear la campaña')
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
@@ -631,7 +619,7 @@ export function CampaignForm({
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-6">
           {step === 1 && <Step1 register={register} control={control} errors={errors} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}

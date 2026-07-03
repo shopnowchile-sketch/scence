@@ -269,8 +269,8 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre del creador</label>
-          <input {...register('display_name')} autoComplete="name" className="input-base w-full" placeholder="@sofia.crea" />
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre y apellido</label>
+          <input {...register('display_name')} autoComplete="name" className="input-base w-full" placeholder="Sofía Contreras" />
           {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
         </div>
         <div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -19,19 +19,24 @@ async function assertCampaignAccess(userId: string, userMetadata: Record<string,
   const admin = createAdminClient()
   const orgId = await getOrgId(userId, userMetadata, admin)
 
+  // admin/super_admin/owner de Scence puede ver/gestionar assets de
+  // cualquier campaña, sin filtrar por organization_id (las marcas quedan
+  // con organization_id propia y aislada). Mismo criterio que /api/campaigns/[id].
+  const { isAdmin } = orgId ? await getUserRole(userId, orgId, admin) : { isAdmin: false }
+
   let query = admin
     .from('campaigns')
     .select('id, organization_id')
     .eq('id', campaignId)
 
-  if (orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data: campaign, error } = await query.maybeSingle()
 
   if (error) throw error
-  if (!campaign) return { admin, orgId, campaign: null }
+  if (!campaign) return { admin, orgId, campaign: null, isAdmin }
 
-  return { admin, orgId, campaign }
+  return { admin, orgId, campaign, isAdmin }
 }
 
 async function ensureBucket(admin: ReturnType<typeof createAdminClient>) {
@@ -53,7 +58,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { admin, orgId, campaign } = await assertCampaignAccess(user.id, user.user_metadata, params.id)
+  const { admin, orgId, campaign, isAdmin } = await assertCampaignAccess(user.id, user.user_metadata, params.id)
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
   let query = admin
@@ -63,7 +68,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .is('deliverable_id', null)
     .order('created_at', { ascending: false })
 
-  if (orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data, error } = await query
 
@@ -100,7 +105,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
   const contentType = request.headers.get('content-type') ?? ''
-  const finalOrgId = orgId ?? campaign.organization_id
+  // Preferir la org real de la campaña (no la del admin) para que el asset
+  // quede tageado correctamente aunque un admin suba archivos a una campaña
+  // de una marca con organization_id propia.
+  const finalOrgId = campaign.organization_id ?? orgId
 
   if (contentType.includes('multipart/form-data')) {
     const formData = await request.formData()

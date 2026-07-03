@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { acceptCampaignApplication } from '@/lib/campaign-applications'
 
 type Params = { params: { id: string } }
@@ -19,8 +19,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
+  // Mismo criterio que /api/campaigns/[id]: admin/super_admin/owner de Scence
+  // puede gestionar aplicaciones de cualquier campaña, sin filtrar por
+  // organization_id (las marcas quedan con organization_id propia y aislada).
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   let query = admin.from('campaigns').select('id, organization_id').eq('id', params.id)
-  if (orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
   const { data: campaign } = await query.single()
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 

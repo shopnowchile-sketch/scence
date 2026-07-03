@@ -58,7 +58,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
     ...(notifiedRows ?? []).map(r => r.influencer_id).filter(Boolean),
   ])
 
-  let infQuery = admin
+  // Sin filtro por organization_id: este endpoint ya es admin-only (chequeado
+  // arriba), y las marcas quedan con organization_id propia y aislada — filtrar
+  // por la org de la campaña dejaba fuera a casi todas las influencers del
+  // roster real. Mismo criterio que notifyAllInfluencersOfOpenCampaign.
+  const { data: candidates, error: infErr } = await admin
     .from('influencers')
     .select(`
       id, display_name, email,
@@ -66,10 +70,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
     `)
     .eq('is_active', true)
     .not('email', 'is', null)
-
-  if (campaign.organization_id) infQuery = infQuery.eq('organization_id', campaign.organization_id)
-
-  const { data: candidates, error: infErr } = await infQuery
 
   if (infErr) return NextResponse.json({ error: infErr.message }, { status: 500 })
 

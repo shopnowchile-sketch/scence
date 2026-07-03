@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign } from '@/lib/campaign-notifications'
 
 // Margen extra: al activar una campaña pública este endpoint puede enviar
@@ -137,7 +137,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: { ...data, _brand_permissions: access } })
   }
 
-  if (orgId && data.organization_id !== orgId) {
+  // Mismo criterio que la lista (GET /api/campaigns): admin/super_admin/owner
+  // de Scence puede abrir cualquier campaña, sin filtrar por organization_id
+  // — las marcas quedan con su propia organization_id aislada. Antes esto
+  // bloqueaba el detalle con 404 aunque la campaña sí apareciera en la lista.
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  if (!isAdmin && orgId && data.organization_id !== orgId) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
@@ -170,13 +175,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // Strip server-managed fields
   const { id: _id, created_at: _ca, created_by: _cb, organization_id: _oi, budget_spent: _bs, ...rest } = body
 
-  // Scope update to the user's own org
+  // Scope update to the user's own org — salvo admin/super_admin/owner de
+  // Scence, que puede editar cualquier campaña (mismo criterio que GET).
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   let query = admin
     .from('campaigns')
     .update({ ...rest, updated_at: new Date().toISOString() })
     .eq('id', params.id)
 
-  if (orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data, error } = await query.select().single()
 
@@ -227,13 +234,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     fields.status = 'pending_approval'
   }
 
-  // Scope update to the user's own org
+  // Scope update to the user's own org — salvo admin/super_admin/owner de
+  // Scence, que puede cambiar el estado de cualquier campaña.
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   let query = admin
     .from('campaigns')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', params.id)
 
-  if (orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data, error } = await query.select().single()
 
@@ -314,13 +323,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   // Soft-delete: set status to canceled rather than hard delete
-  // Scope to user's org for security
+  // Scope to user's org for security — salvo admin/super_admin/owner de
+  // Scence, que puede eliminar cualquier campaña.
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   let query = admin
     .from('campaigns')
     .update({ status: 'canceled', updated_at: new Date().toISOString() })
     .eq('id', params.id)
 
-  if (orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { error } = await query
 

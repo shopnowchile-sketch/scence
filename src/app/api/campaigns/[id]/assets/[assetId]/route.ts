@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string; assetId: string } }
 
@@ -15,6 +15,10 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
+  // admin/super_admin/owner de Scence puede borrar assets de cualquier
+  // campaña, sin filtrar por organization_id. Mismo criterio que /api/campaigns/[id].
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+
   let query = admin
     .from('media_files')
     .select('id, organization_id, campaign_id')
@@ -22,7 +26,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     .eq('campaign_id', params.id)
     .is('deliverable_id', null)
 
-  if (orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data: asset, error: findError } = await query.maybeSingle()
 

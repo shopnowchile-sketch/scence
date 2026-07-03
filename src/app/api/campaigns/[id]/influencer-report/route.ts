@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -17,8 +17,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
-  // Verify campaign belongs to this org
-  const { data: campaign } = await admin
+  // admin/super_admin/owner de Scence puede generar el reporte de cualquier
+  // campaña, sin filtrar por organization_id. Mismo criterio que /api/campaigns/[id].
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+
+  let campaignQuery = admin
     .from('campaigns')
     .select(`
       id, name, description, type, status, start_date, end_date, currency,
@@ -26,8 +29,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
     `)
     .eq('id', params.id)
-    .eq('organization_id', orgId)
-    .single()
+
+  if (!isAdmin) campaignQuery = campaignQuery.eq('organization_id', orgId)
+
+  const { data: campaign } = await campaignQuery.single()
 
   if (!campaign) return new NextResponse('Campaña no encontrada', { status: 404 })
 

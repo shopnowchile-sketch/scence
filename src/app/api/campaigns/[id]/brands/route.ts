@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -36,7 +36,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: campaignError.message }, { status: 500 })
   }
 
-  if (!campaign || (orgId && campaign.organization_id !== orgId)) {
+  // Mismo criterio que /api/campaigns/[id]: admin/super_admin/owner de Scence
+  // puede administrar marcas colaboradoras de cualquier campaña.
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  if (!campaign || (!isAdmin && orgId && campaign.organization_id !== orgId)) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
@@ -84,7 +87,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     .eq('id', params.id)
     .maybeSingle()
 
-  if (!campaign || (orgId && campaign.organization_id !== orgId)) {
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  if (!campaign || (!isAdmin && orgId && campaign.organization_id !== orgId)) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 

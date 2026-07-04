@@ -22,7 +22,14 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   // Vista reutilizada del admin (Configuración > Organización), no una
   // vista paralela reducida — ver BrandOrgForm.
-  const isProfilePage = pathname === '/brand-settings/organization'
+  // FIX: antes solo eximía '/brand-settings/organization' exacto. Al tocar
+  // cualquier otro tab de Configuración (Lugares, Usuarios, Plan,
+  // Notificaciones) el pathname cambiaba, el gate lo detectaba como "otra
+  // página" y la rebotaba de vuelta a Organización — o sea, no podía ver
+  // ningún otro tab mientras el Instagram siguiera incompleto (reportado:
+  // "no me aparece la pestaña de los lugares"). Ahora se exime toda la
+  // sección de Configuración, no solo esa sub-ruta.
+  const isProfilePage = pathname.startsWith('/brand-settings')
 
   useEffect(() => {
     if (didRegister.current) return

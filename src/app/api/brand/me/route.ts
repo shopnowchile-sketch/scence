@@ -51,6 +51,23 @@ export async function PATCH(request: Request) {
   } = body
 
   const admin = createAdminClient()
+
+  // Instagram obligatorio en el portal marca (mismo criterio que influencer:
+  // se valida el estado FINAL resultante, existente + lo que llega en este
+  // PATCH, para que no se pueda vaciar el campo). Ver BrandProfileGate en
+  // (brand)/layout.tsx, que redirige a /brand-profile si falta.
+  const { data: existingBrand } = await admin
+    .from('brands')
+    .select('instagram')
+    .eq('user_id', user.id)
+    .single()
+  const finalInstagram = 'instagram' in body
+    ? String(instagram ?? '').trim()
+    : String(existingBrand?.instagram ?? '').trim()
+  if (!finalInstagram) {
+    return NextResponse.json({ error: 'Instagram es obligatorio para usar el portal de marca' }, { status: 400 })
+  }
+
   const { data, error } = await admin
     .from('brands')
     .update({

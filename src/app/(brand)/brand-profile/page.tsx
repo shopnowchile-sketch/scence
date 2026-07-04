@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { Building2, Save, Loader2, MapPin, Phone, Mail, User, Globe, Instagram, Hash, Users, Plus, Trash2, ChevronDown } from 'lucide-react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Building2, Save, Loader2, MapPin, Phone, Mail, User, Globe, Instagram, Hash, Users, Plus, Trash2, ChevronDown, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -66,7 +67,9 @@ const REGIONS_CL = [
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function BrandProfilePage() {
+function BrandProfileContent() {
+  const searchParams = useSearchParams()
+  const forcedComplete = searchParams.get('complete') === '1'
   const [profile,   setProfile]   = useState<BrandProfile | null>(null)
   const [members,   setMembers]   = useState<BrandMember[]>([])
   const [loading,   setLoading]   = useState(true)
@@ -167,9 +170,17 @@ export default function BrandProfilePage() {
   )
 
   const initials = profile?.name?.slice(0, 2).toUpperCase() ?? '??'
+  const missingInstagram = !form.instagram || !String(form.instagram).trim()
 
   return (
     <div className="max-w-2xl mx-auto space-y-5 py-2">
+
+      {(forcedComplete || missingInstagram) && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          Para usar el portal necesitas completar el Instagram de tu marca.
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -202,10 +213,10 @@ export default function BrandProfilePage() {
               <input type="url" value={form.website ?? ''} onChange={set('website')} placeholder="https://empresa.com" className="input-base w-full" />
             </div>
           </Field>
-          <Field label="Instagram">
+          <Field label="Instagram *">
             <div className="flex items-center gap-1">
               <Instagram className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
-              <input value={form.instagram ?? ''} onChange={set('instagram')} placeholder="@miempresa" className="input-base w-full" />
+              <input value={form.instagram ?? ''} onChange={set('instagram')} placeholder="@miempresa" required className="input-base w-full" />
             </div>
           </Field>
         </div>
@@ -370,5 +381,13 @@ export default function BrandProfilePage() {
       </div>
 
     </div>
+  )
+}
+
+export default function BrandProfilePage() {
+  return (
+    <Suspense>
+      <BrandProfileContent />
+    </Suspense>
   )
 }

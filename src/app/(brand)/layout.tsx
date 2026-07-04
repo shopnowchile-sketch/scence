@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { BrandSidebar } from './_components/BrandSidebar'
 
 export default function BrandLayout({ children }: { children: React.ReactNode }) {
@@ -11,7 +11,14 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // solo la experiencia de navegación). null = aún cargando.
   const [instagramComplete, setInstagramComplete] = useState<boolean | null>(null)
   const pathname = usePathname()
-  const searchParams = useSearchParams()
+  // NOTA (build fix): NO usar useSearchParams() acá. Este layout envuelve
+  // TODAS las rutas /brand-*, y useSearchParams() sin un boundary Suspense
+  // propio hace bailout de generación estática para cada página hija —
+  // rompió el build entero del portal marca (15 páginas fallando en
+  // "next build"). usePathname() no tiene ese problema. El refetch en cada
+  // cambio de pathname ya alcanza para resolver el bug real (el aviso de
+  // Instagram pegado): al guardar y navegar a cualquier otra página, se
+  // vuelve a chequear /api/brand/me fresco.
   const router = useRouter()
   // Vista reutilizada del admin (Configuración > Organización), no una
   // vista paralela reducida — ver BrandOrgForm.
@@ -35,7 +42,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
       .then(r => r.ok ? r.json() : null)
       .then(j => setInstagramComplete(!!(j?.data?.instagram && String(j.data.instagram).trim())))
       .catch(() => setInstagramComplete(true)) // si falla la carga, no bloquear
-  }, [pathname, searchParams])
+  }, [pathname])
 
   useEffect(() => {
     if (instagramComplete === false && !isProfilePage) router.replace('/brand-settings/organization?complete=1')

@@ -1552,51 +1552,67 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       {/* ── DELIVERABLES ─────────────────────────────────────────────────────── */}
       {tab === 'deliverables' && (
         <div className="space-y-3">
-          {/* Header with status pills + Add button */}
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              {(Object.entries(DEL_CONFIG) as [DeliverableStatus, typeof DEL_CONFIG[DeliverableStatus]][]).map(([st, cfg]) => {
-                const count = campaignDeliverables.filter(d => d.status === st).length
-                if (count === 0) return null
-                return (
-                  <div key={st} className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold badge', cfg.cls)}>
-                    {cfg.icon} {cfg.label}: {count}
+          {/* Solo se listan deliverables donde el influencer ya subió su URL
+              (content_url o published_url) — evita ruido de los templates
+              creados en bulk para todas las invitadas que aún no entregan nada. */}
+          {(() => {
+            const submittedDeliverables = campaignDeliverables.filter(d => d.content_url || d.published_url)
+            return (
+              <>
+                {/* Header with status pills + Add button */}
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(Object.entries(DEL_CONFIG) as [DeliverableStatus, typeof DEL_CONFIG[DeliverableStatus]][]).map(([st, cfg]) => {
+                      const count = submittedDeliverables.filter(d => d.status === st).length
+                      if (count === 0) return null
+                      return (
+                        <div key={st} className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold badge', cfg.cls)}>
+                          {cfg.icon} {cfg.label}: {count}
+                        </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
-            </div>
-            <button
-              onClick={() => setAddingDeliverable(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" /> Agregar deliverable
-            </button>
-          </div>
+                  <button
+                    onClick={() => setAddingDeliverable(v => !v)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Agregar deliverable
+                  </button>
+                </div>
 
-          {/* Inline add form */}
-          {addingDeliverable && (
-            <AddDeliverableForm
-              campaignId={id}
-              influencers={campaignInfluencers.map(ci => ({ id: ci.influencer?.id ?? '', name: ci.influencer?.display_name ?? 'Influencer' }))}
-              onSuccess={() => { setAddingDeliverable(false); void refetch() }}
-              onCancel={() => setAddingDeliverable(false)}
-            />
-          )}
+                {/* Inline add form */}
+                {addingDeliverable && (
+                  <AddDeliverableForm
+                    campaignId={id}
+                    influencers={campaignInfluencers.map(ci => ({ id: ci.influencer?.id ?? '', name: ci.influencer?.display_name ?? 'Influencer' }))}
+                    onSuccess={() => { setAddingDeliverable(false); void refetch() }}
+                    onCancel={() => setAddingDeliverable(false)}
+                  />
+                )}
 
-          {campaignDeliverables.length === 0 && !addingDeliverable ? (
-            <div className="card p-12 text-center">
-              <FileText className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Sin deliverables asignados aún</p>
-              <button onClick={() => setAddingDeliverable(true)}
-                className="mt-3 text-xs text-violet-600 hover:underline">
-                + Agregar el primero
-              </button>
-            </div>
-          ) : (
-            campaignDeliverables.map(d => (
-              <DeliverableCard key={d.id} d={d} campaignId={id} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
-            ))
-          )}
+                {submittedDeliverables.length === 0 && !addingDeliverable ? (
+                  <div className="card p-12 text-center">
+                    <FileText className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+                    <p className="text-sm text-gray-400">
+                      {campaignDeliverables.length === 0
+                        ? 'Sin deliverables asignados aún'
+                        : 'Ninguna influencer ha subido su URL todavía'}
+                    </p>
+                    {campaignDeliverables.length === 0 && (
+                      <button onClick={() => setAddingDeliverable(true)}
+                        className="mt-3 text-xs text-violet-600 hover:underline">
+                        + Agregar el primero
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  submittedDeliverables.map(d => (
+                    <DeliverableCard key={d.id} d={d} campaignId={id} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
+                  ))
+                )}
+              </>
+            )
+          })()}
         </div>
       )}
 

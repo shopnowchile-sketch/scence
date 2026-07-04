@@ -212,7 +212,29 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
     .select('id, display_name')
     .single()
 
+  // FIX (2026-07-04, root cause "no veía las campañas" — 33 cuentas afectadas):
+  // `influencers.user_id` tiene un UNIQUE constraint (influencers_user_id_key).
+  // Este check-then-insert no es atómico: si el layout se invoca 2 veces casi
+  // en simultáneo para el mismo usuario (doble efecto de React, prefetch +
+  // navegación real, o un reintento de red en conexión mobile inestable),
+  // ambas pasan el chequeo `existing` (ninguna ve la fila del otro todavía) y
+  // la SEGUNDA insert falla con "duplicate key value violates unique
+  // constraint" — visto repetido en los logs de Postgres. Antes esto se
+  // logueaba y se retornaba null silenciosamente, dejando a esa cuenta SIN
+  // fila de influencer para siempre (cada visita futura repetía el mismo
+  // fallo porque `existing` seguía sin encontrar nada... hasta que SÍ hay una
+  // fila, solo que la creó la otra request concurrente). Ahora, ante ese error
+  // específico, se vuelve a buscar por user_id — la fila de la request que sí
+  // ganó la carrera debe existir ya.
   if (error) {
+    if (error.code === '23505') {
+      const { data: wonByOther } = await admin
+        .from('influencers')
+        .select('id, display_name')
+        .eq('user_id', user.id)
+        .single()
+      if (wonByOther) return wonByOther
+    }
     console.error('[ensureInfluencerRow] failed to create influencer row:', error.message)
     return null
   }

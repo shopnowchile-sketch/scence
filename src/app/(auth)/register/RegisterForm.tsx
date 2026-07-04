@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 const brandSchema = z.object({
   brand_name:   z.string().min(2, 'Mínimo 2 caracteres').max(100),
   contact_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
+  referred_by:  z.string().max(60).optional(),
   email:        z.string().email('Email inválido'),
   password:     z.string()
     .min(8, 'Mínimo 8 caracteres')
@@ -126,12 +127,12 @@ function BrandForm({ onBack }: { onBack: () => void }) {
   })
   const pwd = watch('password') ?? ''
 
-  async function onSubmit({ brand_name, contact_name, email, password }: BrandValues) {
+  async function onSubmit({ brand_name, contact_name, referred_by, email, password }: BrandValues) {
     setLoading(true); setError(null)
     const { error: e } = await supabase.auth.signUp({
       email, password,
       options: {
-        data: { full_name: contact_name, brand_name, is_brand: true },
+        data: { full_name: contact_name, brand_name, referred_by_instagram: referred_by || null, is_brand: true },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
@@ -177,6 +178,11 @@ function BrandForm({ onBack }: { onBack: () => void }) {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
           <input {...register('email')} type="email" autoComplete="email" className="input-base w-full" placeholder="ana@empresa.com" />
           {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">¿Quién te invitó? <span className="text-gray-400 font-normal">(Instagram, opcional)</span></label>
+          <input {...register('referred_by')} className="input-base w-full" placeholder="@nombre.creador" />
+          {errors.referred_by && <p className="text-xs text-red-500 mt-1">{errors.referred_by.message}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Contraseña</label>

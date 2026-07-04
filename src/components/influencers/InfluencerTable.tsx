@@ -7,7 +7,15 @@ import { toast } from 'sonner'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { Influencer, InfluencerFilters } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
+
+type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'lastConnection'
+
+const DEFAULT_WIDTHS: Record<ColKey, number> = {
+  display_name: 220, platforms: 120, categories: 160, followers: 130,
+  engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, lastConnection: 170,
+}
 
 interface Props {
   influencers: Influencer[]
@@ -34,15 +42,16 @@ const AVATAR_GRADIENTS = [
 
 // TH sortable — reemplazado por el componente compartido SortableTH
 // (mismo patrón que usa InfluencerRanking.tsx). sortOrder -> sortDir.
-function TH({ children, col, sortBy, sortOrder, onSort }: {
+function TH({ children, col, sortBy, sortOrder, onSort, onResizeStart }: {
   children: React.ReactNode
   col?: InfluencerFilters['sortBy']
   sortBy: InfluencerFilters['sortBy']
   sortOrder: InfluencerFilters['sortOrder']
   onSort: (col: InfluencerFilters['sortBy']) => void
+  onResizeStart?: (e: React.MouseEvent) => void
 }) {
   return (
-    <SortableTH col={col} sortBy={sortBy} sortDir={sortOrder} onSort={onSort}>
+    <SortableTH col={col} sortBy={sortBy} sortDir={sortOrder} onSort={onSort} onResizeStart={onResizeStart}>
       {children}
     </SortableTH>
   )
@@ -80,6 +89,8 @@ export function InfluencerTable({
     commune: true,
     lastConnection: true,
   })
+  // Ancho de columnas ajustable por drag — regla global (ver useColumnWidths).
+  const { widths, startResize } = useColumnWidths<ColKey>('scence:admin:influencer-table:widths', DEFAULT_WIDTHS)
 
   if (influencers.length === 0) {
     return (
@@ -135,7 +146,21 @@ export function InfluencerTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full" style={{ tableLayout: 'fixed' }}>
+          <colgroup>
+            {selectable && <col style={{ width: 40 }} />}
+            <col style={{ width: widths.display_name }} />
+            {visible.platforms      && <col style={{ width: widths.platforms }} />}
+            {visible.categories     && <col style={{ width: widths.categories }} />}
+            {visible.followers      && <col style={{ width: widths.followers }} />}
+            {visible.engagement     && <col style={{ width: widths.engagement }} />}
+            {visible.rate           && <col style={{ width: widths.rate }} />}
+            {visible.rating         && <col style={{ width: widths.rating }} />}
+            {visible.status         && <col style={{ width: widths.status }} />}
+            {visible.commune        && <col style={{ width: widths.commune }} />}
+            {visible.lastConnection && <col style={{ width: widths.lastConnection }} />}
+            <col style={{ width: 90 }} />
+          </colgroup>
           <thead>
             <tr className="border-b border-gray-100">
               {selectable && (
@@ -144,16 +169,24 @@ export function InfluencerTable({
                     className="rounded border-gray-300 text-violet-600" />
                 </th>
               )}
-              <TH col="display_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Influencer</TH>
-              {visible.platforms && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataformas</th>}
-              {visible.categories && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Categorías</th>}
-              {visible.followers && <TH col="followers" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Seguidores</TH>}
-              {visible.engagement && <TH col="engagement_rate" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Engagement</TH>}
-              {visible.rate && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Rate base</th>}
-              {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Rating</TH>}
-              {visible.status && <TH col="is_active" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Estado</TH>}
-              {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort}>Comuna</TH>}
-              {visible.lastConnection && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Última conexión</th>}
+              <TH col="display_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('display_name', e)}>Influencer</TH>
+              {visible.platforms && (
+                <SortableTH<ColKey> onResizeStart={e => startResize('platforms', e)}>Plataformas</SortableTH>
+              )}
+              {visible.categories && (
+                <SortableTH<ColKey> onResizeStart={e => startResize('categories', e)}>Categorías</SortableTH>
+              )}
+              {visible.followers && <TH col="followers" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('followers', e)}>Seguidores</TH>}
+              {visible.engagement && <TH col="engagement_rate" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('engagement', e)}>Engagement</TH>}
+              {visible.rate && (
+                <SortableTH<ColKey> onResizeStart={e => startResize('rate', e)}>Rate base</SortableTH>
+              )}
+              {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('rating', e)}>Rating</TH>}
+              {visible.status && <TH col="is_active" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('status', e)}>Estado</TH>}
+              {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('commune', e)}>Comuna</TH>}
+              {visible.lastConnection && (
+                <SortableTH<ColKey> onResizeStart={e => startResize('lastConnection', e)}>Última conexión</SortableTH>
+              )}
               <th className="px-4 py-3 bg-gray-50" />
             </tr>
           </thead>

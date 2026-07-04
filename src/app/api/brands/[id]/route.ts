@@ -39,7 +39,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const uniqueCampaigns = Array.from(new Map(campaigns.map((c: any) => [c.id, c])).values())
 
-  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns } })
+  // Última conexión — mismo criterio que GET /api/brands (lista): se lee de
+  // auth.users porque brands no tiene columna propia de último acceso.
+  let last_sign_in_at: string | null = null
+  if (brand.user_id) {
+    const { data: u } = await admin.auth.admin.getUserById(brand.user_id)
+    last_sign_in_at = u?.user?.last_sign_in_at ?? null
+  }
+
+  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at } })
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

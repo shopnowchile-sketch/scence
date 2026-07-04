@@ -35,6 +35,15 @@ export async function POST() {
   const contactName  = user.user_metadata?.full_name     ?? null
   const contactEmail = user.email ?? null
 
+  // "¿Quién te invitó?" del formulario de registro — normalizado (sin @, minúsculas,
+  // sin espacios) para poder matchearlo después contra el instagram de la influencer.
+  // Se guarda en brands.metadata (jsonb existente, sin columna nueva). Ver
+  // GET /api/influencer/me (referred_brands_count) para el conteo inverso.
+  const rawReferral = user.user_metadata?.referred_by_instagram
+  const referredByInstagram = typeof rawReferral === 'string' && rawReferral.trim()
+    ? rawReferral.trim().replace(/^@/, '').toLowerCase()
+    : null
+
   const { data: brand, error } = await admin
     .from('brands')
     .insert({
@@ -44,6 +53,7 @@ export async function POST() {
       contact_name:    contactName,
       contact_email:   contactEmail,
       created_by:      user.id,
+      metadata:        referredByInstagram ? { referred_by_instagram: referredByInstagram } : null,
     })
     .select('id, name')
     .single()

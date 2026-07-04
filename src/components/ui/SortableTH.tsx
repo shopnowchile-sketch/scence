@@ -18,6 +18,10 @@ import { cn } from '@/lib/utils'
  * Si no se pasa `col`, se renderiza como <th> normal (no clickeable) —
  * para columnas que genuinamente no tienen forma de ordenarse (ej. arrays
  * como Plataformas/Categorías).
+ *
+ * `onResizeStart` (opcional) agrega un handle de resize en el borde derecho —
+ * ver useColumnWidths. Regla global pedida por Pri: toda tabla con columnas
+ * debe poder ordenarse por header Y ajustar su ancho con drag.
  */
 export function SortableTH<T extends string>({
   children,
@@ -25,6 +29,7 @@ export function SortableTH<T extends string>({
   sortBy,
   sortDir,
   onSort,
+  onResizeStart,
   align = 'left',
   className,
 }: {
@@ -33,6 +38,7 @@ export function SortableTH<T extends string>({
   sortBy?: T
   sortDir?: 'asc' | 'desc'
   onSort?: (col: T) => void
+  onResizeStart?: (e: React.MouseEvent) => void
   align?: 'left' | 'right'
   className?: string
 }) {
@@ -40,7 +46,7 @@ export function SortableTH<T extends string>({
   return (
     <th
       className={cn(
-        'px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50',
+        'relative px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50',
         align === 'right' ? 'text-right' : 'text-left',
         sortable && 'cursor-pointer hover:text-gray-600 select-none',
         className
@@ -56,6 +62,14 @@ export function SortableTH<T extends string>({
           )} />
         )}
       </div>
+      {onResizeStart && (
+        <div
+          onMouseDown={onResizeStart}
+          onClick={e => e.stopPropagation()}
+          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-violet-300/60 active:bg-violet-400"
+          title="Arrastrar para ajustar ancho"
+        />
+      )}
     </th>
   )
 }

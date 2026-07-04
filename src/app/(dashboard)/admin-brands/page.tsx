@@ -9,6 +9,36 @@ import {
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { useColumnWidths } from '@/hooks/useColumnWidths'
+import { SortableTH } from '@/components/ui/SortableTH'
+import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
+
+type SortKey = 'name' | 'status' | 'industry' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy'
+type SortOrder = 'asc' | 'desc'
+type BrandColumnKey = 'status' | 'industry' | 'contact' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy'
+
+// Columnas de la tabla de Marcas — "Marca" siempre visible (no se puede ocultar
+// la columna principal). Regla global pedida por Pri: toda tabla debe poder
+// ordenar por header, mostrar/ocultar columnas y ajustar su ancho con drag —
+// mismo patrón ya usado en Campañas (visibilidad) e Influencers (sort).
+const BRAND_COLUMNS: Array<{ key: BrandColumnKey; label: string }> = [
+  { key: 'status',         label: 'Estado' },
+  { key: 'industry',       label: 'Industria' },
+  { key: 'contact',        label: 'Contacto' },
+  { key: 'active',         label: 'Campañas activas' },
+  { key: 'total',          label: 'Total campañas' },
+  { key: 'accountCreated', label: 'Cuenta creada' },
+  { key: 'lastSignIn',     label: 'Última conexión' },
+  { key: 'referredBy',     label: 'Referido por' },
+]
+
+const DEFAULT_BRAND_COLUMNS: Record<BrandColumnKey, boolean> =
+  Object.fromEntries(BRAND_COLUMNS.map(c => [c.key, true])) as Record<BrandColumnKey, boolean>
+
+const DEFAULT_BRAND_WIDTHS: Record<'name' | BrandColumnKey, number> = {
+  name: 240, status: 120, industry: 160, contact: 200, active: 130,
+  total: 130, accountCreated: 130, lastSignIn: 170, referredBy: 140,
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -27,6 +57,7 @@ interface Brand {
   last_sign_in_at?: string | null
   account_created_at?: string | null
   user_id?: string | null
+  metadata?: { referred_by_instagram?: string | null } | null
   campaigns?: Array<{ id: string; name: string; status: string; budget_total: number | null; currency: string }>
 }
 
@@ -213,7 +244,12 @@ export default function BrandsPage() {
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortBy, setSortBy] = useLocalStorageState('scence:admin:brands:sortBy', 'name_asc')
+  const [sortKey, setSortKey]     = useLocalStorageState<SortKey>('scence:admin:brands:sortKey', 'name')
+  const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>('scence:admin:brands:sortOrder', 'asc')
+  const [visibleColumns, setVisibleColumns] = useLocalStorageState<Record<BrandColumnKey, boolean>>(
+    'scence:admin:brands:visibleColumns', DEFAULT_BRAND_COLUMNS
+  )
+  const { widths, startResize, resetWidths } = useColumnWidths('scence:admin:brands:widths', DEFAULT_BRAND_WIDTHS)
   const [showModal, setShowModal]     = useState(false)
   const [editing, setEditing]         = useState<Brand | null>(null)
   const [selected, setSelected]       = useState<Brand | null>(null)
@@ -294,6 +330,20 @@ export default function BrandsPage() {
     return 'badge-orange'
   }
 
+  function toggleSort(key: SortKey) {
+    setSortOrder(prev => sortKey === key && prev === 'desc' ? 'asc' : 'desc')
+    setSortKey(key)
+  }
+
+  function toggleColumn(key: BrandColumnKey) {
+    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function resetColumnsAndWidths() {
+    setVisibleColumns(DEFAULT_BRAND_COLUMNS)
+    resetWidths()
+  }
+
   const visibleBrands = useMemo(() => {
     const rows = [...brands]
 
@@ -302,22 +352,31 @@ export default function BrandsPage() {
       : rows.filter(b => (b.status ?? 'pending_approval') === statusFilter)
 
     filtered.sort((a, b) => {
-      const activeA = (a.campaigns ?? []).filter(c => c.status === 'active').length
-      const activeB = (b.campaigns ?? []).filter(c => c.status === 'active').length
-      const totalA = a.campaigns?.length ?? 0
-      const totalB = b.campaigns?.length ?? 0
-
-      if (sortBy === 'name_desc') return b.name.localeCompare(a.name)
-      if (sortBy === 'active_desc') return activeB - activeA
-      if (sortBy === 'campaigns_desc') return totalB - totalA
-      if (sortBy === 'recent_access') {
-        return new Date(b.last_sign_in_at ?? 0).getTime() - new Date(a.last_sign_in_at ?? 0).getTime()
+      const getValue = (br: Brand) => {
+        switch (sortKey) {
+          case 'name':           return br.name ?? ''
+          case 'status':         return br.status ?? 'pending_approval'
+          case 'industry':       return br.industry ?? ''
+          case 'active':         return (br.campaigns ?? []).filter(c => c.status === 'active').length
+          case 'total':          return br.campaigns?.length ?? 0
+          case 'accountCreated': return br.account_created_at ?? ''
+          case 'lastSignIn':     return br.last_sign_in_at ?? ''
+          case 'referredBy':     return br.metadata?.referred_by_instagram ?? ''
+          default:                return ''
+        }
       }
-      return a.name.localeCompare(b.name)
+
+      const av = getValue(a)
+      const bv = getValue(b)
+      const result = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv))
+
+      return sortOrder === 'asc' ? result : -result
     })
 
     return filtered
-  }, [brands, statusFilter, sortBy])
+  }, [brands, statusFilter, sortKey, sortOrder])
 
   function openCreate() {
     setEditing(null)
@@ -380,17 +439,14 @@ export default function BrandsPage() {
           <option value="suspended">Suspendidas</option>
         </select>
 
-        <select
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
-          className="input-base text-sm w-44"
-        >
-          <option value="name_asc">Orden A-Z</option>
-          <option value="name_desc">Orden Z-A</option>
-          <option value="active_desc">Más activas</option>
-          <option value="campaigns_desc">Más campañas</option>
-          <option value="recent_access">Último acceso</option>
-        </select>
+        {view === 'list' && (
+          <ColumnVisibilityMenu
+            columns={BRAND_COLUMNS}
+            visible={visibleColumns}
+            onToggle={toggleColumn}
+            onReset={resetColumnsAndWidths}
+          />
+        )}
 
         <div className="flex rounded-lg border border-gray-200 overflow-hidden">
           <button onClick={() => setView('list')}
@@ -442,12 +498,47 @@ export default function BrandsPage() {
           ) : view === 'list' ? (
             /* ── List view ── */
             <div className="card overflow-x-auto">
-              <table className="w-full min-w-[640px]">
+              <table className="w-full min-w-[640px]" style={{ tableLayout: 'fixed' }}>
+                <colgroup>
+                  <col style={{ width: widths.name }} />
+                  {visibleColumns.status         && <col style={{ width: widths.status }} />}
+                  {visibleColumns.industry       && <col style={{ width: widths.industry }} />}
+                  {visibleColumns.contact         && <col style={{ width: widths.contact }} />}
+                  {visibleColumns.active          && <col style={{ width: widths.active }} />}
+                  {visibleColumns.total           && <col style={{ width: widths.total }} />}
+                  {visibleColumns.accountCreated && <col style={{ width: widths.accountCreated }} />}
+                  {visibleColumns.lastSignIn      && <col style={{ width: widths.lastSignIn }} />}
+                  {visibleColumns.referredBy      && <col style={{ width: widths.referredBy }} />}
+                  <col style={{ width: 70 }} />
+                </colgroup>
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Marca', 'Estado', 'Industria', 'Contacto', 'Campañas activas', 'Total campañas', 'Cuenta creada', 'Última conexión', ''].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
-                    ))}
+                  <tr className="border-b border-gray-100">
+                    <SortableTH col="name" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('name', e)}>Marca</SortableTH>
+                    {visibleColumns.status && (
+                      <SortableTH col="status" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('status', e)}>Estado</SortableTH>
+                    )}
+                    {visibleColumns.industry && (
+                      <SortableTH col="industry" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('industry', e)}>Industria</SortableTH>
+                    )}
+                    {visibleColumns.contact && (
+                      <SortableTH<SortKey> onResizeStart={e => startResize('contact', e)}>Contacto</SortableTH>
+                    )}
+                    {visibleColumns.active && (
+                      <SortableTH col="active" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('active', e)}>Campañas activas</SortableTH>
+                    )}
+                    {visibleColumns.total && (
+                      <SortableTH col="total" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('total', e)}>Total campañas</SortableTH>
+                    )}
+                    {visibleColumns.accountCreated && (
+                      <SortableTH col="accountCreated" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('accountCreated', e)}>Cuenta creada</SortableTH>
+                    )}
+                    {visibleColumns.lastSignIn && (
+                      <SortableTH col="lastSignIn" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('lastSignIn', e)}>Última conexión</SortableTH>
+                    )}
+                    {visibleColumns.referredBy && (
+                      <SortableTH col="referredBy" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('referredBy', e)}>Referido por</SortableTH>
+                    )}
+                    <SortableTH<SortKey>>{''}</SortableTH>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -458,44 +549,63 @@ export default function BrandsPage() {
                       <tr key={b.id} onClick={() => { window.location.href = `/admin-brands/${b.id}` }}
                         className={cn('cursor-pointer hover:bg-gray-50 transition-colors',
                           selected?.id === b.id ? 'bg-violet-50' : '')}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
+                        <td className="px-4 py-3 overflow-hidden">
+                          <div className="flex items-center gap-3 min-w-0">
                             {b.logo_url
-                              ? <img src={b.logo_url} alt={b.name} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
-                              : <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600 font-bold text-sm">{b.name[0]}</div>
+                              ? <img src={b.logo_url} alt={b.name} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
+                              : <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600 font-bold text-sm flex-shrink-0">{b.name[0]}</div>
                             }
-                            <div>
-                              <div className="text-sm font-semibold text-gray-900">{b.name}</div>
-                              {b.website && <a href={b.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-violet-500 hover:underline truncate max-w-[160px] block">{b.website.replace(/^https?:\/\//, '')}</a>}
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-gray-900 truncate">{b.name}</div>
+                              {b.website && <a href={b.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-violet-500 hover:underline truncate block">{b.website.replace(/^https?:\/\//, '')}</a>}
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className={cn('badge text-xs font-bold', statusClass(b.status))}>
-                            {statusLabel(b.status)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{b.industry ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {b.contact_name ?? '—'}
-                          {b.contact_email && <div className="text-xs text-gray-400">{b.contact_email}</div>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={cn('badge text-xs font-bold', activeCampaigns.length > 0 ? 'badge-green' : 'badge-gray')}>
-                            {activeCampaigns.length} activa{activeCampaigns.length !== 1 ? 's' : ''}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{allCampaigns.length} total</td>
-                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                          {b.account_created_at
-                            ? new Date(b.account_created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
-                            : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                          {b.last_sign_in_at
-                            ? new Date(b.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                            : <span className="text-gray-300">Sin acceso</span>}
-                        </td>
+                        {visibleColumns.status && (
+                          <td className="px-4 py-3 overflow-hidden">
+                            <span className={cn('badge text-xs font-bold', statusClass(b.status))}>
+                              {statusLabel(b.status)}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.industry && (
+                          <td className="px-4 py-3 text-sm text-gray-500 truncate">{b.industry ?? '—'}</td>
+                        )}
+                        {visibleColumns.contact && (
+                          <td className="px-4 py-3 text-sm text-gray-500 overflow-hidden">
+                            <div className="truncate">{b.contact_name ?? '—'}</div>
+                            {b.contact_email && <div className="text-xs text-gray-400 truncate">{b.contact_email}</div>}
+                          </td>
+                        )}
+                        {visibleColumns.active && (
+                          <td className="px-4 py-3 overflow-hidden">
+                            <span className={cn('badge text-xs font-bold', activeCampaigns.length > 0 ? 'badge-green' : 'badge-gray')}>
+                              {activeCampaigns.length} activa{activeCampaigns.length !== 1 ? 's' : ''}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.total && (
+                          <td className="px-4 py-3 text-sm text-gray-500 truncate">{allCampaigns.length} total</td>
+                        )}
+                        {visibleColumns.accountCreated && (
+                          <td className="px-4 py-3 text-xs text-gray-400 truncate">
+                            {b.account_created_at
+                              ? new Date(b.account_created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
+                              : '—'}
+                          </td>
+                        )}
+                        {visibleColumns.lastSignIn && (
+                          <td className="px-4 py-3 text-xs text-gray-400 truncate">
+                            {b.last_sign_in_at
+                              ? new Date(b.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                              : <span className="text-gray-300">Sin acceso</span>}
+                          </td>
+                        )}
+                        {visibleColumns.referredBy && (
+                          <td className="px-4 py-3 text-xs text-gray-500 truncate">
+                            {b.metadata?.referred_by_instagram ? `@${b.metadata.referred_by_instagram}` : <span className="text-gray-300">—</span>}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-right">
                           <button onClick={e => { e.stopPropagation(); setEditing(b); setShowModal(true) }}
                             className="text-xs text-violet-600 hover:underline font-medium">Editar</button>

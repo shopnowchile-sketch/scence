@@ -19,7 +19,24 @@ export async function GET() {
     .single()
 
   if (error || !data) return NextResponse.json({ error: 'Influencer profile not found' }, { status: 404 })
-  return NextResponse.json({ data })
+
+  // Marcas referidas: cuenta brands cuyo metadata.referred_by_instagram matchea
+  // el Instagram de esta influencer. Se calcula en vivo (no es un contador
+  // guardado) para no desincronizarse. Ver "¿Quién te invitó?" en el registro
+  // de marca y /api/brand/register donde se guarda ese valor.
+  let referred_brands_count = 0
+  const igUsername = (data.influencer_social_profiles ?? [])
+    .find((sp: { platform: string; username: string | null }) => sp.platform === 'instagram')?.username
+  if (igUsername && igUsername.trim()) {
+    const normalized = igUsername.trim().replace(/^@/, '').toLowerCase()
+    const { count } = await admin
+      .from('brands')
+      .select('id', { count: 'exact', head: true })
+      .eq('metadata->>referred_by_instagram', normalized)
+    referred_brands_count = count ?? 0
+  }
+
+  return NextResponse.json({ data: { ...data, referred_brands_count } })
 }
 
 // PATCH /api/influencer/me

@@ -420,6 +420,14 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                   </a>
                 ) : '—'}
               </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Última conexión</p>
+                <p className={brand.last_sign_in_at ? 'text-gray-900' : 'text-gray-300'}>
+                  {brand.last_sign_in_at
+                    ? new Date(brand.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : 'Sin acceso'}
+                </p>
+              </div>
             </div>
 
             {brand.notes && (

@@ -33,6 +33,7 @@ type InfluencerProfile = {
   commune: string | null
   categories: string[] | null
   influencer_social_profiles: SocialProfile[] | null
+  referred_brands_count?: number
 }
 
 // Perfil obligatorio: Instagram + comuna + dirección. Se usa para forzar la
@@ -283,11 +284,12 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Campañas activas',  value: activeCampaigns,                icon: Target,   color: 'text-violet-600', bg: 'bg-violet-50' },
               { label: 'Tareas pendientes', value: pendingTasks,                   icon: Zap,      color: 'text-amber-600',  bg: 'bg-amber-50' },
               { label: 'Total cobrado',     value: fmtMoney(totalEarned, currency), icon: Banknote, color: 'text-green-600',  bg: 'bg-green-50' },
+              { label: 'Marcas referidas',  value: profile.referred_brands_count ?? 0, icon: Share2, color: 'text-blue-600',   bg: 'bg-blue-50' },
             ].map(({ label, value, icon: Icon, color, bg }) => (
               <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4">
                 <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center mb-3', bg)}><Icon className={cn('h-4 w-4', color)} /></div>

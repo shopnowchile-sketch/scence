@@ -2,7 +2,7 @@
 
 **Plataforma de gestión de campañas de influencer marketing**
 
-**Versión:** 2.3 | **Fecha de emisión:** 2026-07-03
+**Versión:** 2.4 | **Fecha de emisión:** 2026-07-04
 
 ---
 
@@ -40,6 +40,13 @@
 | 2.3 (wizard de creación — bug + auto-save) | Pri reportó "no puedo crear campaña desde el admin". Causa: `CampaignForm.tsx` (wizard "Nueva campaña") tenía en el Paso 3 un toggle duplicado de "Campaña pública" que escribía `visibility='public'`/`'invite_only'` (valores inválidos — el enum real es `'private'`/`'open'`, mismo defecto que B-16 pero en un archivo distinto); al fallar la validación de Zod sin un manejador de error configurado, el botón "Crear campaña" no hacía nada, sin mensaje. Corregido: toggle duplicado eliminado (Paso 1 ya tenía el control correcto), y se agregó manejador `onInvalid` que ahora muestra el paso y el campo exacto que falla en vez de fallar en silencio. De paso, a pedido de Pri, se agregó auto-guardado: el wizard crea la campaña como `draft` al avanzar del Paso 1 (POST) y la actualiza (PUT) en los pasos siguientes, para que quede guardada aunque el usuario no llegue a "Crear campaña" | 2026-07-03 |
 | 2.3 (notificación automática al activar — reemplaza decisión manual previa) | **Cambia la decisión registrada en "2.1 (notificar influencers)":** Pri pidió pasar de botón manual (batches de 50) a automático — al activar (`PATCH .../route.ts`, `action=activate`) una campaña `visibility='open'`, se emailea a **todas** las influencers elegibles del sistema (1693 hoy), no solo top-50 por seguidores. Nueva función compartida `src/lib/campaign-notifications.ts` (`notifyAllInfluencersOfOpenCampaign`), reutiliza la misma plantilla (`campaignOpenAvailableEmail`) y la misma tabla de idempotencia (`campaign_influencer_notifications`) que el botón manual — no hay envíos duplicados entre ambos caminos. Usa `resend.batch.send()` (100 por llamada, ~17 llamadas para el roster actual) en vez de 1-por-1 para no exceder el timeout del endpoint (`maxDuration=60`). El botón manual (`notify-influencers/route.ts`) se mantiene disponible y se le quitó el mismo filtro de `organization_id` que casi lo dejaba sin alcance (ver fila anterior) | 2026-07-03 |
 | 2.3 (respaldo) | A pedido de Pri, checkpoint de respaldo antes de dar por probados estos cambios en producción: tag de git `backup-2026-07-03-pre-permissions-fix` (commit `1efb8e0`) + snapshot manual (no reemplaza el backup automático de Supabase) de `campaigns`, `campaign_brands`, `organizations` y owners de `organization_members` en `backups/2026-07-03/` | 2026-07-03 |
+| 2.4 (Usuarios admin + orden marca) | Tab "Usuarios" de `admin-settings` estaba marcado "soon" (bug B-02) aunque el componente `TeamMembers` (invitar/listar/cambiar rol) ya existía construido dentro de `admin-settings/organization`, solo no estaba expuesto. Se exportó y se montó en `admin-settings/users`, sin duplicar lógica. De paso, la lista de usuarios del portal Marca (`GET /api/brand/members`) se ordenó con el owner siempre primero (sort estable). Toolbar de `CampaignDetail` (Reporte/Editar/Pausar/Completar/Eliminar/Borrar todo) acortado — texto largo duplicaba el `title` del botón | 2026-07-04 |
+| 2.4 (UAT influencer — duplicados y campañas invisibles) | Pri pidió UAT completo del portal influencer: por qué algunas quedan con el @ como nombre, duplicados, huérfanas y por qué a algunas no les aparecen sus campañas. **Root cause encontrado:** el placeholder del campo "Nombre del creador" en `RegisterForm.tsx` mostraba `@sofia.crea` como ejemplo, entrenando a las usuarias a escribir su @ de Instagram en vez de su nombre real — explica los 134 registros reales con `display_name` empezando en "@". Corregido (placeholder → "Sofía Contreras", label → "Nombre y apellido"). **Consulta a producción (read-only):** 1701 influencers, 286 sin `user_id` (un solo import masivo del 7-11 jun, no son huérfanas), ~15-18 pares de duplicados genuinos por nombre completo (vs. muchos falsos positivos de solo-primer-nombre). **Mecanismo de "campañas invisibles" confirmado:** cuando una influencer tiene 2 filas en `influencers` (duplicado) y la asignación de campaña quedó en la fila SIN `user_id`, nunca la ve porque el API busca por `user_id = auth.uid()`. Con aprobación explícita de Pri se resolvieron los 3 casos concretos encontrados: Sofía Irribarra (fusión — se repuntaron `campaign_influencers`, `campaign_deliverables`, `campaign_influencer_notifications` e `influencer_social_profiles` de la fila duplicada sin login a la fila con login real, y se desactivó la fila vieja); Silvia Astete y Rebeca Navarro (ambas se habían registrado el mismo día pero su fila de `influencers` nunca quedó vinculada a su `auth.users` nuevo — se les asignó el `user_id` correspondiente). Un cuarto caso (Maxi Ferres) queda pendiente: no tiene email/teléfono ni cuenta creada, no hay nada que vincular todavía | 2026-07-04 |
+| 2.4 (auditoría CRM) | Auditoría del módulo CRM (`admin-crm`, construido en sesión previa — leads de prospección SII 2023, calificación, email de primera-campaña-gratis). Arquitectura correcta (aislado, RLS solo service-role, gateado a `super_admin`/`brand_manager`). **Hallazgo de datos, no de código:** de 5.733 leads cargados (de 70.000 prometidos), el 100% solo tiene `email` poblado — `company_name`, `region`, `industry`, etc. quedaron vacíos en todos los registros por un import previo mal mapeado, sin script ni CSV guardado en el repo para reproducirlo. Pendiente: Pri debe volver a subir el CSV origen para rehacer el import completo. Se encontró además una tabla huérfana `crm_email_history` (schema distinto, sin referencias en el código) — no se tocó | 2026-07-04 |
+| 2.4 (deliverables — solo entregas reales) | Pri reportó demasiado texto/ruido en el tab Deliverables de campaña. Primer ajuste: la lista solo muestra deliverables donde la influencer ya subió su URL (`content_url`/`published_url`), en vez de los 145+ templates creados en bulk sin entrega aún | 2026-07-04 |
+| 2.4 (Marcas — cuenta creada, última conexión, Instagram obligatorio, referidos) | Nueva columna "Cuenta creada" en `admin-brands` (prioriza `auth.users.created_at`, cae a `brands.created_at` si no tiene usuario — mismo request que ya resolvía `last_sign_in_at`, sin queries nuevas); "Última conexión" agregada también al detalle `admin-brands/[id]` (antes solo estaba en la lista). **Instagram obligatorio en portal Marca:** mismo patrón que ya existía para influencer (`ProfileCompletionGate`) — gate en `(brand)/layout.tsx` + validación server-side en `PATCH /api/brand/me`; redirige a `/brand-profile?complete=1` si falta. Impacto real: 10 de 14 marcas con login ya activo no tienen Instagram cargado, quedarán redirigidas la próxima vez que entren. **Tracking de referidos:** nuevo campo "¿Quién te invitó? (Instagram)" en el registro de marca — guardado en `brands.metadata` (jsonb existente, sin columna ni tabla nueva), conteo en vivo de "Marcas referidas" agregado al perfil de la influencer (`GET /api/influencer/me`), columna "Referido por" visible en `admin-brands` | 2026-07-04 |
+| 2.4 (tablas — sort/columnas/resize global) | Pri pidió que ordenar por header, mostrar/ocultar columnas y ajustar su ancho sea "regla global" para todas las tablas admin. Se extrajeron 2 primitivos reutilizables: `useColumnWidths` (drag-resize persistido en localStorage) y `ColumnVisibilityMenu` (dropdown de checkboxes, antes cableado a mano solo en Campañas); `SortableTH` se extendió con un handle de resize opcional. Aplicado completo (sort + columnas + resize) a Marcas, que antes tenía un `<select>` de orden en vez de headers clickeables. Influencers ya tenía sort y columnas — se le agregó el resize que faltaba. Pendiente extender el mismo patrón a otras tablas si Pri lo pide (CRM leads, Bookings, Contratos, Eventos, Soporte, Afiliados, Payroll) | 2026-07-04 |
+| 2.4 (deliverables — rediseño agrupado + rating) | Segundo ajuste al tab Deliverables: Pri pidió que solo se vea en grande nombre + Instagram (clickeable) + link de contenido, sin descripciones — el título de un deliverable a veces contenía el brief completo. Rediseñado: agrupado por influencer (si tiene más de un entregable, es un dropdown colapsable; si tiene uno solo, se muestra directo), cada línea reducida a `Tipo: Ver contenido ↗`. Se agregó rating de 1-5 estrellas por deliverable, editable ahí mismo, para poder filtrar por calidad de contenido más adelante — columna nueva `campaign_deliverables.content_rating` (smallint, check 1-5), sin tabla nueva. Nuevo componente reutilizable `StarRating` | 2026-07-04 |
 
 ### Sign-off
 
@@ -218,6 +225,8 @@ Acceso: `role: super_admin`. Rutas: `admin-*`. Equipo interno de SCENCE — acce
 
 **Reusado por Marca:** `brand-campaigns/[id]` reutiliza este mismo componente (`CampaignDetail`), filtrado por permisos — ver 3.2.
 
+**Tab Deliverables — v2.4, rediseño agrupado por influencer:** solo se listan deliverables con URL ya entregada (`content_url`/`published_url`) — el resto son templates creados en bulk sin entrega aún, antes generaban ruido. Agrupados por influencer: nombre + Instagram clickeable (reusa `influencer_social_profiles` ya cargado en `campaign_influencers`, sin queries nuevas); si tiene más de un deliverable es un dropdown colapsable, si tiene uno solo se muestra directo. Cada línea: `Tipo: Ver contenido ↗` (sin descripción/brief) + rating de 1-5 estrellas (`content_rating`, editable ahí mismo vía `PATCH .../deliverables` acción `rate`) + aprobar/rechazar compacto cuando está "en revisión".
+
 **Notificar influencers (solo Admin, campañas `visibility=open`):** botón manual "Notificar siguiente batch" · **API:** `POST /api/campaigns/[id]/notify-influencers` · **Tabla:** `campaign_influencer_notifications`. Construido 2026-07-01 (cierra el parking lot de email batch a top influencers). Cada click envía email (`campaignOpenAvailableEmail`) a hasta 50 influencers activas con email, ordenadas por seguidores descendente, excluyendo a quienes ya están en la campaña o ya fueron notificadas antes — así el botón avanza al siguiente batch en cada click, sin repetir destinatarios. No visible en el portal Marca (acción admin-only, similar a por qué Marca no ve el roster completo — BR-06).
 
 #### AD-05 Lista de Influencers
@@ -234,6 +243,8 @@ Acceso: `role: super_admin`. Rutas: `admin-*`. Equipo interno de SCENCE — acce
 | Tarifas históricas | `influencer_rate_cards` | Referencia de negociación (solo Admin — BR-06) |
 
 **Estado:** ✅ corregido en v2.1 — bug B-01 (link roto a `/influencers/[id]`) resuelto, ver Anexo A.
+
+**v2.4 — Regla global de tablas:** ordenar por header (click), mostrar/ocultar columnas y ajustar ancho por drag, mismos primitivos que Marcas (`useColumnWidths`, `ColumnVisibilityMenu`, `SortableTH`), persistido en localStorage.
 
 #### AD-06 Perfil de Influencer
 **Navegación:** `admin-influencers/[id]` · **Tabla:** `influencers`
@@ -271,8 +282,13 @@ Ficha completa: datos de contacto, redes sociales, historial de campañas, tarif
 | Estado (Aprobada/Pendiente/Suspendida) | `brands.status` | Control de acceso al portal marca |
 | Industria / Contacto / Email | `brands.*` | Ficha comercial |
 | Campañas activas / totales | `campaigns where brand_id` | Volumen de negocio |
+| Cuenta creada | `auth.users.created_at` (fallback `brands.created_at` si no tiene usuario) | Cuándo se dio de alta |
+| Última conexión | `auth.users.last_sign_in_at` | Adopción real del portal |
+| Referido por | `brands.metadata->>referred_by_instagram` | Tracking de referidos por influencer (v2.4) |
 | Tab Acceso | `auth.users` vinculados | Invitar/gestionar acceso |
 | Aprobar / Suspender | `PATCH brands.status` | Gate de acceso al portal marca |
+
+**v2.4 — Regla global de tablas:** headers ordenables, columnas mostrar/ocultar, ancho ajustable por drag (mismo patrón en Influencers).
 
 #### AD-10 Bookings
 ![Bookings](mockups/admin-bookings.png)
@@ -336,8 +352,22 @@ Triage por prioridad (P1-P3), estado (Abierto/En progreso/Cerrado), remitente y 
 |---|---|---|
 | Mi perfil | `profiles.*` | ✅ OK |
 | Organización | `organizations.*` | ✅ OK |
-| Usuarios | — | 🔜 marcado "soon" en v2.1 (antes alias engañoso — bug B-02, ver Anexo A) |
+| Usuarios | Reusa `TeamMembers` (ya construido en `organization`) | ✅ desbloqueado en v2.4 — estaba "soon" (bug B-02) aunque el componente ya existía, solo faltaba montarlo en `admin-settings/users` |
 | Lugares | `locations` | ✅ CRUD completo — ver G-13 |
+
+#### AD-18 CRM (Prospectos)
+**Navegación:** `admin-crm`, `admin-crm/[id]` · **Tablas:** `crm_leads`, `crm_lead_activities` · **Acceso:** solo `super_admin`/`brand_manager`
+
+Módulo aislado de calificación de leads (no toca `brands`/`influencers`/`campaigns`/`auth`) para prospectar marcas antes de darlas de alta en SCENCE. Fuente inicial: base SII 2023 (70.000 PYMES), subida por Pri.
+
+| Campo | Fuente | Para qué sirve |
+|---|---|---|
+| Lista con búsqueda/filtro por estado | `crm_leads` | Triage de prospectos |
+| Calificación (Sin calificar/Califica/No califica/Contactado/Convertido) | `crm_leads.qualification_status` | Embudo de prospección |
+| Enviar email de presentación (primera campaña gratis) | `POST /api/crm-leads/[id]/send-intro` (Resend) | Primer contacto |
+| Historial por lead | `crm_lead_activities` | Trazabilidad de acciones |
+
+**Estado real de datos (v2.4):** de 5.733 leads cargados (de 70.000 prometidos), el 100% solo tiene `email` poblado — `company_name`, `region`, `industria`, etc. quedaron vacíos por un import previo mal mapeado (sin script/CSV reproducible en el repo). **Pendiente:** Pri debe resubir el CSV origen para rehacer el import completo con columnas bien mapeadas.
 
 ---
 ### 3.2 Portal Marca
@@ -345,6 +375,8 @@ Triage por prioridad (P1-P3), estado (Abierto/En progreso/Cerrado), remitente y 
 Acceso: `user_metadata.is_brand = true`. Rutas: `brand-*`. Cliente B2B — gestiona sus propias campañas y contrata influencers del catálogo SCENCE.
 
 **Regla clave de producto:** el portal Marca reutiliza la experiencia Admin filtrada por permisos (no vistas paralelas reducidas). La Marca solo ve: sus campañas, influencers relacionados a sus campañas, marcas colaboradoras relacionadas (solo el nombre). La Marca NO ve: base completa de influencers SCENCE, notas internas, payroll interno, datos privados/direcciones, datos comerciales sensibles de otras marcas (BR-06).
+
+**v2.4 — Instagram obligatorio tras login:** mismo patrón que el portal Influencer (`ProfileCompletionGate`) — gate en `(brand)/layout.tsx` chequea `brands.instagram` vía `GET /api/brand/me`; si falta, redirige a `/brand-profile?complete=1` y bloquea el resto del portal. Validado también server-side en `PATCH /api/brand/me` (no se puede vaciar el campo). Registro de marca (`RegisterForm.tsx`) agrega además un campo opcional "¿Quién te invitó? (Instagram)" → `brands.metadata.referred_by_instagram`, usado para trackear referidos (ver IN-06).
 
 #### MK-01 Dashboard
 ![Dashboard Marca](mockups/brand-dashboard.png)
@@ -537,6 +569,9 @@ Acceso: `user_metadata.is_influencer = true`. Rutas: `inf-*`. Creador de conteni
 | Nombre, email, teléfono, dirección | `influencers.*` | Contacto — solo visible para el propio influencer y Admin (BR-06) |
 | Categorías (tags) | `influencers.categories` | Filtros del catálogo de marca |
 | Redes sociales | `influencer_social_profiles` | Base del ranking y tarifas sugeridas |
+| Marcas referidas | Conteo en vivo — `brands` donde `metadata.referred_by_instagram` matchea el Instagram de esta influencer | Tracking de referidos (v2.4), calculado en `GET /api/influencer/me`, no es un contador guardado (evita desincronización) |
+
+**Regla de acceso:** perfil obligatorio (Instagram + comuna + dirección) — `ProfileCompletionGate` en `(influencer)/layout.tsx` bloquea el resto del portal si falta alguno, validado también server-side en `PATCH /api/influencer/me`.
 
 #### IN-07 Soporte
 **Navegación:** `inf-support` — solo tickets propios.

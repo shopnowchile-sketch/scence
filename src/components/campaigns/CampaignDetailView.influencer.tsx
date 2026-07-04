@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowLeft, Building2, FileText, Circle, CheckCircle2,
+  ArrowLeft, Building2, FileText, Circle, CheckCircle2, XCircle,
   Clock, ExternalLink, Download, RefreshCw, Upload,
-  Plus, X, Loader2, AlertCircle,
+  Plus, X, Loader2, AlertCircle, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -16,6 +16,11 @@ import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 type Deliverable = {
   id: string; title: string | null; type: string; platform: string | null
   due_date: string | null; status: string; content_url: string | null; notes: string | null
+  // Campos reales de campaign_deliverables (ya existían en la tabla, no se inventan);
+  // agregados al select de /api/influencer/my-campaigns para mostrar
+  // descripción/requisitos en el acordeón mobile solo cuando existen.
+  description?: string | null
+  hashtags?: string[] | null
 }
 
 type CampaignRow = {
@@ -51,7 +56,14 @@ type PreviewCampaign = {
   application_status: string | null
 }
 
-// ── Deliverable submit row ────────────────────────────────────────────────────
+// ── Deliverable accordion (mobile-first) ──────────────────────────────────────
+function statusIcon(status: string) {
+  if (status === 'approved' || status === 'published') return <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+  if (status === 'in_review') return <Clock className="h-4 w-4 text-blue-500 flex-shrink-0" />
+  if (status === 'rejected') return <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+  return <Circle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+}
+
 function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void }) {
   const [open,   setOpen]   = useState(false)
   const [url,    setUrl]    = useState(d.content_url ?? '')
@@ -59,6 +71,7 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
   const [saving, setSaving] = useState(false)
   const cfg       = DELIVERABLE_STATUS[d.status as keyof typeof DELIVERABLE_STATUS] ?? DELIVERABLE_STATUS.pending
   const canSubmit = d.status === 'pending' || d.status === 'rejected'
+  const hasExtra  = !!(d.description?.trim() || d.platform || (d.hashtags && d.hashtags.length > 0))
 
   async function submit() {
     setSaving(true)
@@ -69,54 +82,80 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
       })
       if (!res.ok) throw new Error()
       toast.success('Entregable enviado para revisión')
-      setOpen(false)
       onUpdate()
     } catch { toast.error('Error al enviar. Intenta de nuevo.') }
     setSaving(false)
   }
 
   return (
-    <div className="border border-gray-100 rounded-xl p-4 space-y-2">
-      <div className="flex items-start gap-3">
-        {d.status === 'approved' || d.status === 'published'
-          ? <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-          : d.status === 'in_review'
-          ? <Clock className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-          : <Circle className="h-4 w-4 text-gray-300 mt-0.5 flex-shrink-0" />}
+    <div className={cn('bg-white rounded-2xl border overflow-hidden', canSubmit ? 'border-violet-100' : 'border-gray-100')}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+      >
+        {statusIcon(d.status)}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-gray-900">{d.title || d.type}</span>
-            <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', cfg.color)}>{cfg.label}</span>
-            {d.platform && <span className="text-[10px] text-gray-400 capitalize">{d.platform}</span>}
-          </div>
-          {d.due_date && <p className="text-xs text-gray-400 mt-0.5">Vence: <span className="font-medium">{fmtDate(d.due_date)}</span></p>}
-          {d.content_url && (
-            <a href={d.content_url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-violet-600 hover:underline mt-1">
-              <ExternalLink className="h-3 w-3" /> Ver contenido enviado
-            </a>
+          <p className="text-sm font-semibold text-gray-900 truncate">{d.title || d.type}</p>
+          {d.due_date && (
+            <p className={cn('text-[11px] mt-0.5', canSubmit ? 'text-amber-600' : 'text-gray-400')}>
+              Vence {fmtDate(d.due_date)}
+            </p>
           )}
         </div>
         {canSubmit && (
-          <button onClick={() => setOpen(v => !v)}
-            className="flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700 flex-shrink-0">
-            <Upload className="h-3.5 w-3.5" />
+          <span className="text-xs font-semibold text-violet-600 flex-shrink-0">
             {d.status === 'rejected' ? 'Reenviar' : 'Subir'}
-          </button>
+          </span>
         )}
-      </div>
+        {!canSubmit && (
+          <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', cfg.color)}>{cfg.label}</span>
+        )}
+        <ChevronDown className={cn('h-4 w-4 text-gray-300 flex-shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+
       {open && (
-        <div className="space-y-2 pt-2 border-t border-gray-50">
-          <input type="url" value={url} onChange={e => setUrl(e.target.value)}
-            placeholder="Link del contenido (Instagram, YouTube, Drive…)"
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
-          <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="Notas para el equipo (opcional)"
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
-          <button onClick={submit} disabled={saving || !url}
-            className="w-full py-2 text-sm font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors">
-            {saving ? 'Enviando…' : 'Enviar para revisión'}
-          </button>
+        <div className="px-4 pb-4 pt-1 border-t border-gray-50 space-y-3">
+          {d.description?.trim() && (
+            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{d.description}</p>
+          )}
+
+          {(d.platform || (d.hashtags && d.hashtags.length > 0)) && (
+            <div className="flex flex-wrap gap-1.5">
+              {d.platform && (
+                <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-600 capitalize">{d.platform}</span>
+              )}
+              {(d.hashtags ?? []).map(h => (
+                <span key={h} className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-500">#{h.replace(/^#/, '')}</span>
+              ))}
+            </div>
+          )}
+
+          {d.content_url && (
+            <a href={d.content_url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-violet-600 hover:underline">
+              <ExternalLink className="h-3 w-3" /> Ver contenido enviado
+            </a>
+          )}
+
+          {!hasExtra && !d.content_url && !canSubmit && (
+            <p className="text-xs text-gray-400">Sin más detalles para este entregable.</p>
+          )}
+
+          {canSubmit && (
+            <div className="space-y-2 pt-1">
+              <input type="url" value={url} onChange={e => setUrl(e.target.value)}
+                placeholder="Link del contenido (Instagram, YouTube, Drive…)"
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-violet-400" />
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="Notas para el equipo (opcional)"
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-violet-400" />
+              <button onClick={submit} disabled={saving || !url}
+                className="w-full flex items-center justify-center gap-2 py-3.5 text-sm font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {saving ? 'Enviando…' : 'Subir link'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -201,6 +240,58 @@ function AddDeliverableForm({ campaignId, onAdded }: { campaignId: string; onAdd
   )
 }
 
+// ── Brief colapsado (mobile-first, cerrado por defecto) ───────────────────────
+function CollapsibleBrief({ text, guidelines }: { text: string | null; guidelines?: string | null }) {
+  const [open, setOpen] = useState(false)
+  if (!text?.trim() && !guidelines?.trim()) return null
+  return (
+    <div className="pt-3 mt-3 border-t border-gray-50">
+      <button onClick={() => setOpen(v => !v)} className="w-full flex items-center gap-2 text-left">
+        <FileText className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+        <span className="text-xs font-medium text-gray-500 flex-1">Ver brief de la campaña</span>
+        <ChevronDown className={cn('h-3.5 w-3.5 text-gray-300 flex-shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          {text?.trim() && <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{text}</p>}
+          {guidelines?.trim() && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-gray-500 mb-1">Lineamientos de contenido</p>
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{guidelines}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Resumen de entregables (conteos) ──────────────────────────────────────────
+function DeliverablesSummary({ deliverables }: { deliverables: Deliverable[] }) {
+  const pending   = deliverables.filter(d => d.status === 'pending').length
+  const inReview  = deliverables.filter(d => d.status === 'in_review').length
+  const approved  = deliverables.filter(d => d.status === 'approved' || d.status === 'published').length
+  const rejected  = deliverables.filter(d => d.status === 'rejected').length
+
+  const items = [
+    { key: 'pending',  label: 'pendientes',  count: pending,  bg: 'bg-amber-50',  text: 'text-amber-700' },
+    { key: 'inReview', label: 'en revisión', count: inReview, bg: 'bg-blue-50',   text: 'text-blue-700',  show: inReview > 0 },
+    { key: 'approved', label: 'aprobados',   count: approved, bg: 'bg-green-50',  text: 'text-green-700' },
+    { key: 'rejected', label: 'rechazados',  count: rejected, bg: 'bg-red-50',    text: 'text-red-600',   show: rejected > 0 },
+  ].filter(i => i.show !== false)
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      {items.map(i => (
+        <div key={i.key} className={cn('rounded-xl px-3 py-2.5', i.bg)}>
+          <p className={cn('text-xl font-bold leading-none', i.text)}>{i.count}</p>
+          <p className={cn('text-[11px] mt-0.5', i.text)}>{i.label}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function InfluencerCampaignView({ id }: { id: string }) {
   const router = useRouter()
@@ -256,68 +347,44 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   if (!data?.campaign && preview) {
     const p = preview
     const templates = p.deliverable_templates ?? []
+    const pStatus = CAMPAIGN_STATUS[p.status] ?? { label: 'Abierta', color: 'bg-green-100 text-green-700' }
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div className="flex items-center gap-3">
           <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-gray-900 truncate">{p.name}</h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
-            </div>
-            {p.brand && <p className="text-sm text-gray-400 mt-0.5">{p.brand.name}</p>}
-          </div>
+          <h1 className="text-lg font-bold text-gray-900 truncate flex-1">Campaña abierta</h1>
         </div>
 
-        {p.brand && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
-            {p.brand.logo_url
-              ? <img src={p.brand.logo_url} alt={p.brand.name} className="w-14 h-14 rounded-xl object-contain border border-gray-100" />
-              : <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center">
-                  <Building2 className="h-6 w-6 text-violet-400" />
+        {/* Card combinada: nombre, marca, badge, fechas, brief colapsado */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div className="flex items-start gap-3 mb-3">
+            {p.brand?.logo_url
+              ? <img src={p.brand.logo_url} alt={p.brand.name} className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
+              : <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="h-5 w-5 text-violet-400" />
                 </div>}
+            <div className="flex-1 min-w-0">
+              <h2 className="text-base font-bold text-gray-900 leading-snug">{p.name}</h2>
+              {p.brand && <p className="text-sm text-gray-400 mt-0.5">{p.brand.name}</p>}
+            </div>
+            <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', pStatus.color)}>{pStatus.label}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
             <div>
-              <p className="text-sm font-bold text-gray-900">{p.brand.name}</p>
-              {p.brand.website && (
-                <a href={p.brand.website} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-violet-600 hover:underline flex items-center gap-1 mt-0.5">
-                  <ExternalLink className="h-3 w-3" /> Sitio web
-                </a>
-              )}
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.start_date)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.end_date)}</p>
             </div>
           </div>
-        )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[
-            { label: 'Inicio',       value: fmtDate(p.start_date) },
-            { label: 'Fin',          value: fmtDate(p.end_date) },
-            { label: 'Presupuesto',  value: p.budget_total ? fmtMoney(p.budget_total, p.currency) : '—' },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-100 p-4">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
-              <p className="text-sm font-bold text-gray-900 mt-1">{value}</p>
-            </div>
-          ))}
+          <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} />
         </div>
-
-        {(p.description || p.content_guidelines) && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-gray-400" />
-              <h2 className="text-sm font-bold text-gray-900">Brief de la Campaña</h2>
-            </div>
-            {p.description && <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{p.description}</p>}
-            {p.content_guidelines && (
-              <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-xs font-semibold text-gray-500 mb-1">Lineamientos de contenido</p>
-                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{p.content_guidelines}</p>
-              </div>
-            )}
-          </div>
-        )}
 
         {templates.length > 0 && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -354,7 +421,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           ) : (
             <button onClick={handleApply} disabled={applying}
-              className="w-full py-3 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
+              className="w-full py-3.5 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
               {applying ? 'Enviando…' : 'Postular a esta campaña'}
             </button>
           )}
@@ -376,11 +443,14 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const isPending    = data.application_status === 'pending'
   const campStatus   = CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
   const deliverables = data.campaign_deliverables ?? []
-  const pending      = deliverables.filter(d => d.status !== 'approved' && d.status !== 'published')
-  const done         = deliverables.filter(d => d.status === 'approved' || d.status === 'published')
+  // Orden: lo que necesita acción primero (pendiente/rechazado), luego en
+  // revisión, luego aprobado/publicado — mismos estados que ya existían,
+  // solo se unifica en una sola lista de acordeones en vez de 2 cards separadas.
+  const order = (s: string) => (s === 'pending' || s === 'rejected') ? 0 : s === 'in_review' ? 1 : 2
+  const sortedDeliverables = [...deliverables].sort((a, b) => order(a.status) - order(b.status))
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Postulación en revisión — aún no hay deliverables asignados */}
       {isPending && (
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center gap-3">
@@ -396,90 +466,57 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-gray-900 truncate">{c.name}</h1>
-            <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', campStatus.color)}>
-              {campStatus.label}
-            </span>
-          </div>
-          {c.brand && <p className="text-sm text-gray-400 mt-0.5">{c.brand.name}</p>}
-        </div>
+        <h1 className="text-lg font-bold text-gray-900 flex-1">Detalle de campaña</h1>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw className="h-4 w-4" />
         </button>
       </div>
 
-      {/* Brand card */}
-      {c.brand && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
-          {c.brand.logo_url
-            ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-14 h-14 rounded-xl object-contain border border-gray-100" />
-            : <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center">
-                <Building2 className="h-6 w-6 text-violet-400" />
+      {/* Card combinada: nombre, marca, badge, fechas, fee, brief colapsado */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="flex items-start gap-3 mb-3">
+          {c.brand?.logo_url
+            ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
+            : <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center flex-shrink-0">
+                <Building2 className="h-5 w-5 text-violet-400" />
               </div>}
-          <div>
-            <p className="text-sm font-bold text-gray-900">{c.brand.name}</p>
-            {c.brand.website && (
-              <a href={c.brand.website} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-violet-600 hover:underline flex items-center gap-1 mt-0.5">
-                <ExternalLink className="h-3 w-3" /> Sitio web
-              </a>
-            )}
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-bold text-gray-900 leading-snug">{c.name}</h2>
+            {c.brand && <p className="text-sm text-gray-400 mt-0.5">{c.brand.name}</p>}
           </div>
+          <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', campStatus.color)}>
+            {campStatus.label}
+          </span>
         </div>
-      )}
 
-      {/* Dates + fee */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {[
-          { label: 'Inicio', value: fmtDate(c.start_date) },
-          { label: 'Fin',    value: fmtDate(c.end_date) },
-          { label: 'Tu fee', value: data.fee ? fmtMoney(data.fee, data.currency) : '—' },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-xl border border-gray-100 p-4">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
-            <p className="text-sm font-bold text-gray-900 mt-1">{value}</p>
+        <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
+            <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.start_date)}</p>
           </div>
-        ))}
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
+            <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.end_date)}</p>
+          </div>
+          {!!data.fee && (
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tu fee</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtMoney(data.fee, data.currency)}</p>
+            </div>
+          )}
+        </div>
+
+        <CollapsibleBrief text={c.brief || c.description} />
       </div>
 
-      {/* Brief */}
-      {(c.brief || c.description) && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <FileText className="h-4 w-4 text-gray-400" />
-            <h2 className="text-sm font-bold text-gray-900">Brief de la Campaña</h2>
-          </div>
-          <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{c.brief || c.description}</p>
-        </div>
-      )}
+      {/* Resumen de entregables */}
+      {deliverables.length > 0 && <DeliverablesSummary deliverables={deliverables} />}
 
-      {/* Pending deliverables */}
-      {pending.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-50">
-            <Circle className="h-4 w-4 text-amber-400" />
-            <h2 className="text-sm font-bold text-gray-900 flex-1">Entregables Pendientes</h2>
-            <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pending.length}</span>
-          </div>
-          <div className="p-5 space-y-3">
-            {pending.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
-          </div>
-        </div>
-      )}
-
-      {/* Approved deliverables */}
-      {done.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-50">
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-            <h2 className="text-sm font-bold text-gray-900 flex-1">Entregables Aprobados</h2>
-            <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{done.length}</span>
-          </div>
-          <div className="p-5 space-y-3">
-            {done.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
-          </div>
+      {/* Entregables — acordeón */}
+      {sortedDeliverables.length > 0 && (
+        <div className="space-y-2.5">
+          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Entregables</h2>
+          {sortedDeliverables.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
         </div>
       )}
 

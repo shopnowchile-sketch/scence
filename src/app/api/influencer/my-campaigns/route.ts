@@ -37,7 +37,7 @@ export async function GET() {
         brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, submitted_at
+        id, title, type, status, due_date, platform, content_url, submitted_at, description, hashtags
       )
     `)
     .eq('influencer_id', influencer.id)
@@ -51,7 +51,7 @@ export async function GET() {
       currency, budget_total, created_by,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, submitted_at
+        id, title, type, status, due_date, platform, content_url, submitted_at, description, hashtags
       )
     `)
     .eq('created_by', user.id)
@@ -215,7 +215,7 @@ export async function PATCH(req: NextRequest) {
     .select(`
       id, name, status, description, start_date, end_date, currency, created_by,
       brand:brands!brand_id(id, name, logo_url, website, contact_name, contact_email),
-      campaign_deliverables(id, title, type, status, due_date, platform, content_url)
+      campaign_deliverables(id, title, type, status, due_date, platform, content_url, description, hashtags)
     `)
     .eq('id', id)
     .single()

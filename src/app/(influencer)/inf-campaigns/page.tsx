@@ -96,19 +96,40 @@ export default function MyCampaignsPage() {
   const [applying,      setApplying]      = useState<string | null>(null)
   const [brandFilter,   setBrandFilter]   = useState<string>('')
 
+  // FIX (2026-07-04): antes, si /api/influencer/my-campaigns fallaba (o
+  // simplemente tardaba/erroraba por lo que sea), el `throw` cortaba la
+  // función ANTES de llegar a `setOpenCampaigns(...)` — es decir, un error en
+  // "mis campañas asignadas" también dejaba vacía la sección "Disponibles
+  // para postular", aunque esa llamada hubiera funcionado bien. Pri: "ella no
+  // veia las campañas" — un influencer con 0 asignadas pero con campañas
+  // abiertas elegibles podía terminar viendo la página completamente vacía
+  // por esto. Ahora cada fetch se resuelve de forma independiente.
   const load = useCallback(async () => {
     setLoading(true)
-    try {
-      const [res, openRes] = await Promise.all([
-        fetch('/api/influencer/my-campaigns'),
-        fetch('/api/influencer/campaigns/open'),
-      ])
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error)
-      const rows = (json.data ?? []).map(toRow).filter(Boolean) as Campaign[]
-      setCampaigns(rows)
-      setOpenCampaigns(openRes.ok ? (await openRes.json()).data ?? [] : [])
-    } catch { toast.error('Error cargando campañas') }
+    const [assignedResult, openResult] = await Promise.allSettled([
+      fetch('/api/influencer/my-campaigns').then(async r => {
+        const json = await r.json()
+        if (!r.ok) throw new Error(json.error)
+        return (json.data ?? []).map(toRow).filter(Boolean) as Campaign[]
+      }),
+      fetch('/api/influencer/campaigns/open').then(async r => {
+        if (!r.ok) return []
+        return (await r.json()).data ?? []
+      }),
+    ])
+
+    if (assignedResult.status === 'fulfilled') {
+      setCampaigns(assignedResult.value)
+    } else {
+      toast.error('Error cargando tus campañas asignadas')
+    }
+
+    if (openResult.status === 'fulfilled') {
+      setOpenCampaigns(openResult.value)
+    } else {
+      setOpenCampaigns([])
+    }
+
     setLoading(false)
   }, [])
 

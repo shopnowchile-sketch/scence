@@ -150,6 +150,40 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
 
   if (existing) return existing
 
+  // FIX (2026-07-04, dedup automático): antes, si no había fila con este
+  // user_id, se creaba una fila NUEVA sin más. Si el creador ya existía como
+  // fila "huérfana" (agregada por admin/import, sin user_id todavía — el caso
+  // típico: Catalina Huito, Silvia, Rebeca resueltos a mano esta semana), el
+  // auto-registro generaba un 2do registro duplicado en vez de vincular el
+  // existente. Pri: "porque las influencers nuevas llegan aca? puedes hacer
+  // esto automatico?" (refiriéndose al panel de duplicados). Ahora, antes de
+  // insertar, se busca por email (case-insensitive) una fila sin user_id
+  // todavía — si existe, se vincula (UPDATE user_id) en vez de duplicar.
+  // Esto NO repara duplicados históricos (eso sigue siendo manual desde
+  // /admin-influencers/data-quality) — solo evita que se sigan creando nuevos
+  // por esta vía específica.
+  if (user.email) {
+    const { data: orphan } = await admin
+      .from('influencers')
+      .select('id, display_name')
+      .is('user_id', null)
+      .ilike('email', user.email)
+      .limit(1)
+      .maybeSingle()
+
+    if (orphan) {
+      const { error: linkErr } = await admin
+        .from('influencers')
+        .update({ user_id: user.id })
+        .eq('id', orphan.id)
+      if (linkErr) {
+        console.error('[ensureInfluencerRow] failed to link orphan row:', linkErr.message)
+      } else {
+        return orphan
+      }
+    }
+  }
+
   const { data: org } = await admin
     .from('organizations')
     .select('id')

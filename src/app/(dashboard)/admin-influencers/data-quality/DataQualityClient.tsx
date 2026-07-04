@@ -71,6 +71,8 @@ export function DataQualityClient() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
+  const [mergingAll, setMergingAll] = useState(false)
+  const [mergeAllProgress, setMergeAllProgress] = useState<{ done: number; total: number } | null>(null)
   const [keepChoice, setKeepChoice] = useState<Record<string, string>>({})
   const { isAdmin } = useIsAdmin()
 
@@ -119,6 +121,60 @@ export function DataQualityClient() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al combinar')
     } finally { setBusy(null) }
+  }
+
+  // Combina TODOS los grupos detectados de una sola pasada, usando el "Conservar"
+  // ya preseleccionado en cada grupo (por defecto: el de más followers). Pri:
+  // "necesito poder hacer un merge de todas las niñas de una pasada, no uno por
+  // uno". Reutiliza el mismo endpoint /api/influencers/merge que ya combinaba
+  // un grupo completo en 1 llamada — antes solo faltaba encadenar los grupos.
+  // Un solo confirm() al inicio, no uno por grupo. Sigue de largo si un grupo
+  // individual falla (se reporta al final) para no trabar el resto.
+  async function handleMergeAll() {
+    if (groups.length === 0) return
+    const totalDuplicates = groups.reduce((s, g) => s + (g.influencers.length - 1), 0)
+    if (!confirm(
+      `Combinar los ${groups.length} grupos detectados (${totalDuplicates} registro(s) duplicado(s) en total).\n\n` +
+      `Se conserva el registro marcado "Conservar" en cada grupo y se elimina permanentemente el resto. ¿Continuar?`
+    )) return
+
+    setMergingAll(true)
+    setMergeAllProgress({ done: 0, total: groups.length })
+    let okCount = 0
+    let mergedRecords = 0
+    const failed: string[] = []
+
+    for (const g of groups) {
+      const keepId = keepChoice[g.key]
+      const mergeIds = g.influencers.filter(i => i.id !== keepId).map(i => i.id)
+      if (!keepId || mergeIds.length === 0) {
+        setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
+        continue
+      }
+      try {
+        const r = await fetch('/api/influencers/merge', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keepId, mergeIds }),
+        })
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error)
+        okCount++
+        mergedRecords += j.merged ?? mergeIds.length
+      } catch (e) {
+        failed.push(`${g.value}: ${e instanceof Error ? e.message : 'error'}`)
+      }
+      setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
+    }
+
+    if (failed.length === 0) {
+      toast.success(`${okCount} grupo(s) combinados · ${mergedRecords} duplicado(s) eliminados`)
+    } else {
+      toast.error(`${okCount} grupo(s) combinados, ${failed.length} fallaron. Ver consola.`)
+      console.error('[merge-all] grupos fallidos:', failed)
+    }
+    setMergingAll(false)
+    setMergeAllProgress(null)
+    await load()
   }
 
   async function handleDeleteDuplicates(g: DuplicateGroup) {
@@ -313,9 +369,22 @@ export function DataQualityClient() {
 
           {/* Duplicados */}
           <div className="space-y-3">
-            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
-              Duplicados detectados ({groups.length} grupo{groups.length !== 1 ? 's' : ''})
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
+                Duplicados detectados ({groups.length} grupo{groups.length !== 1 ? 's' : ''})
+              </h3>
+              {isAdmin && groups.length > 1 && (
+                <button onClick={handleMergeAll} disabled={mergingAll || busy !== null}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50">
+                  {mergingAll
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <GitMerge className="h-3.5 w-3.5" />}
+                  {mergingAll && mergeAllProgress
+                    ? `Combinando… (${mergeAllProgress.done}/${mergeAllProgress.total})`
+                    : `Combinar todos (${groups.length})`}
+                </button>
+              )}
+            </div>
             {groups.length === 0 ? (
               <div className="card p-8 text-center">
                 <ShieldCheck className="h-10 w-10 text-emerald-300 mx-auto mb-2" />

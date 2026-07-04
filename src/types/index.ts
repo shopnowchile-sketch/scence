@@ -151,6 +151,7 @@ export interface CampaignDeliverableDetail {
   submitted_at: string | null    // Fecha en que el influencer entregó el contenido
   review_notes: string | null
   progress: number | null
+  content_rating: number | null  // 1-5 estrellas, calificado por admin/marca
   influencer: {
     id: string
     display_name: string

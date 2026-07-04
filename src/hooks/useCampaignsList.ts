@@ -109,8 +109,10 @@ export function useDeliverableAction(campaignId: string) {
   return useMutation({
     mutationFn: async (payload: {
       deliverable_id: string
-      action: 'approve' | 'reject' | 'submit' | 'publish'
+      action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate'
       review_notes?: string
+      progress?: number
+      rating?: number
     }) => {
       const res = await fetch(`/api/campaigns/${campaignId}/deliverables`, {
         method: 'PATCH',

@@ -7,12 +7,14 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
+  ChevronRight,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn, formatCurrency, formatDate, PLATFORM_ICONS } from '@/lib/utils'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
 import { BartersTab } from '@/components/campaigns/BartersTab'
+import { StarRating } from '@/components/ui/StarRating'
 import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer } from '@/hooks/useCampaignsList'
 import { toast } from 'sonner'
@@ -49,8 +51,11 @@ const GRADIENTS = [
 
 type Tab = 'overview' | 'influencers' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
 
-// ── Deliverable card ─────────────────────────────────────────────────────────
-function DeliverableCard({
+// ── Deliverable content — tipo + link + rating + estado, todo en 1 línea. ────
+// Rediseño pedido por Pri: antes cada card mostraba el título completo (a
+// veces el brief entero) + fecha + progreso + todo junto, muy cargado. Después
+// pidió que quepa en una sola fila (sin envolver en 2-3 líneas).
+function DeliverableContent({
   d, campaignId, reviewNotes, setReviewNotes,
 }: {
   d: CampaignDeliverableDetail
@@ -60,6 +65,8 @@ function DeliverableCard({
 }) {
   const action = useDeliverableAction(campaignId)
   const cfg = DEL_CONFIG[d.status] ?? DEL_CONFIG.pending
+  const url = d.published_url || d.content_url
+  const typeLabel = d.type ? d.type.replace(/_/g, ' ') : (d.platform ?? 'Contenido')
 
   async function handle(act: 'approve' | 'reject') {
     try {
@@ -72,121 +79,152 @@ function DeliverableCard({
     } catch { /* handled in hook */ }
   }
 
-  async function handleProgress(pct: number) {
+  async function handleRate(rating: number) {
     try {
-      await action.mutateAsync({
-        deliverable_id: d.id,
-        action: 'update_progress' as never,
-        progress: pct,
-      } as never)
-      toast.success(`Progreso actualizado a ${pct}%`)
+      await action.mutateAsync({ deliverable_id: d.id, action: 'rate', rating })
     } catch { /* handled in hook */ }
   }
 
   return (
-    <div className={cn(
-      'card p-4 border-l-4 transition-all',
-      d.status === 'in_review' ? 'border-l-amber-400' :
-      d.status === 'approved'  ? 'border-l-blue-400' :
-      d.status === 'published' ? 'border-l-emerald-400' :
-      d.status === 'rejected'  ? 'border-l-red-400' : 'border-l-gray-200'
-    )}>
-      <div className="flex items-start gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-sm font-semibold text-gray-900">
-              {d.platform && PLATFORM_ICONS[d.platform] ? <>{PLATFORM_ICONS[d.platform]}{' '}</> : null}
-              {d.title}
-            </span>
-            <span className={cn('badge text-[11px] flex items-center gap-1', cfg.cls)}>
-              {cfg.icon} {cfg.label}
-            </span>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
-            {d.influencer && <span>👤 {d.influencer.display_name}</span>}
-            {d.type && <span className="badge badge-gray text-[10px] capitalize">{d.type.replace(/_/g, ' ')}</span>}
-            {d.due_date && (
-              <span className={cn(
-                'flex items-center gap-1',
-                new Date(d.due_date) < new Date() && d.status === 'pending' ? 'text-red-500 font-medium' : ''
-              )}>
-                <Calendar className="h-3 w-3" />
-                Entrega: {formatDate(d.due_date)}
-              </span>
-            )}
-            {d.published_at && (
-              <span className="text-emerald-600 flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3" />
-                Publicado {formatDate(d.published_at)}
-              </span>
-            )}
-            {d.published_url && (
-              <a href={d.published_url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1 text-violet-600 hover:underline">
-                <ExternalLink className="h-3 w-3" /> Ver publicación
-              </a>
-            )}
-            {!d.published_url && d.content_url && (
-              <a href={d.content_url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1 text-amber-600 hover:underline">
-                <ExternalLink className="h-3 w-3" /> Ver contenido enviado
-              </a>
-            )}
-          </div>
-          {/* Progress selector */}
-          {d.status !== 'published' && d.status !== 'approved' && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs text-gray-400">Progreso:</span>
-              {[0, 25, 50, 75, 100].map(pct => {
-                const currentProg = d.progress ?? 0
-                return (
-                  <button key={pct} type="button"
-                    disabled={action.isPending}
-                    onClick={() => handleProgress(pct)}
-                    className={cn(
-                      'text-xs font-semibold px-2 py-0.5 rounded-full border transition-all',
-                      currentProg === pct
-                        ? 'border-violet-500 bg-violet-100 text-violet-700'
-                        : 'border-gray-200 text-gray-400 hover:border-violet-300 hover:text-violet-600'
-                    )}>
-                    {pct}%
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {d.review_notes && (
-            <div className={cn(
-              'mt-2 text-xs rounded-lg px-3 py-2',
-              d.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
-            )}>
-              💬 {d.review_notes}
-            </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-1.5 min-w-0 flex-shrink-0">
+          {d.platform && PLATFORM_ICONS[d.platform] ? <span>{PLATFORM_ICONS[d.platform]}</span> : null}
+          <span className="text-sm font-semibold text-gray-800 capitalize whitespace-nowrap">{typeLabel}:</span>
+          {url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm text-violet-600 hover:underline whitespace-nowrap">
+              <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" /> Ver contenido
+            </a>
+          ) : (
+            <span className="text-sm text-gray-300 whitespace-nowrap">Sin URL</span>
           )}
         </div>
 
-        {d.status === 'in_review' && (
-          <div className="flex flex-col gap-2 flex-shrink-0 min-w-[200px]">
-            <textarea
-              placeholder="Notas de revisión (opcional)..."
-              value={reviewNotes[d.id] ?? ''}
-              onChange={e => setReviewNotes(prev => ({ ...prev, [d.id]: e.target.value }))}
-              className="input-base text-xs resize-none h-16"
-            />
-            <div className="flex gap-2">
+        <div className="flex items-center gap-2.5 flex-shrink-0 ml-auto">
+          <StarRating value={d.content_rating} onChange={handleRate} />
+          <span className={cn('badge text-[11px] flex items-center gap-1 whitespace-nowrap', cfg.cls)}>
+            {cfg.icon} {cfg.label}
+          </span>
+          {d.status === 'in_review' && (
+            <>
               <button onClick={() => handle('reject')} disabled={action.isPending}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
-                <XCircle className="h-3.5 w-3.5" /> Rechazar
+                title="Rechazar"
+                className="p-1.5 rounded-lg text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                <XCircle className="h-3.5 w-3.5" />
               </button>
               <button onClick={() => handle('approve')} disabled={action.isPending}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Aprobar
+                title="Aprobar"
+                className="p-1.5 rounded-lg text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                <CheckCircle2 className="h-3.5 w-3.5" />
               </button>
-            </div>
-          </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {d.status === 'in_review' && (
+        <input
+          placeholder="Nota de revisión (opcional)..."
+          value={reviewNotes[d.id] ?? ''}
+          onChange={e => setReviewNotes(prev => ({ ...prev, [d.id]: e.target.value }))}
+          className="input-base text-xs mt-1.5 w-full max-w-md"
+        />
+      )}
+
+      {d.review_notes && (
+        <div className={cn(
+          'mt-1.5 text-xs rounded-lg px-3 py-1.5 inline-block',
+          d.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+        )}>
+          💬 {d.review_notes}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Avatar + nombre + Instagram clickeable — compartido entre el modo de
+// 1 fila y el header colapsable del dropdown.
+function InfluencerBadge({
+  influencer, igUsername,
+}: {
+  influencer: { id: string; display_name: string; avatar_url: string | null }
+  igUsername: string | null
+}) {
+  const cleanIg = igUsername ? igUsername.replace(/^@/, '') : null
+  const igUrl = buildProfileUrl('instagram', cleanIg)
+  const gradient = GRADIENTS[influencer.display_name.charCodeAt(0) % GRADIENTS.length]
+
+  return (
+    <div className="flex items-center gap-2.5 min-w-0 flex-shrink-0">
+      <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gradient-to-br overflow-hidden', gradient)}>
+        {influencer.avatar_url
+          ? <img src={influencer.avatar_url} alt={influencer.display_name} className="w-full h-full object-cover" />
+          : influencer.display_name.charAt(0).toUpperCase()}
+      </div>
+      <div className="min-w-0 leading-tight">
+        <p className="text-sm font-semibold text-gray-900 truncate">{influencer.display_name}</p>
+        {igUrl ? (
+          <a href={igUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+            className="text-xs text-violet-600 hover:underline whitespace-nowrap">
+            @{cleanIg}
+          </a>
+        ) : (
+          <span className="text-xs text-gray-300 whitespace-nowrap">Sin Instagram</span>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Grupo por influencer. 1 solo deliverable → todo en 1 fila (avatar +
+// nombre + Instagram + tipo + link + rating + estado). Más de uno → dropdown
+// colapsable con el header arriba y cada deliverable en su propia fila adentro.
+function DeliverableInfluencerGroup({
+  influencer, igUsername, items, campaignId, reviewNotes, setReviewNotes,
+}: {
+  influencer: { id: string; display_name: string; avatar_url: string | null }
+  igUsername: string | null
+  items: CampaignDeliverableDetail[]
+  campaignId: string
+  reviewNotes: Record<string, string>
+  setReviewNotes: React.Dispatch<React.SetStateAction<Record<string, string>>>
+}) {
+  const [open, setOpen] = useState(false)
+  const collapsible = items.length > 1
+
+  if (!collapsible) {
+    return (
+      <div className="card p-3">
+        <div className="flex items-center gap-4">
+          <InfluencerBadge influencer={influencer} igUsername={igUsername} />
+          <div className="w-px self-stretch bg-gray-100 flex-shrink-0" />
+          <DeliverableContent d={items[0]} campaignId={campaignId} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between gap-3 cursor-pointer" onClick={() => setOpen(v => !v)}>
+        <InfluencerBadge influencer={influencer} igUsername={igUsername} />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="badge badge-gray text-[11px]">{items.length} entregables</span>
+          <ChevronRight className={cn('h-4 w-4 text-gray-400 transition-transform', open ? 'rotate-90' : '')} />
+        </div>
+      </div>
+
+      {open && (
+        <div className="mt-3 pt-3 border-t border-gray-50 divide-y divide-gray-50">
+          {items.map(d => (
+            <div key={d.id} className="py-2.5 first:pt-0 last:pb-0">
+              <DeliverableContent d={d} campaignId={campaignId} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1606,9 +1644,36 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                     )}
                   </div>
                 ) : (
-                  submittedDeliverables.map(d => (
-                    <DeliverableCard key={d.id} d={d} campaignId={id} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
-                  ))
+                  (() => {
+                    // Instagram por influencer — reusa influencer_social_profiles ya
+                    // cargado en campaign_influencers (mismo dato que se muestra en
+                    // el tab Influencers), sin queries nuevas.
+                    const igByInfluencerId = new Map<string, string | null>()
+                    for (const ci of campaignInfluencers) {
+                      const igProfile = ci.influencer?.influencer_social_profiles?.find(sp => sp.platform === 'instagram')
+                      if (ci.influencer?.id) igByInfluencerId.set(ci.influencer.id, igProfile?.username ?? null)
+                    }
+
+                    const groups = new Map<string, { influencer: { id: string; display_name: string; avatar_url: string | null }; items: CampaignDeliverableDetail[] }>()
+                    for (const d of submittedDeliverables) {
+                      if (!d.influencer) continue
+                      const key = d.influencer.id
+                      if (!groups.has(key)) groups.set(key, { influencer: d.influencer, items: [] })
+                      groups.get(key)!.items.push(d)
+                    }
+
+                    return Array.from(groups.values()).map(g => (
+                      <DeliverableInfluencerGroup
+                        key={g.influencer.id}
+                        influencer={g.influencer}
+                        igUsername={igByInfluencerId.get(g.influencer.id) ?? null}
+                        items={g.items}
+                        campaignId={id}
+                        reviewNotes={reviewNotes}
+                        setReviewNotes={setReviewNotes}
+                      />
+                    ))
+                  })()
                 )}
               </>
             )

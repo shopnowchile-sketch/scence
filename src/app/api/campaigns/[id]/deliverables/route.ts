@@ -124,12 +124,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { deliverable_id, action, review_notes, submitted_url, progress } = body as {
+  const { deliverable_id, action, review_notes, submitted_url, progress, rating } = body as {
     deliverable_id: string
-    action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress'
+    action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate'
     review_notes?: string
     submitted_url?: string
     progress?: number
+    rating?: number
   }
 
   if (!deliverable_id || !action) {
@@ -174,6 +175,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       // Auto-advance status based on progress
       if (progress === 0)   updatePayload.status = 'pending'
       if (progress === 100) updatePayload.status = 'in_review'
+      break
+    case 'rate':
+      if (rating === undefined || ![1, 2, 3, 4, 5].includes(rating)) {
+        return NextResponse.json({ error: 'rating debe ser un número entre 1 y 5' }, { status: 422 })
+      }
+      updatePayload.content_rating = rating
       break
     default:
       return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 422 })

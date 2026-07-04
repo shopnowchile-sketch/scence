@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const isActive   = searchParams.get('is_active')
   // Columnas ordenables directo en Postgres. 'followers'/'engagement_rate' se
   // manejan aparte (ver JOIN_SORT_COLS arriba) porque viven en la tabla join.
-  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
+  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune', 'birth_date'] as const
   const rawSort    = searchParams.get('sort_by') ?? 'created_at'
   const sortBy     = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
   const sortDir    = searchParams.get('sort_dir') === 'asc' ? true : false
@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
       country,
       city,
       commune,
+      birth_date,
       address,
       categories,
       tags,
@@ -211,7 +212,7 @@ export async function POST(request: NextRequest) {
 
   const {
     display_name, email, phone,
-    bio, avatar_url, city, commune, country, address, address_lat, address_lng,
+    bio, avatar_url, city, commune, birth_date, country, address, address_lat, address_lng,
     categories, tags, is_verified = false, is_active = false,  // Default: draft
     social_profiles = [], rate_cards = [], organization_id,
     notes, first_name, last_name,
@@ -248,7 +249,7 @@ export async function POST(request: NextRequest) {
       organization_id: orgId,
       display_name,
       email: email ?? null, phone: phone ?? null, bio: bio ?? null,
-      avatar_url: avatar_url ?? null, city: city ?? null, commune: body.commune ?? null, country: country ?? null,
+      avatar_url: avatar_url ?? null, city: city ?? null, commune: body.commune ?? null, birth_date: birth_date ?? null, country: country ?? null,
       address: address ?? null, address_lat: address_lat ?? null, address_lng: address_lng ?? null,
       categories: categories ?? [], tags: tags ?? [],
       is_verified, is_active, notes: notes ?? null,

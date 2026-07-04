@@ -57,6 +57,7 @@ export interface Influencer {
   country: string | null
   city: string | null
   commune: string | null
+  birth_date: string | null       // fecha de nacimiento (YYYY-MM-DD)
   address: string | null          // dirección completa para Google Maps
   address_lat: number | null      // coordenadas guardadas
   address_lng: number | null
@@ -316,7 +317,7 @@ export interface InfluencerFilters {
   // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
   // Columnas que sí ordenan de verdad server-side: display_name, rating, commune,
   // city, country, is_verified, created_at, updated_at.
-  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active'
+  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date'
   sortOrder: 'asc' | 'desc'
 }
 

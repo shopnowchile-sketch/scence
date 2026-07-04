@@ -5,7 +5,7 @@ import { Search } from 'lucide-react'
 
 export type InfluencerView = 'list'
 
-type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'commune' | 'is_active'
+type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'commune' | 'is_active' | 'birth_date'
 
 type Filters = {
   search?: string

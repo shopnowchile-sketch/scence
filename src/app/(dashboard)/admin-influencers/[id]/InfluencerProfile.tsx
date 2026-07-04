@@ -445,16 +445,22 @@ export function InfluencerProfile({ id }: { id: string }) {
 
                 {/* Location + contact */}
                 <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-400">
-                  {(influencer.city || influencer.country) && (
+                  {(influencer.commune || influencer.city || influencer.country) && (
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" />
-                      {[influencer.city, influencer.country].filter(Boolean).join(', ')}
+                      {[influencer.commune, influencer.city, influencer.country].filter(Boolean).join(', ')}
                     </span>
                   )}
                   {influencer.address && (
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-gray-300" />
                       {influencer.address as string}
+                    </span>
+                  )}
+                  {influencer.birth_date && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5 text-gray-300" />
+                      {formatDate(influencer.birth_date, 'd MMM yyyy')}
                     </span>
                   )}
                   {influencer.email && (

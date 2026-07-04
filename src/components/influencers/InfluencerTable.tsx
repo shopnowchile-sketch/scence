@@ -4,17 +4,17 @@ import { useState } from 'react'
 import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
+import { cn, formatFollowers, formatDate, PLATFORM_ICONS } from '@/lib/utils'
 import type { Influencer, InfluencerFilters } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 
-type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'lastConnection'
+type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection'
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
   display_name: 220, platforms: 120, categories: 160, followers: 130,
-  engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, lastConnection: 170,
+  engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 140, lastConnection: 170,
 }
 
 interface Props {
@@ -87,6 +87,7 @@ export function InfluencerTable({
     rating: true,
     status: true,
     commune: true,
+    birthDate: false,
     lastConnection: true,
   })
   // Ancho de columnas ajustable por drag — regla global (ver useColumnWidths).
@@ -128,6 +129,7 @@ export function InfluencerTable({
                 ['rating', 'Rating'],
                 ['status', 'Estado'],
                 ['commune', 'Comuna'],
+                ['birthDate', 'Fecha de nacimiento'],
                 ['lastConnection', 'Última conexión'],
               ] as const).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600 rounded-lg hover:bg-gray-50">
@@ -158,6 +160,7 @@ export function InfluencerTable({
             {visible.rating         && <col style={{ width: widths.rating }} />}
             {visible.status         && <col style={{ width: widths.status }} />}
             {visible.commune        && <col style={{ width: widths.commune }} />}
+            {visible.birthDate      && <col style={{ width: widths.birthDate }} />}
             {visible.lastConnection && <col style={{ width: widths.lastConnection }} />}
             <col style={{ width: 90 }} />
           </colgroup>
@@ -184,6 +187,7 @@ export function InfluencerTable({
               {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('rating', e)}>Rating</TH>}
               {visible.status && <TH col="is_active" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('status', e)}>Estado</TH>}
               {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('commune', e)}>Comuna</TH>}
+              {visible.birthDate && <TH col="birth_date" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('birthDate', e)}>Fecha nacimiento</TH>}
               {visible.lastConnection && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('lastConnection', e)}>Última conexión</SortableTH>
               )}
@@ -349,6 +353,13 @@ export function InfluencerTable({
                   {visible.commune && (
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                       {inf.commune ?? inf.city ?? '—'}
+                    </td>
+                  )}
+
+                  {/* Fecha de nacimiento */}
+                  {visible.birthDate && (
+                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                      {inf.birth_date ? formatDate(inf.birth_date, 'd MMM yyyy') : '—'}
                     </td>
                   )}
 

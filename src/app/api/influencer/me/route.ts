@@ -12,7 +12,7 @@ export async function GET() {
     .from('influencers')
     .select(`
       id, display_name, avatar_url, bio, email, phone, city, country,
-      address, commune, categories, tags, is_verified, organization_id,
+      address, commune, birth_date, categories, tags, is_verified, organization_id,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url)
     `)
     .eq('user_id', user.id)
@@ -50,24 +50,31 @@ export async function PATCH(req: Request) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, address, commune')
+    .select('id, address, commune, birth_date')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
 
   // Allowed profile fields
   const profileUpdate: Record<string, unknown> = {}
-  const allowed = ['display_name', 'bio', 'phone', 'city', 'country', 'address', 'commune', 'avatar_url', 'categories']
+  const allowed = ['display_name', 'bio', 'phone', 'city', 'country', 'address', 'commune', 'birth_date', 'avatar_url', 'categories']
   for (const key of allowed) {
     if (key in body) profileUpdate[key] = body[key]
   }
 
-  // Perfil obligatorio (portal influencer): Instagram + comuna + dirección.
-  // Se valida el estado FINAL resultante (existente + lo que llega en este
-  // PATCH) antes de escribir nada, para que no se pueda vaciar estos campos
-  // ni saltarse el requisito llamando el endpoint directo. Ver ProfileCompletionGate.
+  // Perfil obligatorio (portal influencer): Instagram + comuna + dirección +
+  // fecha de nacimiento. Se valida el estado FINAL resultante (existente + lo
+  // que llega en este PATCH) antes de escribir nada, para que no se pueda
+  // vaciar estos campos ni saltarse el requisito llamando el endpoint
+  // directo. Ver ProfileCompletionGate.
+  // NOTA (2026-07-04): fecha de nacimiento se agregó DESPUÉS de que 1432
+  // influencers ya tenían acceso al portal sin este dato. Por decisión de Pri,
+  // solo se exige al GUARDAR el perfil (acá), no se agregó a
+  // isInfluencerProfileComplete() en (influencer)/layout.tsx — así no se
+  // bloquea la navegación de cuentas existentes, solo se pide cuando editan.
   const finalAddress = 'address' in profileUpdate ? String(profileUpdate.address ?? '').trim() : String(influencer.address ?? '').trim()
   const finalCommune = 'commune' in profileUpdate ? String(profileUpdate.commune ?? '').trim() : String(influencer.commune ?? '').trim()
+  const finalBirthDate = 'birth_date' in profileUpdate ? String(profileUpdate.birth_date ?? '').trim() : String(influencer.birth_date ?? '').trim()
 
   let finalHasInstagram: boolean
   if (Array.isArray(body.social_profiles)) {
@@ -100,6 +107,7 @@ export async function PATCH(req: Request) {
   const missing: string[] = []
   if (!finalAddress) missing.push('dirección')
   if (!finalCommune) missing.push('comuna')
+  if (!finalBirthDate) missing.push('fecha de nacimiento')
   if (!finalHasInstagram) missing.push('Instagram')
   if (missing.length > 0) {
     return NextResponse.json(
@@ -148,7 +156,7 @@ export async function PATCH(req: Request) {
     .from('influencers')
     .select(`
       id, display_name, avatar_url, bio, email, phone, city, country,
-      address, commune, categories, tags, is_verified,
+      address, commune, birth_date, categories, tags, is_verified,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url)
     `)
     .eq('id', influencer.id)

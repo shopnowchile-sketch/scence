@@ -38,6 +38,8 @@ const schema = z.object({
   bio:                 z.string().max(500).optional(),
   city:                z.string().optional(),
   country:             z.string().optional(),
+  commune:             z.string().optional(),
+  birth_date:          z.string().optional(),
   address:             z.string().optional(),
   categories:          z.array(z.string()).optional(),
   is_verified:         z.boolean(),
@@ -133,6 +135,8 @@ export function InfluencerEditForm({ id }: { id: string }) {
         bio:                 inf.bio ?? '',
         city:                inf.city ?? '',
         country:             inf.country ?? '',
+        commune:             inf.commune ?? '',
+        birth_date:          inf.birth_date ?? '',
         address:             (inf.address ?? meta.address ?? '') as string,
         categories:          (inf.categories ?? []) as string[],
         is_verified:         Boolean(inf.is_verified),
@@ -152,12 +156,14 @@ export function InfluencerEditForm({ id }: { id: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...data,
-          email:   data.email   || null,
-          phone:   data.phone   || null,
-          bio:     data.bio     || null,
-          city:    data.city    || null,
-          country: data.country || null,
-          address: data.address || null,
+          email:      data.email      || null,
+          phone:      data.phone      || null,
+          bio:        data.bio        || null,
+          city:       data.city       || null,
+          country:    data.country    || null,
+          commune:    data.commune    || null,
+          birth_date: data.birth_date || null,
+          address:    data.address    || null,
           is_active: data.is_active,
           metadata: {
             deactivation_reason: data.is_active ? null : (data.deactivation_reason || null),
@@ -243,6 +249,14 @@ export function InfluencerEditForm({ id }: { id: string }) {
                 <option value="">Seleccionar…</option>
                 {COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna</label>
+              <input {...register('commune')} className="input-base w-full" placeholder="Ej. Providencia" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha de nacimiento</label>
+              <input {...register('birth_date')} type="date" className="input-base w-full" />
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label>

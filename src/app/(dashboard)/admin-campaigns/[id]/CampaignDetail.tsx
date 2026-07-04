@@ -886,6 +886,20 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
         <>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="col-span-2 space-y-4">
+            {/* Guías de contenido — movida arriba (antes al final de la columna,
+                casi invisible después de scrollear). Pri: "necesito que al abrir
+                el overview lo entienda por completo las marcas... las guías de
+                contenido" — es lo primero que una marca necesita leer para saber
+                qué se espera de la campaña. */}
+            {c.content_guidelines && (
+              <div className="card p-5 border-2 border-violet-100 bg-violet-50/20">
+                <h3 className="text-sm font-semibold text-violet-800 mb-2 flex items-center gap-2">
+                  <FileText className="h-4 w-4" /> Guías de contenido
+                </h3>
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{c.content_guidelines}</p>
+              </div>
+            )}
+
             {c.goals && Object.keys(c.goals).length > 0 && (
               <div className="card p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
@@ -928,10 +942,21 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                   </div>
                 )}
                 {(c.hashtags?.length ?? 0) > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {c.hashtags?.map(h => (
                       <span key={h} className="px-2.5 py-1 bg-violet-50 text-violet-700 rounded-md text-xs font-medium">{h}</span>
                     ))}
+                  </div>
+                )}
+                {/* Tags internos — antes vivía en una card aparte en el sidebar
+                    ("Tags"), duplicando el concepto de "tags" ya presente acá
+                    (hashtags/social_tags). Se fusiona todo en 1 sola card. */}
+                {(c.tags?.length ?? 0) > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1.5 font-medium">Tags internos:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.tags?.map(t => <span key={t} className="badge badge-gray">{t}</span>)}
+                    </div>
                   </div>
                 )}
               </div>
@@ -958,20 +983,30 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               </div>
             )}
 
-            {/* Comisión */}
-            {c.brand && (
+            {/* Marca(s) — antes existían 2 cards separadas ("Marca" acá arriba con
+                solo la principal, y "Marcas" al fondo con la lista completa, solo
+                admin). Se consolida en 1 sola card con marca principal +
+                colaboradoras. Visible en ambos portales: solo se muestra nombre
+                y rol de las colaboradoras (nunca datos comerciales sensibles),
+                consistente con la regla de permisos de marca. */}
+            {campaignBrands.length > 0 && (
               <div className="card p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  🏢 Marca
+                  🏢 {campaignBrands.length > 1 ? 'Marcas' : 'Marca'}
                 </h3>
-                <div className="flex items-center gap-3">
-                  {(c.brand as {logo_url?: string|null; name: string}).logo_url && (
-                    <img src={(c.brand as {logo_url: string}).logo_url} alt={(c.brand as {name:string}).name}
-                      className="w-10 h-10 rounded-lg object-contain border border-gray-100 p-0.5" />
-                  )}
-                  <div>
-                    <div className="font-semibold text-gray-900">{(c.brand as {name:string}).name}</div>
-                  </div>
+                <div className="space-y-2">
+                  {campaignBrands.map((brand, idx) => (
+                    <div key={`${brand.id ?? idx}`} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {!!brand.logo_url && (
+                          <img src={String(brand.logo_url)} alt={String(brand.name)}
+                            className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
+                        )}
+                        <span className="font-semibold text-gray-900 truncate">{String(brand.name ?? 'Marca sin nombre')}</span>
+                      </div>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{String(brand._role ?? '')}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -983,7 +1018,11 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               </div>
             )}
 
-            {/* Visibility badge */}
+            {/* Visibility badge — solo admin. El estado (Pública/Por invitación) ya
+                se ve en el header (stat tile), esta card era una segunda
+                explicación del mismo dato; se deja solo donde hace falta el
+                control real (el toggle), que es exclusivamente admin. */}
+            {!isBrandPortal && (
             <div className="card p-4 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-gray-700">Visibilidad</h3>
@@ -1021,6 +1060,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 {(c as {visibility?: string}).visibility === 'open' ? '🌐 Pública' : '🔒 Invitación'}
               </button>
             </div>
+            )}
 
             {!isBrandPortal && (c as {visibility?: string}).visibility === 'open' && (
               <div className="card p-4">
@@ -1064,12 +1104,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               </div>
             )}
 
-            {c.content_guidelines && (
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Guías de contenido</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">{c.content_guidelines}</p>
-              </div>
-            )}
           </div>
 
           <div className="space-y-4">
@@ -1096,15 +1130,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               </div>
             </div>
 
-            {(c.tags ?? []).length > 0 && (
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Tags</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {c.tags?.map(t => <span key={t} className="badge badge-gray">{t}</span>)}
-                </div>
-              </div>
-            )}
-
             <div className="card p-4 space-y-2">
               <h3 className="text-sm font-semibold text-gray-700 mb-1">Acciones rápidas</h3>
               {[
@@ -1121,76 +1146,19 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
           </div>
         </div>
 
-        {!isBrandPortal && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
-            <div className="card p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-700">Marcas</h3>
-                <span className="text-xs text-gray-400">{campaignBrands.length}</span>
-              </div>
-              {campaignBrands.length === 0 ? (
-                <p className="text-sm text-gray-400">Sin marcas asociadas.</p>
-              ) : (
-                <div className="space-y-2">
-                  {campaignBrands.slice(0, 4).map((brand, idx) => (
-                    <div key={`${brand.id ?? idx}`} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                      <span className="text-sm font-medium text-gray-800">{String(brand.name ?? 'Marca sin nombre')}</span>
-                      <span className="text-xs text-gray-400">{String(brand._role ?? '')}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="card p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-700">Assets</h3>
-                <span className="text-xs text-gray-400">{campaignAssets.length}</span>
-              </div>
-              <p className="text-sm text-gray-500">
-                Archivos y links de esta campaña.
-              </p>
-              <button
-                type="button"
-                onClick={() => setTab('assets')}
-                className="text-xs font-semibold text-violet-600 hover:underline text-left"
-              >
-                Ver assets
-              </button>
-            </div>
-
-            <div className="card p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-700">Contratos</h3>
-                <Link href="/admin-contracts" className="text-xs font-semibold text-violet-600 hover:underline">
-                  Administrar
-                </Link>
-              </div>
-              {contractTemplates.length === 0 ? (
-                <p className="text-sm text-gray-400">Sin plantillas todavía.</p>
-              ) : (
-                <div className="space-y-2">
-                  {contractTemplates.slice(0, 3).map(tpl => (
-                    <div key={String(tpl.id)} className="rounded-lg bg-gray-50 px-3 py-2">
-                      <p className="text-sm font-medium text-gray-800">{String(tpl.name ?? 'Plantilla')}</p>
-                      <p className="text-xs text-gray-400">{String(tpl.campaign_type ?? 'General')}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="card p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-700">Canjes</h3>
-                <span className="text-xs text-gray-400">Resumen</span>
-              </div>
-              <p className="text-sm text-gray-500">
-                Los canjes de esta campaña se administran desde el módulo interno de canjes.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* NOTA (2026-07-04, redesign Overview): antes había un 2do grid acá abajo
+            con 4 cards más (Marcas, Assets, Contratos, Canjes) — Pri: "hay varios
+            widgets que estan de mas porque existen tabs especificos". Se quitó
+            completo:
+            - Marcas: se fusionó con la card "Marca(s)" de arriba (ya no hay 2
+              widgets separados mostrando lo mismo).
+            - Assets: duplicaba 1:1 el tab Assets (que ya tiene su conteo en la
+              barra de tabs) — se elimina, el tab ya cumple esa función.
+            - Contratos y Canjes: eran resúmenes de secciones que ni siquiera
+              están activas hoy (las secciones reales de Contratos/Canjes en
+              este archivo están bajo `{false && (...)}`, es decir, código
+              muerto) — no aportaban nada real, solo texto estático o datos de
+              plantillas genéricas sin relación con esta campaña puntual. */}
 
         </>
 

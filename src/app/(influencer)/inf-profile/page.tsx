@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   AlertCircle, RefreshCw, Edit2, Save, X, Plus, Trash2,
   Target, Zap, Banknote, MapPin, Tag, Share2, Mail, User,
-  Phone, Globe,
+  Phone, Globe, Calendar,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -31,6 +31,7 @@ type InfluencerProfile = {
   country: string | null
   address: string | null
   commune: string | null
+  birth_date: string | null
   categories: string[] | null
   influencer_social_profiles: SocialProfile[] | null
   referred_brands_count?: number
@@ -38,6 +39,9 @@ type InfluencerProfile = {
 
 // Perfil obligatorio: Instagram + comuna + dirección. Se usa para forzar la
 // edición al entrar al portal si falta alguno (ver useEffect más abajo).
+// NOTA (2026-07-04): fecha de nacimiento es obligatoria SOLO al guardar
+// (ver findMissingRequired) — no se agregó acá para no bloquear de golpe la
+// navegación de las 1432 cuentas ya activas que no la tienen (decisión Pri).
 function isProfileComplete(p: InfluencerProfile) {
   const hasAddress   = !!(p.address && p.address.trim())
   const hasCommune   = !!(p.commune && p.commune.trim())
@@ -106,7 +110,7 @@ export default function ProfilePage() {
   const [loading,   setLoading]   = useState(true)
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
-  const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', city: '', country: '', address: '', commune: '', categories: '' })
+  const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', city: '', country: '', address: '', commune: '', birth_date: '', categories: '' })
   const [socials,   setSocials]   = useState<SocialProfile[]>([])
 
   const load = useCallback(async () => {
@@ -148,6 +152,7 @@ export default function ProfilePage() {
       country: profile.country ?? '',
       address: profile.address ?? '',
       commune: profile.commune ?? '',
+      birth_date: profile.birth_date ?? '',
       categories: (profile.categories ?? []).join(', '),
     })
     const existingSocials = (profile.influencer_social_profiles ?? []).map(sp => ({ ...sp }))
@@ -162,6 +167,7 @@ export default function ProfilePage() {
     const missing: string[] = []
     if (!editForm.address.trim()) missing.push('Dirección')
     if (!editForm.commune.trim()) missing.push('Comuna')
+    if (!editForm.birth_date.trim()) missing.push('Fecha de nacimiento')
     const hasInstagram = socials.some(s => !s._delete && s.platform === 'instagram' && s.username.trim())
     if (!hasInstagram) missing.push('Instagram (usuario)')
     return missing
@@ -266,6 +272,7 @@ export default function ProfilePage() {
                 {profile.phone && <div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.phone}</span></div>}
                 {profile.address && <div className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.address}</span></div>}
                 {(profile.commune || profile.city || profile.country) && <div className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{[profile.commune, profile.city, profile.country].filter(Boolean).join(', ')}</span></div>}
+                {profile.birth_date && <div className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{new Date(profile.birth_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>}
                 {profile.categories && profile.categories.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap pt-1">
                     <Tag className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
@@ -342,11 +349,18 @@ export default function ProfilePage() {
               Para usar el portal necesitas completar Instagram, comuna y dirección.
             </div>
           )}
+          {profileComplete && !editForm.birth_date.trim() && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              Para guardar cambios ahora necesitas completar tu fecha de nacimiento.
+            </div>
+          )}
           <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /> Información personal</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Nombre" value={editForm.display_name} onChange={v => setEditForm(f => ({ ...f, display_name: v }))} placeholder="Tu nombre" />
               <Field label="Teléfono" value={editForm.phone} onChange={v => setEditForm(f => ({ ...f, phone: v }))} type="tel" placeholder="+56 9 1234 5678" />
+              <Field label="Fecha de nacimiento *" value={editForm.birth_date} onChange={v => setEditForm(f => ({ ...f, birth_date: v }))} type="date" />
             </div>
             <Field label="Bio" value={editForm.bio} onChange={v => setEditForm(f => ({ ...f, bio: v }))} textarea placeholder="Cuéntanos sobre ti…" />
             {/* Categorías como bubbles seleccionables */}

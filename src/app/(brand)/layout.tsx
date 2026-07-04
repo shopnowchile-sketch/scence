@@ -1,37 +1,44 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { BrandSidebar } from './_components/BrandSidebar'
 
 export default function BrandLayout({ children }: { children: React.ReactNode }) {
-  const didSetup = useRef(false)
+  const didRegister = useRef(false)
   // Instagram obligatorio en el portal marca (mismo criterio que el gate del
   // portal influencer: se valida server-side en PATCH /api/brand/me, esto es
   // solo la experiencia de navegación). null = aún cargando.
   const [instagramComplete, setInstagramComplete] = useState<boolean | null>(null)
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
-  const isProfilePage = pathname === '/brand-profile'
+  // Vista reutilizada del admin (Configuración > Organización), no una
+  // vista paralela reducida — ver BrandOrgForm.
+  const isProfilePage = pathname === '/brand-settings/organization'
 
   useEffect(() => {
-    if (didSetup.current) return
-    didSetup.current = true
+    if (didRegister.current) return
+    didRegister.current = true
     // Auto-crear brands record la primera vez que una marca self-registrada hace
-    // login, y recién después chequear si falta Instagram (la fila puede no
-    // existir todavía en el primer login).
-    fetch('/api/brand/register', { method: 'POST' })
-      .catch(() => null)
-      .finally(() => {
-        fetch('/api/brand/me')
-          .then(r => r.ok ? r.json() : null)
-          .then(j => setInstagramComplete(!!(j?.data?.instagram && String(j.data.instagram).trim())))
-          .catch(() => setInstagramComplete(true)) // si falla la carga, no bloquear
-      })
+    // login (la fila puede no existir todavía en el primer login).
+    fetch('/api/brand/register', { method: 'POST' }).catch(() => null)
   }, [])
 
   useEffect(() => {
-    if (instagramComplete === false && !isProfilePage) router.replace('/brand-profile?complete=1')
+    // Se re-chequea en cada navegación (no solo una vez al montar) para que,
+    // al guardar el Instagram en /brand-settings/organization y navegar a
+    // cualquier otra página, el bloqueo se levante sin quedar pegado en el
+    // estado "false" cacheado del primer fetch (bug reportado: el aviso
+    // seguía apareciendo después de completar el Instagram).
+    fetch('/api/brand/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => setInstagramComplete(!!(j?.data?.instagram && String(j.data.instagram).trim())))
+      .catch(() => setInstagramComplete(true)) // si falla la carga, no bloquear
+  }, [pathname, searchParams])
+
+  useEffect(() => {
+    if (instagramComplete === false && !isProfilePage) router.replace('/brand-settings/organization?complete=1')
   }, [instagramComplete, isProfilePage, router])
 
   const blocked = instagramComplete === null || (instagramComplete === false && !isProfilePage)

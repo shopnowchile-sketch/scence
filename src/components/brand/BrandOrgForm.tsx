@@ -7,7 +7,8 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
-import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User } from 'lucide-react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface BrandProfile {
@@ -39,6 +40,9 @@ function SectionTitle({ icon: Icon, label }: { icon: React.ElementType; label: s
 }
 
 export function BrandOrgForm() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const forcedComplete = searchParams.get('complete') === '1'
   const [form,   setForm]   = useState<BrandProfile>({} as BrandProfile)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -81,6 +85,12 @@ export function BrandOrgForm() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       toast.success('Organización actualizada')
+      // Si veníamos del gate obligatorio (?complete=1) y ya quedó el
+      // Instagram completo, limpiar el query param para que el aviso no
+      // quede pegado en pantalla (el layout revalida el bloqueo aparte).
+      if (forcedComplete && form.instagram && String(form.instagram).trim()) {
+        router.replace('/brand-settings/organization')
+      }
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -94,8 +104,17 @@ export function BrandOrgForm() {
     </div>
   )
 
+  const missingInstagram = !form.instagram || !String(form.instagram).trim()
+
   return (
     <div className="space-y-5">
+
+      {(forcedComplete || missingInstagram) && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          Para usar el portal necesitas completar el Instagram de tu marca.
+        </div>
+      )}
 
       {/* Empresa */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
@@ -118,10 +137,10 @@ export function BrandOrgForm() {
               <input type="url" value={form.website ?? ''} onChange={set('website')} placeholder="https://empresa.com" className="input-base w-full" />
             </div>
           </Field>
-          <Field label="Instagram">
+          <Field label="Instagram *">
             <div className="flex items-center gap-1">
               <Instagram className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
-              <input value={form.instagram ?? ''} onChange={set('instagram')} placeholder="@miempresa" className="input-base w-full" />
+              <input value={form.instagram ?? ''} onChange={set('instagram')} placeholder="@miempresa" required className="input-base w-full" />
             </div>
           </Field>
         </div>

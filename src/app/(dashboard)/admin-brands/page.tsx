@@ -25,6 +25,7 @@ interface Brand {
   created_at: string
   status?: string | null
   last_sign_in_at?: string | null
+  account_created_at?: string | null
   user_id?: string | null
   campaigns?: Array<{ id: string; name: string; status: string; budget_total: number | null; currency: string }>
 }
@@ -444,7 +445,7 @@ export default function BrandsPage() {
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Marca', 'Estado', 'Industria', 'Contacto', 'Campañas activas', 'Total campañas', 'Última conexión', ''].map(h => (
+                    {['Marca', 'Estado', 'Industria', 'Contacto', 'Campañas activas', 'Total campañas', 'Cuenta creada', 'Última conexión', ''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
@@ -485,6 +486,11 @@ export default function BrandsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-500">{allCampaigns.length} total</td>
+                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                          {b.account_created_at
+                            ? new Date(b.account_created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : '—'}
+                        </td>
                         <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                           {b.last_sign_in_at
                             ? new Date(b.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })

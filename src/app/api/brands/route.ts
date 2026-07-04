@@ -31,18 +31,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Enriquecer con last_sign_in_at desde auth.users
-  type BrandRow = Record<string, unknown> & { user_id?: string | null }
+  // Enriquecer con last_sign_in_at + fecha de creación de cuenta desde auth.users
+  type BrandRow = Record<string, unknown> & { user_id?: string | null; created_at?: string | null }
   const brands = (data ?? []) as BrandRow[]
   const userIds = brands.map(b => b.user_id).filter((id): id is string => !!id)
   const lastSeenMap: Record<string, string | null> = {}
+  const accountCreatedMap: Record<string, string | null> = {}
   for (const uid of userIds) {
     const { data: u } = await admin.auth.admin.getUserById(uid)
-    if (u?.user) lastSeenMap[uid] = u.user.last_sign_in_at ?? null
+    if (u?.user) {
+      lastSeenMap[uid] = u.user.last_sign_in_at ?? null
+      accountCreatedMap[uid] = u.user.created_at ?? null
+    }
   }
   const enriched = brands.map(b => ({
     ...b,
     last_sign_in_at: b.user_id ? (lastSeenMap[b.user_id] ?? null) : null,
+    // Fecha en que se creó la cuenta: prioriza auth.users.created_at (marca con
+    // usuario asociado); si no hay usuario, cae a brands.created_at (fecha de
+    // alta del registro, ej. marcas creadas por admin sin invitar todavía).
+    account_created_at: b.user_id ? (accountCreatedMap[b.user_id] ?? b.created_at ?? null) : (b.created_at ?? null),
   }))
 
   return NextResponse.json({ data: enriched, total: count ?? 0 })

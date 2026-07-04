@@ -503,11 +503,16 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     ? campaignDeliverables.filter(d => d.influencer?.id === selectedInfluencer.id)
     : []
 
-  const deliverableCount = campaignDeliverables.length
-  const deliverableDone  = campaignDeliverables.filter(d => d.status === 'published').length
+  // Solo cuenta deliverables con URL ya entregada — mismo criterio que el tab
+  // Deliverables (que ya filtra por esto). Antes contaba los 148 templates
+  // creados en bulk sin entrega, mostrando "Deliverables (148)" cuando en
+  // realidad solo había 1 entregable real.
+  const submittedForCount = campaignDeliverables.filter(d => d.content_url || d.published_url)
+  const deliverableCount = submittedForCount.length
+  const deliverableDone  = submittedForCount.filter(d => d.status === 'published').length
   // Average progress: published=100, others use progress field
   const avgProgress = deliverableCount > 0
-    ? Math.round(campaignDeliverables.reduce((sum, d) => {
+    ? Math.round(submittedForCount.reduce((sum, d) => {
         if (d.status === 'published') return sum + 100
         return sum + (d.progress ?? 0)
       }, 0) / deliverableCount)
@@ -805,9 +810,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             {c.description && <p className="text-sm text-gray-500 mb-3">{c.description}</p>}
             <div className="flex items-center gap-5 flex-wrap text-sm text-gray-500">
               {c.start_date && (
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4 text-gray-300" />
-                  <span>{formatDate(c.start_date)} → {c.end_date ? formatDate(c.end_date) : '—'}</span>
+                <div className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-2.5 py-1">
+                  <Calendar className="h-4 w-4 text-violet-500" />
+                  <span className="font-semibold text-gray-800">{formatDate(c.start_date)} → {c.end_date ? formatDate(c.end_date) : '—'}</span>
                 </div>
               )}
               <div className="flex items-center gap-1.5">
@@ -831,10 +836,12 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               <div className="text-2xl font-bold text-gray-900">{pct}%</div>
               <div className="text-[11px] text-gray-400">Completado</div>
             </div>
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
-              <div className="text-2xl font-bold text-gray-900">{budgetPct}%</div>
-              <div className="text-[11px] text-gray-400">Budget usado</div>
-            </div>
+            {!!c.budget_total && (
+              <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
+                <div className="text-2xl font-bold text-gray-900">{budgetPct}%</div>
+                <div className="text-[11px] text-gray-400">Budget usado</div>
+              </div>
+            )}
             <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
               <div className="text-2xl font-bold text-gray-900">{campaignInfluencers.length}</div>
               <div className="text-[11px] text-gray-400">Invitadas</div>

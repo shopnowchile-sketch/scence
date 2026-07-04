@@ -33,7 +33,7 @@ export async function GET() {
       id, status, application_status, fee, currency,
       campaign:campaigns (
         id, name, status, description, start_date, end_date,
-        currency, created_by,
+        currency, created_by, visibility,
         brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
       ),
       campaign_deliverables (

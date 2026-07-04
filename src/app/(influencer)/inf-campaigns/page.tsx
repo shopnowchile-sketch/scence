@@ -19,6 +19,7 @@ type Campaign = {
   start_date: string | null
   end_date: string | null
   status: string
+  application_status: string | null
   deliverables_total: number
   deliverables_done: number
   self_created: boolean
@@ -59,9 +60,22 @@ type ApiRow = {
     status: string
     start_date: string | null
     end_date: string | null
+    visibility?: string | null
     brand?: { id: string; name: string; logo_url: string | null } | null
   } | null
   campaign_deliverables: Array<{ id: string; status: string }>
+}
+
+// Una postulación pending solo está garantizado que ya se ve en "Disponibles
+// para postular" (con el badge correcto "En revisión") cuando la campaña es
+// visibility='open' — que es exactamente el mismo filtro que usa
+// /api/influencer/campaigns/open. Las invitaciones de marca a campañas
+// privadas (origin='invitation') también quedan pending pero NUNCA aparecen
+// en /open, así que si se ocultaran acá desaparecerían por completo de la
+// UI. Confirmado en producción: 29 invitaciones pending a campañas privadas
+// + 90 postulaciones pending que hoy apuntan a campañas ya vueltas privadas.
+function isDuplicatedInOpenList(row: ApiRow): boolean {
+  return row.application_status === 'pending' && row.campaign?.visibility === 'open'
 }
 
 function toRow(row: ApiRow): Campaign | null {
@@ -77,6 +91,7 @@ function toRow(row: ApiRow): Campaign | null {
     start_date:         c.start_date,
     end_date:           c.end_date,
     status:             c.status ?? row.status,
+    application_status: row.application_status ?? null,
     deliverables_total: total,
     deliverables_done:  done,
     self_created:       row._self_created ?? false,
@@ -111,17 +126,20 @@ export default function MyCampaignsPage() {
       fetch('/api/influencer/my-campaigns').then(async r => {
         const json = await r.json()
         if (!r.ok) throw new Error(json.error)
-        // FIX (2026-07-04): una postulación con application_status='pending'
-        // ya se muestra en "Disponibles para postular" con el badge "En
-        // revisión" (ver /api/influencer/campaigns/open). Antes también
-        // aparecía acá en "Asignadas por agencia" con el badge de la campaña
-        // ("Activa"), porque toRow() solo mira el status de la campaña, no
-        // su application_status personal — mismo caso apareciendo 2 veces
-        // con estados contradictorios (reportado por Pri: audio + capturas
-        // de ps.cuevasespinoza@gmail.com). Las self-created no tienen
-        // application_status, no se ven afectadas por este filtro.
+        // FIX (2026-07-04): una postulación pending a una campaña open ya se
+        // muestra en "Disponibles para postular" con el badge "En revisión"
+        // (ver /api/influencer/campaigns/open). Antes también aparecía acá en
+        // "Asignadas por agencia" con el badge de la campaña ("Activa"),
+        // porque toRow() solo mira el status de la campaña, no su
+        // application_status personal — mismo caso apareciendo 2 veces con
+        // estados contradictorios (reportado por Pri: audio + capturas de
+        // ps.cuevasespinoza@gmail.com). Solo se excluye acá cuando ya está
+        // garantizado que se ve en la otra lista (visibility='open') — las
+        // invitaciones/postulaciones pending a campañas privadas NO
+        // aparecen en /open, así que se mantienen visibles acá (con el
+        // badge corregido en CampaignRow) en vez de desaparecer.
         return (json.data ?? [])
-          .filter((row: ApiRow) => row.application_status !== 'pending')
+          .filter((row: ApiRow) => !isDuplicatedInOpenList(row))
           .map(toRow).filter(Boolean) as Campaign[]
       }),
       fetch('/api/influencer/campaigns/open').then(async r => {
@@ -415,7 +433,13 @@ export default function MyCampaignsPage() {
 // ── Campaign card ─────────────────────────────────────────────────────────────
 function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   const router  = useRouter()
-  const stCfg   = STATUS_CONFIG[c.status] ?? STATUS_CONFIG.active
+  // Si su relación con la campaña sigue pending (invitación o postulación a
+  // una campaña privada que no se filtra arriba), el badge debe reflejar
+  // eso en vez del status de la campaña ("Activa") — mismo fix que en el
+  // detalle de campaña, para que nunca contradiga el estado real.
+  const stCfg   = c.application_status === 'pending'
+    ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
+    : STATUS_CONFIG[c.status] ?? STATUS_CONFIG.active
   const pct     = c.deliverables_total > 0 ? Math.round((c.deliverables_done / c.deliverables_total) * 100) : 0
 
   return (

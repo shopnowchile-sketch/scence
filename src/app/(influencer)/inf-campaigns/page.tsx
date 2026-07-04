@@ -51,6 +51,7 @@ function fmt(iso: string | null) {
 type ApiRow = {
   id: string | null
   status: string
+  application_status?: string | null
   _self_created?: boolean
   campaign: {
     id: string
@@ -110,7 +111,18 @@ export default function MyCampaignsPage() {
       fetch('/api/influencer/my-campaigns').then(async r => {
         const json = await r.json()
         if (!r.ok) throw new Error(json.error)
-        return (json.data ?? []).map(toRow).filter(Boolean) as Campaign[]
+        // FIX (2026-07-04): una postulación con application_status='pending'
+        // ya se muestra en "Disponibles para postular" con el badge "En
+        // revisión" (ver /api/influencer/campaigns/open). Antes también
+        // aparecía acá en "Asignadas por agencia" con el badge de la campaña
+        // ("Activa"), porque toRow() solo mira el status de la campaña, no
+        // su application_status personal — mismo caso apareciendo 2 veces
+        // con estados contradictorios (reportado por Pri: audio + capturas
+        // de ps.cuevasespinoza@gmail.com). Las self-created no tienen
+        // application_status, no se ven afectadas por este filtro.
+        return (json.data ?? [])
+          .filter((row: ApiRow) => row.application_status !== 'pending')
+          .map(toRow).filter(Boolean) as Campaign[]
       }),
       fetch('/api/influencer/campaigns/open').then(async r => {
         if (!r.ok) return []

@@ -441,7 +441,15 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const c            = data.campaign
   const isSelfCreated = data._self_created === true
   const isPending    = data.application_status === 'pending'
-  const campStatus   = CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
+  // FIX (2026-07-04): mientras la postulación sigue pendiente, el badge del
+  // header mostraba el estado de LA CAMPAÑA ("Activa") en vez de reflejar
+  // que SU postulación todavía no fue aprobada — inconsistente con
+  // "Disponibles para postular" (que sí muestra "En revisión") y con el
+  // aviso ámbar de abajo. Mismo caso, dos estados distintos según dónde se
+  // mirara (reportado por Pri: ps.cuevasespinoza@gmail.com).
+  const campStatus   = isPending
+    ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
+    : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
   const deliverables = data.campaign_deliverables ?? []
   // Orden: lo que necesita acción primero (pendiente/rechazado), luego en
   // revisión, luego aprobado/publicado — mismos estados que ya existían,

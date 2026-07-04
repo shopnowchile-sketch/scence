@@ -852,6 +852,16 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               </div>
               <div className="text-[11px] text-violet-400">Visibilidad</div>
             </div>
+            {/* Comisión — Pri: "esto es importantisimo y deberia aparecer en la
+                card de arriba... donde aparece el resumen". Antes solo vivía
+                como card aparte en el Overview, fácil de perder de vista. Ahora
+                está en el resumen principal, junto a Completado/Budget/Invitadas. */}
+            {!!c.commission_rate && (
+              <div className="text-center bg-amber-50 rounded-xl p-3 min-w-[80px]">
+                <div className="text-2xl font-bold text-amber-700">{c.commission_rate}%</div>
+                <div className="text-[11px] text-amber-500">Comisión</div>
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-100">
@@ -1010,14 +1020,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 </div>
               </div>
             )}
-            {c.commission_rate && (
-              <div className="card p-5 border-2 border-violet-100">
-                <h3 className="text-sm font-semibold text-violet-800 mb-1">💰 Campaña por comisión</h3>
-                <p className="text-2xl font-black text-violet-700">{c.commission_rate}%</p>
-                <p className="text-xs text-gray-400 mt-0.5">de las ventas generadas por cada influencer</p>
-              </div>
-            )}
-
             {/* Visibility badge — solo admin. El estado (Pública/Por invitación) ya
                 se ve en el header (stat tile), esta card era una segunda
                 explicación del mismo dato; se deja solo donde hace falta el

@@ -449,14 +449,14 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : STATUS_CONFIG[c.status] ?? STATUS_CONFIG.active
   const pct     = c.deliverables_total > 0 ? Math.round((c.deliverables_done / c.deliverables_total) * 100) : 0
-  // Activa con entregables pendientes → clic va directo a sus entregables
-  // (inf-tasks), no al detalle de campaña (que ya no lista entregables).
+  // El clic en la fila siempre lleva al detalle de la campaña. "Próxima
+  // entrega" es solo informativa acá (pedido de Pri: el link a entregables
+  // vive en el dashboard/detalle, no reemplaza el detalle de campaña).
   const isActive = c.status === 'active' && c.application_status !== 'pending'
-  const href = isActive ? `/inf-tasks?campaign=${c.id}` : `/inf-campaign/${c.id}`
 
   return (
     <button
-      onClick={() => router.push(href)}
+      onClick={() => router.push(`/inf-campaign/${c.id}`)}
       className="w-full bg-white rounded-2xl border border-gray-100 p-4 hover:border-violet-200 hover:shadow-sm transition-all text-left"
     >
       <div className="flex items-center gap-3">

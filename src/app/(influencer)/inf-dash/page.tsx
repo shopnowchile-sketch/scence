@@ -3,10 +3,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Briefcase, Building2, Calendar,
-  ChevronRight, LogOut, RefreshCw,
+  Building2, Calendar,
+  LogOut, RefreshCw,
   CheckSquare, Sparkles, Instagram, AlertCircle,
 } from 'lucide-react'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -28,6 +29,17 @@ type Campaign = {
     brand: { name: string; logo_url: string | null } | null
   } | null
   campaign_deliverables: Array<{ id: string; status: string }>
+}
+
+// Mismo shape que /inf-campaigns/page.tsx (OpenCampaign) — reutiliza el
+// mismo endpoint /api/influencer/campaigns/open, no se toca el backend.
+type OpenCampaign = {
+  id: string
+  name: string
+  start_date: string | null
+  end_date: string | null
+  brand: { id: string; name: string; logo_url: string | null } | null
+  _applied?: boolean
 }
 
 type SocialProfile = {
@@ -55,11 +67,6 @@ function hasInstagram(profile: InfluencerProfile | null) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmt(iso: string | null) {
-  if (!iso) return null
-  return new Date(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
 // Estado a mostrar: la postulación (application_status) manda si sigue
 // pendiente o fue rechazada; si no, se usa el estado real de la campaña.
 type ResolvedStatus = 'postulada' | 'rechazada' | 'activa' | 'completada' | 'pausada' | 'borrador'
@@ -74,21 +81,13 @@ function resolveStatus(ci: Campaign): ResolvedStatus {
   return 'activa'
 }
 
-const STATUS_CONFIG: Record<ResolvedStatus, { label: string; color: string }> = {
-  postulada:  { label: 'Postulada · en revisión', color: 'bg-amber-100 text-amber-700' },
-  rechazada:  { label: 'No seleccionada',         color: 'bg-gray-100 text-gray-500' },
-  activa:     { label: 'Activa',                  color: 'bg-green-100 text-green-700' },
-  completada: { label: 'Completada',               color: 'bg-blue-100 text-blue-700' },
-  pausada:    { label: 'Pausada',                  color: 'bg-amber-100 text-amber-700' },
-  borrador:   { label: 'Borrador',                 color: 'bg-gray-100 text-gray-500' },
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function InfluencerDashboard() {
   const router  = useRouter()
   const [profile,   setProfile]   = useState<InfluencerProfile | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [openCampaigns, setOpenCampaigns] = useState<OpenCampaign[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
   const [igInput,   setIgInput]   = useState('')
@@ -99,9 +98,15 @@ export default function InfluencerDashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [meRes, campRes] = await Promise.all([
+      // /api/influencer/campaigns/open se resuelve aparte (Promise.allSettled)
+      // para que si falla no tumbe el resto del dashboard — mismo criterio
+      // defensivo que ya usa /inf-campaigns/page.tsx para este mismo fetch.
+      const [meRes, campRes, openResult] = await Promise.all([
         fetch('/api/influencer/me'),
         fetch('/api/influencer/campaigns'),
+        fetch('/api/influencer/campaigns/open').then(
+          async r => (r.ok ? ((await r.json()).data ?? []) : []),
+        ).catch(() => []),
       ])
 
       if (!meRes.ok) {
@@ -114,6 +119,7 @@ export default function InfluencerDashboard() {
       const [meData, campData] = await Promise.all([meRes.json(), campRes.json()])
       setProfile(meData.data)
       setCampaigns(campData.data ?? [])
+      setOpenCampaigns(openResult as OpenCampaign[])
     } catch {
       setError('Error cargando tu dashboard. Intenta de nuevo.')
     }
@@ -231,11 +237,23 @@ export default function InfluencerDashboard() {
   const postuladasCount = withStatus.filter(x => x.status === 'postulada').length
   const completadasCount = withStatus.filter(x => x.status === 'completada').length
 
-  // Orden: activas y postuladas primero, completadas/rechazadas al final
-  const ORDER: Record<ResolvedStatus, number> = {
-    postulada: 0, activa: 0, pausada: 1, borrador: 1, completada: 2, rechazada: 3,
-  }
-  const sorted = [...withStatus].sort((a, b) => ORDER[a.status] - ORDER[b.status])
+  // % de entregables pendientes sobre el total, sumando TODAS las campañas
+  // asignadas (no por campaña) — mismo dato ya cargado (campaign_deliverables
+  // via /api/influencer/campaigns), sin fetch nuevo.
+  const allDeliverables = campaigns.flatMap(ci => ci.campaign_deliverables ?? [])
+  const totalDeliverables = allDeliverables.length
+  const pendingDeliverablesCount = allDeliverables.filter(d => d.status !== 'approved' && d.status !== 'published').length
+  const pendingPct = totalDeliverables > 0 ? Math.round((pendingDeliverablesCount / totalDeliverables) * 100) : 0
+
+  const gaugeData = [
+    { name: 'Pendiente',  value: pendingDeliverablesCount,               color: '#7c3aed' },
+    { name: 'Completado', value: totalDeliverables - pendingDeliverablesCount, color: '#e5e7eb' },
+  ]
+
+  // Disponibles para postular, sin las que ya postuló (esas se ven en
+  // /inf-campaigns como "En revisión" — mismo criterio que ya usa esa
+  // página, acá solo se filtra en el cliente sobre el mismo endpoint).
+  const availableCampaigns = openCampaigns.filter(c => !c._applied)
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -263,86 +281,87 @@ export default function InfluencerDashboard() {
         </div>
       </div>
 
-      {/* Conteo rápido */}
+      {/* Fila 1: Activas / Postuladas / gauge — KPI + gráfico siempre juntos
+          arriba, todos clickeables a su listado correspondiente. */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
+        <button
+          onClick={() => router.push('/inf-campaigns')}
+          className="bg-white rounded-2xl border border-gray-100 p-4 text-center hover:border-violet-200 transition-colors"
+        >
           <div className="text-xl font-bold text-gray-900">{activasCount}</div>
           <div className="text-xs text-gray-400 mt-0.5">Activas</div>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
+        </button>
+        <button
+          onClick={() => router.push('/inf-campaigns')}
+          className="bg-white rounded-2xl border border-gray-100 p-4 text-center hover:border-violet-200 transition-colors"
+        >
           <div className="text-xl font-bold text-gray-900">{postuladasCount}</div>
           <div className="text-xs text-gray-400 mt-0.5">Postuladas</div>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
-          <div className="text-xl font-bold text-gray-900">{completadasCount}</div>
-          <div className="text-xs text-gray-400 mt-0.5">Completadas</div>
-        </div>
+        </button>
+        {totalDeliverables > 0 ? (
+          <button
+            onClick={() => router.push('/inf-tasks')}
+            title="Entregables pendientes"
+            className="bg-white rounded-2xl border border-gray-100 p-2 flex items-center justify-center gap-2 hover:border-violet-200 transition-colors overflow-hidden"
+          >
+            <ResponsiveContainer width={80} height={44} className="flex-shrink-0">
+              <PieChart>
+                <Pie data={gaugeData} startAngle={180} endAngle={0} cx="50%" cy="100%"
+                  innerRadius={22} outerRadius={38} cornerRadius={4} paddingAngle={2} dataKey="value" stroke="none">
+                  {gaugeData.map((s, i) => <Cell key={i} fill={s.color} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="text-left">
+              <div className="text-xl font-bold text-gray-900 leading-none">{pendingPct}%</div>
+              <div className="text-xs text-gray-400 mt-0.5">Pendientes</div>
+            </div>
+          </button>
+        ) : (
+          <button
+            onClick={() => router.push('/inf-tasks')}
+            className="bg-white rounded-2xl border border-gray-100 p-4 text-center hover:border-violet-200 transition-colors"
+          >
+            <div className="text-xl font-bold text-gray-900">{completadasCount}</div>
+            <div className="text-xs text-gray-400 mt-0.5">Completadas</div>
+          </button>
+        )}
       </div>
 
-      {/* Mis campañas */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-50">
-          <Briefcase className="h-4 w-4 text-gray-400" />
-          <h2 className="text-sm font-bold text-gray-900 flex-1">Mis campañas</h2>
-        </div>
-        <div className="px-5 py-4">
-          {sorted.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Briefcase className="h-8 w-8 text-gray-200 mb-3" />
-              <p className="text-sm text-gray-400">Todavía no tienes campañas.</p>
-              <Link href="/inf-campaigns" className="mt-3 text-xs font-semibold text-violet-600 hover:underline">
-                Ver campañas disponibles para postular →
+      {/* Campañas disponibles para postular — ya postuladas NO aparecen acá,
+          se ven en /inf-campaigns con el badge "En revisión" (mismo
+          endpoint, mismo criterio que esa página, ver 2026-07-01). */}
+      {availableCampaigns.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-50">
+            <Sparkles className="h-4 w-4 text-violet-400" />
+            <h2 className="text-sm font-bold text-gray-900 flex-1">Campañas disponibles ({availableCampaigns.length})</h2>
+          </div>
+          <div className="px-5 py-4 space-y-2">
+            {availableCampaigns.slice(0, 4).map(c => (
+              <Link
+                key={c.id}
+                href={`/inf-campaign/${c.id}`}
+                className="flex items-center gap-3 bg-gray-50 rounded-xl border border-gray-100 p-3 hover:border-violet-200 hover:shadow-sm transition-all"
+              >
+                <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {c.brand?.logo_url
+                    ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-8 h-8 object-contain" />
+                    : <Building2 className="h-4 w-4 text-violet-300" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{c.name}</p>
+                  {c.brand?.name && <p className="text-xs text-violet-600 font-medium">{c.brand.name}</p>}
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex-shrink-0">Abierta</span>
               </Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {sorted.map(({ ci, status }) => {
-                const c = ci.campaign
-                if (!c) return null
-                const cfg = STATUS_CONFIG[status]
-                const total = ci.campaign_deliverables?.length ?? 0
-                const done  = ci.campaign_deliverables?.filter(d => d.status === 'approved' || d.status === 'published').length ?? 0
-                return (
-                  <button
-                    key={ci.id}
-                    onClick={() => router.push(`/inf-campaign/${c.id}`)}
-                    className="w-full bg-gray-50 rounded-xl border border-gray-100 p-4 hover:border-violet-200 hover:shadow-sm transition-all text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                        {c.brand?.logo_url
-                          ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 object-contain" />
-                          : <Building2 className="h-4 w-4 text-violet-300" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
-                          <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', cfg.color)}>
-                            {cfg.label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                          {c.brand?.name && <span className="text-xs text-violet-600 font-medium">{c.brand.name}</span>}
-                          {(c.start_date || c.end_date) && (
-                            <span className="text-xs text-gray-400 flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {fmt(c.start_date)}{c.end_date ? ` → ${fmt(c.end_date)}` : ''}
-                            </span>
-                          )}
-                          {total > 0 && (
-                            <span className="text-xs text-gray-400">{done}/{total} entregables</span>
-                          )}
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+            ))}
+            <Link href="/inf-campaigns" className="block text-center text-xs font-semibold text-violet-600 hover:underline pt-1">
+              Ver todas en Campañas →
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Accesos rápidos al resto del portal */}
       <div className="flex items-center justify-around bg-white rounded-2xl border border-gray-100 py-3 px-4 text-xs">

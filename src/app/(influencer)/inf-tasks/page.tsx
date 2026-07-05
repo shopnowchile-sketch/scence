@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CheckCircle2, Circle, Clock, AlertCircle,
-  Zap, RefreshCw, Filter, Link2, ExternalLink, Upload, ChevronRight,
+  RefreshCw, Filter, Link2, ExternalLink, Upload, ChevronRight,
+  Film, Layers, Video, Radio, FileText, Sparkles, CalendarCheck, MapPin, Send, Image as ImageIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -25,6 +26,7 @@ type Task = {
 type Deliverable = {
   id: string
   title: string | null
+  description: string | null
   type: string
   platform: string | null
   due_date: string | null
@@ -33,6 +35,17 @@ type Deliverable = {
   campaign_id: string
   campaign_name: string
   campaign_influencer_id: string
+}
+
+type CampaignGroup = {
+  campaign_id: string
+  campaign_name: string
+  deliverables: Deliverable[]
+}
+
+const COMPLETE_STATUSES = ['approved', 'published', 'completed']
+function isCompleteDeliverable(d: Deliverable) {
+  return !!d.content_url || COMPLETE_STATUSES.includes(d.status)
 }
 
 type StatusFilter = 'all' | Task['status']
@@ -77,6 +90,26 @@ function urgencyColor(iso: string | null): string {
   return 'text-gray-400'
 }
 
+// Ícono por tipo de entregable. `type` es texto libre (ver
+// DeliverableTemplateBuilder.tsx / CampaignDetailView.influencer.tsx —
+// valores mixtos: 'reel', 'post', 'Story', 'send_content', etc.), por eso
+// se normaliza a minúsculas y se matchea por substring en vez de un enum
+// cerrado. Fallback genérico para tipos no previstos.
+function typeIcon(type: string) {
+  const t = (type || '').toLowerCase()
+  if (t.includes('reel'))                          return Film
+  if (t.includes('stor'))                           return Layers
+  if (t.includes('video'))                          return Video
+  if (t.includes('live'))                           return Radio
+  if (t.includes('blog'))                           return FileText
+  if (t.includes('ugc'))                            return Sparkles
+  if (t.includes('event_attendance'))               return CalendarCheck
+  if (t.includes('checkin') || t.includes('event')) return MapPin
+  if (t.includes('send_content') || t.includes('send')) return Send
+  if (t.includes('post'))                           return ImageIcon
+  return Link2
+}
+
 // ── Deliverable row (reel link + submit) ─────────────────────────────────────
 
 function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void }) {
@@ -108,16 +141,24 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
     setSaving(false)
   }
 
+  const TypeIcon = typeIcon(d.type)
+  // Avatar de tipo, coloreado por estado — da jerarquía visual (qué es el
+  // entregable) sin perder la señal de estado (ya cubierta por cfg.label
+  // más abajo, esto solo la refuerza con color).
+  const avatarCls = isDone
+    ? 'bg-green-50 text-green-500'
+    : d.status === 'in_review'
+    ? 'bg-blue-50 text-blue-500'
+    : d.status === 'rejected'
+    ? 'bg-red-50 text-red-500'
+    : 'bg-amber-50 text-amber-500'
+
   return (
     <div className={cn('border rounded-xl p-3.5 space-y-2', isDone ? 'border-green-100 bg-green-50/30' : 'border-gray-100 bg-white')}>
       <div className="flex items-start gap-3">
-        {/* Status icon */}
-        <div className="mt-0.5 flex-shrink-0">
-          {isDone
-            ? <CheckCircle2 className="h-4 w-4 text-green-500" />
-            : d.status === 'in_review'
-            ? <Clock className="h-4 w-4 text-blue-500" />
-            : <Circle className="h-4 w-4 text-gray-300" />}
+        {/* Ícono por tipo de entregable, coloreado por estado */}
+        <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', avatarCls)}>
+          <TypeIcon className="h-4 w-4" />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -130,12 +171,16 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
           </button>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('text-sm font-medium', isDone ? 'text-gray-400 line-through' : 'text-gray-900')}>
+            <span className={cn('text-sm font-semibold', isDone ? 'text-gray-400 line-through' : 'text-gray-900')}>
               {d.title || d.type}
             </span>
             <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', cfg.color)}>{cfg.label}</span>
             {d.platform && <span className="text-[10px] text-gray-400 capitalize">{d.platform}</span>}
           </div>
+
+          {d.description && (
+            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{d.description}</p>
+          )}
 
           {d.due_date && !isDone && (
             <div className="flex items-center gap-1.5 mt-1">
@@ -226,6 +271,7 @@ export default function TasksPage() {
   const [loading,      setLoading]      = useState(true)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [activeTab,    setActiveTab]    = useState<'deliverables' | 'tasks'>('deliverables')
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -235,17 +281,28 @@ export default function TasksPage() {
         fetch('/api/influencer/campaigns'),
       ])
       const [tasksData, campData] = await Promise.all([tasksRes.json(), campRes.json()])
-      setTasks(tasksData.data ?? [])
+      const tasksList: Task[] = tasksData.data ?? []
+      setTasks(tasksList)
+
+      // Descripción por deliverable — viene de la task vinculada (ya
+      // cargada), no de un fetch nuevo ni cambio de API.
+      const descByDeliverable = new Map(
+        tasksList.filter(t => t.deliverable_id).map(t => [t.deliverable_id as string, t.description])
+      )
 
       // Build deliverables from campaign_influencers
+      // Postulación pendiente de aprobación → no debe mostrar entregables
+      // acá todavía (recién se crean/habilitan cuando se acepta).
       const delivs: Deliverable[] = []
       for (const ci of (campData.data ?? [])) {
+        if (ci.application_status === 'pending') continue
         const c = ci.campaign
         if (!c) continue
         for (const d of (ci.campaign_deliverables ?? [])) {
           delivs.push({
             id: d.id,
             title: d.title,
+            description: descByDeliverable.get(d.id) ?? null,
             type: d.type,
             platform: d.platform,
             due_date: d.due_date,
@@ -293,8 +350,29 @@ export default function TasksPage() {
   }
 
   const filtered = tasks.filter(t => statusFilter === 'all' || t.status === statusFilter)
-  const pendingDeliverables = deliverables.filter(d => d.status !== 'approved' && d.status !== 'published')
-  const doneDeliverables    = deliverables.filter(d => d.status === 'approved' || d.status === 'published')
+  const pendingDeliverables = deliverables.filter(d => !isCompleteDeliverable(d))
+  const doneDeliverables    = deliverables.filter(isCompleteDeliverable)
+
+  // Agrupar por campaña — `deliverables` ya viene ordenado (pendientes
+  // primero), así que el orden de aparición de los grupos respeta esa
+  // prioridad sin necesidad de un sort adicional.
+  const campaignGroups: CampaignGroup[] = []
+  const groupIndex = new Map<string, number>()
+  for (const d of deliverables) {
+    if (!groupIndex.has(d.campaign_id)) {
+      groupIndex.set(d.campaign_id, campaignGroups.length)
+      campaignGroups.push({ campaign_id: d.campaign_id, campaign_name: d.campaign_name, deliverables: [] })
+    }
+    campaignGroups[groupIndex.get(d.campaign_id)!].deliverables.push(d)
+  }
+
+  function toggleCampaign(id: string) {
+    setExpandedCampaigns(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   const counts = {
     all:         tasks.length,
@@ -348,37 +426,59 @@ export default function TasksPage() {
         ))}
       </div>
 
-      {/* ── DELIVERABLES TAB ── */}
+      {/* ── DELIVERABLES TAB — agrupado por campaña ── */}
       {activeTab === 'deliverables' && (
-        <div className="space-y-4">
-          {/* Pending */}
-          <div>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Zap className="h-3.5 w-3.5 text-amber-500" /> Pendientes · {pendingDeliverables.length}
-            </h2>
-            {pendingDeliverables.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-100 flex flex-col items-center py-10">
-                <CheckCircle2 className="h-8 w-8 text-gray-200 mb-2" />
-                <p className="text-sm text-gray-400">¡Todo al día con los entregables!</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {pendingDeliverables.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
-              </div>
-            )}
-          </div>
-
-          {/* Done */}
-          {doneDeliverables.length > 0 && (
-            <div>
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> Aprobados · {doneDeliverables.length}
-              </h2>
-              <div className="space-y-2">
-                {doneDeliverables.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
-              </div>
+        <div className="space-y-3">
+          {campaignGroups.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 flex flex-col items-center py-10">
+              <CheckCircle2 className="h-8 w-8 text-gray-200 mb-2" />
+              <p className="text-sm text-gray-400">¡Todo al día con los entregables!</p>
             </div>
-          )}
+          ) : campaignGroups.map(g => {
+            const total    = g.deliverables.length
+            const doneCt   = g.deliverables.filter(isCompleteDeliverable).length
+            const pending  = g.deliverables.filter(d => !isCompleteDeliverable(d))
+            const pct      = total > 0 ? Math.round((doneCt / total) * 100) : 0
+            const nextDue  = pending.map(d => d.due_date).filter(Boolean).sort()[0] ?? null
+            const typeCounts = new Map<string, number>()
+            for (const d of g.deliverables) typeCounts.set(d.type, (typeCounts.get(d.type) ?? 0) + 1)
+            const summary = Array.from(typeCounts.entries()).map(([t, n]) => `${n} ${t}`).join(' · ')
+            const expanded = expandedCampaigns.has(g.campaign_id)
+
+            return (
+              <div key={g.campaign_id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <button onClick={() => toggleCampaign(g.campaign_id)} className="w-full text-left p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-bold text-gray-900 truncate">{g.campaign_name}</h3>
+                    <ChevronRight className={cn('h-4 w-4 text-gray-300 flex-shrink-0 transition-transform', expanded && 'rotate-90')} />
+                  </div>
+                  {summary && <p className="text-xs text-gray-400 mt-0.5 truncate">{summary}</p>}
+
+                  <div className="flex items-center gap-4 mt-2 flex-wrap">
+                    {nextDue && (
+                      <span className={cn('text-[11px] font-medium', urgencyColor(nextDue))}>
+                        Próxima entrega: {daysUntil(nextDue)} · {formatDate(nextDue)}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-gray-400">{pending.length} pendiente{pending.length !== 1 ? 's' : ''}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={cn('h-full rounded-full', pct === 100 ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-[10px] font-semibold text-gray-500">{pct}%</span>
+                  </div>
+                </button>
+
+                {expanded && (
+                  <div className="px-4 pb-4 space-y-2 border-t border-gray-50 pt-3">
+                    {g.deliverables.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

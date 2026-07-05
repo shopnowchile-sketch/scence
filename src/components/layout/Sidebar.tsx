@@ -17,14 +17,15 @@ export function Sidebar() {
   useEffect(() => {
     fetch('/api/campaigns?limit=1').then(r => r.json()).then(d => { if (typeof d.total === 'number') setCampaignCount(d.total) }).catch(() => {})
     fetch('/api/bookings?limit=1').then(r => r.json()).then(d => { if (Array.isArray(d.data)) setBookingCount(d.data.length) }).catch(() => {})
-    fetch('/api/dashboard').then(r => r.json()).then(d => {
-      // Badge de "Campañas" = contenido para revisar + postulaciones/invitaciones
-      // pendientes de aceptar/rechazar (antes solo contaba lo primero — Pri
-      // reportó que no había ninguna señal de "X postularon" en el menú).
-      const pendingReview = (d?.pending_deliverables ?? []).filter((del: Record<string,unknown>) => del.status === 'in_review').length
-      const pendingApplications = Number(d?.pending_applications_count ?? 0)
-      const total = pendingReview + pendingApplications
-      if (total > 0) setReviewCount(total)
+    // Badge de "Campañas" = campañas NUEVAS creadas por una marca, pendientes
+    // de aprobación de admin (status='pending_approval'). Antes mezclaba
+    // postulaciones de influencers + deliverables en revisión, lo que daba
+    // números enormes (191) sin relación con "hay campañas nuevas que
+    // revisar" — Pri pidió que el conteo sea justo ese. Reusa el mismo
+    // endpoint/filtro que ya alimenta la pestaña "Pendientes de aprobación"
+    // en CampaignsClient.tsx (misma fuente de verdad, sin lógica nueva).
+    fetch('/api/campaigns?status=pending_approval&limit=1').then(r => r.json()).then(d => {
+      if (typeof d.total === 'number' && d.total > 0) setReviewCount(d.total)
     }).catch(() => {})
   }, [])
 

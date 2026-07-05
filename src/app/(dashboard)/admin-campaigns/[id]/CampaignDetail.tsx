@@ -15,6 +15,8 @@ import { cn, formatCurrency, formatDate, PLATFORM_ICONS } from '@/lib/utils'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
 import { BartersTab } from '@/components/campaigns/BartersTab'
 import { StarRating } from '@/components/ui/StarRating'
+import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
+import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer } from '@/hooks/useCampaignsList'
 import { toast } from 'sonner'
@@ -50,6 +52,19 @@ const GRADIENTS = [
 ]
 
 type Tab = 'overview' | 'influencers' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
+
+// ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
+// admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
+type CiColumnKey = 'platform' | 'fee' | 'deliverables' | 'progress' | 'status'
+const CI_COLUMNS: Array<{ key: CiColumnKey; label: string }> = [
+  { key: 'platform',     label: 'Plataforma' },
+  { key: 'fee',          label: 'Fee' },
+  { key: 'deliverables', label: 'Deliverables' },
+  { key: 'progress',     label: 'Progreso' },
+  { key: 'status',       label: 'Estado' },
+]
+const DEFAULT_CI_COLUMNS: Record<CiColumnKey, boolean> =
+  Object.fromEntries(CI_COLUMNS.map(c => [c.key, true])) as Record<CiColumnKey, boolean>
 
 // ── Deliverable content — tipo + link + rating + estado, todo en 1 línea. ────
 // Rediseño pedido por Pri: antes cada card mostraba el título completo (a
@@ -454,6 +469,12 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const [infSearch, setInfSearch] = useState('')
   const [infPlatform, setInfPlatform] = useState('')
   const [infStatus, setInfStatus] = useState('')
+  const [ciVisibleColumns, setCiVisibleColumns] = useLocalStorageState<Record<CiColumnKey, boolean>>(
+    'scence:admin:campaign-detail:influencers:visibleColumns', DEFAULT_CI_COLUMNS
+  )
+  function toggleCiColumn(key: CiColumnKey) {
+    setCiVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
+  }
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
@@ -1437,6 +1458,13 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
               </div>
 
+              <ColumnVisibilityMenu
+                columns={CI_COLUMNS}
+                visible={ciVisibleColumns}
+                onToggle={toggleCiColumn}
+                onReset={() => setCiVisibleColumns(DEFAULT_CI_COLUMNS)}
+              />
+
               {infFiltersActive && (
                 <button
                   onClick={() => { setInfSearch(''); setInfPlatform(''); setInfStatus('') }}
@@ -1466,9 +1494,23 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    {['Influencer', 'Plataforma', 'Fee', 'Deliverables', 'Progreso', 'Estado', ''].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">{h}</th>
-                    ))}
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Influencer</th>
+                    {ciVisibleColumns.platform && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataforma</th>
+                    )}
+                    {ciVisibleColumns.fee && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Fee</th>
+                    )}
+                    {ciVisibleColumns.deliverables && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Deliverables</th>
+                    )}
+                    {ciVisibleColumns.progress && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Progreso</th>
+                    )}
+                    {ciVisibleColumns.status && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Estado</th>
+                    )}
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -1524,32 +1566,41 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {primarySP ? (
-                            <span className="flex items-center gap-1.5">
-                              {PLATFORM_ICONS[primarySP.platform]}
-                              <span className="font-medium">{((primarySP.followers ?? 0) / 1000).toFixed(0)}K</span>
-                            </span>
-                          ) : '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          <span className={cn('font-semibold', delivsDone === delivsTotal && delivsTotal > 0 ? 'text-emerald-600' : 'text-gray-900')}>
-                            {delivsDone}
-                          </span>/{delivsTotal}
-                        </td>
-                        <td className="px-4 py-3 min-w-[120px]">
-                          {delivsTotal > 0 ? (
-                            <>
-                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={cn('h-full rounded-full', p === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${p}%` }} />
-                              </div>
-                              <div className="text-[10px] text-gray-400 mt-0.5">{p}%</div>
-                            </>
-                          ) : <span className="text-xs text-gray-300">Sin deliverables</span>}
-                        </td>
+                        {ciVisibleColumns.platform && (
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {primarySP ? (
+                              <span className="flex items-center gap-1.5">
+                                {PLATFORM_ICONS[primarySP.platform]}
+                                <span className="font-medium">{((primarySP.followers ?? 0) / 1000).toFixed(0)}K</span>
+                              </span>
+                            ) : '—'}
+                          </td>
+                        )}
+                        {ciVisibleColumns.fee && (
+                          <td className="px-4 py-3">
+                            <span className="text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</span>
+                          </td>
+                        )}
+                        {ciVisibleColumns.deliverables && (
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            <span className={cn('font-semibold', delivsDone === delivsTotal && delivsTotal > 0 ? 'text-emerald-600' : 'text-gray-900')}>
+                              {delivsDone}
+                            </span>/{delivsTotal}
+                          </td>
+                        )}
+                        {ciVisibleColumns.progress && (
+                          <td className="px-4 py-3 min-w-[120px]">
+                            {delivsTotal > 0 ? (
+                              <>
+                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={cn('h-full rounded-full', p === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${p}%` }} />
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-0.5">{p}%</div>
+                              </>
+                            ) : <span className="text-xs text-gray-300">Sin deliverables</span>}
+                          </td>
+                        )}
+                        {ciVisibleColumns.status && (
                         <td className="px-4 py-3">
                           <select
                             onClick={(e) => e.stopPropagation()}
@@ -1580,6 +1631,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                             <option value="canceled">Cancelado</option>
                           </select>
                         </td>
+                        )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             {myPending > 0 && (

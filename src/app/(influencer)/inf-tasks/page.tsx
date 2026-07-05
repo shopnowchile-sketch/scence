@@ -132,7 +132,7 @@ function typeLabel(type: string): string {
 
 // ── Deliverable row (reel link + submit) ─────────────────────────────────────
 
-function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void }) {
+function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Deliverable; onUpdate: () => void; showCampaignLink?: boolean }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState(d.content_url ?? '')
@@ -182,13 +182,18 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Campaign badge */}
-          <button
-            onClick={() => router.push(`/inf-campaign/${d.campaign_id}`)}
-            className="text-[10px] font-semibold text-violet-600 hover:text-violet-700 hover:underline flex items-center gap-0.5 mb-1"
-          >
-            {d.campaign_name} <ChevronRight className="h-2.5 w-2.5" />
-          </button>
+          {/* Campaign badge — solo en vistas donde no hay un header de
+              campaña ya visible arriba (ej. tab "Todas mis tareas", que
+              lista sin agrupar). En el tab Entregables el link a la
+              campaña ya vive en el header del grupo, así que no se repite. */}
+          {showCampaignLink && (
+            <button
+              onClick={() => router.push(`/inf-campaign/${d.campaign_id}`)}
+              className="text-[10px] font-semibold text-violet-600 hover:text-violet-700 hover:underline flex items-center gap-0.5 mb-1"
+            >
+              {d.campaign_name} <ChevronRight className="h-2.5 w-2.5" />
+            </button>
+          )}
 
           <div className="flex items-center gap-2 flex-wrap">
             <span className={cn('text-sm font-semibold truncate', isDone ? 'text-gray-400 line-through' : 'text-gray-900')}>
@@ -197,6 +202,10 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
             <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', cfg.color)}>{cfg.label}</span>
             {d.platform && <span className="text-[10px] text-gray-400 capitalize">{d.platform}</span>}
           </div>
+
+          {d.description && (
+            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{d.description}</p>
+          )}
 
           {d.due_date && !isDone && (
             <div className="flex items-center gap-1.5 mt-1">
@@ -221,9 +230,9 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
           {canSubmit && (
             <button
               onClick={() => setOpen(v => !v)}
-              className="flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700 px-2 py-1 rounded-lg hover:bg-violet-50 transition-colors"
+              className="flex items-center gap-1.5 text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 px-4 py-2.5 rounded-xl transition-colors shadow-sm"
             >
-              <Upload className="h-3.5 w-3.5" />
+              <Upload className="h-4 w-4" />
               {d.status === 'rejected' ? 'Reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
             </button>
           )}
@@ -282,6 +291,7 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function TasksPage() {
+  const router = useRouter()
   const [tasks,        setTasks]        = useState<Task[]>([])
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [loading,      setLoading]      = useState(true)
@@ -463,29 +473,44 @@ export default function TasksPage() {
 
             return (
               <div key={g.campaign_id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <button onClick={() => toggleCampaign(g.campaign_id)} className="w-full text-left p-4">
+                <div className="w-full text-left p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-base font-bold text-gray-900 truncate">{g.campaign_name}</h3>
-                    <ChevronRight className={cn('h-4 w-4 text-gray-300 flex-shrink-0 transition-transform', expanded && 'rotate-90')} />
+                    {/* Único link a la campaña de todo el grupo — lleva al
+                        detalle. Separado del toggle de abajo para no mezclar
+                        "ver campaña" con "expandir/colapsar". */}
+                    <button
+                      onClick={() => router.push(`/inf-campaign/${g.campaign_id}`)}
+                      className="text-base font-bold text-violet-600 truncate text-left hover:text-violet-700 hover:underline min-w-0"
+                    >
+                      {g.campaign_name}
+                    </button>
+                    {/* % completado, grande y a la derecha — sube apenas la
+                        influencer manda el link del entregable. */}
+                    <span className={cn('text-2xl font-bold flex-shrink-0', pct === 100 ? 'text-green-500' : 'text-gray-900')}>
+                      {pct}%
+                    </span>
                   </div>
-                  {summary && <p className="text-xs text-gray-400 mt-0.5 truncate">{summary}</p>}
 
-                  <div className="flex items-center gap-4 mt-2 flex-wrap">
-                    {nextDue && (
-                      <span className={cn('text-[11px] font-medium', urgencyColor(nextDue))}>
-                        Próxima entrega: {daysUntil(nextDue)} · {formatDate(nextDue)}
-                      </span>
-                    )}
-                    <span className="text-[11px] text-gray-400">{pending.length} pendiente{pending.length !== 1 ? 's' : ''}</span>
-                  </div>
+                  <button onClick={() => toggleCampaign(g.campaign_id)} className="w-full text-left">
+                    {summary && <p className="text-xs text-gray-400 mt-0.5 truncate">{summary}</p>}
 
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full', pct === 100 ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
+                    <div className="flex items-center gap-4 mt-2 flex-wrap">
+                      {nextDue && (
+                        <span className={cn('text-[11px] font-medium', urgencyColor(nextDue))}>
+                          Próxima entrega: {daysUntil(nextDue)} · {formatDate(nextDue)}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-gray-400">{pending.length} pendiente{pending.length !== 1 ? 's' : ''}</span>
                     </div>
-                    <span className="text-[10px] font-semibold text-gray-500">{pct}%</span>
-                  </div>
-                </button>
+
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={cn('h-full rounded-full', pct === 100 ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
+                      </div>
+                      <ChevronRight className={cn('h-4 w-4 text-gray-300 flex-shrink-0 transition-transform', expanded && 'rotate-90')} />
+                    </div>
+                  </button>
+                </div>
 
                 {expanded && (
                   <div className="px-4 pb-4 space-y-2 border-t border-gray-50 pt-3">
@@ -540,7 +565,7 @@ export default function TasksPage() {
                 if (task.deliverable_id) {
                   const linked = deliverables.find(d => d.id === task.deliverable_id)
                   if (linked) {
-                    return <DeliverableRow key={task.id} d={linked} onUpdate={load} />
+                    return <DeliverableRow key={task.id} d={linked} onUpdate={load} showCampaignLink />
                   }
                 }
 

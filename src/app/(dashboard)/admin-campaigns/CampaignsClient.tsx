@@ -115,6 +115,7 @@ interface CampaignsClientProps {
 
 type CampaignColumnKey =
   | 'campaign'
+  | 'brand'
   | 'type'
   | 'visibility'
   | 'platforms'
@@ -130,6 +131,7 @@ type SortOrder = 'asc' | 'desc'
 
 const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
   { key: 'campaign',    label: 'Campaña' },
+  { key: 'brand',       label: 'Marca' },
   { key: 'type',        label: 'Tipo' },
   { key: 'visibility',  label: 'Público/Privado' },
   { key: 'platforms',   label: 'Plataformas' },
@@ -150,6 +152,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
     `scence:${portal}:campaigns:columns`,
     {
       campaign: true,
+      brand: true,
       type: true,
       visibility: true,
       platforms: true,
@@ -217,6 +220,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
       const getValue = (c: Campaign) => {
         switch (sortKey) {
           case 'campaign':    return c.name ?? ''
+          case 'brand':       return c.brand?.name ?? ''
           case 'type':        return c.type ?? ''
           case 'visibility':  return c.visibility ?? ''
           case 'platforms':   return c.platforms?.join(',') ?? ''
@@ -397,6 +401,13 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                             </Link>
                           </td>
                         )}
+                        {visibleColumns.brand && (
+                          <td className="px-4 py-3">
+                            {c.brand ? (
+                              <span className="text-sm font-semibold text-violet-600">{c.brand.name}</span>
+                            ) : <span className="text-xs text-gray-300">—</span>}
+                          </td>
+                        )}
                         {visibleColumns.type && (
                           <td className="px-4 py-3">
                             <span className="badge badge-gray capitalize text-[11px]">{c.type.replace(/_/g, ' ')}</span>
@@ -464,11 +475,6 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                         {visibleColumns.status && (
                           <td className="px-4 py-3">
                             <CampaignStatusBadge status={c.status} />
-                            {c.brand && (
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
-                                🏢 {c.brand.name}
-                              </span>
-                            )}
                           </td>
                         )}
                         <td className="px-4 py-3">

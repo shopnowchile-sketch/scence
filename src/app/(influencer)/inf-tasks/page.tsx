@@ -110,6 +110,26 @@ function typeIcon(type: string) {
   return Link2
 }
 
+// Etiqueta corta por tipo — el campo `title` a veces trae el brief completo
+// de la marca (varias líneas) en vez de un nombre corto ("Reel", "Story").
+// Pedido: la fila de entregable debe verse simple (tipo + estado + fecha +
+// botón), sin repetir el brief largo. El brief completo se sigue viendo al
+// entrar a la campaña (CollapsibleBrief), acá no se pierde información.
+function typeLabel(type: string): string {
+  const t = (type || '').toLowerCase()
+  if (t.includes('reel'))                          return 'Reel'
+  if (t.includes('stor'))                           return 'Story'
+  if (t.includes('video'))                          return 'Video'
+  if (t.includes('live'))                           return 'Live'
+  if (t.includes('blog'))                           return 'Blog'
+  if (t.includes('ugc'))                            return 'UGC'
+  if (t.includes('event_attendance'))               return 'Asistencia a evento'
+  if (t.includes('checkin') || t.includes('event')) return 'Check-in'
+  if (t.includes('send_content') || t.includes('send')) return 'Envío de contenido'
+  if (t.includes('post'))                           return 'Post'
+  return type || 'Entregable'
+}
+
 // ── Deliverable row (reel link + submit) ─────────────────────────────────────
 
 function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void }) {
@@ -171,16 +191,12 @@ function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void 
           </button>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('text-sm font-semibold', isDone ? 'text-gray-400 line-through' : 'text-gray-900')}>
-              {d.title || d.type}
+            <span className={cn('text-sm font-semibold truncate', isDone ? 'text-gray-400 line-through' : 'text-gray-900')}>
+              {typeLabel(d.type)}
             </span>
             <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', cfg.color)}>{cfg.label}</span>
             {d.platform && <span className="text-[10px] text-gray-400 capitalize">{d.platform}</span>}
           </div>
-
-          {d.description && (
-            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{d.description}</p>
-          )}
 
           {d.due_date && !isDone && (
             <div className="flex items-center gap-1.5 mt-1">

@@ -481,8 +481,8 @@ export default function EventDetailPage() {
       </div>
 
       {/* Header card */}
-      <div className="card p-6">
-        <div className="flex items-start gap-4">
+      <div className="card p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
             <CalendarDays className="h-6 w-6 text-violet-600" />
           </div>
@@ -521,12 +521,12 @@ export default function EventDetailPage() {
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 flex-shrink-0">
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[76px]">
+          <div className="grid grid-cols-2 gap-3 w-full sm:w-auto sm:flex-shrink-0">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[76px]">
               <div className="text-2xl font-bold text-gray-900">{sold}</div>
               <div className="text-[11px] text-gray-400">Vendidas</div>
             </div>
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[76px]">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[76px]">
               <div className="text-2xl font-bold text-gray-900">{pct}%</div>
               <div className="text-[11px] text-gray-400">Ocupación</div>
             </div>

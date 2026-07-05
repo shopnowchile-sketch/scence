@@ -27,35 +27,41 @@ export async function GET() {
   if (!influencer) return NextResponse.json({ error: 'Not an influencer' }, { status: 403 })
 
   // Campaigns assigned via campaign_influencers (from admin/brand)
-  const { data: assigned } = await admin
+  // NOTA: "brief" NO es columna de campaigns (solo existe brief_url, que es
+  // otra cosa) — se sacó del select porque rompía la query completa
+  // silenciosamente (bug real detectado por Pri: no aparecía NINGUNA
+  // campaña asignada, ver 2026-07-05).
+  const { data: assigned, error: assignedError } = await admin
     .from('campaign_influencers')
     .select(`
-      id, status, application_status, fee, currency,
+      id, status, application_status, origin, message, fee, currency,
       campaign:campaigns (
-        id, name, status, description, brief, content_guidelines, hashtags, platforms,
+        id, name, status, description, content_guidelines, hashtags, platforms,
         start_date, end_date, currency, created_by, visibility,
         brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, submitted_at, description, hashtags
+        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags
       )
     `)
     .eq('influencer_id', influencer.id)
     .order('created_at', { ascending: false })
+  if (assignedError) console.error('[GET /api/influencer/my-campaigns] assigned query failed:', assignedError)
 
   // Campaigns created by the influencer themselves
-  const { data: selfCreated } = await admin
+  const { data: selfCreated, error: selfCreatedError } = await admin
     .from('campaigns')
     .select(`
-      id, name, status, description, brief, content_guidelines, hashtags, platforms,
+      id, name, status, description, content_guidelines, hashtags, platforms,
       start_date, end_date, currency, budget_total, created_by,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, submitted_at, description, hashtags
+        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags
       )
     `)
     .eq('created_by', user.id)
     .order('created_at', { ascending: false })
+  if (selfCreatedError) console.error('[GET /api/influencer/my-campaigns] selfCreated query failed:', selfCreatedError)
 
   // Merge: assigned from admin + self-created
   // Self-created are wrapped to match the assigned shape

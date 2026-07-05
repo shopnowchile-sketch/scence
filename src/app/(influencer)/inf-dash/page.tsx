@@ -28,7 +28,7 @@ type Campaign = {
     end_date: string | null
     brand: { name: string; logo_url: string | null } | null
   } | null
-  campaign_deliverables: Array<{ id: string; status: string }>
+  campaign_deliverables: Array<{ id: string; status: string; content_url: string | null; published_url: string | null }>
 }
 
 // Mismo shape que /inf-campaigns/page.tsx (OpenCampaign) — reutiliza el
@@ -242,7 +242,13 @@ export default function InfluencerDashboard() {
   // via /api/influencer/campaigns), sin fetch nuevo.
   const allDeliverables = campaigns.flatMap(ci => ci.campaign_deliverables ?? [])
   const totalDeliverables = allDeliverables.length
-  const pendingDeliverablesCount = allDeliverables.filter(d => d.status !== 'approved' && d.status !== 'published').length
+  // Mismo criterio de "completado" que el resto de la app (ver activeCampaigns
+  // más abajo y CampaignDetail.tsx en admin): URL subida o status aprobado/
+  // completado/publicado. Antes solo miraba status, así que un entregable ya
+  // entregado pero todavía 'pending'/'in_review' contaba como pendiente.
+  const pendingDeliverablesCount = allDeliverables.filter(d =>
+    !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
+  ).length
   const pendingPct = totalDeliverables > 0 ? Math.round((pendingDeliverablesCount / totalDeliverables) * 100) : 0
 
   const gaugeData = [
@@ -264,7 +270,14 @@ export default function InfluencerDashboard() {
     .map(x => {
       const delivs = x.ci.campaign_deliverables ?? []
       const total  = delivs.length
-      const done   = delivs.filter(d => d.status === 'approved' || d.status === 'published').length
+      // Mismo criterio de "completado" que el resumen de campaña en admin
+      // (CampaignDetail.tsx): tiene URL subida O status aprobado/completado/
+      // publicado — antes solo miraba status === 'approved'/'published', por
+      // lo que un entregable ya subido pero aún 'pending'/'in_review' contaba
+      // como 0%, mostrando 0% aunque la influencer ya hubiera entregado todo.
+      const done   = delivs.filter(d =>
+        !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)
+      ).length
       const pct    = total > 0 ? Math.round((done / total) * 100) : 0
       return { ci: x.ci, pct, total }
     })
@@ -316,17 +329,17 @@ export default function InfluencerDashboard() {
           <button
             onClick={() => router.push('/inf-tasks')}
             title="Entregables pendientes"
-            className="bg-white rounded-2xl border border-gray-100 p-2 flex items-center justify-center gap-2 hover:border-violet-200 transition-colors overflow-hidden"
+            className="bg-white rounded-2xl border border-gray-100 p-2 flex flex-col items-center justify-center gap-0.5 hover:border-violet-200 transition-colors overflow-hidden"
           >
-            <ResponsiveContainer width={80} height={44} className="flex-shrink-0">
+            <ResponsiveContainer width={64} height={36} className="flex-shrink-0">
               <PieChart>
                 <Pie data={gaugeData} startAngle={180} endAngle={0} cx="50%" cy="100%"
-                  innerRadius={22} outerRadius={38} cornerRadius={4} paddingAngle={2} dataKey="value" stroke="none">
+                  innerRadius={18} outerRadius={30} cornerRadius={4} paddingAngle={2} dataKey="value" stroke="none">
                   {gaugeData.map((s, i) => <Cell key={i} fill={s.color} />)}
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
-            <div className="text-left">
+            <div className="text-center">
               <div className="text-xl font-bold text-gray-900 leading-none">{pendingPct}%</div>
               <div className="text-xs text-gray-400 mt-0.5">Pendientes</div>
             </div>

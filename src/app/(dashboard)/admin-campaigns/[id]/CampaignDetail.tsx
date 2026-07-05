@@ -181,7 +181,7 @@ function InfluencerBadge({
 // ── Grupo por influencer. 1 solo deliverable → todo en 1 fila (avatar +
 // nombre + Instagram + tipo + link + rating + estado). Más de uno → dropdown
 // colapsable con el header arriba y cada deliverable en su propia fila adentro.
-function RemindButton({ campaignId, influencerId }: { campaignId: string; influencerId: string }) {
+function RemindButton({ campaignId, influencerId, compact }: { campaignId: string; influencerId: string; compact?: boolean }) {
   const [sending, setSending] = useState(false)
 
   async function handleRemind() {
@@ -200,6 +200,19 @@ function RemindButton({ campaignId, influencerId }: { campaignId: string; influe
     } finally {
       setSending(false)
     }
+  }
+
+  if (compact) {
+    return (
+      <button
+        onClick={handleRemind}
+        disabled={sending}
+        title="Enviar recordatorio de entregables pendientes"
+        className="p-1.5 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50 flex-shrink-0"
+      >
+        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+      </button>
+    )
   }
 
   return (
@@ -1466,6 +1479,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                     const myDelivs    = campaignDeliverables.filter(d => d.influencer?.id === inf.id)
                     const delivsDone  = myDelivs.filter(d => d.status === 'published').length
                     const delivsTotal = myDelivs.length
+                    const myPending   = myDelivs.filter(d =>
+                      !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
+                    ).length
                     const p = delivsTotal > 0
                       ? Math.round(myDelivs.reduce((sum, d) => {
                           if (d.status === 'published') return sum + 100
@@ -1566,6 +1582,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {myPending > 0 && (
+                              <RemindButton campaignId={id} influencerId={inf.id} compact />
+                            )}
                             <a
                               href={`/api/campaigns/${id}/influencer-report?influencer_id=${inf.id}`}
                               target="_blank"
@@ -1741,18 +1760,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               ? Math.round((ratedDeliverables.reduce((s, d) => s + (d.content_rating as number), 0) / ratedDeliverables.length) * 10) / 10
               : null
 
-            // Influencers con al menos 1 entregable pendiente (mismo criterio
-            // de "completado" de arriba, en negativo) — independiente de si ya
-            // subieron otros, para poder recordarles lo que les falta.
-            const pendingByInfluencer = new Map<string, { influencer: { id: string; display_name: string; avatar_url: string | null }; count: number }>()
-            for (const d of campaignDeliverables) {
-              const isPending = !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
-              if (!isPending || !d.influencer) continue
-              const key = d.influencer.id
-              if (!pendingByInfluencer.has(key)) pendingByInfluencer.set(key, { influencer: d.influencer, count: 0 })
-              pendingByInfluencer.get(key)!.count += 1
-            }
-
             return (
               <>
                 {/* Resumen: % completado (count-based) + rating promedio de
@@ -1779,27 +1786,6 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                       <div className="text-xs text-gray-400 mt-0.5">
                         Rating promedio ({ratedDeliverables.length} calificado{ratedDeliverables.length !== 1 ? 's' : ''})
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Recordatorio — solo influencers con entregables pendientes
-                    de ESTA campaña (no cambia status ni rating, solo notifica). */}
-                {pendingByInfluencer.size > 0 && (
-                  <div className="card p-4">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                      Con entregables pendientes ({pendingByInfluencer.size})
-                    </p>
-                    <div className="space-y-2">
-                      {Array.from(pendingByInfluencer.values()).map(({ influencer, count }) => (
-                        <div key={influencer.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg px-3 py-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-medium text-gray-900 truncate">{influencer.display_name}</span>
-                            <span className="badge badge-gray text-[10px] flex-shrink-0">{count} pendiente{count !== 1 ? 's' : ''}</span>
-                          </div>
-                          <RemindButton campaignId={id} influencerId={influencer.id} />
-                        </div>
-                      ))}
                     </div>
                   </div>
                 )}

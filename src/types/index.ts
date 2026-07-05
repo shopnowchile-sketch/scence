@@ -106,6 +106,7 @@ export interface DeliverableJoin {
   due_date: string | null
   platform: string | null
   published_at: string | null
+  content_url: string | null
   campaign: { id: string; name: string } | null
 }
 

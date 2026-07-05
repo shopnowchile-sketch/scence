@@ -809,7 +809,7 @@ export function InfluencerProfile({ id }: { id: string }) {
             <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {['Deliverable', 'Tipo', 'Plataforma', 'Campaña', 'Vencimiento', 'Estado'].map(h => (
+                  {['Deliverable', 'Tipo', 'Plataforma', 'Campaña', 'Vencimiento', 'Estado', 'Link'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">{h}</th>
                   ))}
                 </tr>
@@ -820,7 +820,10 @@ export function InfluencerProfile({ id }: { id: string }) {
                   const StatusIcon = s?.icon ?? AlertCircle
                   return (
                     <tr key={d.id} className="hover:bg-gray-50/70 transition-colors">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.title}</td>
+                      {/* Simple: título truncado a 1 línea (antes se veía el
+                          brief completo de la marca y rompía el layout de
+                          la tabla) */}
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-[220px] truncate" title={d.title}>{d.title}</td>
                       <td className="px-4 py-3">
                         <span className="badge badge-gray text-xs capitalize">{d.type ?? '—'}</span>
                       </td>
@@ -836,6 +839,14 @@ export function InfluencerProfile({ id }: { id: string }) {
                           <StatusIcon className="h-3 w-3" />
                           {s?.label ?? d.status}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {d.content_url ? (
+                          <a href={d.content_url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs font-semibold text-violet-600 hover:underline whitespace-nowrap">
+                            Ver contenido →
+                          </a>
+                        ) : <span className="text-xs text-gray-300">—</span>}
                       </td>
                     </tr>
                   )

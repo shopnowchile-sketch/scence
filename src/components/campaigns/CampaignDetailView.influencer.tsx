@@ -3,13 +3,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowLeft, Building2, FileText, Circle, CheckCircle2, XCircle,
-  Clock, ExternalLink, Download, RefreshCw, Upload,
+  ArrowLeft, Building2, FileText, Circle, CheckCircle2,
+  Clock, Download, RefreshCw,
   Plus, X, Loader2, AlertCircle, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { fmtDate, fmtMoney, DELIVERABLE_STATUS, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
+import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -36,6 +36,8 @@ type CampaignRow = {
   campaign: {
     id: string; name: string; status: string
     description: string | null; brief: string | null
+    content_guidelines: string | null
+    hashtags: string[] | null; platforms: string[] | null
     start_date: string | null; end_date: string | null
     currency: string
     brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
@@ -54,112 +56,6 @@ type PreviewCampaign = {
   brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
   _applied: boolean
   application_status: string | null
-}
-
-// ── Deliverable accordion (mobile-first) ──────────────────────────────────────
-function statusIcon(status: string) {
-  if (status === 'approved' || status === 'published') return <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-  if (status === 'in_review') return <Clock className="h-4 w-4 text-blue-500 flex-shrink-0" />
-  if (status === 'rejected') return <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
-  return <Circle className="h-4 w-4 text-amber-400 flex-shrink-0" />
-}
-
-function DeliverableRow({ d, onUpdate }: { d: Deliverable; onUpdate: () => void }) {
-  const [open,   setOpen]   = useState(false)
-  const [url,    setUrl]    = useState(d.content_url ?? '')
-  const [notes,  setNotes]  = useState('')
-  const [saving, setSaving] = useState(false)
-  const cfg       = DELIVERABLE_STATUS[d.status as keyof typeof DELIVERABLE_STATUS] ?? DELIVERABLE_STATUS.pending
-  const canSubmit = d.status === 'pending' || d.status === 'rejected'
-  const hasExtra  = !!(d.description?.trim() || d.platform || (d.hashtags && d.hashtags.length > 0))
-
-  async function submit() {
-    setSaving(true)
-    try {
-      const res = await fetch(`/api/influencer/deliverables/${d.id}/submit`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content_url: url || null, notes: notes || null }),
-      })
-      if (!res.ok) throw new Error()
-      toast.success('Entregable enviado para revisión')
-      onUpdate()
-    } catch { toast.error('Error al enviar. Intenta de nuevo.') }
-    setSaving(false)
-  }
-
-  return (
-    <div className={cn('bg-white rounded-2xl border overflow-hidden', canSubmit ? 'border-violet-100' : 'border-gray-100')}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-      >
-        {statusIcon(d.status)}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">{d.title || d.type}</p>
-          {d.due_date && (
-            <p className={cn('text-[11px] mt-0.5', canSubmit ? 'text-amber-600' : 'text-gray-400')}>
-              Vence {fmtDate(d.due_date)}
-            </p>
-          )}
-        </div>
-        {canSubmit && (
-          <span className="text-xs font-semibold text-violet-600 flex-shrink-0">
-            {d.status === 'rejected' ? 'Reenviar' : 'Subir'}
-          </span>
-        )}
-        {!canSubmit && (
-          <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', cfg.color)}>{cfg.label}</span>
-        )}
-        <ChevronDown className={cn('h-4 w-4 text-gray-300 flex-shrink-0 transition-transform', open && 'rotate-180')} />
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 pt-1 border-t border-gray-50 space-y-3">
-          {d.description?.trim() && (
-            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{d.description}</p>
-          )}
-
-          {(d.platform || (d.hashtags && d.hashtags.length > 0)) && (
-            <div className="flex flex-wrap gap-1.5">
-              {d.platform && (
-                <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-600 capitalize">{d.platform}</span>
-              )}
-              {(d.hashtags ?? []).map(h => (
-                <span key={h} className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-500">#{h.replace(/^#/, '')}</span>
-              ))}
-            </div>
-          )}
-
-          {d.content_url && (
-            <a href={d.content_url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-violet-600 hover:underline">
-              <ExternalLink className="h-3 w-3" /> Ver contenido enviado
-            </a>
-          )}
-
-          {!hasExtra && !d.content_url && !canSubmit && (
-            <p className="text-xs text-gray-400">Sin más detalles para este entregable.</p>
-          )}
-
-          {canSubmit && (
-            <div className="space-y-2 pt-1">
-              <input type="url" value={url} onChange={e => setUrl(e.target.value)}
-                placeholder="Link del contenido (Instagram, YouTube, Drive…)"
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-violet-400" />
-              <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="Notas para el equipo (opcional)"
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-violet-400" />
-              <button onClick={submit} disabled={saving || !url}
-                className="w-full flex items-center justify-center gap-2 py-3.5 text-sm font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                {saving ? 'Enviando…' : 'Subir link'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ── Add deliverable (self-created campaigns) ──────────────────────────────────
@@ -246,10 +142,12 @@ function CollapsibleBrief({ text, guidelines }: { text: string | null; guideline
   if (!text?.trim() && !guidelines?.trim()) return null
   return (
     <div className="pt-3 mt-3 border-t border-gray-50">
+      {/* Más grande + en violeta (color = clickeable, mismo criterio que
+          el resto del portal: nombre de campaña, botones Postular/Subir). */}
       <button onClick={() => setOpen(v => !v)} className="w-full flex items-center gap-2 text-left">
-        <FileText className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
-        <span className="text-xs font-medium text-gray-500 flex-1">Ver brief de la campaña</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 text-gray-300 flex-shrink-0 transition-transform', open && 'rotate-180')} />
+        <FileText className="h-4 w-4 text-violet-500 flex-shrink-0" />
+        <span className="text-sm font-bold text-violet-600 flex-1">Ver brief de la campaña</span>
+        <ChevronDown className={cn('h-4 w-4 text-violet-400 flex-shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
         <div className="mt-3 space-y-3">
@@ -262,32 +160,6 @@ function CollapsibleBrief({ text, guidelines }: { text: string | null; guideline
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ── Resumen de entregables (conteos) ──────────────────────────────────────────
-function DeliverablesSummary({ deliverables }: { deliverables: Deliverable[] }) {
-  const pending   = deliverables.filter(d => d.status === 'pending').length
-  const inReview  = deliverables.filter(d => d.status === 'in_review').length
-  const approved  = deliverables.filter(d => d.status === 'approved' || d.status === 'published').length
-  const rejected  = deliverables.filter(d => d.status === 'rejected').length
-
-  const items = [
-    { key: 'pending',  label: 'pendientes',  count: pending,  bg: 'bg-amber-50',  text: 'text-amber-700' },
-    { key: 'inReview', label: 'en revisión', count: inReview, bg: 'bg-blue-50',   text: 'text-blue-700',  show: inReview > 0 },
-    { key: 'approved', label: 'aprobados',   count: approved, bg: 'bg-green-50',  text: 'text-green-700' },
-    { key: 'rejected', label: 'rechazados',  count: rejected, bg: 'bg-red-50',    text: 'text-red-600',   show: rejected > 0 },
-  ].filter(i => i.show !== false)
-
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-      {items.map(i => (
-        <div key={i.key} className={cn('rounded-xl px-3 py-2.5', i.bg)}>
-          <p className={cn('text-xl font-bold leading-none', i.text)}>{i.count}</p>
-          <p className={cn('text-[11px] mt-0.5', i.text)}>{i.label}</p>
-        </div>
-      ))}
     </div>
   )
 }
@@ -386,6 +258,24 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} />
         </div>
 
+        {/* CTA arriba, antes del detalle de deliverables (pedido: que se vea
+            de inmediato, sin scrollear todo el brief primero). */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          {p._applied ? (
+            <div className="flex items-center gap-2 text-sm font-semibold text-green-600">
+              <CheckCircle2 className="h-4 w-4" />
+              {p.application_status === 'pending'
+                ? 'Solicitud enviada — te avisaremos apenas la revisemos.'
+                : 'Ya estás vinculada a esta campaña.'}
+            </div>
+          ) : (
+            <button onClick={handleApply} disabled={applying}
+              className="w-full py-3.5 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
+              {applying ? 'Enviando…' : 'Postular a esta campaña'}
+            </button>
+          )}
+        </div>
+
         {templates.length > 0 && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <h2 className="text-sm font-bold text-gray-900 mb-3">Deliverables requeridos</h2>
@@ -410,22 +300,6 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             ))}
           </div>
         )}
-
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          {p._applied ? (
-            <div className="flex items-center gap-2 text-sm font-semibold text-green-600">
-              <CheckCircle2 className="h-4 w-4" />
-              {p.application_status === 'pending'
-                ? 'Solicitud enviada — te avisaremos apenas la revisemos.'
-                : 'Ya estás vinculada a esta campaña.'}
-            </div>
-          ) : (
-            <button onClick={handleApply} disabled={applying}
-              className="w-full py-3.5 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
-              {applying ? 'Enviando…' : 'Postular a esta campaña'}
-            </button>
-          )}
-        </div>
       </div>
     )
   }
@@ -450,12 +324,10 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const campStatus   = isPending
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
-  const deliverables = data.campaign_deliverables ?? []
-  // Orden: lo que necesita acción primero (pendiente/rechazado), luego en
-  // revisión, luego aprobado/publicado — mismos estados que ya existían,
-  // solo se unifica en una sola lista de acordeones en vez de 2 cards separadas.
-  const order = (s: string) => (s === 'pending' || s === 'rejected') ? 0 : s === 'in_review' ? 1 : 2
-  const sortedDeliverables = [...deliverables].sort((a, b) => order(a.status) - order(b.status))
+  // Nota: campaign_deliverables ya no se lista acá — el detalle de campaña
+  // muestra el brief/guías/tags; el progreso y la subida de entregables
+  // vive en la tab Entregables (inf-tasks), pedido explícito de Pri para
+  // no duplicar la misma información en dos lugares.
 
   return (
     <div className="space-y-5">
@@ -514,17 +386,21 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           )}
         </div>
 
-        <CollapsibleBrief text={c.brief || c.description} />
+        <CollapsibleBrief text={c.brief || c.description} guidelines={c.content_guidelines} />
       </div>
 
-      {/* Resumen de entregables */}
-      {deliverables.length > 0 && <DeliverablesSummary deliverables={deliverables} />}
-
-      {/* Entregables — acordeón */}
-      {sortedDeliverables.length > 0 && (
-        <div className="space-y-2.5">
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Entregables</h2>
-          {sortedDeliverables.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
+      {/* Tags obligatorios de la campaña (plataformas + hashtags) — mismo
+          bloque que ya se mostraba en el preview antes de postular; acá
+          faltaba. Los entregables (progreso, subir link) viven en la tab
+          Entregables del portal, no se repiten en este detalle. */}
+      {((c.platforms?.length ?? 0) > 0 || (c.hashtags?.length ?? 0) > 0) && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-wrap gap-2">
+          {(c.platforms ?? []).map(pl => (
+            <span key={pl} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-violet-50 text-violet-600 capitalize">{pl}</span>
+          ))}
+          {(c.hashtags ?? []).map(h => (
+            <span key={h} className="text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-500">#{h.replace(/^#/, '')}</span>
+          ))}
         </div>
       )}
 

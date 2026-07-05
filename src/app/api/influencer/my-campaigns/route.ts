@@ -32,8 +32,8 @@ export async function GET() {
     .select(`
       id, status, application_status, fee, currency,
       campaign:campaigns (
-        id, name, status, description, start_date, end_date,
-        currency, created_by, visibility,
+        id, name, status, description, brief, content_guidelines, hashtags, platforms,
+        start_date, end_date, currency, created_by, visibility,
         brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
       ),
       campaign_deliverables (
@@ -47,8 +47,8 @@ export async function GET() {
   const { data: selfCreated } = await admin
     .from('campaigns')
     .select(`
-      id, name, status, description, start_date, end_date,
-      currency, budget_total, created_by,
+      id, name, status, description, brief, content_guidelines, hashtags, platforms,
+      start_date, end_date, currency, budget_total, created_by,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
       campaign_deliverables (
         id, title, type, status, due_date, platform, content_url, submitted_at, description, hashtags

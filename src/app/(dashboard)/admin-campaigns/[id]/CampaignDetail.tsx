@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight,
+  ChevronRight, Search, X, ChevronDown,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -381,6 +381,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
+  const [infSearch, setInfSearch] = useState('')
+  const [infPlatform, setInfPlatform] = useState('')
+  const [infStatus, setInfStatus] = useState('')
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
@@ -492,6 +495,26 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   const c = res.data as CampaignDetail
   const campaignInfluencers     = c.campaign_influencers ?? []
   const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status !== 'pending')
+  // Plataformas presentes entre las influencers confirmadas de esta campaña
+  // (no una lista fija — evita mostrar opciones vacías en campañas con pocas plataformas).
+  const infPlatformOptions = Array.from(new Set(
+    confirmedInfluencers
+      .map(ci => ci.influencer?.influencer_social_profiles?.[0]?.platform)
+      .filter((p): p is string => !!p)
+  )).sort()
+  const filteredInfluencers = confirmedInfluencers.filter(ci => {
+    const inf = ci.influencer
+    if (!inf) return false
+    if (infPlatform && inf.influencer_social_profiles?.[0]?.platform !== infPlatform) return false
+    if (infStatus && (ci.status ?? 'draft') !== infStatus) return false
+    if (infSearch.trim()) {
+      const q = infSearch.trim().toLowerCase()
+      const handle = inf.influencer_social_profiles?.[0]?.username ?? ''
+      if (!inf.display_name.toLowerCase().includes(q) && !handle.toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+  const infFiltersActive = !!(infSearch || infPlatform || infStatus)
   const campaignDeliverables = c.campaign_deliverables ?? []
   // FIX: antes buscaba solo en confirmedInfluencers — clickear una postulante
   // pendiente en el panel de "solicitudes pendientes" no la encontraba (estaba
@@ -733,8 +756,8 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
         <div className="flex items-center gap-2">
           <Link href={isBrandPortal ? `/brand-campaigns/${id}/report` : `/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
             title="Reporte PDF"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
-            <FileDown className="h-3.5 w-3.5" /> Reporte
+            className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
+            <FileDown className="h-3.5 w-3.5" />
           </Link>
           {/* Editar: en portal marca solo la marca creadora puede editar —
               mismo criterio que ya usa el panel de postulaciones más abajo
@@ -742,54 +765,58 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               el backend igual lo rechazaba con 403 al guardar. */}
           {(!isBrandPortal || c._brand_permissions?.canEdit) && (
             <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/admin-campaigns/${id}/edit`}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <Pencil className="h-3.5 w-3.5" /> Editar
+              title="Editar campaña"
+              className="flex items-center justify-center p-2 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <Pencil className="h-3.5 w-3.5" />
             </Link>
           )}
           {c.status === 'draft' && (
             <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
               title="Enviar a aprobación"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
-              <Check className="h-3.5 w-3.5" /> Enviar
+              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
+              <Check className="h-3.5 w-3.5" />
             </button>
           )}
           {(c.status === 'pending_approval' || c.status === 'paused') && (
             <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors">
-              <Play className="h-3.5 w-3.5" /> {c.status === 'paused' ? 'Reactivar' : 'Activar'}
+              title={c.status === 'paused' ? 'Reactivar' : 'Activar'}
+              className="flex items-center justify-center p-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors">
+              <Play className="h-3.5 w-3.5" />
             </button>
           )}
           {c.status === 'active' && (
             <>
               <button onClick={() => handleStatusAction('pause')} disabled={patchCampaign.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors">
-                <Pause className="h-3.5 w-3.5" /> Pausar
+                title="Pausar campaña"
+                className="flex items-center justify-center p-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors">
+                <Pause className="h-3.5 w-3.5" />
               </button>
               <button onClick={() => handleStatusAction('complete')} disabled={patchCampaign.isPending}
                 title="Marcar campaña como completada"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors">
-                <Check className="h-3.5 w-3.5" /> Completar
+                className="flex items-center justify-center p-2 text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                <Check className="h-3.5 w-3.5" />
               </button>
             </>
           )}
           {c.status === 'completed' && (
             <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
-              <Play className="h-3.5 w-3.5" /> Reabrir campaña
+              title="Reabrir campaña"
+              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
+              <Play className="h-3.5 w-3.5" />
             </button>
           )}
           {!isBrandPortal && c.status !== 'canceled' && (
             <button onClick={handleDeleteCampaign} disabled={deletingCampaign}
-              title="Marcar como cancelada (no borra datos)"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" /> Eliminar
+              title="Eliminar: marca la campaña como Cancelada (no borra datos)"
+              className="flex items-center justify-center p-2 text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           )}
           {!isBrandPortal && (
             <button onClick={handleHardDeleteCampaign} disabled={deletingCampaign}
-              title="Borrado permanente — no se puede deshacer"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" /> Borrar todo
+              title="Borrar todo: borrado permanente de la campaña y sus datos — no se puede deshacer"
+              className="flex items-center justify-center p-2 text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
@@ -1279,7 +1306,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
 
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">
-              {campaignInfluencers.filter(ci => ci.status !== 'applied').length} influencer{campaignInfluencers.length !== 1 ? 's' : ''} asignado{campaignInfluencers.length !== 1 ? 's' : ''}
+              {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
             </p>
             <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors">
@@ -1287,12 +1314,81 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             </Link>
           </div>
 
+          {confirmedInfluencers.length > 0 && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre o @usuario..."
+                  value={infSearch}
+                  onChange={e => setInfSearch(e.target.value)}
+                  className="input-base pl-9"
+                />
+                {infSearch && (
+                  <button onClick={() => setInfSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {infPlatformOptions.length > 0 && (
+                <div className="relative">
+                  <select
+                    value={infPlatform}
+                    onChange={e => setInfPlatform(e.target.value)}
+                    className={cn('input-base appearance-none pr-8 cursor-pointer',
+                      infPlatform && 'border-violet-400 text-violet-700')}
+                  >
+                    <option value="">Todas las plataformas</option>
+                    {infPlatformOptions.map(p => (
+                      <option key={p} value={p}>{PLATFORM_ICONS[p] ?? ''} {p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                </div>
+              )}
+
+              <div className="relative">
+                <select
+                  value={infStatus}
+                  onChange={e => setInfStatus(e.target.value)}
+                  className={cn('input-base appearance-none pr-8 cursor-pointer',
+                    infStatus && 'border-violet-400 text-violet-700')}
+                >
+                  <option value="">Todos los estados</option>
+                  <option value="draft">Por confirmar</option>
+                  <option value="pending_approval">En revisión</option>
+                  <option value="active">Activo</option>
+                  <option value="paused">Pausado</option>
+                  <option value="completed">Completado</option>
+                  <option value="canceled">Cancelado</option>
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+              </div>
+
+              {infFiltersActive && (
+                <button
+                  onClick={() => { setInfSearch(''); setInfPlatform(''); setInfStatus('') }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700 px-3 py-2 rounded-lg hover:bg-violet-50 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" /> Limpiar
+                </button>
+              )}
+            </div>
+          )}
+
           {confirmedInfluencers.length === 0 ? (
             <div className="card p-12 text-center">
               <Users className="h-10 w-10 text-gray-200 mx-auto mb-3" />
               <p className="text-sm text-gray-400">Sin influencers asignados aún</p>
               <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
                 className="mt-3 inline-block text-sm text-violet-600 hover:underline font-medium">+ Agregar el primero</Link>
+            </div>
+          ) : filteredInfluencers.length === 0 ? (
+            <div className="card p-12 text-center">
+              <Search className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+              <p className="text-sm text-gray-400">No se encontraron influencers con esos filtros.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start">
@@ -1306,7 +1402,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {confirmedInfluencers.map((ci, i) => {
+                  {filteredInfluencers.map((ci, i) => {
                     const inf = ci.influencer
                     if (!inf) return null
                     const primarySP = inf.influencer_social_profiles?.[0]

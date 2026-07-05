@@ -78,5 +78,31 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No se pudo enviar el email' }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, pending_count: pending.length })
+  // Marcar el recordatorio como enviado (check + timestamp en el tab
+  // Influencers). Reusa campaign_influencers.metadata (jsonb ya existente,
+  // no se crea columna nueva) — merge para no pisar otras keys futuras.
+  // Non-fatal: el email ya se envió, esto no debe tumbar la respuesta.
+  let last_reminder_sent_at: string | null = null
+  try {
+    const { data: ciRow } = await admin
+      .from('campaign_influencers')
+      .select('id, metadata')
+      .eq('campaign_id', params.id)
+      .eq('influencer_id', influencer_id)
+      .single()
+
+    if (ciRow) {
+      last_reminder_sent_at = new Date().toISOString()
+      const newMetadata = { ...(ciRow.metadata as Record<string, unknown> ?? {}), last_reminder_sent_at }
+      const { error: metaErr } = await admin
+        .from('campaign_influencers')
+        .update({ metadata: newMetadata })
+        .eq('id', ciRow.id)
+      if (metaErr) console.error('[POST remind] error guardando last_reminder_sent_at (non-fatal):', metaErr)
+    }
+  } catch (e) {
+    console.error('[POST remind] error marcando reminder (non-fatal):', e)
+  }
+
+  return NextResponse.json({ ok: true, pending_count: pending.length, last_reminder_sent_at })
 }

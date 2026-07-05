@@ -124,6 +124,7 @@ export interface CampaignInfluencerDetail {
   application_status?: string | null
   origin?: string | null
   notes: string | null
+  metadata?: Record<string, unknown> | null // stores last_reminder_sent_at, etc.
   influencer: {
     id: string
     display_name: string

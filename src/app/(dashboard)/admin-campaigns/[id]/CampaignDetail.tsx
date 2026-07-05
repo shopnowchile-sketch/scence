@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { cn, formatCurrency, formatDate, PLATFORM_ICONS } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatDatetime, PLATFORM_ICONS } from '@/lib/utils'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
 import { BartersTab } from '@/components/campaigns/BartersTab'
 import { StarRating } from '@/components/ui/StarRating'
@@ -196,7 +196,7 @@ function InfluencerBadge({
 // ── Grupo por influencer. 1 solo deliverable → todo en 1 fila (avatar +
 // nombre + Instagram + tipo + link + rating + estado). Más de uno → dropdown
 // colapsable con el header arriba y cada deliverable en su propia fila adentro.
-function RemindButton({ campaignId, influencerId, compact }: { campaignId: string; influencerId: string; compact?: boolean }) {
+function RemindButton({ campaignId, influencerId, compact, onSent }: { campaignId: string; influencerId: string; compact?: boolean; onSent?: () => void }) {
   const [sending, setSending] = useState(false)
 
   async function handleRemind() {
@@ -210,6 +210,7 @@ function RemindButton({ campaignId, influencerId, compact }: { campaignId: strin
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || 'Error al enviar recordatorio')
       toast.success('Recordatorio enviado')
+      onSent?.()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al enviar recordatorio')
     } finally {
@@ -475,6 +476,37 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   function toggleCiColumn(key: CiColumnKey) {
     setCiVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
   }
+  // Selección para enviar recordatorio a varios influencers a la vez (no
+  // uno-a-uno) — reusa el mismo endpoint /remind, solo dispara N fetches.
+  const [remindSelection, setRemindSelection] = useState<Set<string>>(new Set())
+  const [bulkSending, setBulkSending] = useState(false)
+
+  async function handleBulkRemind() {
+    const ids = Array.from(remindSelection)
+    if (ids.length === 0) return
+    setBulkSending(true)
+    try {
+      const results = await Promise.allSettled(
+        ids.map(influencerId =>
+          fetch(`/api/campaigns/${id}/deliverables/remind`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ influencer_id: influencerId }),
+          }).then(async res => {
+            if (!res.ok) throw new Error((await res.json())?.error || 'Error')
+          })
+        )
+      )
+      const ok = results.filter(r => r.status === 'fulfilled').length
+      const failed = results.length - ok
+      if (ok > 0) toast.success(`Recordatorio enviado a ${ok} influencer${ok !== 1 ? 's' : ''}`)
+      if (failed > 0) toast.error(`${failed} recordatorio${failed !== 1 ? 's' : ''} no se pudo${failed !== 1 ? 'ieron' : ''} enviar`)
+      setRemindSelection(new Set())
+      void refetch()
+    } finally {
+      setBulkSending(false)
+    }
+  }
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
@@ -607,6 +639,14 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
   })
   const infFiltersActive = !!(infSearch || infPlatform || infStatus)
   const campaignDeliverables = c.campaign_deliverables ?? []
+  // IDs de influencers visibles (tras filtros) con al menos 1 pendiente en
+  // esta campaña — usados para el checkbox "seleccionar todas" del recordatorio.
+  const remindablePendingIds = filteredInfluencers
+    .filter(ci => ci.influencer && campaignDeliverables.some(d =>
+      d.influencer?.id === ci.influencer!.id &&
+      !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
+    ))
+    .map(ci => ci.influencer!.id)
   // FIX: antes buscaba solo en confirmedInfluencers — clickear una postulante
   // pendiente en el panel de "solicitudes pendientes" no la encontraba (estaba
   // filtrada afuera) y el panel derecho caía silenciosamente a mostrar la
@@ -1399,10 +1439,22 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
             <p className="text-sm text-gray-500">
               {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
             </p>
-            <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors">
-              + Agregar influencer
-            </Link>
+            <div className="flex items-center gap-2">
+              {remindSelection.size > 0 && (
+                <button
+                  onClick={handleBulkRemind}
+                  disabled={bulkSending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+                >
+                  {bulkSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  Enviar recordatorio ({remindSelection.size})
+                </button>
+              )}
+              <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors">
+                + Agregar influencer
+              </Link>
+            </div>
           </div>
 
           {confirmedInfluencers.length > 0 && (
@@ -1494,6 +1546,24 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="px-3 py-3 text-left bg-gray-50 w-8">
+                      {remindablePendingIds.length > 0 && (
+                        <input
+                          type="checkbox"
+                          title="Seleccionar todas las que tienen pendientes"
+                          className="w-3.5 h-3.5 accent-violet-600 cursor-pointer"
+                          checked={remindablePendingIds.every(pid => remindSelection.has(pid))}
+                          onChange={(e) => {
+                            setRemindSelection(prev => {
+                              const next = new Set(prev)
+                              if (e.target.checked) remindablePendingIds.forEach(pid => next.add(pid))
+                              else remindablePendingIds.forEach(pid => next.delete(pid))
+                              return next
+                            })
+                          }}
+                        />
+                      )}
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Influencer</th>
                     {ciVisibleColumns.platform && (
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataforma</th>
@@ -1542,6 +1612,23 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                           selectedInfluencer?.id === inf.id ? 'bg-violet-50/70' : ''
                         )}
                       >
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          {myPending > 0 && (
+                            <input
+                              type="checkbox"
+                              className="w-3.5 h-3.5 accent-violet-600 cursor-pointer"
+                              checked={remindSelection.has(inf.id)}
+                              onChange={(e) => {
+                                setRemindSelection(prev => {
+                                  const next = new Set(prev)
+                                  if (e.target.checked) next.add(inf.id)
+                                  else next.delete(inf.id)
+                                  return next
+                                })
+                              }}
+                            />
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {inf.avatar_url ? (
@@ -1634,8 +1721,19 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {typeof ci.metadata?.last_reminder_sent_at === 'string' && (
+                              <span
+                                title={`Recordatorio enviado ${formatDatetime(ci.metadata.last_reminder_sent_at)}`}
+                                className="flex items-center gap-1 text-emerald-600 flex-shrink-0"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                <span className="text-[10px] whitespace-nowrap hidden xl:inline">
+                                  {formatDate(ci.metadata.last_reminder_sent_at)}
+                                </span>
+                              </span>
+                            )}
                             {myPending > 0 && (
-                              <RemindButton campaignId={id} influencerId={inf.id} compact />
+                              <RemindButton campaignId={id} influencerId={inf.id} compact onSent={() => void refetch()} />
                             )}
                             <a
                               href={`/api/campaigns/${id}/influencer-report?influencer_id=${inf.id}`}

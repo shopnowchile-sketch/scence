@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown,
+  ChevronRight, Search, X, ChevronDown, Star, Mail,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -181,8 +181,60 @@ function InfluencerBadge({
 // ── Grupo por influencer. 1 solo deliverable → todo en 1 fila (avatar +
 // nombre + Instagram + tipo + link + rating + estado). Más de uno → dropdown
 // colapsable con el header arriba y cada deliverable en su propia fila adentro.
+function RemindButton({ campaignId, influencerId }: { campaignId: string; influencerId: string }) {
+  const [sending, setSending] = useState(false)
+
+  async function handleRemind() {
+    setSending(true)
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/deliverables/remind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ influencer_id: influencerId }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || 'Error al enviar recordatorio')
+      toast.success('Recordatorio enviado')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al enviar recordatorio')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleRemind}
+      disabled={sending}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 flex-shrink-0"
+    >
+      {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+      Enviar recordatorio
+    </button>
+  )
+}
+
+function InfluencerStatsPill({ pct, avgRating, ratedCount }: { pct: number; avgRating: number | null; ratedCount: number }) {
+  return (
+    <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="text-right">
+        <div className="text-sm font-bold text-gray-900">{pct}%</div>
+        <div className="text-[10px] text-gray-400">completado</div>
+      </div>
+      <div className="text-right">
+        <div className="text-sm font-bold text-gray-900 flex items-center gap-1 justify-end">
+          {avgRating !== null ? (
+            <><Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />{avgRating.toFixed(1)}</>
+          ) : <span className="text-gray-300">—</span>}
+        </div>
+        <div className="text-[10px] text-gray-400">{ratedCount > 0 ? `${ratedCount} calif.` : 'sin calificar'}</div>
+      </div>
+    </div>
+  )
+}
+
 function DeliverableInfluencerGroup({
-  influencer, igUsername, items, campaignId, reviewNotes, setReviewNotes,
+  influencer, igUsername, items, campaignId, reviewNotes, setReviewNotes, pct, avgRating, ratedCount,
 }: {
   influencer: { id: string; display_name: string; avatar_url: string | null }
   igUsername: string | null
@@ -190,6 +242,9 @@ function DeliverableInfluencerGroup({
   campaignId: string
   reviewNotes: Record<string, string>
   setReviewNotes: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  pct: number
+  avgRating: number | null
+  ratedCount: number
 }) {
   const [open, setOpen] = useState(false)
   const collapsible = items.length > 1
@@ -199,6 +254,7 @@ function DeliverableInfluencerGroup({
       <div className="card p-3">
         <div className="flex items-center gap-4">
           <InfluencerBadge influencer={influencer} igUsername={igUsername} />
+          <InfluencerStatsPill pct={pct} avgRating={avgRating} ratedCount={ratedCount} />
           <div className="w-px self-stretch bg-gray-100 flex-shrink-0" />
           <DeliverableContent d={items[0]} campaignId={campaignId} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
         </div>
@@ -210,7 +266,8 @@ function DeliverableInfluencerGroup({
     <div className="card p-4">
       <div className="flex items-center justify-between gap-3 cursor-pointer" onClick={() => setOpen(v => !v)}>
         <InfluencerBadge influencer={influencer} igUsername={igUsername} />
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <InfluencerStatsPill pct={pct} avgRating={avgRating} ratedCount={ratedCount} />
           <span className="badge badge-gray text-[11px]">{items.length} entregables</span>
           <ChevronRight className={cn('h-4 w-4 text-gray-400 transition-transform', open ? 'rotate-90' : '')} />
         </div>
@@ -1668,8 +1725,85 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               creados en bulk para todas las invitadas que aún no entregan nada. */}
           {(() => {
             const submittedDeliverables = campaignDeliverables.filter(d => d.content_url || d.published_url)
+
+            // Resumen visual de la campaña (aparte del "% Completado" del
+            // header, que es un promedio de progress — este es count-based:
+            // entregado = tiene URL o status aprobado/completado/publicado).
+            const totalDeliverables = campaignDeliverables.length
+            const completedDeliverables = campaignDeliverables.filter(d =>
+              !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)
+            ).length
+            const completedPctCount = totalDeliverables > 0
+              ? Math.round((completedDeliverables / totalDeliverables) * 100)
+              : 0
+            const ratedDeliverables = campaignDeliverables.filter(d => d.content_rating != null)
+            const avgCampaignRating = ratedDeliverables.length > 0
+              ? Math.round((ratedDeliverables.reduce((s, d) => s + (d.content_rating as number), 0) / ratedDeliverables.length) * 10) / 10
+              : null
+
+            // Influencers con al menos 1 entregable pendiente (mismo criterio
+            // de "completado" de arriba, en negativo) — independiente de si ya
+            // subieron otros, para poder recordarles lo que les falta.
+            const pendingByInfluencer = new Map<string, { influencer: { id: string; display_name: string; avatar_url: string | null }; count: number }>()
+            for (const d of campaignDeliverables) {
+              const isPending = !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
+              if (!isPending || !d.influencer) continue
+              const key = d.influencer.id
+              if (!pendingByInfluencer.has(key)) pendingByInfluencer.set(key, { influencer: d.influencer, count: 0 })
+              pendingByInfluencer.get(key)!.count += 1
+            }
+
             return (
               <>
+                {/* Resumen: % completado (count-based) + rating promedio de
+                    la campaña — separado del KPI "Completado" de arriba, no
+                    lo reemplaza (ese es progress-avg, este es real/count). */}
+                {totalDeliverables > 0 && (
+                  <div className="card p-4 flex items-center gap-6 flex-wrap">
+                    <div>
+                      <div className="text-3xl font-bold text-gray-900">{completedPctCount}%</div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Entregado ({completedDeliverables}/{totalDeliverables} con URL o aprobado/publicado)
+                      </div>
+                    </div>
+                    <div className="h-10 w-px bg-gray-100" />
+                    <div>
+                      <div className="text-3xl font-bold text-gray-900 flex items-center gap-1.5">
+                        {avgCampaignRating !== null ? (
+                          <>
+                            <Star className="h-6 w-6 text-amber-400 fill-amber-400" />
+                            {avgCampaignRating.toFixed(1)}
+                          </>
+                        ) : <span className="text-gray-300">—</span>}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Rating promedio ({ratedDeliverables.length} calificado{ratedDeliverables.length !== 1 ? 's' : ''})
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Recordatorio — solo influencers con entregables pendientes
+                    de ESTA campaña (no cambia status ni rating, solo notifica). */}
+                {pendingByInfluencer.size > 0 && (
+                  <div className="card p-4">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+                      Con entregables pendientes ({pendingByInfluencer.size})
+                    </p>
+                    <div className="space-y-2">
+                      {Array.from(pendingByInfluencer.values()).map(({ influencer, count }) => (
+                        <div key={influencer.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-gray-900 truncate">{influencer.display_name}</span>
+                            <span className="badge badge-gray text-[10px] flex-shrink-0">{count} pendiente{count !== 1 ? 's' : ''}</span>
+                          </div>
+                          <RemindButton campaignId={id} influencerId={influencer.id} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Header with status pills + Add button */}
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1735,6 +1869,26 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                       groups.get(key)!.items.push(d)
                     }
 
+                    // % completado y rating promedio POR influencer en ESTA
+                    // campaña (no el global de arriba) — base: TODOS sus
+                    // deliverables de la campaña, no solo los ya subidos.
+                    const statsByInfluencerId = new Map<string, { pct: number; avgRating: number | null; ratedCount: number }>()
+                    for (const d of campaignDeliverables) {
+                      if (!d.influencer) continue
+                      const key = d.influencer.id
+                      if (!statsByInfluencerId.has(key)) statsByInfluencerId.set(key, { pct: 0, avgRating: null, ratedCount: 0 })
+                    }
+                    for (const key of Array.from(statsByInfluencerId.keys())) {
+                      const own = campaignDeliverables.filter(d => d.influencer?.id === key)
+                      const ownDone = own.filter(d => !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)).length
+                      const ownRated = own.filter(d => d.content_rating != null)
+                      const pct = own.length > 0 ? Math.round((ownDone / own.length) * 100) : 0
+                      const avgRating = ownRated.length > 0
+                        ? Math.round((ownRated.reduce((s, d) => s + (d.content_rating as number), 0) / ownRated.length) * 10) / 10
+                        : null
+                      statsByInfluencerId.set(key, { pct, avgRating, ratedCount: ownRated.length })
+                    }
+
                     return Array.from(groups.values()).map(g => (
                       <DeliverableInfluencerGroup
                         key={g.influencer.id}
@@ -1744,6 +1898,9 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                         campaignId={id}
                         reviewNotes={reviewNotes}
                         setReviewNotes={setReviewNotes}
+                        pct={statsByInfluencerId.get(g.influencer.id)?.pct ?? 0}
+                        avgRating={statsByInfluencerId.get(g.influencer.id)?.avgRating ?? null}
+                        ratedCount={statsByInfluencerId.get(g.influencer.id)?.ratedCount ?? 0}
                       />
                     ))
                   })()

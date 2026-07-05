@@ -954,8 +954,8 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
       </div>
 
       {/* Header card */}
-      <div className="card p-6">
-        <div className="flex items-start gap-4">
+      <div className="card p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
             <Target className="h-6 w-6 text-violet-600" />
           </div>
@@ -989,22 +989,22 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 flex-shrink-0">
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 w-full sm:w-auto sm:flex-shrink-0">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
               <div className="text-2xl font-bold text-gray-900">{pct}%</div>
               <div className="text-[11px] text-gray-400">Completado</div>
             </div>
             {!!c.budget_total && (
-              <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
+              <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
                 <div className="text-2xl font-bold text-gray-900">{budgetPct}%</div>
                 <div className="text-[11px] text-gray-400">Budget usado</div>
               </div>
             )}
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-[80px]">
+            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
               <div className="text-2xl font-bold text-gray-900">{campaignInfluencers.length}</div>
               <div className="text-[11px] text-gray-400">Invitadas</div>
             </div>
-            <div className="text-center bg-violet-50 rounded-xl p-3 min-w-[110px]">
+            <div className="text-center bg-violet-50 rounded-xl p-3 min-w-0 sm:min-w-[110px]">
               <div className="text-base font-bold text-violet-700">
                 {((c as { visibility?: string | null }).visibility === 'open' || (c as { visibility?: string | null }).visibility === 'public') ? 'Pública' : 'Por invitación'}
               </div>
@@ -1015,7 +1015,7 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
                 como card aparte en el Overview, fácil de perder de vista. Ahora
                 está en el resumen principal, junto a Completado/Budget/Invitadas. */}
             {!!c.commission_rate && (
-              <div className="text-center bg-amber-50 rounded-xl p-3 min-w-[80px]">
+              <div className="text-center bg-amber-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
                 <div className="text-2xl font-bold text-amber-700">{c.commission_rate}%</div>
                 <div className="text-[11px] text-amber-500">Comisión</div>
               </div>

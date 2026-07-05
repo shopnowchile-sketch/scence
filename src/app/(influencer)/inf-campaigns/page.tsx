@@ -22,6 +22,7 @@ type Campaign = {
   application_status: string | null
   deliverables_total: number
   deliverables_done: number
+  next_due: string | null
   self_created: boolean
 }
 
@@ -63,7 +64,7 @@ type ApiRow = {
     visibility?: string | null
     brand?: { id: string; name: string; logo_url: string | null } | null
   } | null
-  campaign_deliverables: Array<{ id: string; status: string }>
+  campaign_deliverables: Array<{ id: string; status: string; due_date: string | null }>
 }
 
 // Una postulación pending solo está garantizado que ya se ve en "Disponibles
@@ -83,6 +84,12 @@ function toRow(row: ApiRow): Campaign | null {
   if (!c?.id) return null
   const total = row.campaign_deliverables?.length ?? 0
   const done  = (row.campaign_deliverables ?? []).filter(d => d.status === 'approved' || d.status === 'published').length
+  // Próxima entrega: la fecha más próxima entre los entregables que aún
+  // faltan por subir/aprobar (no entre los ya aprobados/publicados).
+  const nextDue = (row.campaign_deliverables ?? [])
+    .filter(d => d.status !== 'approved' && d.status !== 'published' && d.due_date)
+    .map(d => d.due_date as string)
+    .sort()[0] ?? null
   return {
     id:                 c.id,
     name:               c.name,
@@ -94,6 +101,7 @@ function toRow(row: ApiRow): Campaign | null {
     application_status: row.application_status ?? null,
     deliverables_total: total,
     deliverables_done:  done,
+    next_due:           nextDue,
     self_created:       row._self_created ?? false,
   }
 }
@@ -441,10 +449,14 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : STATUS_CONFIG[c.status] ?? STATUS_CONFIG.active
   const pct     = c.deliverables_total > 0 ? Math.round((c.deliverables_done / c.deliverables_total) * 100) : 0
+  // Activa con entregables pendientes → clic va directo a sus entregables
+  // (inf-tasks), no al detalle de campaña (que ya no lista entregables).
+  const isActive = c.status === 'active' && c.application_status !== 'pending'
+  const href = isActive ? `/inf-tasks?campaign=${c.id}` : `/inf-campaign/${c.id}`
 
   return (
     <button
-      onClick={() => router.push(`/inf-campaign/${c.id}`)}
+      onClick={() => router.push(href)}
       className="w-full bg-white rounded-2xl border border-gray-100 p-4 hover:border-violet-200 hover:shadow-sm transition-all text-left"
     >
       <div className="flex items-center gap-3">
@@ -476,6 +488,15 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
               </span>
             )}
           </div>
+
+          {/* Próxima entrega, en grande — solo campañas activas con
+              entregables pendientes. Pedido: que se note de inmediato,
+              sin tener que abrir la campaña para saberlo. */}
+          {isActive && c.next_due && (
+            <p className="text-sm font-bold text-violet-700 mt-1.5">
+              Próxima entrega: {fmt(c.next_due)}
+            </p>
+          )}
 
           {c.deliverables_total > 0 && (
             <div className="mt-2 flex items-center gap-2">

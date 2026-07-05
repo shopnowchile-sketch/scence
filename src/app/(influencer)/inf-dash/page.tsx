@@ -255,6 +255,20 @@ export default function InfluencerDashboard() {
   // página, acá solo se filtra en el cliente sobre el mismo endpoint).
   const availableCampaigns = openCampaigns.filter(c => !c._applied)
 
+  // Campañas activas con su % de entregables completados — pedido: verlas
+  // en el dashboard (no solo el conteo agregado del gauge). Al 100% no pasa
+  // nada al hacer clic (ya no hay nada pendiente que subir); con menos de
+  // 100% lleva directo a los entregables de ESA campaña en /inf-tasks.
+  const activeCampaigns = withStatus
+    .filter(x => x.status === 'activa' && x.ci.campaign?.id)
+    .map(x => {
+      const delivs = x.ci.campaign_deliverables ?? []
+      const total  = delivs.length
+      const done   = delivs.filter(d => d.status === 'approved' || d.status === 'published').length
+      const pct    = total > 0 ? Math.round((done / total) * 100) : 0
+      return { ci: x.ci, pct, total }
+    })
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -327,6 +341,52 @@ export default function InfluencerDashboard() {
           </button>
         )}
       </div>
+
+      {/* Campañas activas + % completado — al 100% no navega (nada
+          pendiente); con menos, lleva directo a sus entregables. */}
+      {activeCampaigns.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-50">
+            <CheckSquare className="h-4 w-4 text-violet-400" />
+            <h2 className="text-sm font-bold text-gray-900 flex-1">Campañas activas ({activeCampaigns.length})</h2>
+          </div>
+          <div className="px-5 py-4 space-y-2">
+            {activeCampaigns.map(({ ci, pct, total }) => {
+              const c = ci.campaign!
+              const done = pct === 100
+              const Wrapper = done ? 'div' : 'button'
+              const extraProps = done ? {} : { onClick: () => router.push(`/inf-tasks?campaign=${c.id}`) }
+              return (
+                <Wrapper
+                  key={c.id}
+                  {...extraProps}
+                  className={cn(
+                    'w-full flex items-center gap-3 bg-gray-50 rounded-xl border border-gray-100 p-3 text-left transition-all',
+                    !done && 'hover:border-violet-200 hover:shadow-sm'
+                  )}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {c.brand?.logo_url
+                      ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-8 h-8 object-contain" />
+                      : <Building2 className="h-4 w-4 text-violet-300" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{c.name}</p>
+                    {total > 0 && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden max-w-[100px]">
+                          <div className={cn('h-full rounded-full', done ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <span className={cn('text-xl font-bold flex-shrink-0', done ? 'text-green-500' : 'text-gray-900')}>{pct}%</span>
+                </Wrapper>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Campañas disponibles para postular — ya postuladas NO aparecen acá,
           se ven en /inf-campaigns con el badge "En revisión" (mismo

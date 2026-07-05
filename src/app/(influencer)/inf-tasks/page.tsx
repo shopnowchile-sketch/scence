@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   CheckCircle2, Circle, Clock, AlertCircle,
   RefreshCw, Filter, Link2, ExternalLink, Upload, ChevronRight,
@@ -290,14 +290,35 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// Wrapper con Suspense: useSearchParams() lo exige en build de producción
+// (mismo problema ya visto antes en el layout de marca — sin Suspense, el
+// build de Next rompía). El deep-link "?campaign=id" (usado desde
+// /inf-campaigns e inf-dash para ir directo a los entregables de una
+// campaña) se lee adentro de TasksPageInner.
 export default function TasksPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+      </div>
+    }>
+      <TasksPageInner />
+    </Suspense>
+  )
+}
+
+function TasksPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const focusCampaignId = searchParams.get('campaign')
   const [tasks,        setTasks]        = useState<Task[]>([])
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [loading,      setLoading]      = useState(true)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [activeTab,    setActiveTab]    = useState<'deliverables' | 'tasks'>('deliverables')
-  const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(
+    () => new Set(focusCampaignId ? [focusCampaignId] : [])
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -358,6 +379,14 @@ export default function TasksPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Deep-link "?campaign=id" — hace scroll a la campaña apuntada una vez
+  // que ya está renderizada (recién cargados los datos).
+  useEffect(() => {
+    if (!focusCampaignId || loading) return
+    const el = document.getElementById(`campaign-group-${focusCampaignId}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [focusCampaignId, loading])
 
   async function updateTaskStatus(taskId: string, newStatus: Task['status']) {
     const prev = tasks
@@ -472,7 +501,7 @@ export default function TasksPage() {
             const expanded = expandedCampaigns.has(g.campaign_id)
 
             return (
-              <div key={g.campaign_id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div key={g.campaign_id} id={`campaign-group-${g.campaign_id}`} className="bg-white rounded-2xl border border-gray-100 overflow-hidden scroll-mt-4">
                 <div className="w-full text-left p-4">
                   <div className="flex items-center justify-between gap-3">
                     {/* Único link a la campaña de todo el grupo — lleva al

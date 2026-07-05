@@ -234,5 +234,38 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
   }
 
+  // Recalcular influencers.rating tras calificar un entregable — promedio de
+  // content_rating de TODOS sus deliverables (cualquier campaña), redondeado
+  // a 1 decimal. Non-fatal: si falla, no debe tumbar la respuesta del rate.
+  if (action === 'rate' && existing.influencer_id) {
+    try {
+      const { data: ratedDeliverables, error: ratingsErr } = await admin
+        .from('campaign_deliverables')
+        .select('content_rating')
+        .eq('influencer_id', existing.influencer_id)
+        .not('content_rating', 'is', null)
+
+      if (ratingsErr) {
+        console.error('[PATCH deliverables] error leyendo ratings para promedio:', ratingsErr)
+      } else {
+        const ratings = (ratedDeliverables ?? []).map(d => d.content_rating as number)
+        const avgRating = ratings.length > 0
+          ? Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10
+          : null
+
+        const { error: updateRatingErr } = await admin
+          .from('influencers')
+          .update({ rating: avgRating })
+          .eq('id', existing.influencer_id)
+
+        if (updateRatingErr) {
+          console.error('[PATCH deliverables] error actualizando influencers.rating:', updateRatingErr)
+        }
+      }
+    } catch (e) {
+      console.error('[PATCH deliverables] recalculo de rating falló (non-fatal):', e)
+    }
+  }
+
   return NextResponse.json({ data })
 }

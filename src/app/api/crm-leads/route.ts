@@ -74,11 +74,28 @@ export async function GET(request: NextRequest) {
   })
 
   // Valores distintos de `source` (para poblar el filtro "Origen" en la UI) —
-  // se calcula junto con la lista para no necesitar un endpoint nuevo. Límite
-  // explícito alto (no el default silencioso de Supabase, ver bug ya
-  // encontrado en notify-no-instagram) para no perder fuentes nuevas.
-  const { data: sourceRows } = await admin.from('crm_leads').select('source').limit(20000)
-  const sources = Array.from(new Set((sourceRows ?? []).map(r => r.source).filter(Boolean))).sort()
+  // se calcula junto con la lista para no necesitar un endpoint nuevo.
+  // FIX (2026-07-05): un solo `.limit(20000)` NO bastaba — Supabase/PostgREST
+  // corta cada request a ~1000 filas server-side sin importar el límite
+  // pedido del lado del cliente (mismo bug ya encontrado y corregido en
+  // notify-no-instagram/route.ts). Con 2 tandas importadas en orden distinto
+  // (maturana_enero_2027 primero, 4733 filas; cuicos_las_condes_wengerhaus
+  // después, 1000 filas), la query sin paginar solo veía la primera tanda y
+  // "cuicos" nunca aparecía en el filtro. Se pagina con el mismo patrón
+  // PAGE=1000 + loop que ya usa loadScan/notify-no-instagram.
+  const sourcesSet = new Set<string>()
+  {
+    const PAGE = 1000
+    let from = 0
+    for (;;) {
+      const { data: sourceRows } = await admin.from('crm_leads').select('source').range(from, from + PAGE - 1)
+      if (!sourceRows || sourceRows.length === 0) break
+      for (const r of sourceRows) if (r.source) sourcesSet.add(r.source)
+      if (sourceRows.length < PAGE) break
+      from += PAGE
+    }
+  }
+  const sources = Array.from(sourcesSet).sort()
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit, sources })
 }

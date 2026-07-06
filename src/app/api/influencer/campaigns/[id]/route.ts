@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data: campaign, error } = await admin
     .from('campaigns')
     .select(`
-      id, name, description, content_guidelines, type, status, visibility,
+      id, name, description, content_guidelines, brief_url, type, status, visibility,
       start_date, end_date, budget_total, currency, hashtags, platforms,
       deliverable_templates, application_deadline, max_influencers,
       brand:brands!brand_id (id, name, logo_url, website)

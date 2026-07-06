@@ -35,8 +35,9 @@ type CampaignRow = {
   campaign_deliverables: Deliverable[]
   campaign: {
     id: string; name: string; status: string
-    description: string | null; brief: string | null
+    description: string | null
     content_guidelines: string | null
+    brief_url?: string | null
     hashtags: string[] | null; platforms: string[] | null
     start_date: string | null; end_date: string | null
     currency: string
@@ -47,7 +48,7 @@ type CampaignRow = {
 // Preview de campaña open aún no postulada (GET /api/influencer/campaigns/[id])
 type PreviewCampaign = {
   id: string; name: string; status: string; visibility: string
-  description: string | null; content_guidelines: string | null
+  description: string | null; content_guidelines: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
@@ -137,9 +138,9 @@ function AddDeliverableForm({ campaignId, onAdded }: { campaignId: string; onAdd
 }
 
 // ── Brief colapsado (mobile-first, cerrado por defecto) ───────────────────────
-function CollapsibleBrief({ text, guidelines }: { text: string | null; guidelines?: string | null }) {
+function CollapsibleBrief({ text, guidelines, briefUrl }: { text: string | null; guidelines?: string | null; briefUrl?: string | null }) {
   const [open, setOpen] = useState(false)
-  if (!text?.trim() && !guidelines?.trim()) return null
+  if (!text?.trim() && !guidelines?.trim() && !briefUrl?.trim()) return null
   return (
     <div className="pt-3 mt-3 border-t border-gray-50">
       {/* Más grande + en violeta (color = clickeable, mismo criterio que
@@ -157,6 +158,17 @@ function CollapsibleBrief({ text, guidelines }: { text: string | null; guideline
               <p className="text-xs font-semibold text-gray-500 mb-1">Lineamientos de contenido</p>
               <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{guidelines}</p>
             </div>
+          )}
+          {briefUrl?.trim() && (
+            <a
+              href={briefUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-violet-600 hover:text-violet-700"
+            >
+              <FileText className="h-4 w-4" />
+              Abrir brief completo
+            </a>
           )}
         </div>
       )}
@@ -255,7 +267,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           </div>
 
-          <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} />
+          <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} briefUrl={p.brief_url} />
         </div>
 
         {/* CTA arriba, antes del detalle de deliverables (pedido: que se vea
@@ -386,14 +398,18 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           )}
         </div>
 
-        <CollapsibleBrief text={c.brief || c.description} guidelines={c.content_guidelines} />
+        {/* Brief/guías solo visibles una vez aceptada — mientras esté
+            pending (postulación o invitación privada) no se muestra nada
+            de esto, solo lo de arriba (nombre, marca, fechas). */}
+        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
       </div>
 
       {/* Tags obligatorios de la campaña (plataformas + hashtags) — mismo
           bloque que ya se mostraba en el preview antes de postular; acá
           faltaba. Los entregables (progreso, subir link) viven en la tab
-          Entregables del portal, no se repiten en este detalle. */}
-      {((c.platforms?.length ?? 0) > 0 || (c.hashtags?.length ?? 0) > 0) && (
+          Entregables del portal, no se repiten en este detalle. Gateado por
+          isPending: antes de aceptar no se muestran tags. */}
+      {!isPending && ((c.platforms?.length ?? 0) > 0 || (c.hashtags?.length ?? 0) > 0) && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-wrap gap-2">
           {(c.platforms ?? []).map(pl => (
             <span key={pl} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-violet-50 text-violet-600 capitalize">{pl}</span>
@@ -405,25 +421,27 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       )}
 
       {/* Add deliverable — self-created only */}
-      {isSelfCreated && <AddDeliverableForm campaignId={c.id} onAdded={load} />}
+      {!isPending && isSelfCreated && <AddDeliverableForm campaignId={c.id} onAdded={load} />}
 
-      {/* Canjes (solo lectura) */}
-      <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} />
+      {/* Canjes (solo lectura) — entregables/resultados, ocultos hasta aceptar */}
+      {!isPending && <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} />}
 
-      {/* Report PDF */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
-          <Download className="h-5 w-5 text-violet-600" />
+      {/* Report PDF — resume entregables/resultados, oculto hasta aceptar */}
+      {!isPending && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
+            <Download className="h-5 w-5 text-violet-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-gray-900">Reporte de Campaña</p>
+            <p className="text-xs text-gray-400">Resumen de entregables y resultados</p>
+          </div>
+          <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer"
+            className="text-sm font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 flex-shrink-0">
+            <Download className="h-4 w-4" /> Ver PDF
+          </a>
         </div>
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-gray-900">Reporte de Campaña</p>
-          <p className="text-xs text-gray-400">Resumen de entregables y resultados</p>
-        </div>
-        <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer"
-          className="text-sm font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 flex-shrink-0">
-          <Download className="h-4 w-4" /> Ver PDF
-        </a>
-      </div>
+      )}
     </div>
   )
 }

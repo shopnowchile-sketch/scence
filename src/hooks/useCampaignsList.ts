@@ -42,26 +42,26 @@ export function useCampaignsList(params: ListParams = {}) {
 }
 
 // ── Fetch single ──────────────────────────────────────────────────────────────
-async function fetchCampaign(id: string) {
-  const res = await fetch(`/api/campaigns/${id}`)
+async function fetchCampaign(id: string, apiBase = '/api/campaigns') {
+  const res = await fetch(`${apiBase}/${id}`)
   if (!res.ok) throw new Error('Campaña no encontrada')
   return res.json() as Promise<{ data: CampaignDetail }>
 }
 
-export function useCampaignDetail(id: string) {
+export function useCampaignDetail(id: string, apiBase = '/api/campaigns') {
   return useQuery({
-    queryKey: ['campaign', id],
-    queryFn:  () => fetchCampaign(id),
+    queryKey: ['campaign', apiBase, id],
+    queryFn:  () => fetchCampaign(id, apiBase),
     enabled:  !!id,
   })
 }
 
 // ── Patch campaign status ─────────────────────────────────────────────────────
-export function usePatchCampaign(id: string) {
+export function usePatchCampaign(id: string, apiBase = '/api/campaigns') {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
-      const res = await fetch(`/api/campaigns/${id}`, {
+      const res = await fetch(`${apiBase}/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -73,7 +73,7 @@ export function usePatchCampaign(id: string) {
       return res.json()
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['campaign', id] })
+      qc.invalidateQueries({ queryKey: ['campaign', apiBase, id] })
       qc.invalidateQueries({ queryKey: ['campaigns'] })
     },
     onError: (err: Error) => toast.error(err.message),

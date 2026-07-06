@@ -71,3 +71,83 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   return NextResponse.json({ data })
 }
+
+
+// PATCH /api/brand/campaigns/[id] — editar campaña desde marca dueña
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const supabase = createServerClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const admin = createAdminClient()
+
+  const { data: brand } = await admin
+    .from('brands')
+    .select('id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const allowed = [
+    'name',
+    'description',
+    'type',
+    'platforms',
+    'start_date',
+    'end_date',
+    'budget_total',
+    'commission_rate',
+    'currency',
+    'content_guidelines',
+    'social_tags',
+    'hashtags',
+    'deliverable_templates',
+    'approval_required',
+    'visibility',
+  ]
+
+  const updates: Record<string, unknown> = {}
+
+  for (const key of allowed) {
+    if (key in body) updates[key] = body[key]
+  }
+
+  if (typeof updates.name === 'string') {
+    const name = updates.name.trim()
+    if (!name) return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
+    updates.name = name
+  }
+
+  if (updates.visibility && !['private', 'open'].includes(String(updates.visibility))) {
+    return NextResponse.json({ error: 'visibility debe ser private u open' }, { status: 422 })
+  }
+
+  const { data, error } = await admin
+    .from('campaigns')
+    .update(updates)
+    .eq('id', params.id)
+    .eq('brand_id', brand.id)
+    .select('id, name, status, visibility')
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    }
+    console.error('[PATCH /api/brand/campaigns/[id]]', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ data })
+}
+
+export const PUT = PATCH

@@ -81,10 +81,11 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
   const router = useRouter()
   const isBrandPortal = portal === 'brand'
   const basePath = isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'
+  const apiBase = isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns'
   const [saving, setSaving] = useState(false)
 
-  const { data: res, isLoading, error } = useCampaignDetail(id)
-  const patchCampaign = usePatchCampaign(id)
+  const { data: res, isLoading, error } = useCampaignDetail(id, apiBase)
+  const patchCampaign = usePatchCampaign(id, apiBase)
 
   // Permiso: en portal marca, solo la marca creadora puede editar (mismo
   // criterio que ya aplica el backend en PUT/PATCH /api/campaigns/[id] vía

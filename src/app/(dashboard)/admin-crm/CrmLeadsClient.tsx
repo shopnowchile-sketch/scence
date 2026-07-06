@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Send, Loader2, Building2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Search, Send, Loader2, Building2, CheckCircle2, Circle } from 'lucide-react'
+import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
 type Lead = {
@@ -20,6 +20,10 @@ type Lead = {
   qualification_status: 'unqualified' | 'qualified' | 'rejected' | 'contacted' | 'converted'
   contacted_at: string | null
   created_at: string
+  source: string | null
+  imported_at: string | null
+  app_connected: boolean
+  app_last_sign_in_at: string | null
 }
 
 const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: string }> = {
@@ -37,6 +41,8 @@ export function CrmLeadsClient() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [qualification, setQualification] = useState('')
+  const [source, setSource] = useState('')
+  const [sources, setSources] = useState<string[]>([])
   const [sendingId, setSendingId] = useState<string | null>(null)
   const limit = 50
 
@@ -45,16 +51,18 @@ export function CrmLeadsClient() {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
     if (search) params.set('search', search)
     if (qualification) params.set('qualification', qualification)
+    if (source) params.set('source', source)
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
       setLeads(j.data ?? [])
       setTotal(j.total ?? 0)
+      if (Array.isArray(j.sources)) setSources(j.sources)
     } catch {
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification])
+  }, [page, search, qualification, source])
 
   useEffect(() => { load() }, [load])
 
@@ -119,26 +127,38 @@ export function CrmLeadsClient() {
             <option key={k} value={k}>{cfg.label}</option>
           ))}
         </select>
+        <select
+          value={source}
+          onChange={e => { setPage(1); setSource(e.target.value) }}
+          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-700"
+        >
+          <option value="">Todos los orígenes</option>
+          {sources.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-50 text-left text-xs text-gray-400">
               <th className="px-4 py-3 font-semibold">Empresa</th>
               <th className="px-4 py-3 font-semibold">Contacto</th>
               <th className="px-4 py-3 font-semibold">Ubicación</th>
               <th className="px-4 py-3 font-semibold">Rubro</th>
+              <th className="px-4 py-3 font-semibold">Origen</th>
               <th className="px-4 py-3 font-semibold">Calificación</th>
-              <th className="px-4 py-3 font-semibold">Último contacto</th>
+              <th className="px-4 py-3 font-semibold">Último email</th>
+              <th className="px-4 py-3 font-semibold">Conectado</th>
               <th className="px-4 py-3 font-semibold text-right">Acción</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
             ) : leads.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
             ) : leads.map(lead => {
               const cfg = STATUS_CONFIG[lead.qualification_status] ?? STATUS_CONFIG.unqualified
               return (
@@ -155,6 +175,9 @@ export function CrmLeadsClient() {
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{lead.commune || '—'}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[160px]">{lead.industry || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[140px]" title={lead.source ?? undefined}>
+                    {lead.source || '—'}
+                  </td>
                   <td className="px-4 py-3">
                     <select
                       value={lead.qualification_status}
@@ -168,6 +191,17 @@ export function CrmLeadsClient() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400">
                     {lead.contacted_at ? new Date(lead.contacted_at).toLocaleDateString('es-CL') : 'Nunca'}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {lead.app_connected ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600" title={lead.app_last_sign_in_at ? `Último ingreso: ${formatDate(lead.app_last_sign_in_at, "d MMM yyyy HH:mm")}` : undefined}>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Sí
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-gray-300">
+                        <Circle className="h-3.5 w-3.5" /> No
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button

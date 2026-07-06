@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle } from 'lucide-react'
+import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
 type Activity = {
@@ -32,6 +32,10 @@ type Lead = {
   qualification_notes: string | null
   contacted_at: string | null
   created_at: string
+  source: string | null
+  imported_at: string | null
+  app_connected: boolean
+  app_last_sign_in_at: string | null
   activities: Activity[]
 }
 
@@ -177,6 +181,36 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
             <div className="flex items-center gap-3 mt-5 flex-wrap text-xs text-gray-400">
               <span className="badge badge-gray">{lead.company_size || 'Sin dato'}</span>
               <span className="badge badge-gray">{lead.employee_count || 'Sin dato'} empleados</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-gray-100 text-sm">
+              <div className="flex items-center gap-2 text-gray-600">
+                <Tag className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
+                <div>
+                  <div className="text-xs text-gray-400">Origen</div>
+                  <div className="font-medium">{lead.source || '—'}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-gray-600">
+                <CalendarDays className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
+                <div>
+                  <div className="text-xs text-gray-400">Importado</div>
+                  <div className="font-medium">{lead.imported_at ? formatDate(lead.imported_at) : '—'}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-gray-600">
+                {lead.app_connected
+                  ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                  : <Circle className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />}
+                <div>
+                  <div className="text-xs text-gray-400">Conectado a la app</div>
+                  <div className="font-medium">
+                    {lead.app_connected
+                      ? (lead.app_last_sign_in_at ? `Sí · ${formatDate(lead.app_last_sign_in_at, "d MMM yyyy HH:mm")}` : 'Sí')
+                      : 'No'}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <button

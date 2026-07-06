@@ -98,6 +98,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const allowed = [
+    'status',
     'name',
     'description',
     'type',
@@ -131,11 +132,44 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'visibility debe ser private u open' }, { status: 422 })
   }
 
+  if (updates.status && !['draft', 'pending_approval', 'active', 'paused', 'completed', 'canceled'].includes(String(updates.status))) {
+    return NextResponse.json({ error: 'status inválido' }, { status: 422 })
+  }
+
+  const { data: campaignBase, error: baseError } = await admin
+    .from('campaigns')
+    .select('id, brand_id')
+    .eq('id', params.id)
+    .single()
+
+  if (baseError) {
+    if (baseError.code === 'PGRST116') {
+      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    }
+    return NextResponse.json({ error: baseError.message }, { status: 500 })
+  }
+
+  let hasAccess = campaignBase.brand_id === brand.id
+
+  if (!hasAccess) {
+    const { data: coBrand } = await admin
+      .from('campaign_brands')
+      .select('campaign_id')
+      .eq('campaign_id', params.id)
+      .eq('brand_id', brand.id)
+      .maybeSingle()
+
+    hasAccess = !!coBrand
+  }
+
+  if (!hasAccess) {
+    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
+
   const { data, error } = await admin
     .from('campaigns')
     .update(updates)
     .eq('id', params.id)
-    .eq('brand_id', brand.id)
     .select('id, name, status, visibility')
     .single()
 

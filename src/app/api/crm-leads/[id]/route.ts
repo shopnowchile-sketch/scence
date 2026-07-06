@@ -35,7 +35,29 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .eq('lead_id', params.id)
     .order('created_at', { ascending: false })
 
-  return NextResponse.json({ data: { ...lead, activities: activities ?? [] } })
+  // Conexión a la app — mismo criterio que /api/crm-leads (lista): cruza el
+  // email del lead contra auth.users vía admin.auth.admin.listUsers(). Un solo
+  // lead, no hace falta traer todos los usuarios: se pagina hasta encontrarlo
+  // o agotar la lista.
+  let appConnected = false
+  let appLastSignInAt: string | null = null
+  if (lead.email) {
+    const target = lead.email.toLowerCase()
+    let page = 1
+    const perPage = 1000
+    for (;;) {
+      const { data: usersPage, error: usersErr } = await admin.auth.admin.listUsers({ page, perPage })
+      if (usersErr || !usersPage?.users?.length) break
+      const match = usersPage.users.find(u => u.email?.toLowerCase() === target)
+      if (match) { appConnected = true; appLastSignInAt = match.last_sign_in_at ?? null; break }
+      if (usersPage.users.length < perPage) break
+      page++
+    }
+  }
+
+  return NextResponse.json({
+    data: { ...lead, activities: activities ?? [], app_connected: appConnected, app_last_sign_in_at: appLastSignInAt },
+  })
 }
 
 // ── PATCH /api/crm-leads/[id] — actualizar calificación/notas ─────────────────

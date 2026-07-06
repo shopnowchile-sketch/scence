@@ -278,6 +278,24 @@ function DeliverableInfluencerGroup({
   const [open, setOpen] = useState(false)
   const collapsible = items.length > 1
 
+  // Estado por deliverable del grupo — para que el header diga "en revisión"
+  // / "aprobado" en vez de solo el conteo, y se sepa sin abrir cuál necesita
+  // acción. Reusa DEL_CONFIG (mismo label/color que ya se usa por deliverable).
+  const statusCounts = items.reduce<Partial<Record<DeliverableStatus, number>>>((acc, d) => {
+    acc[d.status] = (acc[d.status] ?? 0) + 1
+    return acc
+  }, {})
+  const STATUS_ORDER: DeliverableStatus[] = ['in_review', 'rejected', 'pending', 'approved', 'published']
+  const statusBadges = (
+    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+      {STATUS_ORDER.filter(s => statusCounts[s]).map(s => (
+        <span key={s} className={cn('badge text-[11px]', DEL_CONFIG[s].cls)}>
+          {statusCounts[s]} {DEL_CONFIG[s].label.toLowerCase()}
+        </span>
+      ))}
+    </div>
+  )
+
   if (!collapsible) {
     return (
       <div className="card p-3">
@@ -297,7 +315,7 @@ function DeliverableInfluencerGroup({
         <InfluencerBadge influencer={influencer} igUsername={igUsername} />
         <div className="flex items-center gap-3 flex-shrink-0">
           <InfluencerStatsPill pct={pct} avgRating={avgRating} ratedCount={ratedCount} />
-          <span className="badge badge-gray text-[11px]">{items.length} entregables</span>
+          {statusBadges}
           <ChevronRight className={cn('h-4 w-4 text-gray-400 transition-transform', open ? 'rotate-90' : '')} />
         </div>
       </div>

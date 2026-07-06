@@ -36,11 +36,29 @@ export async function POST(req: NextRequest) {
     const scan = await loadScan(admin, orgId)
     const missingInstagram = scan.filter(i => !i.instagram_url && !i.instagram_username && i.email)
 
-    const { data: addrRows } = await admin
-      .from('influencers')
-      .select('id, display_name, email, address, commune')
-      .eq('organization_id', orgId)
-    const missingAddressOrCommune = (addrRows ?? []).filter(
+    // FIX (2026-07-05): esta query no tenía paginación — con 1741 influencers,
+    // Supabase corta silenciosamente a ~1000 filas por defecto (mismo límite
+    // documentado en loadScan/dataQuality.ts). Sin esto, el conteo real de
+    // "sin comuna/dirección" se subestimaba (655 en vez de 1257 reales,
+    // verificado por SQL) y el subconjunto afectado no era determinístico.
+    // Mismo patrón PAGE=1000 + loop que ya usa loadScan arriba.
+    const PAGE = 1000
+    let from = 0
+    const addrRows: Array<{ id: string; display_name: string | null; email: string | null; address: string | null; commune: string | null }> = []
+    for (;;) {
+      const { data, error } = await admin
+        .from('influencers')
+        .select('id, display_name, email, address, commune')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (error) throw new Error(error.message)
+      if (!data || data.length === 0) break
+      addrRows.push(...data)
+      if (data.length < PAGE) break
+      from += PAGE
+    }
+    const missingAddressOrCommune = addrRows.filter(
       r => r.email && (!r.address || !String(r.address).trim() || !r.commune || !String(r.commune).trim())
     )
 

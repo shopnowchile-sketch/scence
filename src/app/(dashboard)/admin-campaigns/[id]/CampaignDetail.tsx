@@ -478,10 +478,11 @@ function AddDeliverableForm({
   )
 }
 
-export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Tab }) {
+export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: string; defaultTab?: Tab; portal?: 'admin' | 'brand' }) {
   const pathname = usePathname()
   const router = useRouter()
-  const isBrandPortal = pathname.startsWith('/brand-campaigns')
+  const isBrandPortal = portal === 'brand' || pathname.startsWith('/brand')
+  const apiBase = isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns'
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
@@ -551,8 +552,8 @@ export function CampaignDetail({ id, defaultTab }: { id: string; defaultTab?: Ta
     notes: '',
   })
 
-  const { data: res, isLoading, error, refetch } = useCampaignDetail(id)
-  const patchCampaign = usePatchCampaign(id)
+  const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
+  const patchCampaign = usePatchCampaign(id, apiBase)
   const removeInfluencer = useRemoveCampaignInfluencer(id)
 
   const campaignForEffects = res?.data as (CampaignDetail & { brand?: { id?: string } | null }) | undefined

@@ -24,6 +24,8 @@ type Lead = {
   imported_at: string | null
   app_connected: boolean
   app_last_sign_in_at: string | null
+  email_opened: boolean
+  email_opened_at: string | null
 }
 
 type LeadForm = {
@@ -56,7 +58,7 @@ const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: 
   converted:   { label: 'Convertido',    cls: 'bg-violet-100 text-violet-700' },
 }
 
-type ColumnKey = 'contact' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'connected' | 'action'
+type ColumnKey = 'contact' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
 const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
   { key: 'contact', label: 'Contacto' },
@@ -65,6 +67,7 @@ const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
   { key: 'source', label: 'Origen' },
   { key: 'qualification', label: 'Calificación' },
   { key: 'last_email', label: 'Último email' },
+  { key: 'email_opened', label: 'Abrió email' },
   { key: 'connected', label: 'Conectado' },
   { key: 'action', label: 'Acción' },
 ]
@@ -562,6 +565,7 @@ SCENCE`)
               {isColumnVisible('source') && <th className="px-4 py-3 font-semibold">Origen</th>}
               {isColumnVisible('qualification') && <th className="px-4 py-3 font-semibold">Calificación</th>}
               {isColumnVisible('last_email') && <th className="px-4 py-3 font-semibold">Último email</th>}
+              {isColumnVisible('email_opened') && <th className="px-4 py-3 font-semibold">Abrió email</th>}
               {isColumnVisible('connected') && <th className="px-4 py-3 font-semibold">Conectado</th>}
               {isColumnVisible('action') && <th className="px-4 py-3 font-semibold text-right">Acción</th>}
             </tr>
@@ -618,6 +622,20 @@ SCENCE`)
 {isColumnVisible('last_email') && (
                   <td className="px-4 py-3 text-xs text-gray-400">
                     {lead.contacted_at ? new Date(lead.contacted_at).toLocaleDateString('es-CL') : 'Nunca'}
+                  </td>
+                  )}
+
+                  {isColumnVisible('email_opened') && (
+                  <td className="px-4 py-3 text-xs">
+                    {lead.email_opened ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600" title={lead.email_opened_at ? `Abrió: ${formatDate(lead.email_opened_at, "d MMM yyyy HH:mm")}` : undefined}>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Sí
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-gray-300">
+                        <Circle className="h-3.5 w-3.5" /> No
+                      </span>
+                    )}
                   </td>
                   )}
 {isColumnVisible('connected') && (

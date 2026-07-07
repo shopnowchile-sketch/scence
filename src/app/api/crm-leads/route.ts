@@ -72,9 +72,38 @@ export async function GET(request: NextRequest) {
   }
 
   const authMap = await buildAuthEmailMap(admin)
+
+  const leadIds = (data ?? []).map(l => l.id)
+  const openedMap = new Map<string, string | null>()
+
+  if (leadIds.length > 0) {
+    const { data: openEvents, error: openEventsError } = await admin
+      .from('crm_email_events')
+      .select('lead_id, event_type, created_at')
+      .in('lead_id', leadIds)
+      .eq('event_type', 'email.opened')
+      .order('created_at', { ascending: false })
+
+    if (!openEventsError) {
+      for (const event of openEvents ?? []) {
+        if (event.lead_id && !openedMap.has(event.lead_id)) {
+          openedMap.set(event.lead_id, event.created_at ?? null)
+        }
+      }
+    }
+  }
+
   const enriched = (data ?? []).map(l => {
     const lastSignIn = l.email ? authMap.get(l.email.toLowerCase()) ?? null : null
-    return { ...l, app_connected: authMap.has((l.email ?? '').toLowerCase()), app_last_sign_in_at: lastSignIn }
+    const openedAt = openedMap.get(l.id) ?? null
+
+    return {
+      ...l,
+      app_connected: authMap.has((l.email ?? '').toLowerCase()),
+      app_last_sign_in_at: lastSignIn,
+      email_opened: Boolean(openedAt),
+      email_opened_at: openedAt,
+    }
   })
 
   // Valores distintos de `source` (para poblar el filtro "Origen" en la UI) —

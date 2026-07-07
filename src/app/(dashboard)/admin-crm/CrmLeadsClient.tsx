@@ -98,7 +98,33 @@ export function CrmLeadsClient() {
   const [deleting, setDeleting] = useState(false)
   const [showBulkSendModal, setShowBulkSendModal] = useState(false)
   const [bulkSubject, setBulkSubject] = useState('Hola, ¿cómo estás?')
-  const [bulkMessage, setBulkMessage] = useState('')
+  const [bulkMessage, setBulkMessage] = useState(`Hola,
+
+Soy Pri, fundadora de SCENCE.
+
+Hoy las marcas ya no crecen solo con publicidad tradicional. Las personas quieren contenido real, recomendaciones auténticas y marcas que les generen confianza.
+
+Por eso creamos SCENCE: una plataforma chilena que conecta marcas con creadoras de contenido e influencers para crear campañas, eventos, canjes y contenido UGC que ayude a aumentar visibilidad, seguidores, confianza y ventas.
+
+Queremos invitarte a probar SCENCE y registrar tu marca para que podamos ayudarte a conectar con creadoras alineadas a tu estilo, tu público y tus objetivos.
+
+Esta nueva forma de potenciar marcas ya se está usando en Estados Unidos y en el mundo. En Chile, SCENCE está creciendo para ayudar a emprendedores y empresas a adaptarse a lo que hoy sí genera impacto: contenido real, comunidad y confianza.
+
+Puedes registrarte aquí:
+https://scence-app.vercel.app/register
+
+También puedes revisar nuestros Instagram:
+@influencers.snc — https://www.instagram.com/influencers.snc/
+@scence.cl — https://www.instagram.com/scence.cl/
+
+Si quieres más información, también me puedes escribir directo a:
+pri@scence.cl
+
+Nos encantaría ayudarte a crecer tu marca con creadoras.
+
+Saludos,
+Pri
+SCENCE`)
   const [sendingBulk, setSendingBulk] = useState(false)
   const limit = 50
 
@@ -199,7 +225,33 @@ export function CrmLeadsClient() {
       toast.success(`Enviados: ${j.sent} · Sin email: ${j.skipped} · Fallidos: ${j.failed}`)
       setShowBulkSendModal(false)
       setBulkSubject('Hola, ¿cómo estás?')
-      setBulkMessage('')
+      setBulkMessage(`Hola,
+
+Soy Pri, fundadora de SCENCE.
+
+Hoy las marcas ya no crecen solo con publicidad tradicional. Las personas quieren contenido real, recomendaciones auténticas y marcas que les generen confianza.
+
+Por eso creamos SCENCE: una plataforma chilena que conecta marcas con creadoras de contenido e influencers para crear campañas, eventos, canjes y contenido UGC que ayude a aumentar visibilidad, seguidores, confianza y ventas.
+
+Queremos invitarte a probar SCENCE y registrar tu marca para que podamos ayudarte a conectar con creadoras alineadas a tu estilo, tu público y tus objetivos.
+
+Esta nueva forma de potenciar marcas ya se está usando en Estados Unidos y en el mundo. En Chile, SCENCE está creciendo para ayudar a emprendedores y empresas a adaptarse a lo que hoy sí genera impacto: contenido real, comunidad y confianza.
+
+Puedes registrarte aquí:
+https://scence-app.vercel.app/register
+
+También puedes revisar nuestros Instagram:
+@influencers.snc — https://www.instagram.com/influencers.snc/
+@scence.cl — https://www.instagram.com/scence.cl/
+
+Si quieres más información, también me puedes escribir directo a:
+pri@scence.cl
+
+Nos encantaría ayudarte a crecer tu marca con creadoras.
+
+Saludos,
+Pri
+SCENCE`)
       setSelectedIds([])
       await load()
     } catch (e) {
@@ -646,12 +698,12 @@ export function CrmLeadsClient() {
                 <textarea
                   value={bulkMessage}
                   onChange={e => setBulkMessage(e.target.value)}
-                  placeholder="Déjalo vacío para usar el mensaje base de SCENCE."
+                  placeholder="Edita el mensaje antes de enviar si quieres personalizarlo."
                   rows={8}
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400 resize-none"
                 />
                 <p className="mt-1 text-xs text-gray-400">
-                  Si lo dejas vacío, se enviará el mensaje base actual. Si escribes aquí, se usará este texto para todos.
+                  Este mensaje se enviará a todos los leads seleccionados. Puedes editarlo antes de enviar.
                 </p>
               </div>
             </div>

@@ -66,7 +66,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (leadErr || !lead) return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
   if (!lead.email) return NextResponse.json({ error: 'Este lead no tiene email' }, { status: 422 })
 
-  const fallbackSubject = `${lead.company_name ?? 'Hola'} — conoce Scence (primera campaña gratis)`
+  const fallbackSubject = 'Hola, ¿cómo estás?'
   const subject = typeof body.subject === 'string' && body.subject.trim()
     ? body.subject.trim()
     : fallbackSubject

@@ -99,3 +99,83 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit, sources })
 }
+
+// ── POST /api/crm-leads — crear lead manual ──────────────────────────────────
+export async function POST(request: NextRequest) {
+  const supabase = createServerClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = createAdminClient()
+  if (!(await isAdminUser(user.id, admin))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const body = await request.json().catch(() => ({}))
+
+  const companyName = typeof body.company_name === 'string' ? body.company_name.trim() : ''
+  const contactName = typeof body.contact_name === 'string' ? body.contact_name.trim() : ''
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const phone1 = typeof body.phone_1 === 'string' ? body.phone_1.trim() : ''
+  const commune = typeof body.commune === 'string' ? body.commune.trim() : ''
+  const region = typeof body.region === 'string' ? body.region.trim() : ''
+  const industry = typeof body.industry === 'string' ? body.industry.trim() : ''
+  const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'manual'
+
+  if (!companyName && !email) {
+    return NextResponse.json({ error: 'Debes ingresar al menos empresa o email' }, { status: 422 })
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: 'Email inválido' }, { status: 422 })
+  }
+
+  if (email) {
+    const { data: existing } = await admin
+      .from('crm_leads')
+      .select('id, company_name, email')
+      .eq('email', email)
+      .maybeSingle()
+
+    if (existing) {
+      return NextResponse.json({ error: 'Ya existe un lead con ese email' }, { status: 409 })
+    }
+  }
+
+  const { data: lead, error } = await admin
+    .from('crm_leads')
+    .insert({
+      company_name: companyName || null,
+      contact_name: contactName || null,
+      email: email || null,
+      phone_1: phone1 || null,
+      commune: commune || null,
+      region: region || null,
+      industry: industry || null,
+      source,
+      qualification_status: 'unqualified',
+      imported_at: new Date().toISOString(),
+    })
+    .select('id, contact_name, company_name, email, phone_1, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at')
+    .single()
+
+  if (error) {
+    console.error('[POST /api/crm-leads]', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  await admin.from('crm_lead_activities').insert({
+    lead_id: lead.id,
+    action_type: 'created',
+    description: 'Lead creado manualmente',
+    created_by: user.id,
+  })
+
+  return NextResponse.json({
+    data: {
+      ...lead,
+      app_connected: false,
+      app_last_sign_in_at: null,
+    },
+  })
+}

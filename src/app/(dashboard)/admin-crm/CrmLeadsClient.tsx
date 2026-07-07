@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, Building2, CheckCircle2, Circle, Mail } from 'lucide-react'
+import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -26,6 +26,28 @@ type Lead = {
   app_last_sign_in_at: string | null
 }
 
+type LeadForm = {
+  company_name: string
+  contact_name: string
+  email: string
+  phone_1: string
+  commune: string
+  region: string
+  industry: string
+  source: string
+}
+
+const EMPTY_FORM: LeadForm = {
+  company_name: '',
+  contact_name: '',
+  email: '',
+  phone_1: '',
+  commune: '',
+  region: '',
+  industry: '',
+  source: 'manual',
+}
+
 const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: string }> = {
   unqualified: { label: 'Sin calificar', cls: 'bg-gray-100 text-gray-500' },
   qualified:   { label: 'Califica',      cls: 'bg-green-100 text-green-700' },
@@ -43,6 +65,16 @@ export function CrmLeadsClient() {
   const [qualification, setQualification] = useState('')
   const [source, setSource] = useState('')
   const [sources, setSources] = useState<string[]>([])
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [savingLead, setSavingLead] = useState(false)
+  const [form, setForm] = useState<LeadForm>(EMPTY_FORM)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleting, setDeleting] = useState(false)
   const limit = 50
 
   const load = useCallback(async () => {
@@ -54,7 +86,9 @@ export function CrmLeadsClient() {
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
-      setLeads(j.data ?? [])
+      const nextLeads = j.data ?? []
+      setLeads(nextLeads)
+      setSelectedIds(prev => prev.filter(id => nextLeads.some((lead: Lead) => lead.id === id)))
       setTotal(j.total ?? 0)
       if (Array.isArray(j.sources)) setSources(j.sources)
     } catch {
@@ -64,6 +98,114 @@ export function CrmLeadsClient() {
   }, [page, search, qualification, source])
 
   useEffect(() => { load() }, [load])
+
+  function updateForm<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
+    setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  async function createLead() {
+    if (!form.company_name.trim() && !form.email.trim()) {
+      toast.error('Ingresa al menos empresa o email')
+      return
+    }
+
+    setSavingLead(true)
+    try {
+      const r = await fetch('/api/crm-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? 'No se pudo crear el lead')
+
+      toast.success('Lead creado')
+      setShowAddModal(false)
+      setForm(EMPTY_FORM)
+      setPage(1)
+      await load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo crear el lead')
+    } finally {
+      setSavingLead(false)
+    }
+  }
+
+  const visibleLeadIds = leads.map(lead => lead.id)
+  const selectedCount = selectedIds.length
+  const allVisibleSelected = visibleLeadIds.length > 0 && visibleLeadIds.every(id => selectedIds.includes(id))
+
+  function toggleLead(id: string) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds(prev => {
+      if (allVisibleSelected) return prev.filter(id => !visibleLeadIds.includes(id))
+      return Array.from(new Set([...prev, ...visibleLeadIds]))
+    })
+  }
+
+  async function deleteSelectedLeads() {
+    if (deleteConfirm !== 'ELIMINAR') {
+      toast.error('Debes escribir ELIMINAR')
+      return
+    }
+
+    setDeleting(true)
+    try {
+      const r = await fetch('/api/crm-leads/bulk-delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_ids: selectedIds }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? 'No se pudieron eliminar los leads')
+
+      toast.success(`Leads eliminados: ${j.deleted}`)
+      setSelectedIds([])
+      setDeleteConfirm('')
+      setShowDeleteModal(false)
+      await load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudieron eliminar los leads')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function importLeads() {
+    if (!importFile) {
+      toast.error('Selecciona un archivo CSV')
+      return
+    }
+
+    setImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+
+      const r = await fetch('/api/crm-leads/import', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? 'No se pudo importar')
+
+      toast.success(`Importados: ${j.imported} · Duplicados: ${j.duplicates} · Inválidos: ${j.invalid}`)
+      if (j.limited_to_500) toast.warning('Se importaron máximo 500 filas por seguridad')
+
+      setShowImportModal(false)
+      setImportFile(null)
+      setPage(1)
+      await load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo importar')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   async function updateStatus(id: string, status: Lead['qualification_status']) {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, qualification_status: status } : l))
@@ -80,7 +222,6 @@ export function CrmLeadsClient() {
     }
   }
 
-
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
   return (
@@ -89,6 +230,26 @@ export function CrmLeadsClient() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">CRM — Prospectos</h1>
           <p className="text-sm text-gray-400">{total.toLocaleString('es-CL')} empresas cargadas · calificar y contactar</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50"
+          >
+            <Upload className="h-4 w-4" />
+            Importar leads
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700"
+          >
+            <Plus className="h-4 w-4" />
+            Agregar lead
+          </button>
         </div>
       </div>
 
@@ -124,10 +285,43 @@ export function CrmLeadsClient() {
         </select>
       </div>
 
+      {selectedCount > 0 && (
+        <div className="bg-violet-50 border border-violet-100 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm font-semibold text-violet-700">
+            {selectedCount} lead{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="px-3 py-2 rounded-xl border border-violet-200 bg-white text-violet-700 text-sm font-semibold hover:bg-violet-50"
+            >
+              Limpiar selección
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+            >
+              <Trash2 className="h-4 w-4" />
+              Eliminar seleccionadas
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
         <table className="w-full text-sm min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-50 text-left text-xs text-gray-400">
+              <th className="px-4 py-3 font-semibold w-10">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                  className="h-4 w-4 rounded border-gray-300 text-violet-600"
+                />
+              </th>
               <th className="px-4 py-3 font-semibold">Empresa</th>
               <th className="px-4 py-3 font-semibold">Contacto</th>
               <th className="px-4 py-3 font-semibold">Ubicación</th>
@@ -141,13 +335,21 @@ export function CrmLeadsClient() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
+              <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
             ) : leads.length === 0 ? (
-              <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
+              <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
             ) : leads.map(lead => {
               const cfg = STATUS_CONFIG[lead.qualification_status] ?? STATUS_CONFIG.unqualified
               return (
                 <tr key={lead.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(lead.id)}
+                      onChange={() => toggleLead(lead.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-violet-600"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <Link href={`/admin-crm/${lead.id}`} className="flex items-center gap-2 font-medium text-gray-900 hover:text-violet-600">
                       <Building2 className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
@@ -211,6 +413,170 @@ export function CrmLeadsClient() {
           <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40">Siguiente</button>
         </div>
       </div>
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Eliminar leads permanentemente</h2>
+                <p className="text-xs text-red-500 font-semibold">Esta acción no se puede deshacer.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="h-8 w-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-600">
+                Vas a eliminar permanentemente {selectedCount} lead{selectedCount === 1 ? '' : 's'} del CRM.
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">
+                  Escribe ELIMINAR para confirmar
+                </label>
+                <input
+                  value={deleteConfirm}
+                  onChange={e => setDeleteConfirm(e.target.value)}
+                  placeholder="ELIMINAR"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-red-400"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deleting || deleteConfirm !== 'ELIMINAR'}
+                onClick={deleteSelectedLeads}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                Eliminar permanentemente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Importar leads</h2>
+                <p className="text-xs text-gray-400">Sube un CSV con máximo 500 filas.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="h-8 w-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 text-xs text-gray-500 leading-relaxed">
+                Columnas aceptadas: empresa, email, teléfono, contacto, comuna, región, rubro, origen.
+                También acepta: company_name, contact_name, phone_1, commune, region, industry, source.
+              </div>
+
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-gray-600 file:mr-4 file:rounded-xl file:border-0 file:bg-violet-50 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-violet-700 hover:file:bg-violet-100"
+              />
+
+              {importFile && (
+                <p className="text-xs text-gray-400">Archivo seleccionado: {importFile.name}</p>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={importing || !importFile}
+                onClick={importLeads}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50"
+              >
+                {importing && <Loader2 className="h-4 w-4 animate-spin" />}
+                Importar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Agregar lead</h2>
+                <p className="text-xs text-gray-400">Crea una empresa manualmente en el CRM.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="h-8 w-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input value={form.company_name} onChange={e => updateForm('company_name', e.target.value)} placeholder="Empresa / razón social" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.contact_name} onChange={e => updateForm('contact_name', e.target.value)} placeholder="Contacto" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.email} onChange={e => updateForm('email', e.target.value)} placeholder="Email" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.phone_1} onChange={e => updateForm('phone_1', e.target.value)} placeholder="Teléfono" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.commune} onChange={e => updateForm('commune', e.target.value)} placeholder="Comuna / ciudad" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.region} onChange={e => updateForm('region', e.target.value)} placeholder="Región" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.industry} onChange={e => updateForm('industry', e.target.value)} placeholder="Rubro / categoría" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.source} onChange={e => updateForm('source', e.target.value)} placeholder="Origen" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={savingLead}
+                onClick={createLead}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50"
+              >
+                {savingLead && <Loader2 className="h-4 w-4 animate-spin" />}
+                Guardar lead
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

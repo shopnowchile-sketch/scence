@@ -274,6 +274,48 @@ export function CrmLeadsClient() {
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowColumnsMenu(v => !v)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50"
+            >
+              <Columns3 className="h-4 w-4" />
+              Columnas
+            </button>
+
+            {showColumnsMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-xl z-30 p-2">
+                <div className="px-3 py-2 border-b border-gray-50">
+                  <p className="text-xs font-bold text-gray-900">Mostrar columnas</p>
+                  <p className="text-[11px] text-gray-400">Empresa siempre queda visible.</p>
+                </div>
+
+                <div className="py-2 space-y-1">
+                  {COLUMN_CONFIG.map(col => (
+                    <label key={col.key} className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.includes(col.key)}
+                        onChange={() => toggleColumn(col.key)}
+                        className="h-4 w-4 rounded border-gray-300 text-violet-600"
+                      />
+                      {col.label}
+                    </label>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={resetColumns}
+                  className="w-full px-3 py-2 rounded-xl bg-gray-50 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                >
+                  Restaurar columnas
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={() => setShowImportModal(true)}

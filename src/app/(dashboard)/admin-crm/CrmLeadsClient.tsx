@@ -64,7 +64,11 @@ export function CrmLeadsClient() {
   const [search, setSearch] = useState('')
   const [qualification, setQualification] = useState('')
   const [source, setSource] = useState('')
+  const [industry, setIndustry] = useState('')
+  const [commune, setCommune] = useState('')
   const [sources, setSources] = useState<string[]>([])
+  const [industries, setIndustries] = useState<string[]>([])
+  const [communes, setCommunes] = useState<string[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [savingLead, setSavingLead] = useState(false)
   const [form, setForm] = useState<LeadForm>(EMPTY_FORM)
@@ -83,6 +87,8 @@ export function CrmLeadsClient() {
     if (search) params.set('search', search)
     if (qualification) params.set('qualification', qualification)
     if (source) params.set('source', source)
+    if (industry) params.set('industry', industry)
+    if (commune) params.set('commune', commune)
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
@@ -91,11 +97,13 @@ export function CrmLeadsClient() {
       setSelectedIds(prev => prev.filter(id => nextLeads.some((lead: Lead) => lead.id === id)))
       setTotal(j.total ?? 0)
       if (Array.isArray(j.sources)) setSources(j.sources)
+      if (Array.isArray(j.industries)) setIndustries(j.industries)
+      if (Array.isArray(j.communes)) setCommunes(j.communes)
     } catch {
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, source])
+  }, [page, search, qualification, source, industry, commune])
 
   useEffect(() => { load() }, [load])
 
@@ -273,6 +281,28 @@ export function CrmLeadsClient() {
             <option key={k} value={k}>{cfg.label}</option>
           ))}
         </select>
+        <select
+          value={industry}
+          onChange={e => { setPage(1); setIndustry(e.target.value) }}
+          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-700"
+        >
+          <option value="">Todos los rubros</option>
+          {industries.map(i => (
+            <option key={i} value={i}>{i}</option>
+          ))}
+        </select>
+
+        <select
+          value={commune}
+          onChange={e => { setPage(1); setCommune(e.target.value) }}
+          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-700"
+        >
+          <option value="">Todas las comunas</option>
+          {communes.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+
         <select
           value={source}
           onChange={e => { setPage(1); setSource(e.target.value) }}

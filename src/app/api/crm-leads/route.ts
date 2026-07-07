@@ -45,6 +45,8 @@ export async function GET(request: NextRequest) {
   const qualification = searchParams.get('qualification') ?? ''
   const region = searchParams.get('region') ?? ''
   const source = searchParams.get('source') ?? ''
+  const industry = searchParams.get('industry') ?? ''
+  const commune = searchParams.get('commune') ?? ''
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
@@ -57,6 +59,8 @@ export async function GET(request: NextRequest) {
   if (qualification) query = query.eq('qualification_status', qualification)
   if (region) query = query.eq('region', region)
   if (source) query = query.eq('source', source)
+  if (industry) query = query.eq('industry', industry)
+  if (commune) query = query.eq('commune', commune)
   if (search) {
     query = query.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%`)
   }
@@ -95,9 +99,34 @@ export async function GET(request: NextRequest) {
       from += PAGE
     }
   }
-  const sources = Array.from(sourcesSet).sort()
+  const industriesSet = new Set<string>()
+  const communesSet = new Set<string>()
+  {
+    const PAGE = 1000
+    let from = 0
+    for (;;) {
+      const { data: filterRows } = await admin
+        .from('crm_leads')
+        .select('industry, commune')
+        .range(from, from + PAGE - 1)
 
-  return NextResponse.json({ data: enriched, total: count ?? 0, page, limit, sources })
+      if (!filterRows || filterRows.length === 0) break
+
+      for (const r of filterRows) {
+        if (r.industry) industriesSet.add(r.industry)
+        if (r.commune) communesSet.add(r.commune)
+      }
+
+      if (filterRows.length < PAGE) break
+      from += PAGE
+    }
+  }
+
+  const sources = Array.from(sourcesSet).sort()
+  const industries = Array.from(industriesSet).sort()
+  const communes = Array.from(communesSet).sort()
+
+  return NextResponse.json({ data: enriched, total: count ?? 0, page, limit, sources, industries, communes })
 }
 
 // ── POST /api/crm-leads — crear lead manual ──────────────────────────────────

@@ -13,6 +13,16 @@ type Activity = {
   created_at: string
 }
 
+type EmailEvent = {
+  id: string
+  event_type: string
+  recipient_email: string | null
+  subject: string | null
+  resend_email_id: string | null
+  occurred_at: string | null
+  created_at: string
+}
+
 type Lead = {
   id: string
   contact_name: string | null
@@ -37,6 +47,7 @@ type Lead = {
   app_connected: boolean
   app_last_sign_in_at: string | null
   activities: Activity[]
+  email_events?: EmailEvent[]
 }
 
 const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: string }> = {
@@ -56,12 +67,62 @@ const ACTION_LABEL: Record<string, string> = {
   converted: 'Convertido',
 }
 
+const EMAIL_EVENT_LABEL: Record<string, string> = {
+  'email.sent': 'Enviado',
+  'email.delivered': 'Entregado',
+  'email.delivery_delayed': 'Demorado',
+  'email.opened': 'Abierto',
+  'email.clicked': 'Click',
+  'email.bounced': 'Rebotado',
+  'email.complained': 'Spam',
+  'email.failed': 'Fallido',
+  'email.suppressed': 'Suprimido',
+}
+
+const EMAIL_EVENT_CLASS: Record<string, string> = {
+  'email.sent': 'bg-blue-50 text-blue-700 border-blue-100',
+  'email.delivered': 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  'email.delivery_delayed': 'bg-amber-50 text-amber-700 border-amber-100',
+  'email.opened': 'bg-violet-50 text-violet-700 border-violet-100',
+  'email.clicked': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
+  'email.bounced': 'bg-red-50 text-red-700 border-red-100',
+  'email.complained': 'bg-red-50 text-red-700 border-red-100',
+  'email.failed': 'bg-red-50 text-red-700 border-red-100',
+  'email.suppressed': 'bg-gray-50 text-gray-700 border-gray-100',
+}
+
+function buildDefaultSubject(lead: Lead) {
+  return `${lead.company_name ?? 'Hola'} — conoce Scence (primera campaña gratis)`
+}
+
+function buildDefaultMessage(lead: Lead) {
+  const contactName = lead.contact_name ?? 'equipo'
+  const companyName = lead.company_name ?? 'tu marca'
+
+  return `Hola ${contactName},
+
+Soy Priscilla de SCENCE, una plataforma chilena que conecta marcas con creadoras de contenido para campañas, eventos, canjes y contenido UGC.
+
+Vi ${companyName} y creo que podría calzar muy bien con nuestra comunidad.
+
+Estamos invitando a algunas marcas a probar SCENCE con una primera campaña gratuita, para que puedan conocer cómo funciona la plataforma y recibir propuestas de creadoras.
+
+Si te interesa, puedes responder este correo y te cuento los siguientes pasos.
+
+Saludos,
+Priscilla
+SCENCE`
+}
+
 export function CrmLeadDetailClient({ id }: { id: string }) {
   const [lead, setLead] = useState<Lead | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [note, setNote] = useState('')
   const [savingNote, setSavingNote] = useState(false)
+  const [showEmailEditor, setShowEmailEditor] = useState(false)
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailMessage, setEmailMessage] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -74,6 +135,17 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  function openEmailEditor() {
+    if (!lead?.email) {
+      toast.error('Este lead no tiene email')
+      return
+    }
+
+    setEmailSubject(buildDefaultSubject(lead))
+    setEmailMessage(buildDefaultMessage(lead))
+    setShowEmailEditor(true)
+  }
 
   async function updateStatus(status: Lead['qualification_status']) {
     if (!lead) return
@@ -93,12 +165,20 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
 
   async function sendIntro() {
     if (!lead?.email) { toast.error('Este lead no tiene email'); return }
+    if (!emailSubject.trim()) { toast.error('El asunto no puede estar vacío'); return }
+    if (!emailMessage.trim()) { toast.error('El mensaje no puede estar vacío'); return }
+
     setSending(true)
     try {
-      const r = await fetch(`/api/crm-leads/${id}/send-intro`, { method: 'POST' })
+      const r = await fetch(`/api/crm-leads/${id}/send-intro`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: emailSubject, message: emailMessage }),
+      })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'Error al enviar')
       toast.success('Email enviado')
+      setShowEmailEditor(false)
       load()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al enviar')
@@ -134,6 +214,8 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   }
 
   const cfg = STATUS_CONFIG[lead.qualification_status] ?? STATUS_CONFIG.unqualified
+  const emailEvents = lead.email_events ?? []
+  const latestEmailEvent = emailEvents[0] ?? null
 
   return (
     <div className="space-y-5">
@@ -214,13 +296,67 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
             </div>
 
             <button
-              onClick={sendIntro}
-              disabled={sending || !lead.email}
+              onClick={openEmailEditor}
+              disabled={!lead.email}
               className="mt-5 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50"
             >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Enviar email de presentación
+              <Send className="h-4 w-4" />
+              Revisar y enviar email
             </button>
+
+            {showEmailEditor && (
+              <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/30 p-4 space-y-3">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900">Revisar email antes de enviar</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Puedes editar el asunto y mensaje antes de enviarlo.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Para</label>
+                  <input
+                    value={lead.email ?? ''}
+                    readOnly
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Asunto</label>
+                  <input
+                    value={emailSubject}
+                    onChange={e => setEmailSubject(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Mensaje</label>
+                  <textarea
+                    value={emailMessage}
+                    onChange={e => setEmailMessage(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none focus:border-violet-400 min-h-[260px]"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 justify-end">
+                  <button
+                    onClick={() => setShowEmailEditor(false)}
+                    disabled={sending}
+                    className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={sendIntro}
+                    disabled={sending || !emailSubject.trim() || !emailMessage.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    Enviar email
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="card p-6">
@@ -242,6 +378,36 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
         </div>
 
         <div className="card p-6">
+          <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Mail className="h-4 w-4 text-gray-400" /> Estado del email
+          </h2>
+
+          {latestEmailEvent ? (
+            <div className="mb-6 space-y-3">
+              <div className={cn('inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold', EMAIL_EVENT_CLASS[latestEmailEvent.event_type] ?? 'bg-gray-50 text-gray-700 border-gray-100')}>
+                {EMAIL_EVENT_LABEL[latestEmailEvent.event_type] ?? latestEmailEvent.event_type}
+              </div>
+              <div className="text-xs text-gray-400">
+                Último evento: {new Date(latestEmailEvent.occurred_at ?? latestEmailEvent.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </div>
+              <div className="space-y-2">
+                {emailEvents.slice(0, 5).map(ev => (
+                  <div key={ev.id} className="flex items-start justify-between gap-3 text-xs border-b border-gray-50 pb-2 last:border-0">
+                    <span className="font-medium text-gray-600">{EMAIL_EVENT_LABEL[ev.event_type] ?? ev.event_type}</span>
+                    <span className="text-gray-300 whitespace-nowrap">
+                      {new Date(ev.occurred_at ?? ev.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-300 leading-relaxed">
+                Nota: la apertura puede no ser 100% exacta y no es posible saber si alguien borró el correo.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 mb-6">Sin eventos de email todavía.</p>
+          )}
+
           <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
             <Clock className="h-4 w-4 text-gray-400" /> Historial
           </h2>

@@ -35,6 +35,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .eq('lead_id', params.id)
     .order('created_at', { ascending: false })
 
+  const { data: emailEvents } = await admin
+    .from('crm_email_events')
+    .select('id, event_type, recipient_email, subject, resend_email_id, occurred_at, created_at')
+    .eq('lead_id', params.id)
+    .order('occurred_at', { ascending: false })
+
   // Conexión a la app — mismo criterio que /api/crm-leads (lista): cruza el
   // email del lead contra auth.users vía admin.auth.admin.listUsers(). Un solo
   // lead, no hace falta traer todos los usuarios: se pagina hasta encontrarlo
@@ -56,7 +62,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({
-    data: { ...lead, activities: activities ?? [], app_connected: appConnected, app_last_sign_in_at: appLastSignInAt },
+    data: { ...lead, activities: activities ?? [], email_events: emailEvents ?? [], app_connected: appConnected, app_last_sign_in_at: appLastSignInAt },
   })
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Send, Loader2, Building2, CheckCircle2, Circle } from 'lucide-react'
+import { Search, Loader2, Building2, CheckCircle2, Circle, Mail } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -43,7 +43,6 @@ export function CrmLeadsClient() {
   const [qualification, setQualification] = useState('')
   const [source, setSource] = useState('')
   const [sources, setSources] = useState<string[]>([])
-  const [sendingId, setSendingId] = useState<string | null>(null)
   const limit = 50
 
   const load = useCallback(async () => {
@@ -81,20 +80,6 @@ export function CrmLeadsClient() {
     }
   }
 
-  async function sendIntro(lead: Lead) {
-    if (!lead.email) { toast.error('Este lead no tiene email'); return }
-    setSendingId(lead.id)
-    try {
-      const r = await fetch(`/api/crm-leads/${lead.id}/send-intro`, { method: 'POST' })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error ?? 'Error al enviar')
-      toast.success(`Email enviado a ${lead.email}`)
-      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, contacted_at: new Date().toISOString() } : l))
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al enviar')
-    }
-    setSendingId(null)
-  }
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
@@ -204,14 +189,13 @@ export function CrmLeadsClient() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => sendIntro(lead)}
-                      disabled={sendingId === lead.id || !lead.email}
-                      title="Enviar email de presentación (primera campaña gratis)"
-                      className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100 disabled:opacity-40"
+                    <Link
+                      href={`/admin-crm/${lead.id}`}
+                      title="Revisar y enviar email"
+                      className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100"
                     >
-                      {sendingId === lead.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                    </button>
+                      <Mail className="h-3.5 w-3.5" />
+                    </Link>
                   </td>
                 </tr>
               )

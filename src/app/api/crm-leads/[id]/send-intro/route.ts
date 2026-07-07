@@ -9,8 +9,43 @@ async function isAdminUser(userId: string, admin: ReturnType<typeof createAdminC
   return ['super_admin', 'brand_manager'].includes(String(data?.role ?? ''))
 }
 
-// ── POST /api/crm-leads/[id]/send-intro — email de presentación + primera campaña gratis ──
-export async function POST(_req: NextRequest, { params }: Params) {
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function plainTextToHtml(message: string) {
+  return `
+    <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6; font-size: 15px;">
+      ${escapeHtml(message).replace(/\n/g, '<br />')}
+    </div>
+  `
+}
+
+function defaultPlainMessage(lead: { contact_name: string | null; company_name: string | null }) {
+  const contactName = lead.contact_name ?? 'equipo'
+  const companyName = lead.company_name ?? 'tu marca'
+
+  return `Hola ${contactName},
+
+Soy Priscilla de SCENCE, una plataforma chilena que conecta marcas con creadoras de contenido para campañas, eventos, canjes y contenido UGC.
+
+Vi ${companyName} y creo que podría calzar muy bien con nuestra comunidad.
+
+Estamos invitando a algunas marcas a probar SCENCE con una primera campaña gratuita, para que puedan conocer cómo funciona la plataforma y recibir propuestas de creadoras.
+
+Si te interesa, puedes responder este correo y te cuento los siguientes pasos.
+
+Saludos,
+Priscilla
+SCENCE`
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -20,23 +55,41 @@ export async function POST(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  const body = await req.json().catch(() => ({} as { subject?: string; message?: string }))
+
   const { data: lead, error: leadErr } = await admin
     .from('crm_leads')
-    .select('id, contact_name, company_name, email')
+    .select('id, contact_name, company_name, email, qualification_status')
     .eq('id', params.id)
     .single()
 
   if (leadErr || !lead) return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
   if (!lead.email) return NextResponse.json({ error: 'Este lead no tiene email' }, { status: 422 })
 
-  const { error: emailErr } = await getResend().emails.send({
+  const fallbackSubject = `${lead.company_name ?? 'Hola'} — conoce Scence (primera campaña gratis)`
+  const subject = typeof body.subject === 'string' && body.subject.trim()
+    ? body.subject.trim()
+    : fallbackSubject
+
+  const customMessage = typeof body.message === 'string' ? body.message.trim() : ''
+  const hasCustomMessage = customMessage.length > 0
+
+  if (!subject.trim()) {
+    return NextResponse.json({ error: 'El asunto no puede estar vacío' }, { status: 422 })
+  }
+
+  const html = hasCustomMessage
+    ? plainTextToHtml(customMessage)
+    : crmIntroEmail({
+        contactName: lead.contact_name ?? 'equipo',
+        companyName: lead.company_name ?? lead.email,
+      })
+
+  const { data: emailData, error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: lead.email,
-    subject: `${lead.company_name ?? 'Hola'} — conoce Scence (primera campaña gratis)`,
-    html: crmIntroEmail({
-      contactName: lead.contact_name ?? 'equipo',
-      companyName: lead.company_name ?? lead.email,
-    }),
+    subject,
+    html,
   })
 
   if (emailErr) {
@@ -50,13 +103,36 @@ export async function POST(_req: NextRequest, { params }: Params) {
   }
 
   const now = new Date().toISOString()
-  await admin.from('crm_leads').update({ contacted_at: now, updated_at: now }).eq('id', params.id)
+  const resendEmailId = emailData?.id ?? null
+
+  const leadUpdate: Record<string, unknown> = { contacted_at: now, updated_at: now }
+  if (lead.qualification_status !== 'converted') {
+    leadUpdate.qualification_status = 'contacted'
+  }
+
+  await admin.from('crm_leads').update(leadUpdate).eq('id', params.id)
+
+  await admin.from('crm_email_events').insert({
+    lead_id: params.id,
+    resend_email_id: resendEmailId,
+    event_type: 'email.sent',
+    recipient_email: lead.email,
+    subject,
+    occurred_at: now,
+    raw_payload: { source: 'send-intro', resend_email_id: resendEmailId },
+  })
+
   await admin.from('crm_lead_activities').insert({
     lead_id: params.id,
     action_type: 'email_sent',
-    description: `Email de presentación enviado a ${lead.email}`,
+    description: `Email enviado a ${lead.email} · Asunto: ${subject}${resendEmailId ? ` · Resend ID: ${resendEmailId}` : ''}`,
     created_by: user.id,
   })
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({
+    success: true,
+    resend_email_id: resendEmailId,
+    subject,
+    message: hasCustomMessage ? customMessage : defaultPlainMessage(lead),
+  })
 }

@@ -54,6 +54,13 @@ export function influencerInviteEmail({
       <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence · Plataforma de gestión de campañas</p>
     </div>
   </div>
+
+          <p style="margin-top:24px;font-size:14px;color:#6b7280;">
+            También nos puedes conocer en Instagram:<br>
+            <a href="https://www.instagram.com/influencers.snc/" style="color:#7c3aed;text-decoration:none;">@influencers.snc</a><br>
+            <a href="https://www.instagram.com/scence.cl/" style="color:#7c3aed;text-decoration:none;">@scence.cl</a>
+          </p>
+
 </body>
 </html>`
 }

@@ -13,7 +13,7 @@ function defaultPlainMessage(lead: { contact_name: string | null; company_name: 
 
   return `Hola ${name},
 
-Soy Priscilla de SCENCE. Estamos conectando marcas chilenas con creadoras de contenido para campañas, eventos, canjes y UGC.
+Soy Pri de SCENCE. Estamos conectando marcas chilenas con creadoras de contenido para campañas, eventos, canjes y UGC.
 
 Vi ${companyName} y creo que podría calzar muy bien para probar una primera campaña con creadoras.
 

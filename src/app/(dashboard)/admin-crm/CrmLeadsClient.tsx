@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2 } from 'lucide-react'
+import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -56,6 +56,21 @@ const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: 
   converted:   { label: 'Convertido',    cls: 'bg-violet-100 text-violet-700' },
 }
 
+type ColumnKey = 'contact' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'connected' | 'action'
+
+const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
+  { key: 'contact', label: 'Contacto' },
+  { key: 'location', label: 'Ubicación' },
+  { key: 'industry', label: 'Rubro' },
+  { key: 'source', label: 'Origen' },
+  { key: 'qualification', label: 'Calificación' },
+  { key: 'last_email', label: 'Último email' },
+  { key: 'connected', label: 'Conectado' },
+  { key: 'action', label: 'Acción' },
+]
+
+const DEFAULT_COLUMNS: ColumnKey[] = COLUMN_CONFIG.map(c => c.key)
+
 export function CrmLeadsClient() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [total, setTotal] = useState(0)
@@ -67,6 +82,8 @@ export function CrmLeadsClient() {
   const [industry, setIndustry] = useState('')
   const [commune, setCommune] = useState('')
   const [sources, setSources] = useState<string[]>([])
+  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS)
+  const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [industries, setIndustries] = useState<string[]>([])
   const [communes, setCommunes] = useState<string[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
@@ -180,6 +197,22 @@ export function CrmLeadsClient() {
     } finally {
       setDeleting(false)
     }
+  }
+
+  function isColumnVisible(key: ColumnKey) {
+    return visibleColumns.includes(key)
+  }
+
+  function toggleColumn(key: ColumnKey) {
+    setVisibleColumns(prev => (
+      prev.includes(key)
+        ? prev.filter(k => k !== key)
+        : [...prev, key]
+    ))
+  }
+
+  function resetColumns() {
+    setVisibleColumns(DEFAULT_COLUMNS)
   }
 
   async function importLeads() {
@@ -353,14 +386,14 @@ export function CrmLeadsClient() {
                 />
               </th>
               <th className="px-4 py-3 font-semibold">Empresa</th>
-              <th className="px-4 py-3 font-semibold">Contacto</th>
-              <th className="px-4 py-3 font-semibold">Ubicación</th>
-              <th className="px-4 py-3 font-semibold">Rubro</th>
-              <th className="px-4 py-3 font-semibold">Origen</th>
-              <th className="px-4 py-3 font-semibold">Calificación</th>
-              <th className="px-4 py-3 font-semibold">Último email</th>
-              <th className="px-4 py-3 font-semibold">Conectado</th>
-              <th className="px-4 py-3 font-semibold text-right">Acción</th>
+              {isColumnVisible('contact') && <th className="px-4 py-3 font-semibold">Contacto</th>}
+              {isColumnVisible('location') && <th className="px-4 py-3 font-semibold">Ubicación</th>}
+              {isColumnVisible('industry') && <th className="px-4 py-3 font-semibold">Rubro</th>}
+              {isColumnVisible('source') && <th className="px-4 py-3 font-semibold">Origen</th>}
+              {isColumnVisible('qualification') && <th className="px-4 py-3 font-semibold">Calificación</th>}
+              {isColumnVisible('last_email') && <th className="px-4 py-3 font-semibold">Último email</th>}
+              {isColumnVisible('connected') && <th className="px-4 py-3 font-semibold">Conectado</th>}
+              {isColumnVisible('action') && <th className="px-4 py-3 font-semibold text-right">Acción</th>}
             </tr>
           </thead>
           <tbody>
@@ -386,15 +419,20 @@ export function CrmLeadsClient() {
                       <span className="truncate max-w-[200px]">{lead.company_name || '—'}</span>
                     </Link>
                   </td>
+{isColumnVisible('contact') && (
                   <td className="px-4 py-3 text-gray-600">
                     <div className="truncate max-w-[180px]">{lead.contact_name || '—'}</div>
                     <div className="text-xs text-gray-400 truncate max-w-[180px]">{lead.email}</div>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{lead.commune || '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[160px]">{lead.industry || '—'}</td>
+                  )}
+{isColumnVisible('location') && <td className="px-4 py-3 text-gray-500 text-xs">{lead.commune || '—'}</td>}
+{isColumnVisible('industry') && <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[160px]">{lead.industry || '—'}</td>}
+{isColumnVisible('source') && (
                   <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[140px]" title={lead.source ?? undefined}>
                     {lead.source || '—'}
                   </td>
+                  )}
+{isColumnVisible('qualification') && (
                   <td className="px-4 py-3">
                     <select
                       value={lead.qualification_status}
@@ -406,9 +444,13 @@ export function CrmLeadsClient() {
                       ))}
                     </select>
                   </td>
+                  )}
+{isColumnVisible('last_email') && (
                   <td className="px-4 py-3 text-xs text-gray-400">
                     {lead.contacted_at ? new Date(lead.contacted_at).toLocaleDateString('es-CL') : 'Nunca'}
                   </td>
+                  )}
+{isColumnVisible('connected') && (
                   <td className="px-4 py-3 text-xs">
                     {lead.app_connected ? (
                       <span className="inline-flex items-center gap-1 text-emerald-600" title={lead.app_last_sign_in_at ? `Último ingreso: ${formatDate(lead.app_last_sign_in_at, "d MMM yyyy HH:mm")}` : undefined}>
@@ -420,6 +462,8 @@ export function CrmLeadsClient() {
                       </span>
                     )}
                   </td>
+                  )}
+{isColumnVisible('action') && (
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/admin-crm/${lead.id}`}
@@ -429,6 +473,7 @@ export function CrmLeadsClient() {
                       <Mail className="h-3.5 w-3.5" />
                     </Link>
                   </td>
+                  )}
                 </tr>
               )
             })}

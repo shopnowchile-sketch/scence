@@ -96,6 +96,10 @@ export function CrmLeadsClient() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [showBulkSendModal, setShowBulkSendModal] = useState(false)
+  const [bulkSubject, setBulkSubject] = useState('Hola, ¿cómo estás?')
+  const [bulkMessage, setBulkMessage] = useState('')
+  const [sendingBulk, setSendingBulk] = useState(false)
   const limit = 50
 
   const load = useCallback(async () => {
@@ -169,6 +173,40 @@ export function CrmLeadsClient() {
       if (allVisibleSelected) return prev.filter(id => !visibleLeadIds.includes(id))
       return Array.from(new Set([...prev, ...visibleLeadIds]))
     })
+  }
+
+  async function sendBulkEmails() {
+    if (selectedIds.length === 0) {
+      toast.error('No hay leads seleccionados')
+      return
+    }
+
+    setSendingBulk(true)
+    try {
+      const r = await fetch('/api/crm-leads/bulk-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: selectedIds,
+          subject: bulkSubject,
+          message: bulkMessage,
+        }),
+      })
+
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? 'No se pudieron enviar los emails')
+
+      toast.success(`Enviados: ${j.sent} · Sin email: ${j.skipped} · Fallidos: ${j.failed}`)
+      setShowBulkSendModal(false)
+      setBulkSubject('Hola, ¿cómo estás?')
+      setBulkMessage('')
+      setSelectedIds([])
+      await load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudieron enviar los emails')
+    } finally {
+      setSendingBulk(false)
+    }
   }
 
   async function deleteSelectedLeads() {
@@ -434,6 +472,15 @@ export function CrmLeadsClient() {
             </button>
             <button
               type="button"
+              onClick={() => setShowBulkSendModal(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700"
+            >
+              <Mail className="h-4 w-4" />
+              Enviar email
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowDeleteModal(true)}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
             >
@@ -559,6 +606,77 @@ export function CrmLeadsClient() {
           <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40">Siguiente</button>
         </div>
       </div>
+
+      {showBulkSendModal && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Enviar email masivo</h2>
+                <p className="text-xs text-gray-400">Se enviará a los leads seleccionados que tengan email. Máximo 50 por vez.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkSendModal(false)}
+                className="h-8 w-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-xl bg-violet-50 border border-violet-100 p-4 text-sm text-violet-700 font-semibold">
+                {selectedCount} lead{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Asunto</label>
+                <input
+                  value={bulkSubject}
+                  onChange={e => setBulkSubject(e.target.value)}
+                  placeholder="Hola, ¿cómo estás?"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">
+                  Mensaje personalizado opcional
+                </label>
+                <textarea
+                  value={bulkMessage}
+                  onChange={e => setBulkMessage(e.target.value)}
+                  placeholder="Déjalo vacío para usar el mensaje base de SCENCE."
+                  rows={8}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400 resize-none"
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  Si lo dejas vacío, se enviará el mensaje base actual. Si escribes aquí, se usará este texto para todos.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkSendModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={sendingBulk || selectedCount === 0}
+                onClick={sendBulkEmails}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50"
+              >
+                {sendingBulk && <Loader2 className="h-4 w-4 animate-spin" />}
+                Enviar emails
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">

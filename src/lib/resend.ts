@@ -435,6 +435,41 @@ export function deliverableReminderEmail({
 </html>`
 }
 
+// Notificación interna al admin que lanzó un envío masivo de CRM, cuando el
+// job terminó de procesar todas las tandas en background.
+export function bulkSendCompleteEmail({
+  total,
+  sent,
+  skipped,
+  failed,
+}: {
+  total: number
+  sent: number
+  skipped: number
+  failed: number
+}): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:32px 0">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+    <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:28px;text-align:center">
+      <span style="color:#fff;font-size:18px;font-weight:800;letter-spacing:-0.5px">SCENCE — CRM</span>
+    </div>
+    <div style="padding:28px">
+      <h1 style="font-size:18px;font-weight:700;color:#111827;margin:0 0 16px">Envío masivo terminado</h1>
+      <div style="background:#f3f4f6;border-radius:10px;padding:16px;font-size:14px;color:#374151;line-height:1.8">
+        <p style="margin:0">Total solicitado: <strong>${total}</strong></p>
+        <p style="margin:0">Enviados: <strong style="color:#059669">${sent}</strong></p>
+        <p style="margin:0">Sin email (omitidos): <strong>${skipped}</strong></p>
+        <p style="margin:0">Fallidos: <strong style="color:#dc2626">${failed}</strong></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
 export function invoiceEmail({
   clientName,
   invoiceNumber,

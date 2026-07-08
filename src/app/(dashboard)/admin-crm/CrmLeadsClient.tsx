@@ -272,7 +272,7 @@ SCENCE`)
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudieron enviar los emails')
 
-      toast.success(`Enviados: ${j.sent} · Sin email: ${j.skipped} · Fallidos: ${j.failed}`)
+      toast.success(`Envío en marcha: ${j.total} leads. Te llega un email cuando termine.`)
       setShowBulkSendModal(false)
       setBulkSubject('Hola, ¿cómo estás?')
       setBulkMessage(`Hola,
@@ -810,7 +810,7 @@ SCENCE`)
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>
                 <h2 className="text-base font-bold text-gray-900">Enviar email masivo</h2>
-                <p className="text-xs text-gray-400">Se enviará a los leads seleccionados que tengan email. Máximo 50 por vez.</p>
+                <p className="text-xs text-gray-400">Se enviará a los leads seleccionados que tengan email, en tandas en background. Te llega un email cuando termine.</p>
               </div>
               <button
                 type="button"

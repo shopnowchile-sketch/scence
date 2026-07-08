@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 
 type Lead = {
   id: string
@@ -95,7 +96,9 @@ export function CrmLeadsClient() {
   const [commune, setCommune] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
   const [sources, setSources] = useState<string[]>([])
-  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS)
+  const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
+    'scence:admin:crm:visibleColumns', DEFAULT_COLUMNS
+  )
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [industries, setIndustries] = useState<string[]>([])
   const [communes, setCommunes] = useState<string[]>([])

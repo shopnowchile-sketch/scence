@@ -18,7 +18,20 @@ export function useLocalStorageState<T>(key: string, initialValue: T) {
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(key)
-      if (raw !== null) setValue(JSON.parse(raw))
+      if (raw !== null) {
+        const parsed = JSON.parse(raw)
+        const isPlainObject = (v: unknown) =>
+          v !== null && typeof v === 'object' && !Array.isArray(v)
+        // Si tanto el default como lo guardado son objetos (ej. columnas
+        // visibles), se mezclan en vez de reemplazar — así una columna nueva
+        // agregada después (con su default en `initialValue`) no queda
+        // "perdida" solo porque el localStorage viejo no la conocía.
+        setValue(
+          isPlainObject(parsed) && isPlainObject(initialValue)
+            ? { ...(initialValue as object), ...(parsed as object) } as T
+            : parsed
+        )
+      }
     } catch {
       // localStorage no disponible o JSON inválido — seguir con el default
     }

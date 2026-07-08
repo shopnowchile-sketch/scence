@@ -253,7 +253,7 @@ export default function BrandsPage() {
   const [brands, setBrands]           = useState<Brand[]>([])
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('pending_approval')
   const [sortKey, setSortKey]     = useLocalStorageState<SortKey>('scence:admin:brands:sortKey', 'name')
   const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>('scence:admin:brands:sortOrder', 'asc')
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<Record<BrandColumnKey, boolean>>(

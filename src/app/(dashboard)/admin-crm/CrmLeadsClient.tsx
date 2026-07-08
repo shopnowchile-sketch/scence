@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
@@ -145,6 +145,13 @@ Pri
 SCENCE`)
   const [sendingBulk, setSendingBulk] = useState(false)
   const limit = 50
+  const tableRef = useRef<HTMLDivElement>(null)
+
+  function goToEmailStatus(value: string) {
+    setEmailStatus(value)
+    setPage(1)
+    requestAnimationFrame(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -407,26 +414,46 @@ SCENCE`)
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 w-full">
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <button
+            type="button"
+            onClick={() => goToEmailStatus('sent')}
+            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+          >
             <p className="text-xs text-gray-500">Enviados</p>
             <p className="text-2xl font-bold text-gray-900">{stats.sent.toLocaleString('es-CL')}</p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          </button>
+          <button
+            type="button"
+            onClick={() => goToEmailStatus('delivered')}
+            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+          >
             <p className="text-xs text-gray-500">Entregados</p>
             <p className="text-2xl font-bold text-gray-900">{stats.delivered.toLocaleString('es-CL')}</p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          </button>
+          <button
+            type="button"
+            onClick={() => goToEmailStatus('opened')}
+            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+          >
             <p className="text-xs text-gray-500">Abiertos</p>
             <p className="text-2xl font-bold text-gray-900">{stats.opened.toLocaleString('es-CL')}</p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          </button>
+          <button
+            type="button"
+            onClick={() => goToEmailStatus('opened')}
+            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+          >
             <p className="text-xs text-gray-500">Tasa apertura</p>
             <p className="text-2xl font-bold text-gray-900">{stats.openRate}%</p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          </button>
+          <button
+            type="button"
+            onClick={() => goToEmailStatus('failed_bounced')}
+            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+          >
             <p className="text-xs text-gray-500">Fallidos/Rebotados</p>
             <p className="text-2xl font-bold text-gray-900">{(stats.failed + stats.bounced).toLocaleString('es-CL')}</p>
-          </div>
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -555,6 +582,7 @@ SCENCE`)
               <option value="opened">Abiertos</option>
               <option value="failed">Fallidos</option>
               <option value="bounced">Rebotados</option>
+              <option value="failed_bounced">Fallidos o rebotados</option>
               <option value="not_sent">Sin email enviado</option>
             </select>
           </div>
@@ -645,7 +673,7 @@ SCENCE`)
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+      <div ref={tableRef} className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
         <table className="w-full text-sm min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-50 text-left text-xs text-gray-400">

@@ -111,6 +111,7 @@ export async function GET(request: NextRequest) {
       if (emailStatus === 'opened') q = applyIdsEmailFilter(q, emailEventSets.opened)
       if (emailStatus === 'failed') q = applyIdsEmailFilter(q, emailEventSets.failed)
       if (emailStatus === 'bounced') q = applyIdsEmailFilter(q, emailEventSets.bounced)
+      if (emailStatus === 'failed_bounced') q = applyIdsEmailFilter(q, new Set(Array.from(emailEventSets.failed).concat(Array.from(emailEventSets.bounced))))
       if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
       if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%`)
       return q
@@ -158,6 +159,9 @@ export async function GET(request: NextRequest) {
   if (emailStatus === 'opened') applyEmailStatusFilter(emailEventSets.opened)
   if (emailStatus === 'failed') applyEmailStatusFilter(emailEventSets.failed)
   if (emailStatus === 'bounced') applyEmailStatusFilter(emailEventSets.bounced)
+  // Combinado — usado por el KPI "Fallidos/Rebotados" del dashboard (una sola
+  // tarjeta que suma ambos, por eso el click necesita ambos sets a la vez).
+  if (emailStatus === 'failed_bounced') applyEmailStatusFilter(new Set(Array.from(emailEventSets.failed).concat(Array.from(emailEventSets.bounced))))
   if (emailStatus === 'not_sent') query = query.is('contacted_at', null)
 
   if (search) {

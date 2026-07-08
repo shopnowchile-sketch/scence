@@ -131,3 +131,24 @@ export function useDeliverableAction(campaignId: string) {
     onError: (err: Error) => toast.error(err.message),
   })
 }
+
+// ── Sync deliverable metrics (Apify: views/likes/comments reales) ────────────
+export function useSyncDeliverableMetrics(campaignId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (deliverableId: string) => {
+      const res = await fetch(`/api/campaign-deliverables/${deliverableId}/sync-metrics`, {
+        method: 'POST',
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al actualizar métricas')
+      return json
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaign', campaignId] })
+      qc.invalidateQueries({ queryKey: ['campaign', '/api/campaigns', campaignId] })
+      toast.success('Métricas actualizadas')
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+}

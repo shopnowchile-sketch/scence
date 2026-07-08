@@ -35,6 +35,10 @@ interface Deliverable {
   content_url: string | null
   review_notes: string | null
   progress: number | null
+  // Métricas reales (Apify) — solo views/likes/comments. reach/impressions/
+  // saves/shares no existen, no se inventan (ver src/lib/deliverables/apify-metrics.ts).
+  performance: { views: number | null; likes: number | null; comments: number | null } | null
+  engagement_rate: number | null // CALCULADO, no dato real de Instagram
   influencer: { id: string; display_name: string; avatar_url: string | null } | null
 }
 
@@ -156,6 +160,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
       campaign_deliverables (
         id, title, type, status, due_date, platform,
         published_at, published_url, review_notes, progress, content_url,
+        performance, engagement_rate,
         influencer:influencers (id, display_name, avatar_url)
       )
     `)
@@ -177,6 +182,20 @@ export default async function CampaignReportPage({ params }: { params: { id: str
   const totalDone = deliverables.filter(d => d.status === 'published').length
   const totalCount = deliverables.length
   const progressPct = totalCount > 0 ? Math.round((totalDone / totalCount) * 100) : 0
+
+  // Métricas reales de contenido (Apify) — solo se suman deliverables que ya
+  // tienen una sync guardada en `performance`. reach/impressions/saves/shares
+  // NO se muestran porque no existen (ver src/lib/deliverables/apify-metrics.ts).
+  const deliverablesWithMetrics = deliverables.filter(d => d.performance != null)
+  const hasMetrics = deliverablesWithMetrics.length > 0
+  const totalViews = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
+  const totalLikes = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
+  const totalComments = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.comments ?? 0), 0)
+  const totalInteractions = totalLikes + totalComments
+  const engagementRates = deliverablesWithMetrics.map(d => d.engagement_rate).filter((v): v is number => v != null)
+  const avgEngagementRate = engagementRates.length > 0
+    ? Math.round((engagementRates.reduce((s, v) => s + v, 0) / engagementRates.length) * 100) / 100
+    : null
 
   const showBudgetTotal = campaign.budget_total != null && campaign.budget_total > 0
   const showBudgetSpent = (campaign.budget_spent ?? 0) > 0
@@ -367,6 +386,43 @@ export default async function CampaignReportPage({ params }: { params: { id: str
             </div>
           </div>
 
+          {/* Métricas de contenido (Apify) — solo views/likes/comments reales.
+              No se muestra reach/impressions/saves/shares porque no existen.
+              Engagement siempre etiquetado como calculado. */}
+          {hasMetrics && (
+            <div className="section">
+              <div className="section-title">Métricas de Contenido</div>
+              <div className="info-grid">
+                <div className="info-card">
+                  <div className="info-label">Visualizaciones totales</div>
+                  <div className="info-value">{formatFollowers(totalViews)}</div>
+                </div>
+                <div className="info-card">
+                  <div className="info-label">Likes totales</div>
+                  <div className="info-value">{formatFollowers(totalLikes)}</div>
+                </div>
+                <div className="info-card">
+                  <div className="info-label">Comentarios totales</div>
+                  <div className="info-value">{formatFollowers(totalComments)}</div>
+                </div>
+                <div className="info-card">
+                  <div className="info-label">Interacciones totales</div>
+                  <div className="info-value">{formatFollowers(totalInteractions)}</div>
+                </div>
+                <div className="info-card">
+                  <div className="info-label">Engagement promedio (calculado)</div>
+                  <div className="info-value" style={{ color: '#7c3aed' }}>
+                    {avgEngagementRate !== null ? `${avgEngagementRate}%` : '—'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>
+                Basado en {deliverablesWithMetrics.length} de {deliverables.length} deliverables con métricas sincronizadas.
+                Reach, impresiones, guardados y compartidos no están disponibles y no se muestran.
+              </div>
+            </div>
+          )}
+
           {/* Por influencer — reemplaza las tablas separadas de influencers y deliverables */}
           {influencers.length > 0 && (
             <div className="section">
@@ -408,6 +464,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                       ) : (
                         labeled.map(({ label, deliverable: d }) => {
                           const url = d.content_url || d.published_url
+                          const perf = d.performance
                           return (
                             <div key={d.id} className="deliverable-row">
                               <span className="deliverable-label">{label}:</span>
@@ -415,6 +472,13 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                                 <a href={url} target="_blank" rel="noopener noreferrer" className="deliverable-link">{url}</a>
                               ) : (
                                 <span className="deliverable-pending">Pendiente</span>
+                              )}
+                              {perf && (
+                                <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>
+                                  ({perf.views != null ? `${formatFollowers(perf.views)} vistas · ` : ''}
+                                  {formatFollowers(perf.likes ?? 0)} likes · {formatFollowers(perf.comments ?? 0)} comentarios
+                                  {d.engagement_rate != null ? ` · ${d.engagement_rate}% eng. calc.` : ''})
+                                </span>
                               )}
                             </div>
                           )

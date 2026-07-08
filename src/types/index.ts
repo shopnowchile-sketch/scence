@@ -159,6 +159,12 @@ export interface CampaignDeliverableDetail {
   review_notes: string | null
   progress: number | null
   content_rating: number | null  // 1-5 estrellas, calificado por admin/marca
+  // Métricas reales de publicación (Apify) — solo views/likes/comments.
+  // reach/impressions/saves/shares NO existen: no se inventan.
+  performance: { views: number | null; likes: number | null; comments: number | null } | null
+  metrics_provider: string | null      // ej. 'apify'
+  metrics_updated_at: string | null    // última sync real
+  engagement_rate: number | null       // CALCULADO por nosotros, no dato real de Instagram
   influencer: {
     id: string
     display_name: string

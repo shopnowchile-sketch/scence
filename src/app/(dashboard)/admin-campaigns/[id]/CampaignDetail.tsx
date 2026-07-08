@@ -7,18 +7,18 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { cn, formatCurrency, formatDate, formatDatetime, PLATFORM_ICONS } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatDatetime, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
 import { BartersTab } from '@/components/campaigns/BartersTab'
 import { StarRating } from '@/components/ui/StarRating'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus } from '@/types'
-import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer } from '@/hooks/useCampaignsList'
+import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { toast } from 'sonner'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
@@ -79,6 +79,7 @@ function DeliverableContent({
   setReviewNotes: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }) {
   const action = useDeliverableAction(campaignId)
+  const syncMetrics = useSyncDeliverableMetrics(campaignId)
   const cfg = DEL_CONFIG[d.status] ?? DEL_CONFIG.pending
   const url = d.published_url || d.content_url
   const typeLabel = d.type ? d.type.replace(/_/g, ' ') : (d.platform ?? 'Contenido')
@@ -97,6 +98,12 @@ function DeliverableContent({
   async function handleRate(rating: number) {
     try {
       await action.mutateAsync({ deliverable_id: d.id, action: 'rate', rating })
+    } catch { /* handled in hook */ }
+  }
+
+  async function handleSyncMetrics() {
+    try {
+      await syncMetrics.mutateAsync(d.id)
     } catch { /* handled in hook */ }
   }
 
@@ -155,6 +162,56 @@ function DeliverableContent({
           💬 {d.review_notes}
         </div>
       )}
+
+      {/* Métricas reales de publicación (Apify) — solo views/likes/comments.
+          reach/impresiones/guardados/compartidos no existen, no se inventan.
+          Engagement siempre etiquetado como calculado. */}
+      <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+        {!url ? (
+          <span className="text-[11px] text-gray-300">Falta link para traer métricas</span>
+        ) : d.performance ? (
+          <>
+            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+              <Eye className="h-3 w-3" /> {d.performance.views != null ? formatFollowers(d.performance.views) : '—'}
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+              <Heart className="h-3 w-3" /> {d.performance.likes != null ? formatFollowers(d.performance.likes) : '—'}
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+              <MessageCircle className="h-3 w-3" /> {d.performance.comments != null ? formatFollowers(d.performance.comments) : '—'}
+            </span>
+            {d.engagement_rate != null && (
+              <span className="text-[11px] text-violet-600 font-semibold" title="Calculado, no es un dato real de Instagram">
+                {d.engagement_rate}% eng. (calc.)
+              </span>
+            )}
+            {d.metrics_updated_at && (
+              <span className="text-[10px] text-gray-300">Actualizado {formatDatetime(d.metrics_updated_at)}</span>
+            )}
+            <button
+              onClick={handleSyncMetrics}
+              disabled={syncMetrics.isPending}
+              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-violet-600 transition-colors disabled:opacity-50"
+            >
+              {syncMetrics.isPending
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <RefreshCw className="h-3 w-3" />}
+              Actualizar
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={handleSyncMetrics}
+            disabled={syncMetrics.isPending}
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-600 hover:underline disabled:opacity-50"
+          >
+            {syncMetrics.isPending
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <RefreshCw className="h-3 w-3" />}
+            Actualizar métricas
+          </button>
+        )}
+      </div>
     </div>
   )
 }

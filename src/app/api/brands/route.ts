@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { resolveBrandPlan } from '@/lib/plan-limits'
 
 // ── GET /api/brands ───────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Enriquecer con last_sign_in_at + fecha de creación de cuenta desde auth.users
-  type BrandRow = Record<string, unknown> & { user_id?: string | null; created_at?: string | null }
+  type BrandRow = Record<string, unknown> & { user_id?: string | null; created_at?: string | null; organization_id?: string | null }
   const brands = (data ?? []) as BrandRow[]
   const userIds = brands.map(b => b.user_id).filter((id): id is string => !!id)
   const lastSeenMap: Record<string, string | null> = {}
@@ -44,6 +45,16 @@ export async function GET(req: NextRequest) {
       accountCreatedMap[uid] = u.user.created_at ?? null
     }
   }
+
+  // Plan de suscripción efectivo por marca (solo lectura, para columna "Plan" en admin).
+  // Reusa resolveBrandPlan (subscriptions activa/trialing → fallback organizations.subscription_plan).
+  const orgPlanMap: Record<string, string> = {}
+  for (const b of brands) {
+    if (b.organization_id && !(b.organization_id in orgPlanMap)) {
+      orgPlanMap[b.organization_id] = await resolveBrandPlan(admin, b.organization_id)
+    }
+  }
+
   const enriched = brands.map(b => ({
     ...b,
     last_sign_in_at: b.user_id ? (lastSeenMap[b.user_id] ?? null) : null,
@@ -51,6 +62,7 @@ export async function GET(req: NextRequest) {
     // usuario asociado); si no hay usuario, cae a brands.created_at (fecha de
     // alta del registro, ej. marcas creadas por admin sin invitar todavía).
     account_created_at: b.user_id ? (accountCreatedMap[b.user_id] ?? b.created_at ?? null) : (b.created_at ?? null),
+    org_plan: b.organization_id ? (orgPlanMap[b.organization_id] ?? 'free') : 'free',
   }))
 
   return NextResponse.json({ data: enriched, total: count ?? 0 })

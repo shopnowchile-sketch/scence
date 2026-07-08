@@ -12,10 +12,11 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
+import { getPlanTier, PLAN_LIMITS } from '@/lib/plan-limits'
 
-type SortKey = 'name' | 'status' | 'industry' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy'
+type SortKey = 'name' | 'status' | 'industry' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy' | 'plan'
 type SortOrder = 'asc' | 'desc'
-type BrandColumnKey = 'status' | 'industry' | 'contact' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy'
+type BrandColumnKey = 'status' | 'industry' | 'contact' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy' | 'plan'
 
 // Columnas de la tabla de Marcas — "Marca" siempre visible (no se puede ocultar
 // la columna principal). Regla global pedida por Pri: toda tabla debe poder
@@ -23,6 +24,7 @@ type BrandColumnKey = 'status' | 'industry' | 'contact' | 'active' | 'total' | '
 // mismo patrón ya usado en Campañas (visibilidad) e Influencers (sort).
 const BRAND_COLUMNS: Array<{ key: BrandColumnKey; label: string }> = [
   { key: 'status',         label: 'Estado' },
+  { key: 'plan',           label: 'Plan' },
   { key: 'industry',       label: 'Industria' },
   { key: 'contact',        label: 'Contacto' },
   { key: 'active',         label: 'Campañas activas' },
@@ -36,8 +38,15 @@ const DEFAULT_BRAND_COLUMNS: Record<BrandColumnKey, boolean> =
   Object.fromEntries(BRAND_COLUMNS.map(c => [c.key, true])) as Record<BrandColumnKey, boolean>
 
 const DEFAULT_BRAND_WIDTHS: Record<'name' | BrandColumnKey, number> = {
-  name: 240, status: 120, industry: 160, contact: 200, active: 130,
+  name: 240, status: 120, plan: 110, industry: 160, contact: 200, active: 130,
   total: 130, accountCreated: 130, lastSignIn: 170, referredBy: 140,
+}
+
+// Badge de plan — mismo criterio de color que el resto de badges de estado.
+function planBadgeClass(tier: 'basic' | 'growth' | 'pro') {
+  if (tier === 'pro') return 'badge-green'
+  if (tier === 'growth') return 'badge-blue'
+  return 'badge-gray'
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -59,6 +68,7 @@ interface Brand {
   user_id?: string | null
   metadata?: { referred_by_instagram?: string | null } | null
   campaigns?: Array<{ id: string; name: string; status: string; budget_total: number | null; currency: string }>
+  org_plan?: string | null
 }
 
 type FormData = {
@@ -356,6 +366,7 @@ export default function BrandsPage() {
         switch (sortKey) {
           case 'name':           return br.name ?? ''
           case 'status':         return br.status ?? 'pending_approval'
+          case 'plan':           return getPlanTier(br.org_plan)
           case 'industry':       return br.industry ?? ''
           case 'active':         return (br.campaigns ?? []).filter(c => c.status === 'active').length
           case 'total':          return br.campaigns?.length ?? 0
@@ -502,6 +513,7 @@ export default function BrandsPage() {
                 <colgroup>
                   <col style={{ width: widths.name }} />
                   {visibleColumns.status         && <col style={{ width: widths.status }} />}
+                  {visibleColumns.plan           && <col style={{ width: widths.plan }} />}
                   {visibleColumns.industry       && <col style={{ width: widths.industry }} />}
                   {visibleColumns.contact         && <col style={{ width: widths.contact }} />}
                   {visibleColumns.active          && <col style={{ width: widths.active }} />}
@@ -516,6 +528,9 @@ export default function BrandsPage() {
                     <SortableTH col="name" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('name', e)}>Marca</SortableTH>
                     {visibleColumns.status && (
                       <SortableTH col="status" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('status', e)}>Estado</SortableTH>
+                    )}
+                    {visibleColumns.plan && (
+                      <SortableTH col="plan" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('plan', e)}>Plan</SortableTH>
                     )}
                     {visibleColumns.industry && (
                       <SortableTH col="industry" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('industry', e)}>Industria</SortableTH>
@@ -565,6 +580,13 @@ export default function BrandsPage() {
                           <td className="px-4 py-3 overflow-hidden">
                             <span className={cn('badge text-xs font-bold', statusClass(b.status))}>
                               {statusLabel(b.status)}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.plan && (
+                          <td className="px-4 py-3 overflow-hidden">
+                            <span className={cn('badge text-xs font-bold', planBadgeClass(getPlanTier(b.org_plan)))}>
+                              {PLAN_LIMITS[getPlanTier(b.org_plan)].label}
                             </span>
                           </td>
                         )}

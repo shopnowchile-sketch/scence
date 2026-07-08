@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 
 type Campaign = {
   id: string
@@ -32,6 +33,7 @@ type Brand = {
   user_id?: string | null
   last_sign_in_at?: string | null
   campaigns?: Campaign[]
+  org_plan?: string | null
 }
 
 type BrandLocation = {
@@ -654,6 +656,30 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
       {tab === 'billing' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="card p-5 space-y-3 lg:col-span-2">
+            <div>
+              <h2 className="font-bold text-gray-900">Plan de suscripción</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Plan efectivo de la organización (solo lectura — la activación sigue siendo manual).
+              </p>
+            </div>
+            {(() => {
+              const tier = getPlanTier(brand.org_plan)
+              const info = PLAN_LIMITS[tier]
+              return (
+                <div className="flex items-center gap-3">
+                  <span className={cn(
+                    'badge text-xs font-bold',
+                    tier === 'pro' ? 'badge-green' : tier === 'growth' ? 'badge-blue' : 'badge-gray'
+                  )}>
+                    {info.label}
+                  </span>
+                  <span className="text-sm text-gray-600">{formatPriceCLP(info.price_monthly_clp)} CLP/mes</span>
+                </div>
+              )
+            })()}
+          </div>
+
           <div className="card p-5 space-y-4">
             <div>
               <h2 className="font-bold text-gray-900">Crear factura</h2>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { resolveBrandPlan } from '@/lib/plan-limits'
 
 type Params = { params: { id: string } }
 
@@ -47,7 +48,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     last_sign_in_at = u?.user?.last_sign_in_at ?? null
   }
 
-  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at } })
+  // Plan de suscripción efectivo (solo lectura, para card "Plan de suscripción" en Billing).
+  const org_plan = brand.organization_id ? await resolveBrandPlan(admin, brand.organization_id) : 'free'
+
+  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at, org_plan } })
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

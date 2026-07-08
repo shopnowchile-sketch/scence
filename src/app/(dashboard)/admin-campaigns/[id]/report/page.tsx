@@ -176,8 +176,17 @@ export default async function CampaignReportPage({ params }: { params: { id: str
   const campaign = await fetchReport(params.id)
   if (!campaign) notFound()
 
-  const influencers = campaign.campaign_influencers ?? []
   const deliverables = campaign.campaign_deliverables ?? []
+
+  // Pedido de Pri: el reporte solo debe listar influencers que ya entregaron
+  // contenido (tienen al menos 1 deliverable con link) — antes salían todas
+  // las invitadas/asignadas aunque no hubieran subido nada.
+  const deliveredInfluencerIds = new Set(
+    deliverables.filter(d => d.content_url || d.published_url).map(d => d.influencer?.id).filter(Boolean)
+  )
+  const influencers = (campaign.campaign_influencers ?? []).filter(ci =>
+    ci.influencer && deliveredInfluencerIds.has(ci.influencer.id)
+  )
 
   const totalDone = deliverables.filter(d => d.status === 'published').length
   const totalCount = deliverables.length
@@ -388,26 +397,28 @@ export default async function CampaignReportPage({ params }: { params: { id: str
 
           {/* Métricas de contenido (Apify) — solo views/likes/comments reales.
               No se muestra reach/impressions/saves/shares porque no existen.
-              Engagement siempre etiquetado como calculado. */}
-          {hasMetrics && (
+              Engagement siempre etiquetado como calculado. Sección siempre
+              visible (con "—" si aún no hay sync) — pedido de Pri: "las
+              métricas tienen que mostrarse". */}
+          {(
             <div className="section">
               <div className="section-title">Métricas de Contenido</div>
               <div className="info-grid">
                 <div className="info-card">
                   <div className="info-label">Visualizaciones totales</div>
-                  <div className="info-value">{formatFollowers(totalViews)}</div>
+                  <div className="info-value">{hasMetrics ? formatFollowers(totalViews) : '—'}</div>
                 </div>
                 <div className="info-card">
                   <div className="info-label">Likes totales</div>
-                  <div className="info-value">{formatFollowers(totalLikes)}</div>
+                  <div className="info-value">{hasMetrics ? formatFollowers(totalLikes) : '—'}</div>
                 </div>
                 <div className="info-card">
                   <div className="info-label">Comentarios totales</div>
-                  <div className="info-value">{formatFollowers(totalComments)}</div>
+                  <div className="info-value">{hasMetrics ? formatFollowers(totalComments) : '—'}</div>
                 </div>
                 <div className="info-card">
                   <div className="info-label">Interacciones totales</div>
-                  <div className="info-value">{formatFollowers(totalInteractions)}</div>
+                  <div className="info-value">{hasMetrics ? formatFollowers(totalInteractions) : '—'}</div>
                 </div>
                 <div className="info-card">
                   <div className="info-label">Engagement promedio (calculado)</div>
@@ -432,7 +443,13 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                 if (!inf) return null
 
                 const infDeliverables = deliverables.filter(d => d.influencer?.id === inf.id)
-                const doneCount = infDeliverables.filter(d => d.status === 'published').length
+                // "Entregado" = tiene link o ya fue aprobado/publicado — mismo
+                // criterio que decide si el influencer aparece en el reporte
+                // (antes solo contaba status==='published', y mostraba 0%
+                // para influencers que ya habían entregado el link).
+                const doneCount = infDeliverables.filter(d =>
+                  !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)
+                ).length
                 const pct = infDeliverables.length > 0 ? Math.round((doneCount / infDeliverables.length) * 100) : 0
                 const uploadedDates = infDeliverables.map(d => d.published_at).filter(Boolean) as string[]
                 const lastUploaded = uploadedDates.length > 0

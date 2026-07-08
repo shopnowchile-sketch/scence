@@ -110,6 +110,7 @@ export function CrmLeadsClient() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [selectingAll, setSelectingAll] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleting, setDeleting] = useState(false)
@@ -218,6 +219,27 @@ SCENCE`)
       if (allVisibleSelected) return prev.filter(id => !visibleLeadIds.includes(id))
       return Array.from(new Set([...prev, ...visibleLeadIds]))
     })
+  }
+
+  async function selectAllMatching() {
+    setSelectingAll(true)
+    try {
+      const params = new URLSearchParams({ ids_only: '1' })
+      if (search) params.set('search', search)
+      if (qualification) params.set('qualification', qualification)
+      if (source) params.set('source', source)
+      if (industry) params.set('industry', industry)
+      if (commune) params.set('commune', commune)
+      if (emailStatus) params.set('email_status', emailStatus)
+      const r = await fetch(`/api/crm-leads?${params}`)
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? 'No se pudo seleccionar todos')
+      setSelectedIds(j.ids ?? [])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo seleccionar todos')
+    } finally {
+      setSelectingAll(false)
+    }
   }
 
   async function sendBulkEmails() {
@@ -570,9 +592,21 @@ SCENCE`)
 
       {selectedCount > 0 && (
         <div className="bg-violet-50 border border-violet-100 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-sm font-semibold text-violet-700">
-            {selectedCount} lead{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
-          </p>
+          <div>
+            <p className="text-sm font-semibold text-violet-700">
+              {selectedCount} lead{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+            </p>
+            {allVisibleSelected && selectedCount < total && (
+              <button
+                type="button"
+                onClick={selectAllMatching}
+                disabled={selectingAll}
+                className="text-xs font-semibold text-violet-600 hover:underline disabled:opacity-50"
+              >
+                {selectingAll ? 'Seleccionando...' : `Seleccionar los ${total} que cumplen el filtro`}
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"

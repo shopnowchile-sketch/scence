@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
   const industry = searchParams.get('industry') ?? ''
   const commune = searchParams.get('commune') ?? ''
   const emailStatus = searchParams.get('email_status') ?? ''
+  const idsOnly = searchParams.get('ids_only') === '1'
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
@@ -84,6 +85,53 @@ export async function GET(request: NextRequest) {
       if (rows.length < PAGE) break
       from += PAGE
     }
+  }
+
+  // ── ids_only: trae TODOS los ids que cumplen el filtro (no solo la página
+  // actual) — usado por "Seleccionar todos los que cumplen el filtro" en el
+  // CRM. Reusa los mismos filtros que el listado paginado. Corta antes de
+  // hacer el enriquecimiento (auth map, sources, etc.) que no se necesita acá.
+  if (idsOnly) {
+    const applyIdsEmailFilter = (q: any, ids: Set<string>) => {
+      const list = Array.from(ids)
+      return list.length > 0
+        ? q.in('id', list)
+        : q.eq('id', '00000000-0000-0000-0000-000000000000')
+    }
+
+    const buildIdsQuery = () => {
+      let q: any = admin.from('crm_leads').select('id').order('created_at', { ascending: false })
+      if (qualification) q = q.eq('qualification_status', qualification)
+      if (region) q = q.eq('region', region)
+      if (source) q = q.eq('source', source)
+      if (industry) q = q.eq('industry', industry)
+      if (commune) q = q.eq('commune', commune)
+      if (emailStatus === 'sent') q = applyIdsEmailFilter(q, emailEventSets.sent)
+      if (emailStatus === 'delivered') q = applyIdsEmailFilter(q, emailEventSets.delivered)
+      if (emailStatus === 'opened') q = applyIdsEmailFilter(q, emailEventSets.opened)
+      if (emailStatus === 'failed') q = applyIdsEmailFilter(q, emailEventSets.failed)
+      if (emailStatus === 'bounced') q = applyIdsEmailFilter(q, emailEventSets.bounced)
+      if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
+      if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%`)
+      return q
+    }
+
+    const allIds: string[] = []
+    const PAGE = 1000
+    let from = 0
+    for (;;) {
+      const { data: rows, error: idsError } = await buildIdsQuery().range(from, from + PAGE - 1)
+      if (idsError) {
+        console.error('[GET /api/crm-leads ids_only]', idsError)
+        return NextResponse.json({ error: idsError.message }, { status: 500 })
+      }
+      if (!rows || rows.length === 0) break
+      for (const r of rows as Array<{ id: string }>) allIds.push(r.id)
+      if (rows.length < PAGE || allIds.length >= 20000) break
+      from += PAGE
+    }
+
+    return NextResponse.json({ ids: allIds })
   }
 
   let query = admin

@@ -229,23 +229,72 @@ function InfluencerBadge({
   const gradient = GRADIENTS[influencer.display_name.charCodeAt(0) % GRADIENTS.length]
 
   return (
-    <div className="flex items-center gap-2.5 min-w-0 flex-shrink-0">
-      <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gradient-to-br overflow-hidden', gradient)}>
+    <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+      <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 bg-gradient-to-br overflow-hidden', gradient)}>
         {influencer.avatar_url
           ? <img src={influencer.avatar_url} alt={influencer.display_name} className="w-full h-full object-cover" />
           : influencer.display_name.charAt(0).toUpperCase()}
       </div>
       <div className="min-w-0 leading-tight">
-        <p className="text-sm font-semibold text-gray-900 truncate">{influencer.display_name}</p>
-        {igUrl ? (
-          <a href={igUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-            className="text-xs text-violet-600 hover:underline whitespace-nowrap">
-            @{cleanIg}
-          </a>
-        ) : (
-          <span className="text-xs text-gray-300 whitespace-nowrap">Sin Instagram</span>
-        )}
+        <p className="text-xs font-semibold text-gray-900 truncate">{influencer.display_name}</p>
+        <div className="flex items-center gap-1.5">
+          {igUrl ? (
+            <a href={igUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+              className="text-[11px] text-violet-600 hover:underline whitespace-nowrap">
+              @{cleanIg}
+            </a>
+          ) : (
+            <span className="text-[11px] text-gray-300 whitespace-nowrap">Sin Instagram</span>
+          )}
+        </div>
       </div>
+    </div>
+  )
+}
+
+// Bloque de stat genérico (número grande + label chico) — mismo tamaño para
+// seguidores y métricas de contenido, pedido por Pri ("estas métricas al
+// lado de los seguidores del mismo tamaño pero ordenado").
+function StatBlock({ icon: Icon, value, label, valueClass }: {
+  icon?: React.ComponentType<{ className?: string }>
+  value: React.ReactNode
+  label: string
+  valueClass?: string
+}) {
+  return (
+    <div className="text-center flex-shrink-0">
+      <div className={cn('text-sm font-bold text-gray-900 flex items-center justify-center gap-1', valueClass)}>
+        {Icon && <Icon className="h-3 w-3 text-gray-400" />}
+        {value}
+      </div>
+      <div className="text-[9px] text-gray-400">{label}</div>
+    </div>
+  )
+}
+
+// Seguidores en grande — pedido explícito de Pri ("vista clara... en grande"),
+// separado del @handle chico para que no se pierda entre el resto del texto.
+function FollowersStat({ followers }: { followers: number | null }) {
+  if (!followers) return null
+  return <StatBlock value={formatFollowers(followers)} label="seguidores" />
+}
+
+// Métricas reales de contenido (Apify), mismo tamaño que seguidores, en fila
+// ordenada. Views/likes/comments son reales; engagement SIEMPRE calculado
+// por nosotros (nunca "alcance" — no existe reach/impressions/saves/shares).
+function ContentMetricsStats({ metrics }: {
+  metrics: { views: number; likes: number; comments: number; avgEngagement: number | null } | null
+}) {
+  return (
+    <div className="flex items-center gap-3 flex-shrink-0">
+      <StatBlock icon={Eye} value={metrics ? formatFollowers(metrics.views) : '—'} label="visualizaciones" />
+      <StatBlock icon={Heart} value={metrics ? formatFollowers(metrics.likes) : '—'} label="likes" />
+      <StatBlock icon={MessageCircle} value={metrics ? formatFollowers(metrics.comments) : '—'} label="comentarios" />
+      <StatBlock
+        value={metrics?.avgEngagement != null ? `${metrics.avgEngagement}%` : '—'}
+        label="engagement (calc.)"
+        valueClass="text-violet-600"
+      />
     </div>
   )
 }
@@ -300,30 +349,12 @@ function RemindButton({ campaignId, influencerId, compact, onSent }: { campaignI
   )
 }
 
-function InfluencerStatsPill({ pct, avgRating, ratedCount }: { pct: number; avgRating: number | null; ratedCount: number }) {
-  return (
-    <div className="flex items-center gap-3 flex-shrink-0">
-      <div className="text-right">
-        <div className="text-sm font-bold text-gray-900">{pct}%</div>
-        <div className="text-[10px] text-gray-400">completado</div>
-      </div>
-      <div className="text-right">
-        <div className="text-sm font-bold text-gray-900 flex items-center gap-1 justify-end">
-          {avgRating !== null ? (
-            <><Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />{avgRating.toFixed(1)}</>
-          ) : <span className="text-gray-300">—</span>}
-        </div>
-        <div className="text-[10px] text-gray-400">{ratedCount > 0 ? `${ratedCount} calif.` : 'sin calificar'}</div>
-      </div>
-    </div>
-  )
-}
-
 function DeliverableInfluencerGroup({
-  influencer, igUsername, items, campaignId, reviewNotes, setReviewNotes, pct, avgRating, ratedCount,
+  influencer, igUsername, followers, items, campaignId, reviewNotes, setReviewNotes, pct, avgRating, ratedCount, metrics,
 }: {
   influencer: { id: string; display_name: string; avatar_url: string | null }
   igUsername: string | null
+  followers: number | null
   items: CampaignDeliverableDetail[]
   campaignId: string
   reviewNotes: Record<string, string>
@@ -331,9 +362,9 @@ function DeliverableInfluencerGroup({
   pct: number
   avgRating: number | null
   ratedCount: number
+  metrics: { views: number; likes: number; comments: number; avgEngagement: number | null } | null
 }) {
   const [open, setOpen] = useState(false)
-  const collapsible = items.length > 1
 
   // Estado por deliverable del grupo — para que el header diga "en revisión"
   // / "aprobado" en vez de solo el conteo, y se sepa sin abrir cuál necesita
@@ -353,34 +384,41 @@ function DeliverableInfluencerGroup({
     </div>
   )
 
-  if (!collapsible) {
-    return (
-      <div className="card p-3">
-        <div className="flex items-center gap-4">
-          <InfluencerBadge influencer={influencer} igUsername={igUsername} />
-          <InfluencerStatsPill pct={pct} avgRating={avgRating} ratedCount={ratedCount} />
-          <div className="w-px self-stretch bg-gray-100 flex-shrink-0" />
-          <DeliverableContent d={items[0]} campaignId={campaignId} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
-        </div>
-      </div>
-    )
-  }
+  const scoreBlocks = (
+    <>
+      <StatBlock value={`${pct}%`} label="completado" />
+      <StatBlock
+        icon={Star}
+        value={avgRating !== null ? avgRating.toFixed(1) : '—'}
+        label={ratedCount > 0 ? `rating (${ratedCount})` : 'rating'}
+      />
+    </>
+  )
 
+  // Mismo formato de tarjeta (header + flechita para desplegar) sin importar
+  // si el influencer tiene 1 o varios deliverables entregados — pedido de
+  // Pri: "las que tienen 50% también deben tener el mismo formato que las
+  // que completaron". Al desplegar, solo se listan los links ya entregados
+  // (items ya viene filtrado a solo eso — nunca los pendientes).
   return (
-    <div className="card p-4">
+    <div className="card p-2 space-y-1.5">
       <div className="flex items-center justify-between gap-3 cursor-pointer" onClick={() => setOpen(v => !v)}>
-        <InfluencerBadge influencer={influencer} igUsername={igUsername} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <InfluencerBadge influencer={influencer} igUsername={igUsername} />
+          <FollowersStat followers={followers} />
+          <ContentMetricsStats metrics={metrics} />
+        </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          <InfluencerStatsPill pct={pct} avgRating={avgRating} ratedCount={ratedCount} />
+          {scoreBlocks}
           {statusBadges}
           <ChevronRight className={cn('h-4 w-4 text-gray-400 transition-transform', open ? 'rotate-90' : '')} />
         </div>
       </div>
 
       {open && (
-        <div className="mt-3 pt-3 border-t border-gray-50 divide-y divide-gray-50">
+        <div className="pt-1.5 border-t border-gray-50 divide-y divide-gray-50">
           {items.map(d => (
-            <div key={d.id} className="py-2.5 first:pt-0 last:pb-0">
+            <div key={d.id} className="py-2 first:pt-0 last:pb-0">
               <DeliverableContent d={d} campaignId={campaignId} reviewNotes={reviewNotes} setReviewNotes={setReviewNotes} />
             </div>
           ))}
@@ -749,6 +787,23 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     : 0
   const pct = avgProgress
   const budgetPct = c.budget_total ? Math.round((c.budget_spent / c.budget_total) * 100) : 0
+
+  // Métricas reales de contenido (Apify) agregadas a nivel campaña — solo
+  // suma deliverables ya sincronizados (performance != null). No incluye
+  // reach/impresiones/guardados/compartidos porque no existen (ver
+  // src/lib/deliverables/apify-metrics.ts). Engagement siempre "calculado".
+  const deliverablesWithMetrics = campaignDeliverables.filter(d => d.performance != null)
+  const hasCampaignMetrics = deliverablesWithMetrics.length > 0
+  const totalViews    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
+  const totalLikes    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
+  const totalComments = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.comments ?? 0), 0)
+  const totalInteractionsMetrics = totalLikes + totalComments
+  const campaignEngagementRates = deliverablesWithMetrics
+    .map(d => d.engagement_rate)
+    .filter((v): v is number => v != null)
+  const avgCampaignEngagement = campaignEngagementRates.length > 0
+    ? Math.round((campaignEngagementRates.reduce((s, v) => s + v, 0) / campaignEngagementRates.length) * 100) / 100
+    : null
   const campaignBrands = [
     c.brand ? { ...(c.brand as Record<string, unknown>), _role: 'Principal' } : null,
     ...(((c as unknown as { campaign_brands?: Array<{ brand?: Record<string, unknown> }> }).campaign_brands ?? [])
@@ -940,13 +995,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'overview',     label: 'Overview',      icon: <Target className="h-4 w-4" /> },
-    { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-4 w-4" /> },
-    { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-4 w-4" /> },
-    { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-4 w-4" /> },
-    { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-4 w-4" /> },
-    { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-4 w-4" /> },
-    { id: 'history',      label: 'Historial',     icon: <Clock className="h-4 w-4" /> },
+    { id: 'overview',     label: 'Overview',      icon: <Target className="h-3.5 w-3.5" /> },
+    { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-3.5 w-3.5" /> },
+    { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+    { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
+    { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-3.5 w-3.5" /> },
+    { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-3.5 w-3.5" /> },
+    { id: 'history',      label: 'Historial',     icon: <Clock className="h-3.5 w-3.5" /> },
   ]
 
   return (
@@ -1029,94 +1084,114 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
       </div>
 
-      {/* Header card */}
-      <div className="card p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
-            <Target className="h-6 w-6 text-violet-600" />
+      {/* Header card — compacto (pedido de Pri: "sigue muy grande, achicar") */}
+      <div className="card p-3">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+            <Target className="h-4 w-4 text-violet-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 flex-wrap mb-1">
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">{c.name}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-base font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>
               <CampaignStatusBadge status={c.status} />
-              <span className="badge badge-gray capitalize text-[11px]">{c.type.replace(/_/g, ' ')}</span>
+              <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
             </div>
-            {c.description && <p className="text-sm text-gray-500 mb-3">{c.description}</p>}
-            <div className="flex items-center gap-5 flex-wrap text-sm text-gray-500">
+            {c.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>}
+            <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 mt-1">
               {c.start_date && (
-                <div className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-2.5 py-1">
-                  <Calendar className="h-4 w-4 text-violet-500" />
-                  <span className="font-semibold text-gray-800">{formatDate(c.start_date)} → {c.end_date ? formatDate(c.end_date) : '—'}</span>
-                </div>
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5 text-violet-500" />
+                  {formatDate(c.start_date)} → {c.end_date ? formatDate(c.end_date) : '—'}
+                </span>
               )}
-              <div className="flex items-center gap-1.5">
-                <DollarSign className="h-4 w-4 text-gray-300" />
-                <span>Budget: <strong className="text-gray-800">{formatCurrency(c.budget_total ?? 0, c.currency)}</strong></span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Users className="h-4 w-4 text-gray-300" />
-                <span><strong className="text-gray-800">{campaignInfluencers.length}</strong> influencers</span>
-              </div>
+              <span className="flex items-center gap-1">
+                <DollarSign className="h-3.5 w-3.5 text-gray-300" />
+                <strong className="text-gray-800">{formatCurrency(c.budget_total ?? 0, c.currency)}</strong>
+              </span>
+              <span className="flex items-center gap-1">
+                <Users className="h-3.5 w-3.5 text-gray-300" />
+                <strong className="text-gray-800">{campaignInfluencers.length}</strong> influencers
+              </span>
               {c.brief_url && (
                 <a href={c.brief_url} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1 text-violet-600 hover:underline">
-                  <FileText className="h-4 w-4" /> Ver brief
+                  <FileText className="h-3.5 w-3.5" /> Brief
                 </a>
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 w-full sm:w-auto sm:flex-shrink-0">
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
-              <div className="text-2xl font-bold text-gray-900">{pct}%</div>
-              <div className="text-[11px] text-gray-400">Completado</div>
+          <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:max-w-[380px] sm:justify-end sm:flex-shrink-0" style={{ minWidth: 0 }}>
+            <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+              <div className="text-sm font-bold text-gray-900">{pct}%</div>
+              <div className="text-[9px] text-gray-400">Completado</div>
             </div>
             {!!c.budget_total && (
-              <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
-                <div className="text-2xl font-bold text-gray-900">{budgetPct}%</div>
-                <div className="text-[11px] text-gray-400">Budget usado</div>
+              <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                <div className="text-sm font-bold text-gray-900">{budgetPct}%</div>
+                <div className="text-[9px] text-gray-400">Budget usado</div>
               </div>
             )}
-            <div className="text-center bg-gray-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
-              <div className="text-2xl font-bold text-gray-900">{campaignInfluencers.length}</div>
-              <div className="text-[11px] text-gray-400">Invitadas</div>
+            <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+              <div className="text-sm font-bold text-gray-900">{campaignInfluencers.length}</div>
+              <div className="text-[9px] text-gray-400">Invitadas</div>
             </div>
-            <div className="text-center bg-violet-50 rounded-xl p-3 min-w-0 sm:min-w-[110px]">
-              <div className="text-base font-bold text-violet-700">
-                {((c as { visibility?: string | null }).visibility === 'open' || (c as { visibility?: string | null }).visibility === 'public') ? 'Pública' : 'Por invitación'}
+            <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+              <div className="text-[11px] font-bold text-violet-700 truncate">
+                {((c as { visibility?: string | null }).visibility === 'open' || (c as { visibility?: string | null }).visibility === 'public') ? 'Pública' : 'Invitación'}
               </div>
-              <div className="text-[11px] text-violet-400">Visibilidad</div>
+              <div className="text-[9px] text-violet-400">Visibilidad</div>
             </div>
             {/* Comisión — Pri: "esto es importantisimo y deberia aparecer en la
                 card de arriba... donde aparece el resumen". Antes solo vivía
                 como card aparte en el Overview, fácil de perder de vista. Ahora
                 está en el resumen principal, junto a Completado/Budget/Invitadas. */}
             {!!c.commission_rate && (
-              <div className="text-center bg-amber-50 rounded-xl p-3 min-w-0 sm:min-w-[80px]">
-                <div className="text-2xl font-bold text-amber-700">{c.commission_rate}%</div>
-                <div className="text-[11px] text-amber-500">Comisión</div>
+              <div className="text-center bg-amber-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                <div className="text-sm font-bold text-amber-700">{c.commission_rate}%</div>
+                <div className="text-[9px] text-amber-500">Comisión</div>
               </div>
+            )}
+            {/* Métricas reales de contenido (Apify) — solo aparecen si al menos
+                1 deliverable ya fue sincronizado con "Actualizar métricas".
+                Views/likes/comments reales; engagement calculado por nosotros.
+                Cajas achicadas (pedido de Pri: "sigue muy grande, achicar"). */}
+            {hasCampaignMetrics && (
+              <>
+                <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                  <div className="text-sm font-bold text-gray-900">{formatFollowers(totalViews)}</div>
+                  <div className="text-[9px] text-gray-400">Visualiz.</div>
+                </div>
+                <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                  <div className="text-sm font-bold text-gray-900">{formatFollowers(totalInteractionsMetrics)}</div>
+                  <div className="text-[9px] text-gray-400">Interacc.</div>
+                </div>
+                <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                  <div className="text-sm font-bold text-violet-700">{avgCampaignEngagement !== null ? `${avgCampaignEngagement}%` : '—'}</div>
+                  <div className="text-[9px] text-violet-400">Eng. (calc.)</div>
+                </div>
+              </>
             )}
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+        <div className="mt-2 pt-2 border-t border-gray-100">
+          <div className="flex justify-between text-[11px] text-gray-400 mb-1">
             <span>{deliverableDone}/{deliverableCount} deliverables publicados</span>
             <span>{formatCurrency(c.budget_spent, c.currency)} gastados de {formatCurrency(c.budget_total ?? 0, c.currency)}</span>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')}
               style={{ width: `${pct}%` }} />
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — achicados (pedido de Pri: "arregla la ui que se vea bien") */}
       <div className="border-b border-gray-200">
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={cn(
-                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px',
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 transition-all -mb-px whitespace-nowrap',
                 tab === t.id ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               )}>
               {t.icon} {t.label}
@@ -1971,51 +2046,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {(() => {
             const submittedDeliverables = campaignDeliverables.filter(d => d.content_url || d.published_url)
 
-            // Resumen visual de la campaña (aparte del "% Completado" del
-            // header, que es un promedio de progress — este es count-based:
-            // entregado = tiene URL o status aprobado/completado/publicado).
-            const totalDeliverables = campaignDeliverables.length
-            const completedDeliverables = campaignDeliverables.filter(d =>
-              !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)
-            ).length
-            const completedPctCount = totalDeliverables > 0
-              ? Math.round((completedDeliverables / totalDeliverables) * 100)
-              : 0
-            const ratedDeliverables = campaignDeliverables.filter(d => d.content_rating != null)
-            const avgCampaignRating = ratedDeliverables.length > 0
-              ? Math.round((ratedDeliverables.reduce((s, d) => s + (d.content_rating as number), 0) / ratedDeliverables.length) * 10) / 10
-              : null
-
             return (
               <>
-                {/* Resumen: % completado (count-based) + rating promedio de
-                    la campaña — separado del KPI "Completado" de arriba, no
-                    lo reemplaza (ese es progress-avg, este es real/count). */}
-                {totalDeliverables > 0 && (
-                  <div className="card p-4 flex items-center gap-6 flex-wrap">
-                    <div>
-                      <div className="text-3xl font-bold text-gray-900">{completedPctCount}%</div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        Entregado ({completedDeliverables}/{totalDeliverables} con URL o aprobado/publicado)
-                      </div>
-                    </div>
-                    <div className="h-10 w-px bg-gray-100" />
-                    <div>
-                      <div className="text-3xl font-bold text-gray-900 flex items-center gap-1.5">
-                        {avgCampaignRating !== null ? (
-                          <>
-                            <Star className="h-6 w-6 text-amber-400 fill-amber-400" />
-                            {avgCampaignRating.toFixed(1)}
-                          </>
-                        ) : <span className="text-gray-300">—</span>}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        Rating promedio ({ratedDeliverables.length} calificado{ratedDeliverables.length !== 1 ? 's' : ''})
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Header with status pills + Add button */}
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -2064,13 +2096,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   </div>
                 ) : (
                   (() => {
-                    // Instagram por influencer — reusa influencer_social_profiles ya
-                    // cargado en campaign_influencers (mismo dato que se muestra en
+                    // Instagram + seguidores por influencer — reusa influencer_social_profiles
+                    // ya cargado en campaign_influencers (mismo dato que se muestra en
                     // el tab Influencers), sin queries nuevas.
                     const igByInfluencerId = new Map<string, string | null>()
+                    const followersByInfluencerId = new Map<string, number | null>()
                     for (const ci of campaignInfluencers) {
                       const igProfile = ci.influencer?.influencer_social_profiles?.find(sp => sp.platform === 'instagram')
-                      if (ci.influencer?.id) igByInfluencerId.set(ci.influencer.id, igProfile?.username ?? null)
+                      if (ci.influencer?.id) {
+                        igByInfluencerId.set(ci.influencer.id, igProfile?.username ?? null)
+                        followersByInfluencerId.set(ci.influencer.id, igProfile?.followers ?? null)
+                      }
                     }
 
                     const groups = new Map<string, { influencer: { id: string; display_name: string; avatar_url: string | null }; items: CampaignDeliverableDetail[] }>()
@@ -2084,11 +2120,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     // % completado y rating promedio POR influencer en ESTA
                     // campaña (no el global de arriba) — base: TODOS sus
                     // deliverables de la campaña, no solo los ya subidos.
-                    const statsByInfluencerId = new Map<string, { pct: number; avgRating: number | null; ratedCount: number }>()
+                    const statsByInfluencerId = new Map<string, {
+                      pct: number; avgRating: number | null; ratedCount: number
+                      views: number; likes: number; comments: number; avgEngagement: number | null; hasMetrics: boolean
+                    }>()
                     for (const d of campaignDeliverables) {
                       if (!d.influencer) continue
                       const key = d.influencer.id
-                      if (!statsByInfluencerId.has(key)) statsByInfluencerId.set(key, { pct: 0, avgRating: null, ratedCount: 0 })
+                      if (!statsByInfluencerId.has(key)) statsByInfluencerId.set(key, {
+                        pct: 0, avgRating: null, ratedCount: 0,
+                        views: 0, likes: 0, comments: 0, avgEngagement: null, hasMetrics: false,
+                      })
                     }
                     for (const key of Array.from(statsByInfluencerId.keys())) {
                       const own = campaignDeliverables.filter(d => d.influencer?.id === key)
@@ -2098,23 +2140,42 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       const avgRating = ownRated.length > 0
                         ? Math.round((ownRated.reduce((s, d) => s + (d.content_rating as number), 0) / ownRated.length) * 10) / 10
                         : null
-                      statsByInfluencerId.set(key, { pct, avgRating, ratedCount: ownRated.length })
+                      // Métricas reales (Apify) por influencer — solo suma
+                      // deliverables ya sincronizados. Sin reach/impressions/
+                      // saves/shares (no existen). Engagement = promedio calculado.
+                      const ownWithMetrics = own.filter(d => d.performance != null)
+                      const views = ownWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
+                      const likes = ownWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
+                      const comments = ownWithMetrics.reduce((s, d) => s + (d.performance?.comments ?? 0), 0)
+                      const ownRates = ownWithMetrics.map(d => d.engagement_rate).filter((v): v is number => v != null)
+                      const avgEngagement = ownRates.length > 0
+                        ? Math.round((ownRates.reduce((s, v) => s + v, 0) / ownRates.length) * 100) / 100
+                        : null
+                      statsByInfluencerId.set(key, {
+                        pct, avgRating, ratedCount: ownRated.length,
+                        views, likes, comments, avgEngagement, hasMetrics: ownWithMetrics.length > 0,
+                      })
                     }
 
-                    return Array.from(groups.values()).map(g => (
-                      <DeliverableInfluencerGroup
-                        key={g.influencer.id}
-                        influencer={g.influencer}
-                        igUsername={igByInfluencerId.get(g.influencer.id) ?? null}
-                        items={g.items}
-                        campaignId={id}
-                        reviewNotes={reviewNotes}
-                        setReviewNotes={setReviewNotes}
-                        pct={statsByInfluencerId.get(g.influencer.id)?.pct ?? 0}
-                        avgRating={statsByInfluencerId.get(g.influencer.id)?.avgRating ?? null}
-                        ratedCount={statsByInfluencerId.get(g.influencer.id)?.ratedCount ?? 0}
-                      />
-                    ))
+                    return Array.from(groups.values()).map(g => {
+                      const stats = statsByInfluencerId.get(g.influencer.id)
+                      return (
+                        <DeliverableInfluencerGroup
+                          key={g.influencer.id}
+                          influencer={g.influencer}
+                          igUsername={igByInfluencerId.get(g.influencer.id) ?? null}
+                          followers={followersByInfluencerId.get(g.influencer.id) ?? null}
+                          items={g.items}
+                          campaignId={id}
+                          reviewNotes={reviewNotes}
+                          setReviewNotes={setReviewNotes}
+                          pct={stats?.pct ?? 0}
+                          avgRating={stats?.avgRating ?? null}
+                          ratedCount={stats?.ratedCount ?? 0}
+                          metrics={stats?.hasMetrics ? { views: stats.views, likes: stats.likes, comments: stats.comments, avgEngagement: stats.avgEngagement } : null}
+                        />
+                      )
+                    })
                   })()
                 )}
               </>

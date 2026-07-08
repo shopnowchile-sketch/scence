@@ -60,6 +60,15 @@ const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: 
 
 type ColumnKey = 'contact' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
+type EmailStats = {
+  sent: number
+  delivered: number
+  opened: number
+  failed: number
+  bounced: number
+  openRate: number
+}
+
 const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
   { key: 'contact', label: 'Contacto' },
   { key: 'location', label: 'Ubicación' },
@@ -84,11 +93,13 @@ export function CrmLeadsClient() {
   const [source, setSource] = useState('')
   const [industry, setIndustry] = useState('')
   const [commune, setCommune] = useState('')
+  const [emailStatus, setEmailStatus] = useState('')
   const [sources, setSources] = useState<string[]>([])
   const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS)
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [industries, setIndustries] = useState<string[]>([])
   const [communes, setCommunes] = useState<string[]>([])
+  const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, failed: 0, bounced: 0, openRate: 0 })
   const [showAddModal, setShowAddModal] = useState(false)
   const [savingLead, setSavingLead] = useState(false)
   const [form, setForm] = useState<LeadForm>(EMPTY_FORM)
@@ -139,6 +150,7 @@ SCENCE`)
     if (source) params.set('source', source)
     if (industry) params.set('industry', industry)
     if (commune) params.set('commune', commune)
+    if (emailStatus) params.set('email_status', emailStatus)
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
@@ -146,6 +158,7 @@ SCENCE`)
       setLeads(nextLeads)
       setSelectedIds(prev => prev.filter(id => nextLeads.some((lead: Lead) => lead.id === id)))
       setTotal(j.total ?? 0)
+      if (j.stats) setStats(j.stats)
       if (Array.isArray(j.sources)) setSources(j.sources)
       if (Array.isArray(j.industries)) setIndustries(j.industries)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
@@ -153,7 +166,7 @@ SCENCE`)
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, source, industry, commune])
+  }, [page, search, qualification, source, industry, commune, emailStatus])
 
   useEffect(() => { load() }, [load])
 
@@ -366,6 +379,29 @@ SCENCE`)
           <p className="text-sm text-gray-400">{total.toLocaleString('es-CL')} empresas cargadas · calificar y contactar</p>
         </div>
 
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 w-full">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Enviados</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.sent.toLocaleString('es-CL')}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Entregados</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.delivered.toLocaleString('es-CL')}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Abiertos</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.opened.toLocaleString('es-CL')}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Tasa apertura</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.openRate}%</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Fallidos/Rebotados</p>
+            <p className="text-2xl font-bold text-gray-900">{(stats.failed + stats.bounced).toLocaleString('es-CL')}</p>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
           <div className="relative">
             <button
@@ -482,6 +518,22 @@ SCENCE`)
 
           <div className="xl:col-span-4">
             <select
+              value={emailStatus}
+              onChange={e => { setPage(1); setEmailStatus(e.target.value) }}
+              className="h-12 w-full px-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
+            >
+              <option value="">Todos los emails</option>
+              <option value="sent">Enviados</option>
+              <option value="delivered">Entregados</option>
+              <option value="opened">Abiertos</option>
+              <option value="failed">Fallidos</option>
+              <option value="bounced">Rebotados</option>
+              <option value="not_sent">Sin email enviado</option>
+            </select>
+          </div>
+
+          <div className="xl:col-span-4">
+            <select
               value={source}
               onChange={e => { setPage(1); setSource(e.target.value) }}
               className="h-12 w-full px-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
@@ -502,6 +554,7 @@ SCENCE`)
                 setIndustry('')
                 setCommune('')
                 setSource('')
+                setEmailStatus('')
                 setPage(1)
               }}
               className="h-12 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50"

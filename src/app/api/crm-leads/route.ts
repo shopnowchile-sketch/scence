@@ -47,8 +47,44 @@ export async function GET(request: NextRequest) {
   const source = searchParams.get('source') ?? ''
   const industry = searchParams.get('industry') ?? ''
   const commune = searchParams.get('commune') ?? ''
+  const emailStatus = searchParams.get('email_status') ?? ''
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
+
+  const emailEventSets = {
+    sent: new Set<string>(),
+    delivered: new Set<string>(),
+    opened: new Set<string>(),
+    failed: new Set<string>(),
+    bounced: new Set<string>(),
+  }
+
+  {
+    const PAGE = 1000
+    let from = 0
+
+    for (;;) {
+      const { data: rows } = await admin
+        .from('crm_email_events')
+        .select('lead_id, event_type')
+        .not('lead_id', 'is', null)
+        .range(from, from + PAGE - 1)
+
+      if (!rows || rows.length === 0) break
+
+      for (const row of rows as Array<{ lead_id: string | null; event_type: string | null }>) {
+        if (!row.lead_id || !row.event_type) continue
+        if (row.event_type === 'email.sent') emailEventSets.sent.add(row.lead_id)
+        if (row.event_type === 'email.delivered') emailEventSets.delivered.add(row.lead_id)
+        if (row.event_type === 'email.opened') emailEventSets.opened.add(row.lead_id)
+        if (row.event_type === 'email.failed') emailEventSets.failed.add(row.lead_id)
+        if (row.event_type === 'email.bounced') emailEventSets.bounced.add(row.lead_id)
+      }
+
+      if (rows.length < PAGE) break
+      from += PAGE
+    }
+  }
 
   let query = admin
     .from('crm_leads')
@@ -61,6 +97,21 @@ export async function GET(request: NextRequest) {
   if (source) query = query.eq('source', source)
   if (industry) query = query.eq('industry', industry)
   if (commune) query = query.eq('commune', commune)
+
+  const applyEmailStatusFilter = (ids: Set<string>) => {
+    const list = Array.from(ids)
+    query = list.length > 0
+      ? query.in('id', list)
+      : query.eq('id', '00000000-0000-0000-0000-000000000000')
+  }
+
+  if (emailStatus === 'sent') applyEmailStatusFilter(emailEventSets.sent)
+  if (emailStatus === 'delivered') applyEmailStatusFilter(emailEventSets.delivered)
+  if (emailStatus === 'opened') applyEmailStatusFilter(emailEventSets.opened)
+  if (emailStatus === 'failed') applyEmailStatusFilter(emailEventSets.failed)
+  if (emailStatus === 'bounced') applyEmailStatusFilter(emailEventSets.bounced)
+  if (emailStatus === 'not_sent') query = query.is('contacted_at', null)
+
   if (search) {
     query = query.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%`)
   }
@@ -155,7 +206,16 @@ export async function GET(request: NextRequest) {
   const industries = Array.from(industriesSet).sort()
   const communes = Array.from(communesSet).sort()
 
-  return NextResponse.json({ data: enriched, total: count ?? 0, page, limit, sources, industries, communes })
+  const stats = {
+    sent: emailEventSets.sent.size,
+    delivered: emailEventSets.delivered.size,
+    opened: emailEventSets.opened.size,
+    failed: emailEventSets.failed.size,
+    bounced: emailEventSets.bounced.size,
+    openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
+  }
+
+  return NextResponse.json({ data: enriched, total: count ?? 0, page, limit, sources, industries, communes, stats })
 }
 
 // ── POST /api/crm-leads — crear lead manual ──────────────────────────────────

@@ -7,6 +7,7 @@ const PUBLIC_ROUTES = [
   '/auth/callback',
   '/terms', '/privacy',
   '/api/stripe/webhook',   // Stripe webhook — no auth needed (verified by signature)
+  '/api/webhooks/resend',  // Resend webhook — no auth needed (verified by Svix signature)
 ]
 
 export async function middleware(request: NextRequest) {

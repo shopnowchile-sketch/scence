@@ -24,6 +24,7 @@ export function BrandCampaignForm() {
   const [deliverableTemplates, setDeliverableTemplates] = useState<DeliverableTemplate[]>([])
   const [orgPlan, setOrgPlan] = useState<string>('free')
   const [atCampaignLimit, setAtCampaignLimit] = useState(false)
+  const [hasUsedFirstPublicCampaign, setHasUsedFirstPublicCampaign] = useState(false)
   const [planReady, setPlanReady] = useState(false)
   const [form, setForm] = useState({
     name: '', type: 'sponsored_post',
@@ -47,11 +48,16 @@ export function BrandCampaignForm() {
 
         const plan   = meJson?.data?.org_plan ?? 'free'
         const limits = getPlanLimits(plan)
-        const active = (camsJson?.data ?? []).filter(
+        const campaigns = camsJson?.data ?? []
+        const active = campaigns.filter(
           (c: { status: string }) => !['completed', 'canceled'].includes(c.status)
+        ).length
+        const openCampaigns = campaigns.filter(
+          (c: { visibility?: string }) => c.visibility === 'open'
         ).length
 
         setOrgPlan(plan)
+        setHasUsedFirstPublicCampaign(openCampaigns > 0)
         setAtCampaignLimit(active >= limits.max_active_campaigns)
       } catch {
         // Non-fatal: form will still work, backend will gate
@@ -104,7 +110,7 @@ export function BrandCampaignForm() {
   }
 
   const limits   = getPlanLimits(orgPlan)
-  const canOpen  = limits.can_create_open_campaigns
+  const canOpen  = limits.can_create_open_campaigns || !hasUsedFirstPublicCampaign
   const planTier = getPlanTier(orgPlan)
 
   // Show upgrade wall if at campaign limit (only after plan check completes)

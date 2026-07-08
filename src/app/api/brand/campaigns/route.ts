@@ -184,8 +184,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'visibility debe ser private u open' }, { status: 422 })
   }
 
-  // Bloquear campañas open si el plan no lo permite
-  if (visibility === 'open' && !limits.can_create_open_campaigns) {
+  // Primera campaña pública incluida en todos los planes.
+  // Después de la primera, solo planes con marketplace/open campaigns pueden seguir creando públicas.
+  const { count: openCampaignCount } = await admin
+    .from('campaigns')
+    .select('id', { count: 'exact', head: true })
+    .eq('brand_id', brand.id)
+    .eq('visibility', 'open')
+
+  const canUseFirstPublicCampaign = (openCampaignCount ?? 0) === 0
+
+  if (visibility === 'open' && !limits.can_create_open_campaigns && !canUseFirstPublicCampaign) {
     return NextResponse.json({
       error: visibilityLimitMessage(orgPlan),
       code:  PLAN_ERROR_CODES.VISIBILITY_LIMIT,

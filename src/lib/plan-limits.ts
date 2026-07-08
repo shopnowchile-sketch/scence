@@ -35,17 +35,17 @@ export interface PlanLimits {
 export const PLAN_LIMITS = {
   basic: {
     label:                     'Basic',
-    price_monthly_clp:         99_000,
-    max_active_campaigns:      1,
-    max_roster_influencers:    3,
+    price_monthly_clp:         69_990,
+    max_active_campaigns:      999,
+    max_roster_influencers:    10,
     can_create_open_campaigns: false,
     can_access_marketplace:    false,
   },
   growth: {
     label:                     'Growth',
     price_monthly_clp:         259_000,
-    max_active_campaigns:      5,
-    max_roster_influencers:    25,
+    max_active_campaigns:      999,
+    max_roster_influencers:    50,
     can_create_open_campaigns: false,
     can_access_marketplace:    false,
   },
@@ -146,5 +146,5 @@ export function rosterLimitMessage(orgPlan: string | null | undefined): string {
 
 export function visibilityLimitMessage(orgPlan: string | null | undefined): string {
   const limits = getPlanLimits(orgPlan)
-  return `Tu plan ${limits.label} no permite campañas abiertas (postulaciones). Actualiza a Pro para habilitarlas.`
+  return `Tu primera campaña pública ya fue utilizada. En tu plan ${limits.label} puedes seguir creando campañas privadas con tus creadoras invitadas. Sube de plan para publicar nuevas campañas abiertas al marketplace.`
 }

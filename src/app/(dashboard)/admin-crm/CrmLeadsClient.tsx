@@ -490,15 +490,15 @@ SCENCE`)
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-3">
+      <div className="rounded-2xl border border-gray-100 bg-white p-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-2">
           <div className="relative xl:col-span-5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
             <input
               value={search}
               onChange={e => { setPage(1); setSearch(e.target.value) }}
               placeholder="Buscar por empresa, contacto o email..."
-              className="h-12 w-full pl-10 pr-4 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-violet-400"
+              className="h-9 w-full pl-8 pr-3 rounded-lg border border-gray-200 bg-white text-xs outline-none focus:border-violet-400"
             />
           </div>
 
@@ -506,7 +506,7 @@ SCENCE`)
             <select
               value={qualification}
               onChange={e => { setPage(1); setQualification(e.target.value) }}
-              className="h-12 w-full px-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todos los estados</option>
               {Object.entries(STATUS_CONFIG).map(([k, cfg]) => (
@@ -519,7 +519,7 @@ SCENCE`)
             <select
               value={industry}
               onChange={e => { setPage(1); setIndustry(e.target.value) }}
-              className="h-12 w-full px-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todos los rubros</option>
               {industries.map(i => (
@@ -532,7 +532,7 @@ SCENCE`)
             <select
               value={commune}
               onChange={e => { setPage(1); setCommune(e.target.value) }}
-              className="h-12 w-full px-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todas las comunas</option>
               {communes.map(c => (
@@ -545,7 +545,7 @@ SCENCE`)
             <select
               value={emailStatus}
               onChange={e => { setPage(1); setEmailStatus(e.target.value) }}
-              className="h-12 w-full px-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todos los emails</option>
               <option value="sent">Enviados</option>
@@ -561,7 +561,7 @@ SCENCE`)
             <select
               value={source}
               onChange={e => { setPage(1); setSource(e.target.value) }}
-              className="h-12 w-full px-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todos los orígenes</option>
               {sources.map(s => (
@@ -582,7 +582,7 @@ SCENCE`)
                 setEmailStatus('')
                 setPage(1)
               }}
-              className="h-12 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="h-9 px-3 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50"
             >
               Limpiar filtros
             </button>

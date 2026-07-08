@@ -234,7 +234,9 @@ SCENCE`)
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudo seleccionar todos')
-      setSelectedIds(j.ids ?? [])
+      const ids = j.ids ?? []
+      setSelectedIds(ids)
+      toast.success(`${ids.length} lead${ids.length === 1 ? '' : 's'} seleccionado${ids.length === 1 ? '' : 's'}`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo seleccionar todos')
     } finally {
@@ -587,6 +589,23 @@ SCENCE`)
               Limpiar filtros
             </button>
           </div>
+
+          {total > 0 && (
+            <div className="xl:col-span-4 flex items-center">
+              <button
+                type="button"
+                onClick={selectAllMatching}
+                disabled={selectingAll || selectedIds.length === total}
+                className="h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+              >
+                {selectingAll
+                  ? 'Seleccionando...'
+                  : selectedIds.length === total
+                    ? `Todos (${total}) seleccionados`
+                    : `Seleccionar todos (${total})`}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -596,16 +615,6 @@ SCENCE`)
             <p className="text-sm font-semibold text-violet-700">
               {selectedCount} lead{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
             </p>
-            {allVisibleSelected && selectedCount < total && (
-              <button
-                type="button"
-                onClick={selectAllMatching}
-                disabled={selectingAll}
-                className="text-xs font-semibold text-violet-600 hover:underline disabled:opacity-50"
-              >
-                {selectingAll ? 'Seleccionando...' : `Seleccionar los ${total} que cumplen el filtro`}
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <button

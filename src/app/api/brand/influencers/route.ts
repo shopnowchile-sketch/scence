@@ -250,6 +250,9 @@ export async function POST(req: NextRequest) {
   if (!display_name || typeof display_name !== 'string' || !display_name.trim()) {
     return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
   }
+  if (!email || typeof email !== 'string' || !email.trim()) {
+    return NextResponse.json({ error: 'El email es requerido' }, { status: 422 })
+  }
 
   // Instagram es el identificador principal del sistema (misma regla que admin).
   const profilesArr = social_profiles as Array<Record<string, unknown>>

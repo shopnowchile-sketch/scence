@@ -9,10 +9,10 @@ import { toast } from 'sonner'
  * Form mínimo para que una marca agregue una influencer a su propio roster.
  * A diferencia de NewInfluencerForm (admin, 4 pasos: datos/redes/tarifas/
  * confirmar), acá solo se pide lo necesario para identificarla y contactarla.
- * Todo lo demás (bio, categorías, tarifas, redes adicionales, verificación)
- * lo completa la propia influencer cuando entra a su perfil — pedido por Pri:
- * "no se le debería pedir bio ni nada, solo email instagram teléfono
- * dirección, todo lo otro lo rellena la influencer".
+ * Todo lo demás (bio, dirección, categorías, tarifas, redes adicionales,
+ * verificación) lo completa la propia influencer cuando entra a su perfil —
+ * pedido por Pri: "pocos campos: nombre, teléfono, email, instagram — email
+ * es requerido".
  */
 export function BrandNewInfluencerForm() {
   const router = useRouter()
@@ -22,7 +22,6 @@ export function BrandNewInfluencerForm() {
     instagram: '',
     email: '',
     phone: '',
-    address: '',
   })
 
   function set(key: keyof typeof form, value: string) {
@@ -33,6 +32,7 @@ export function BrandNewInfluencerForm() {
     e.preventDefault()
     if (!form.display_name.trim()) return toast.error('El nombre es requerido')
     if (!form.instagram.trim()) return toast.error('Instagram es requerido')
+    if (!form.email.trim()) return toast.error('El email es requerido')
 
     setSaving(true)
     try {
@@ -41,9 +41,8 @@ export function BrandNewInfluencerForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           display_name: form.display_name.trim(),
-          email: form.email.trim() || undefined,
+          email: form.email.trim(),
           phone: form.phone.trim() || undefined,
-          address: form.address.trim() || undefined,
           social_profiles: [{
             platform: 'instagram',
             username: form.instagram.trim().replace(/^@/, ''),
@@ -101,11 +100,12 @@ export function BrandNewInfluencerForm() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Email *</label>
           <input
             type="email"
             value={form.email}
             onChange={e => set('email', e.target.value)}
+            required
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-400"
             placeholder="influencer@email.com"
           />
@@ -117,15 +117,6 @@ export function BrandNewInfluencerForm() {
             onChange={e => set('phone', e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-400"
             placeholder="+56 9 1234 5678"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label>
-          <input
-            value={form.address}
-            onChange={e => set('address', e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-400"
-            placeholder="Calle, comuna, ciudad"
           />
         </div>
 

@@ -51,7 +51,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Plan de suscripción efectivo (solo lectura, para card "Plan de suscripción" en Billing).
   const org_plan = brand.organization_id ? await resolveBrandPlan(admin, brand.organization_id) : 'free'
 
-  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at, org_plan } })
+  // Influencers agregadas/asignadas directamente a esta marca vía brand_influencers
+  // (además de las que vienen por campañas, que el cliente resuelve aparte).
+  // Usado por el tab "Influencers" del detalle de marca en admin.
+  const { data: directRows } = await admin
+    .from('brand_influencers')
+    .select('influencer:influencers(id, display_name, avatar_url)')
+    .eq('brand_id', params.id)
+
+  const direct_influencers = ((directRows ?? [])
+    .map(r => r.influencer)
+    .filter(Boolean)) as unknown as Array<{ id: string; display_name: string; avatar_url: string | null }>
+
+  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at, org_plan, direct_influencers } })
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

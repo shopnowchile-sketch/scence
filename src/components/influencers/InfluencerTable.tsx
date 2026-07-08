@@ -10,11 +10,12 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 
-type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection'
+type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
   display_name: 220, platforms: 120, categories: 160, followers: 130,
   engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 140, lastConnection: 170,
+  registeredBy: 140, associatedBrands: 220,
 }
 
 interface Props {
@@ -89,6 +90,8 @@ export function InfluencerTable({
     commune: true,
     birthDate: false,
     lastConnection: true,
+    registeredBy: true,
+    associatedBrands: true,
   })
   // Ancho de columnas ajustable por drag — regla global (ver useColumnWidths).
   const { widths, startResize } = useColumnWidths<ColKey>('scence:admin:influencer-table:widths', DEFAULT_WIDTHS)
@@ -131,6 +134,10 @@ export function InfluencerTable({
                 ['commune', 'Comuna'],
                 ['birthDate', 'Fecha de nacimiento'],
                 ['lastConnection', 'Última conexión'],
+                ...(portal === 'admin' ? ([
+                  ['registeredBy', 'Registrada por'],
+                  ['associatedBrands', 'Marcas asignadas'],
+                ] as const) : []),
               ] as const).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600 rounded-lg hover:bg-gray-50">
                   <input
@@ -162,6 +169,8 @@ export function InfluencerTable({
             {visible.commune        && <col style={{ width: widths.commune }} />}
             {visible.birthDate      && <col style={{ width: widths.birthDate }} />}
             {visible.lastConnection && <col style={{ width: widths.lastConnection }} />}
+            {portal === 'admin' && visible.registeredBy      && <col style={{ width: widths.registeredBy }} />}
+            {portal === 'admin' && visible.associatedBrands  && <col style={{ width: widths.associatedBrands }} />}
             <col style={{ width: 90 }} />
           </colgroup>
           <thead>
@@ -190,6 +199,12 @@ export function InfluencerTable({
               {visible.birthDate && <TH col="birth_date" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('birthDate', e)}>Fecha nacimiento</TH>}
               {visible.lastConnection && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('lastConnection', e)}>Última conexión</SortableTH>
+              )}
+              {portal === 'admin' && visible.registeredBy && (
+                <SortableTH<ColKey> onResizeStart={e => startResize('registeredBy', e)}>Registrada por</SortableTH>
+              )}
+              {portal === 'admin' && visible.associatedBrands && (
+                <SortableTH<ColKey> onResizeStart={e => startResize('associatedBrands', e)}>Marcas asignadas</SortableTH>
               )}
               <th className="px-4 py-3 bg-gray-50" />
             </tr>
@@ -369,6 +384,32 @@ export function InfluencerTable({
                     {inf.last_sign_in_at
                       ? new Date(inf.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : <span className="text-gray-300">Sin acceso</span>}
+                    </td>
+                  )}
+
+                  {/* Registrada por */}
+                  {portal === 'admin' && visible.registeredBy && (
+                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap truncate">
+                      {inf.registered_by === 'SCENCE' ? (
+                        <span className="badge badge-purple text-[10px] font-bold">SCENCE</span>
+                      ) : (
+                        <span className="text-gray-700">{inf.registered_by ?? '—'}</span>
+                      )}
+                    </td>
+                  )}
+
+                  {/* Marcas asignadas */}
+                  {portal === 'admin' && visible.associatedBrands && (
+                    <td className="px-4 py-3 overflow-hidden">
+                      {(inf.associated_brands?.length ?? 0) === 0 ? (
+                        <span className="badge badge-gray text-[10px]">Roster SCENCE</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {inf.associated_brands!.map(b => (
+                            <span key={b.id} className="badge badge-blue text-[10px]">{b.name}</span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                   )}
 

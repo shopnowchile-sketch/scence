@@ -34,6 +34,7 @@ type Brand = {
   last_sign_in_at?: string | null
   campaigns?: Campaign[]
   org_plan?: string | null
+  direct_influencers?: Array<{ id: string; display_name: string; avatar_url: string | null }>
 }
 
 type BrandLocation = {
@@ -52,7 +53,9 @@ type BrandInfluencer = {
   display_name: string
   avatar_url: string | null
   status: string
-  campaign_name: string
+  campaign_name?: string
+  /** 'direct' = agregada/asignada vía brand_influencers, sin pasar por campaña. */
+  via?: 'direct'
 }
 
 function initials(name: string) {
@@ -147,6 +150,22 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             campaign_name: result.campaign.name,
           })
         }
+      }
+
+      // Sumar influencers agregadas/asignadas directamente vía brand_influencers
+      // (ya vienen en brand.direct_influencers desde GET /api/brands/[id]).
+      // Si ya está por campaña, no se duplica — se prioriza mostrarla como
+      // "de campaña" (más específico); si es solo directa, se marca via:'direct'.
+      for (const inf of brand.direct_influencers ?? []) {
+        if (seen.has(inf.id)) continue
+        seen.add(inf.id)
+        flat.push({
+          id: inf.id,
+          display_name: inf.display_name,
+          avatar_url: inf.avatar_url,
+          status: 'active',
+          via: 'direct',
+        })
       }
 
       setInfluencers(flat)
@@ -502,7 +521,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
           {loadingInf ? (
             <p className="text-sm text-gray-400">Cargando influencers…</p>
           ) : influencers.length === 0 ? (
-            <p className="text-sm text-gray-400">Sin influencers asociadas a campañas de esta marca.</p>
+            <p className="text-sm text-gray-400">Sin influencers asociadas a esta marca (ni por campaña ni agregadas directamente).</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {influencers.map(inf => (
@@ -516,7 +535,11 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                   )}
                   <div className="min-w-0">
                     <p className="font-semibold text-sm text-gray-900 truncate">{inf.display_name}</p>
-                    <p className="text-xs text-gray-400 truncate">{inf.campaign_name}</p>
+                    {inf.via === 'direct' ? (
+                      <span className="badge badge-blue text-[10px]">Agregada por la marca</span>
+                    ) : (
+                      <p className="text-xs text-gray-400 truncate">{inf.campaign_name}</p>
+                    )}
                   </div>
                 </Link>
               ))}

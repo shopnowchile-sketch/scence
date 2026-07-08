@@ -80,6 +80,10 @@ export interface Influencer {
   created_at: string
   updated_at: string
   last_sign_in_at?: string | null   // enriquecido desde auth.users
+  // Enriquecidos solo por GET /api/influencers (roster admin) — ver comentario
+  // ahí para cómo se calculan. No vienen de /api/brand/influencers.
+  registered_by?: string | null
+  associated_brands?: Array<{ id: string; name: string }>
 }
 
 // Influencer con datos de campañas y deliverables (respuesta de GET /api/influencers/[id])

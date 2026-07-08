@@ -151,13 +151,21 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
             </>
           )}
           {isBrandPortal && (
-            <Link
-              href="/brand-campaigns"
-              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Ir a mis campañas
-            </Link>
+            <>
+              <Link
+                href="/brand-campaigns"
+                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Ir a mis campañas
+              </Link>
+              <Link
+                href="/brand-influencers/new"
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Agregar influencer
+              </Link>
+            </>
           )}
         </div>
       </div>

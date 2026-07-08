@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getPrimarySocial } from '@/lib/influencers/ranking'
 
@@ -14,11 +13,19 @@ import { getPrimarySocial } from '@/lib/influencers/ranking'
 const JOIN_SORT_COLS = ['followers', 'engagement_rate'] as const
 
 // ── GET /api/influencers ──────────────────────────────────────────────────────
+// Roster global — SOLO admin/staff SCENCE. Marca e influencer usan sus propias
+// rutas (/api/brand/influencers, etc.) que sí acotan por org/relación.
+// Desde que este roster puede devolver influencers de TODAS las marcas (para
+// mostrar "Registrada por" / "Marcas asignadas" en el admin), este guard es
+// obligatorio — antes esta ruta no verificaba rol.
 export async function GET(request: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (user.user_metadata?.is_brand || user.user_metadata?.is_influencer) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { searchParams } = new URL(request.url)
@@ -39,7 +46,11 @@ export async function GET(request: NextRequest) {
   const limit      = parseInt(searchParams.get('limit') ?? '100', 10)
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  // Roster global admin: sin filtro de organization_id — a diferencia de
+  // /api/brand/influencers (que sí filtra por la marca), acá el caller ya
+  // está garantizado admin/staff por el guard de arriba, y el objetivo es
+  // justamente ver Scence + todas las marcas con su origen (ver enriquecido
+  // más abajo: registered_by / associated_brands).
 
   const SELECT = `
       id,
@@ -95,7 +106,6 @@ export async function GET(request: NextRequest) {
     const { data: allRows, error } = await fetchAllRows<Record<string, unknown>>(
       (from, to) => {
         let q = admin.from('influencers').select(SELECT).range(from, to)
-        if (orgId)    q = q.eq('organization_id', orgId)
         if (country)  q = q.eq('country', country)
         if (commune)  q = q.eq('commune', commune)
         if (verified === 'true')  q = q.eq('is_verified', true)
@@ -137,7 +147,6 @@ export async function GET(request: NextRequest) {
       .order(sortBy, { ascending: sortDir })
       .range((page - 1) * limit, page * limit - 1)
 
-    if (orgId)    query = query.eq('organization_id', orgId)
     if (country)  query = query.eq('country', country)
     if (commune)  query = query.eq('commune', commune)
     if (verified === 'true')  query = query.eq('is_verified', true)
@@ -187,12 +196,70 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const enriched = filtered.map(inf => {
+  const withLastSeen: Array<Record<string, unknown>> = filtered.map(inf => {
     const uid = inf.user_id as string | null | undefined
     return {
       ...inf,
       last_sign_in_at: uid ? (lastSeenMap[uid] ?? null) : null,
+    } as Record<string, unknown>
+  })
+
+  // ── "Registrada por" + "Marcas asignadas" ─────────────────────────────────
+  // Fuente: brand_influencers (marca↔influencer, n:n) + influencers.organization_id.
+  // No hay columna explícita de "quién creó esta fila" — se infiere así:
+  //   - organization_id == org de Scence SpA (la más antigua)  → "SCENCE".
+  //   - si no, la fila de brand_influencers MÁS ANTIGUA para esa influencer
+  //     marca la marca creadora (ver comentario largo en
+  //     POST /api/brand/influencers, que inserta influencer + su primera fila
+  //     de brand_influencers en el mismo request — cualquier asignación
+  //     posterior de otra marca queda con created_at más nuevo).
+  //   Esta inferencia depende de que brand_influencers SOLO se escriba desde
+  //   flujos controlados de la app (hoy: este POST). Como la tabla está vacía
+  //   hasta ahora, queda correcta desde este cambio en adelante.
+  const influencerIds = withLastSeen.map(inf => inf.id as string)
+  const brandsByInfluencer = new Map<string, Array<{ id: string; name: string; created_at: string }>>()
+
+  if (influencerIds.length > 0) {
+    const { data: biRows } = await admin
+      .from('brand_influencers')
+      .select('influencer_id, brand_id, created_at, brands(name)')
+      .in('influencer_id', influencerIds)
+
+    for (const row of (biRows ?? []) as unknown as Array<{ influencer_id: string; brand_id: string; created_at: string; brands: { name: string } | null }>) {
+      const list = brandsByInfluencer.get(row.influencer_id) ?? []
+      list.push({ id: row.brand_id, name: row.brands?.name ?? 'Marca', created_at: row.created_at })
+      brandsByInfluencer.set(row.influencer_id, list)
     }
+    for (const list of Array.from(brandsByInfluencer.values())) {
+      list.sort((a, b) => a.created_at.localeCompare(b.created_at))
+    }
+  }
+
+  // Org de Scence SpA = la organización más antigua (mismo criterio que
+  // ensureInfluencerRow usa para "la organización real").
+  const { data: oldestOrg } = await admin
+    .from('organizations')
+    .select('id')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .single()
+  const scenceOrgId = oldestOrg?.id ?? null
+
+  const enriched = withLastSeen.map(inf => {
+    const orgId = inf.organization_id as string | null
+    const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []
+    const associated_brands = brandsForInf.map(b => ({ id: b.id, name: b.name }))
+
+    let registered_by: string
+    if (!orgId || orgId === scenceOrgId) {
+      registered_by = 'SCENCE'
+    } else if (brandsForInf.length > 0) {
+      registered_by = brandsForInf[0].name // fila más antigua = marca creadora
+    } else {
+      registered_by = 'Marca' // org de marca sin fila en brand_influencers (caso raro/legado)
+    }
+
+    return { ...inf, registered_by, associated_brands }
   })
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit })

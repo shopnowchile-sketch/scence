@@ -494,18 +494,7 @@ function Step4({ values }: Step4Props) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-interface NewInfluencerFormProps {
-  /** Endpoint de creación. Default: admin (roster global). Marca usa /api/brand/influencers. */
-  postUrl?: string
-  /** Prefijo de redirect tras crear. Admin va a /admin-influencers/[id] (perfil propio);
-   *  marca no tiene perfil propio de influencer todavía, así que redirige a la lista. */
-  redirectTo?: (influencerId: string) => string
-}
-
-export function NewInfluencerForm({
-  postUrl = '/api/influencers',
-  redirectTo = (id: string) => `/admin-influencers/${id}`,
-}: NewInfluencerFormProps = {}) {
+export function NewInfluencerForm() {
   const router = useRouter()
   const [step, setStep]   = useState(1)
   const [saving, setSaving] = useState(false)
@@ -538,7 +527,7 @@ export function NewInfluencerForm({
   async function onSubmit(data: FormValues) {
     setSaving(true)
     try {
-      const res = await fetch(postUrl, {
+      const res = await fetch('/api/influencers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -549,7 +538,7 @@ export function NewInfluencerForm({
       }
       const { data: influencer } = await res.json()
       toast.success('Influencer agregado al roster')
-      router.push(redirectTo(influencer.id))
+      router.push(`/admin-influencers/${influencer.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')
     } finally {

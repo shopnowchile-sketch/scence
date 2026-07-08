@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
+import { startApifyInstagramSync } from '@/lib/influencers/apify'
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +17,6 @@ const admin = createClient(
 )
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN
-const ACTOR_ID   = 'apify/instagram-profile-scraper'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -130,25 +130,10 @@ export async function POST(req: NextRequest) {
   const seen = new Set<string>()
   const uniqueHandles = profiles.map(p => p.clean_handle).filter(h => { if (seen.has(h)) return false; seen.add(h); return true })
 
-  const startRes = await fetch(
-    `https://api.apify.com/v2/acts/${encodeURIComponent(ACTOR_ID)}/runs?token=${APIFY_TOKEN}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usernames: uniqueHandles }),
-    }
-  )
+  const started = await startApifyInstagramSync(uniqueHandles)
+  if ('error' in started) return NextResponse.json({ error: started.error }, { status: 502 })
 
-  if (!startRes.ok) {
-    const txt = await startRes.text()
-    return NextResponse.json({ error: `Apify error ${startRes.status}: ${txt.slice(0, 200)}` }, { status: 502 })
-  }
-
-  const { data: runData } = await startRes.json()
-  const runId: string = runData?.id
-  if (!runId) return NextResponse.json({ error: 'Apify no devolvió runId' }, { status: 502 })
-
-  return NextResponse.json({ runId, total: uniqueHandles.length })
+  return NextResponse.json({ runId: started.runId, total: uniqueHandles.length })
 }
 
 // ── GET — polling + save ──────────────────────────────────────────────────────

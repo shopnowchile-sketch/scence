@@ -14,6 +14,26 @@ import { toast } from 'sonner'
  * pedido por Pri: "pocos campos: nombre, teléfono, email, instagram — email
  * es requerido".
  */
+/**
+ * Polling en segundo plano: no bloquea ni redirige. Si Apify tarda o falla,
+ * simplemente no se actualizan los seguidores (quedan en 0, editable después).
+ */
+function pollInstagramSync(runId: string, attempt = 0) {
+  if (attempt >= 12) return
+  setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/influencers/sync-instagram?runId=${runId}`)
+      const json = await res.json()
+      if (res.ok && json.status === 'SUCCEEDED') return
+      if (res.ok && ['RUNNING', 'READY', 'INITIALIZING'].includes(json.status)) {
+        pollInstagramSync(runId, attempt + 1)
+      }
+    } catch {
+      // silencioso — no afecta al usuario
+    }
+  }, 5000)
+}
+
 export function BrandNewInfluencerForm() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -55,6 +75,9 @@ export function BrandNewInfluencerForm() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'No se pudo agregar la influencer')
       toast.success('Influencer agregada a tu roster')
+      // Seguidores reales se buscan en segundo plano (Apify) — no bloquea la
+      // navegación. Si falla o no está configurado, queda en 0 sin romper nada.
+      if (json.apify_run_id) pollInstagramSync(json.apify_run_id)
       router.push('/brand-influencers')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')

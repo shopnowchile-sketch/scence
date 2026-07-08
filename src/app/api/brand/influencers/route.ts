@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { startApifyInstagramSync } from '@/lib/influencers/apify'
 
 // GET /api/brand/influencers
 // Marca ve influencers relacionadas a SUS campañas/asignaciones.
@@ -384,5 +385,19 @@ export async function POST(req: NextRequest) {
     .eq('id', influencer.id)
     .single()
 
-  return NextResponse.json({ data }, { status: 201 })
+  // Auto-traer seguidores reales desde Instagram (pedido por Pri). Usa el
+  // mismo handle que la marca acaba de ingresar — nunca un influencer_id
+  // arbitrario del cliente, a diferencia de POST /api/influencers/sync-
+  // instagram (admin), que si acepta influencer_ids del body. No bloquea la
+  // respuesta: si Apify falla o no está configurado, la influencer queda
+  // creada igual con followers en 0 (se puede sincronizar después).
+  let apify_run_id: string | null = null
+  const startedSync = await startApifyInstagramSync([igUsername])
+  if ('runId' in startedSync) {
+    apify_run_id = startedSync.runId
+  } else {
+    console.error('[POST /api/brand/influencers] apify sync:', startedSync.error)
+  }
+
+  return NextResponse.json({ data, apify_run_id }, { status: 201 })
 }

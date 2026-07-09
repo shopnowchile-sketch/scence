@@ -15,10 +15,10 @@
  * Apify.
  */
 
-import { randomUUID } from 'crypto'
-import { readdirSync, rmSync } from 'fs'
+import { mkdtempSync, readdirSync, rmSync } from 'fs'
+import os from 'os'
 import path from 'path'
-import type { Browser, Route } from 'playwright-core'
+import type { BrowserContext, Route } from 'playwright-core'
 import type { DeliverableMetrics, DeliverableMetricsResult } from '../deliverables/metrics-types'
 
 const NAV_TIMEOUT_MS = 20_000
@@ -30,19 +30,32 @@ const OVERALL_TIMEOUT_MS = 45_000
 // varias sincronizaciones seguidas /tmp se llena y page.goto empieza a
 // tirar "ERR_INSUFFICIENT_RESOURCES" aunque el link sea válido. Se barre
 // cualquier perfil de una corrida anterior antes de lanzar uno nuevo
-// (auto-healing, no depende de que el cierre previo haya sido limpio) y
-// cada corrida usa su propio directorio.
+// (auto-healing, no depende de que el cierre previo haya sido limpio), y
+// cada corrida usa su propio directorio que se borra al terminar.
+//
+// Playwright exige pasar userDataDir como argumento de
+// launchPersistentContext (NO como flag manual "--user-data-dir" en
+// launch()) -- por eso el contexto se abre directo con este helper en vez
+// de lanzar un Browser y llamar a newContext() por separado.
 const TMP_PROFILE_PREFIX = 'pw-profile-'
+
+const CONTEXT_OPTIONS = {
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  viewport: { width: 1280, height: 900 },
+  locale: 'en-US',
+}
 
 function cleanupStaleProfiles() {
   try {
-    for (const entry of readdirSync('/tmp')) {
+    const tmpDir = os.tmpdir()
+    for (const entry of readdirSync(tmpDir)) {
       if (entry.startsWith(TMP_PROFILE_PREFIX)) {
-        rmSync(path.join('/tmp', entry), { recursive: true, force: true })
+        rmSync(path.join(tmpDir, entry), { recursive: true, force: true })
       }
     }
   } catch {
-    // /tmp no legible o vacío -- no es fatal
+    // tmp no legible o vacío -- no es fatal
   }
 }
 
@@ -63,25 +76,32 @@ function extractShortcode(url: string): string | null {
   return m ? m[1] : null
 }
 
-async function launchBrowser() {
+async function launchContext(): Promise<{ context: BrowserContext; userDataDir: string }> {
   const isVercel = !!process.env.VERCEL
   const { chromium } = await import('playwright-core')
 
+  if (isVercel) cleanupStaleProfiles()
+  const userDataDir = mkdtempSync(path.join(os.tmpdir(), TMP_PROFILE_PREFIX))
+
   if (isVercel) {
-    cleanupStaleProfiles()
     const chromiumBinary = (await import('@sparticuz/chromium')).default
-    const userDataDir = path.join('/tmp', `${TMP_PROFILE_PREFIX}${randomUUID()}`)
-    return chromium.launch({
-      args: [...chromiumBinary.args, `--user-data-dir=${userDataDir}`],
+    const context = await chromium.launchPersistentContext(userDataDir, {
+      args: chromiumBinary.args,
       executablePath: await chromiumBinary.executablePath(),
       headless: true,
+      ...CONTEXT_OPTIONS,
     })
+    return { context, userDataDir }
   }
 
   // Local dev (no /var/task de Lambda): usa el Chromium que Playwright
   // instala en el cache global del sistema. Requiere correr una vez
   // `npx playwright install chromium` en la máquina.
-  return chromium.launch({ headless: true })
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    headless: true,
+    ...CONTEXT_OPTIONS,
+  })
+  return { context, userDataDir }
 }
 
 export async function fetchInstagramMetricsViaPlaywright(url: string): Promise<DeliverableMetricsResult> {
@@ -90,34 +110,30 @@ export async function fetchInstagramMetricsViaPlaywright(url: string): Promise<D
     return { error: 'URL no parece ser un post/reel de Instagram válido' }
   }
 
-  let browser: Browser | null = null
+  let context: BrowserContext | null = null
+  let userDataDir: string | null = null
 
   try {
     // Se lanza afuera de la carrera contra el timeout, en el flujo
     // síncrono de esta función (no dentro de la closure de abajo) — así
-    // TypeScript puede rastrear la reasignación de `browser` para el
+    // TypeScript puede rastrear la reasignación de `context` para el
     // cierre en el finally sin quedar mal tipado.
-    browser = await launchBrowser()
-    const activeBrowser = browser
+    const launched = await launchContext()
+    context = launched.context
+    userDataDir = launched.userDataDir
+    const activeContext = context
 
     const result = await Promise.race([
       (async (): Promise<DeliverableMetricsResult> => {
-        const context = await activeBrowser.newContext({
-          userAgent:
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          viewport: { width: 1280, height: 900 },
-          locale: 'en-US',
-        })
-
         // No necesitamos imágenes/fuentes/medios para leer metadatos de texto
         // — bajar esto reduce memoria y tiempo en un entorno con RAM acotada.
-        await context.route('**/*', (route: Route) => {
+        await activeContext.route('**/*', (route: Route) => {
           const type = route.request().resourceType()
           if (type === 'image' || type === 'media' || type === 'font') return route.abort()
           return route.continue()
         })
 
-        const page = await context.newPage()
+        const page = await activeContext.newPage()
         page.setDefaultTimeout(NAV_TIMEOUT_MS)
 
         const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS })
@@ -172,8 +188,11 @@ export async function fetchInstagramMetricsViaPlaywright(url: string): Promise<D
   } catch (e) {
     return { error: `Error scrapeando Instagram: ${(e as Error).message}` }
   } finally {
-    if (browser) {
-      try { await browser.close() } catch { /* noop */ }
+    if (context) {
+      try { await context.close() } catch { /* noop */ }
+    }
+    if (userDataDir) {
+      try { rmSync(userDataDir, { recursive: true, force: true }) } catch { /* noop */ }
     }
   }
 }

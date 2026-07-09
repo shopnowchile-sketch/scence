@@ -175,10 +175,30 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
     brandId:    filters.brandId,
     apiBase:    isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
     search:     filters.search,
+    dateFrom:   filters.dateFrom,
+    dateTo:     filters.dateTo,
     limit:      100,
   })
 
   const rawCampaigns: Campaign[] = data?.data ?? []
+
+  // Dataset separado sin cap de 100 para las KPI cards — mismos filtros que
+  // la lista, pero limit alto, así "Budget total"/"Total gastado"/etc no
+  // quedan truncados cuando hay más de 100 campañas que matchean el filtro
+  // (mismo patrón que ya se usó para billing/events/support/influencers).
+  const { data: statsData } = useCampaignsList({
+    status:     filters.status,
+    type:       filters.type,
+    platform:   filters.platform,
+    visibility: filters.visibility,
+    brandId:    filters.brandId,
+    apiBase:    isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
+    search:     filters.search,
+    dateFrom:   filters.dateFrom,
+    dateTo:     filters.dateTo,
+    limit:      5000,
+  })
+  const statsCampaigns: Campaign[] = statsData?.data ?? []
 
   // Lista de marcas para el filtro (solo admin) — reutiliza /api/brands, ya
   // usado por BrandSelector en el form de creación/edición.
@@ -322,7 +342,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
         </div>
       ) : (
         <>
-          <KPIs campaigns={campaigns} />
+          <KPIs campaigns={statsCampaigns} />
 
           {/* Filtros */}
           <div className="card p-4">

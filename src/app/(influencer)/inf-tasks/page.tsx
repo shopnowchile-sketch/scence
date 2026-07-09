@@ -8,6 +8,7 @@ import {
   Film, Layers, Video, Radio, FileText, Sparkles, CalendarCheck, MapPin, Send, Image as ImageIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ type Deliverable = {
   due_date: string | null
   status: string
   content_url: string | null
+  published_url: string | null
   campaign_id: string
   campaign_name: string
   campaign_influencer_id: string
@@ -43,10 +45,8 @@ type CampaignGroup = {
   deliverables: Deliverable[]
 }
 
-const COMPLETE_STATUSES = ['approved', 'published', 'completed']
-function isCompleteDeliverable(d: Deliverable) {
-  return !!d.content_url || COMPLETE_STATUSES.includes(d.status)
-}
+// Criterio único de "completado" — ver src/lib/deliverable-status.ts.
+const isCompleteDeliverable = isDeliverableComplete
 
 type StatusFilter = 'all' | Task['status']
 
@@ -316,6 +316,7 @@ function TasksPageInner() {
   const [loading,      setLoading]      = useState(true)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [activeTab,    setActiveTab]    = useState<'deliverables' | 'tasks'>('deliverables')
+  const [delivFilter,  setDelivFilter]  = useState<'all' | 'pending' | 'done'>('all')
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(
     () => new Set(focusCampaignId ? [focusCampaignId] : [])
   )
@@ -355,6 +356,7 @@ function TasksPageInner() {
             due_date: d.due_date,
             status: d.status,
             content_url: d.content_url ?? null,
+            published_url: d.published_url ?? null,
             campaign_id: c.id,
             campaign_name: c.name,
             campaign_influencer_id: ci.id,
@@ -421,6 +423,18 @@ function TasksPageInner() {
     campaignGroups[groupIndex.get(d.campaign_id)!].deliverables.push(d)
   }
 
+  // Filtro pendientes/completados para la tab Entregables — antes esta tab
+  // no tenía forma de acotar la vista, solo la tab secundaria "Todas mis
+  // tareas" tenía filtro por status. El % / conteo del header de cada
+  // campaña sigue reflejando el total real del grupo (sin filtrar); el
+  // filtro solo decide qué filas de entregable se listan al expandir, y
+  // oculta grupos que se quedan sin filas tras filtrar.
+  function matchesDelivFilter(d: Deliverable) {
+    if (delivFilter === 'all') return true
+    return delivFilter === 'done' ? isCompleteDeliverable(d) : !isCompleteDeliverable(d)
+  }
+  const visibleCampaignGroups = campaignGroups.filter(g => g.deliverables.some(matchesDelivFilter))
+
   function toggleCampaign(id: string) {
     setExpandedCampaigns(prev => {
       const next = new Set(prev)
@@ -484,12 +498,38 @@ function TasksPageInner() {
       {/* ── DELIVERABLES TAB — agrupado por campaña ── */}
       {activeTab === 'deliverables' && (
         <div className="space-y-3">
-          {campaignGroups.length === 0 ? (
+          {/* Filtro pendientes/completados */}
+          {campaignGroups.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter className="h-4 w-4 text-gray-300 flex-shrink-0" />
+              {([
+                { key: 'all',     label: 'Todos' },
+                { key: 'pending', label: 'Pendientes' },
+                { key: 'done',    label: 'Completados' },
+              ] as { key: typeof delivFilter; label: string }[]).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setDelivFilter(key)}
+                  className={cn(
+                    'text-xs font-medium px-3 py-1.5 rounded-full border transition-colors',
+                    delivFilter === key
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-violet-200'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {visibleCampaignGroups.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-100 flex flex-col items-center py-10">
               <CheckCircle2 className="h-8 w-8 text-gray-200 mb-2" />
-              <p className="text-sm text-gray-400">¡Todo al día con los entregables!</p>
+              <p className="text-sm text-gray-400">
+                {delivFilter === 'all' ? '¡Todo al día con los entregables!' : 'No hay entregables en este filtro.'}
+              </p>
             </div>
-          ) : campaignGroups.map(g => {
+          ) : visibleCampaignGroups.map(g => {
             const total    = g.deliverables.length
             const doneCt   = g.deliverables.filter(isCompleteDeliverable).length
             const pending  = g.deliverables.filter(d => !isCompleteDeliverable(d))
@@ -543,7 +583,7 @@ function TasksPageInner() {
 
                 {expanded && (
                   <div className="px-4 pb-4 space-y-2 border-t border-gray-50 pt-3">
-                    {g.deliverables.map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
+                    {g.deliverables.filter(matchesDelivFilter).map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
                   </div>
                 )}
               </div>

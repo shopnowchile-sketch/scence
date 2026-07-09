@@ -35,12 +35,13 @@ export async function GET(request: NextRequest) {
     topInfluencers,
     platformBreakdown,
   ] = await Promise.all([
-    // Campaign stats
+    // Campaign stats — sin .limit(20): ese cap truncaba campaign_stats
+    // (total/active/completed/budget) a las 20 campañas más recientes,
+    // dando KPIs incorrectos en cualquier org con más de 20 campañas.
     admin.from('campaigns')
       .select('id, name, status, type, budget_total, budget_spent, platforms, start_date, end_date')
       .eq('organization_id', orgId ?? 'none')
-      .order('created_at', { ascending: false })
-      .limit(20),
+      .order('created_at', { ascending: false }),
 
     // Influencer stats — top by campaigns (scoped by org via campaign join)
     admin.from('campaign_influencers')

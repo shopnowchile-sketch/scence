@@ -175,6 +175,11 @@ function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: b
 // ── Main Component ────────────────────────────────────────────────────────────
 export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
   const [tickets,      setTickets]      = useState<Ticket[]>([])
+  // Sin filtro de estado, solo para los contadores de cada tab — antes se
+  // contaba sobre `tickets` (ya filtrado por el tab activo), así que todos
+  // los badges menos el del tab seleccionado quedaban mal (mismo fix que en
+  // BillingClient.tsx y admin-events/page.tsx).
+  const [allTickets,   setAllTickets]   = useState<Ticket[]>([])
   const [loading,      setLoading]      = useState(true)
   const [showForm,     setShowForm]     = useState(false)
   const [submitting,   setSubmitting]   = useState(false)
@@ -198,7 +203,17 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
     setLoading(false)
   }, [apiUrl, adminMode, statusFilter])
 
+  const loadAllCounts = useCallback(async () => {
+    if (!adminMode) return
+    try {
+      const res  = await fetch(apiUrl)
+      const json = await res.json()
+      if (res.ok) setAllTickets(json.data ?? [])
+    } catch { /* los badges se quedan con el valor anterior, no es crítico */ }
+  }, [adminMode, apiUrl])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadAllCounts() }, [loadAllCounts])
 
   async function submit() {
     if (!form.title.trim())       { toast.error('El título es requerido');     return }
@@ -214,6 +229,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setTickets(prev => [json.data, ...prev])
+      setAllTickets(prev => [json.data, ...prev])
       setForm({ title: '', description: '', category: 'other' })
       setShowForm(false)
       toast.success('Ticket enviado — recibirás respuesta pronto')
@@ -229,6 +245,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       const res = await fetch(`/api/tickets/${ticketId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       setTickets(prev => prev.filter(t => t.id !== ticketId))
+      setAllTickets(prev => prev.filter(t => t.id !== ticketId))
       if (expanded === ticketId) setExpanded(null)
       toast.success('Ticket eliminado')
     } catch {
@@ -246,6 +263,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: json.data.status } : t))
+      setAllTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: json.data.status } : t))
       toast.success('Estado actualizado')
     } catch (e) {
       toast.error((e as Error).message ?? 'Error actualizando estado')
@@ -283,7 +301,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       {adminMode && (
         <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
           {FILTER_TABS.map(tab => {
-            const count = tab.key === 'all' ? tickets.length : tickets.filter(t => t.status === tab.key).length
+            const count = tab.key === 'all' ? allTickets.length : allTickets.filter(t => t.status === tab.key).length
             return (
               <button
                 key={tab.key}

@@ -7,6 +7,7 @@ import {
   TrendingUp, Users, Calendar, ChevronRight, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
 
 type DeliverableStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'published'
@@ -18,6 +19,7 @@ interface Deliverable {
   status: DeliverableStatus
   due_date: string | null
   content_url: string | null
+  published_url?: string | null
   submitted_at: string | null
   influencer: { id: string; display_name: string; avatar_url: string | null } | null
 }
@@ -30,7 +32,7 @@ interface Campaign {
   end_date: string | null
   budget_total: number | null
   currency: string
-  campaign_influencers: Array<{ id: string; status: string; influencer: { id: string; display_name: string; avatar_url: string | null } | null }>
+  campaign_influencers: Array<{ id: string; application_status: string | null; influencer: { id: string; display_name: string; avatar_url: string | null } | null }>
   campaign_deliverables: Deliverable[]
 }
 
@@ -88,8 +90,13 @@ export default function BrandDashboard() {
   const pendingDeliverables = campaigns.flatMap(c =>
     c.campaign_deliverables.filter(d => d.status === 'in_review')
   )
+  // Solo cuenta influencers con postulación/invitación aceptada — antes
+  // contaba también pending/rejected, inflando el KPI de la portada.
   const totalInfluencers = new Set(
-    campaigns.flatMap(c => c.campaign_influencers.map(ci => ci.influencer?.id)).filter(Boolean)
+    campaigns.flatMap(c => c.campaign_influencers)
+      .filter(ci => ci.application_status === 'accepted')
+      .map(ci => ci.influencer?.id)
+      .filter(Boolean)
   ).size
 
   if (loading) {
@@ -185,7 +192,7 @@ export default function BrandDashboard() {
               const cfg = STATUS_CONFIG[c.status] ?? STATUS_CONFIG.draft
               const StatusIcon = cfg.icon
               const delTotal  = c.campaign_deliverables.length
-              const delDone   = c.campaign_deliverables.filter(d => d.status === 'approved' || d.status === 'published').length
+              const delDone   = c.campaign_deliverables.filter(isDeliverableComplete).length
               const delReview = c.campaign_deliverables.filter(d => d.status === 'in_review').length
               const pct = delTotal > 0 ? Math.round((delDone / delTotal) * 100) : 0
 
@@ -200,7 +207,7 @@ export default function BrandDashboard() {
                       <h3 className="font-bold text-gray-900 truncate">{c.name}</h3>
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
                         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {fmt(c.start_date)} → {fmt(c.end_date)}</span>
-                        <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {c.campaign_influencers.length} influencer(s)</span>
+                        <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {c.campaign_influencers.filter(ci => ci.application_status === 'accepted').length} influencer(s)</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">

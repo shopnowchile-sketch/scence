@@ -17,9 +17,13 @@ export async function GET(req: NextRequest) {
   const search = sp.get('search')
   const limit  = Number(sp.get('limit') ?? '100')
 
+  // { count: 'exact' } es necesario para que `count` (usado abajo en el
+  // `total` de la respuesta) no sea siempre null — sin esto el endpoint
+  // decía `total: 0` sin importar cuántas marcas hubiera (bug real: nadie
+  // podía haber estado usando `total` de acá para nada hasta ahora).
   let query = admin
     .from('brands')
-    .select('*, campaigns:campaigns!brand_id(id, name, status, budget_total, currency)')
+    .select('*, campaigns:campaigns!brand_id(id, name, status, budget_total, currency)', { count: 'exact' })
     .order('name', { ascending: true })
     .limit(limit)
 

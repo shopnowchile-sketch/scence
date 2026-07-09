@@ -543,11 +543,18 @@ export function BillingClient() {
   const [showNewPayroll, setShowNewPayroll] = useState(false)
 
   const { data: invoicesData, isLoading: loadingInvoices } = useInvoices({ status: filterStatus === 'all' ? undefined : filterStatus })
+  // KPIs y los contadores de cada pill de estado necesitan el total real, no
+  // el subset que deja el filtro activo — antes se calculaban sobre
+  // `invoices` (ya filtrado), así que al hacer clic en "Vencidas" las 4
+  // tarjetas ("Total facturado", "Cobrado", etc.) y los demás pills quedaban
+  // mal (0 o solo ese subset). Fetch aparte, sin filtro de estado.
+  const { data: allInvoicesData } = useInvoices({ limit: 10000 })
   const { data: payrollData, isLoading: loadingPayroll } = usePayroll()
   const patchInvoice = usePatchInvoice()
   const patchPayroll = usePatchPayroll()
 
   const invoices: Invoice[] = invoicesData?.data ?? []
+  const allInvoices: Invoice[] = allInvoicesData?.data ?? []
   const payrolls: PayrollRun[] = payrollData?.data ?? []
 
   function handleAction(action: string, id: string) {
@@ -607,7 +614,7 @@ export function BillingClient() {
       </div>
 
       <MonthFinanceCards />
-      <BillingKPIs invoices={invoices} payrolls={payrolls} />
+      <BillingKPIs invoices={allInvoices} payrolls={payrolls} />
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
@@ -635,7 +642,7 @@ export function BillingClient() {
                 )}>
                 {f.label}
                 <span className="ml-1.5 text-xs opacity-70">
-                  {f.value === 'all' ? invoices.length : invoices.filter(i => i.status === f.value).length}
+                  {f.value === 'all' ? allInvoices.length : allInvoices.filter(i => i.status === f.value).length}
                 </span>
               </button>
             ))}

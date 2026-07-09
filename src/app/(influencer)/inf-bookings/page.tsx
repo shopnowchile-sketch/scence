@@ -48,6 +48,10 @@ export default function InfluencerBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [events,   setEvents]   = useState<CampaignEvent[]>([])
   const [loading,  setLoading]  = useState(true)
+  // Historial sin límite crecía indefinidamente sin forma de acotarlo —
+  // se muestran los últimos 10 por default, con opción de ver todo.
+  const [showAllPast, setShowAllPast] = useState(false)
+  const PAST_PAGE_SIZE = 10
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -85,7 +89,10 @@ export default function InfluencerBookingsPage() {
   }
 
   const upcoming = bookings.filter(b => b.status !== 'canceled' && b.status !== 'completed' && new Date(b.starts_at ?? 0) >= new Date())
-  const past     = bookings.filter(b => b.status === 'completed' || new Date(b.starts_at ?? 0) < new Date())
+  const pastAll  = bookings
+    .filter(b => b.status === 'completed' || new Date(b.starts_at ?? 0) < new Date())
+    .sort((a, b) => new Date(b.starts_at ?? 0).getTime() - new Date(a.starts_at ?? 0).getTime())
+  const past     = showAllPast ? pastAll : pastAll.slice(0, PAST_PAGE_SIZE)
 
   if (loading) {
     return (
@@ -139,10 +146,20 @@ export default function InfluencerBookingsPage() {
           {/* Pasados */}
           {past.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Historial ({past.length})</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                Historial ({showAllPast ? pastAll.length : `${past.length} de ${pastAll.length}`})
+              </p>
               <div className="space-y-3">
                 {past.map(b => <BookingCard key={b.id} booking={b} onCheckIn={checkIn} />)}
               </div>
+              {!showAllPast && pastAll.length > PAST_PAGE_SIZE && (
+                <button
+                  onClick={() => setShowAllPast(true)}
+                  className="mt-3 w-full text-center text-xs font-semibold text-violet-600 hover:text-violet-700 py-2"
+                >
+                  Ver todo el historial ({pastAll.length})
+                </button>
+              )}
             </div>
           )}
         </div>

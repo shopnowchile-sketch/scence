@@ -274,6 +274,7 @@ type CalDeliverable = {
 export function BookingsClient() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [view, setView] = useState<'month' | 'list'>('month')
+  const [listStatusFilter, setListStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [selected, setSelected] = useState<Booking | null>(null)
   const [showNewBooking, setShowNewBooking] = useState(false)
   const [deliverables, setDeliverables] = useState<CalDeliverable[]>([])
@@ -480,7 +481,32 @@ export function BookingsClient() {
           ) : (
             /* Lista view */
             <div className="space-y-3">
+              {/* Filtro por status — antes la Lista mostraba todos los bookings
+                  sin forma de acotar, con historial creciente esto se vuelve
+                  inmanejable. Client-side: bookings ya vienen todos cargados. */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setListStatusFilter('all')}
+                  className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                    listStatusFilter === 'all' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  )}
+                >
+                  Todos
+                </button>
+                {(Object.keys(STATUS_CONFIG) as BookingStatus[]).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setListStatusFilter(s)}
+                    className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                      listStatusFilter === s ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    )}
+                  >
+                    {STATUS_CONFIG[s].label}
+                  </button>
+                ))}
+              </div>
               {bookings
+                .filter(b => listStatusFilter === 'all' || b.status === listStatusFilter)
                 .sort((a, b) => parseISO(a.starts_at).getTime() - parseISO(b.starts_at).getTime())
                 .map(b => {
                   const cfg = STATUS_CONFIG[b.status]

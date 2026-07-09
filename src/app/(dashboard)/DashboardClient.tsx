@@ -25,6 +25,12 @@ interface DashboardState {
   campaigns: UnknownRecord[]
   influencers: UnknownRecord[]
   brands: UnknownRecord[]
+  // Total real que devuelve /api/brands (count: 'exact', server-side) — antes
+  // no existía y brandsTotal caía a `state.brands.length`, que con el limit
+  // default de la API (100) subcontaba en cuanto había más de 100 marcas.
+  // Mismo bug de paginación que ya se arregló para influencers (ver FIX
+  // 2026-07-02 más abajo), nunca se aplicó a marcas.
+  brandsTotalRaw: number
   invoices: UnknownRecord[]
   deliverables: UnknownRecord[]
 }
@@ -51,6 +57,7 @@ const INITIAL_STATE: DashboardState = {
   campaigns: [],
   influencers: [],
   brands: [],
+  brandsTotalRaw: 0,
   invoices: [],
   deliverables: [],
 }
@@ -465,7 +472,7 @@ export function DashboardClient() {
         fetchJson('/api/analytics'),
         fetchJson('/api/campaigns'),
         fetchJson('/api/influencers?limit=100'),
-        fetchJson('/api/brands'),
+        fetchJson('/api/brands?limit=5000'),
         fetchJson('/api/invoices'),
         fetchJson('/api/deliverables'),
       ])
@@ -480,6 +487,7 @@ export function DashboardClient() {
         campaigns: pickArray(campaignsRaw, ['campaigns', 'data', 'items']),
         influencers: pickArray(influencersRaw, ['influencers', 'data', 'items']),
         brands: pickArray(brandsRaw, ['brands', 'data', 'items']),
+        brandsTotalRaw: deepNumber(brandsRaw, ['total'], 0),
         invoices: pickArray(invoicesRaw, ['invoices', 'data', 'items']),
         deliverables: pickArray(deliverablesRaw, ['deliverables', 'data', 'items']),
       })
@@ -509,7 +517,9 @@ export function DashboardClient() {
       deepNumber(state.dashboard, ['totalInfluencers', 'influencersTotal', 'influencersRoster'], state.influencers.length)
 
     const brandsTotal =
-      deepNumber(state.dashboard, ['totalBrands', 'brandsTotal', 'registeredBrands'], state.brands.length)
+      deepNumber(state.dashboard, ['totalBrands', 'brandsTotal', 'registeredBrands'], 0) ||
+      state.brandsTotalRaw ||
+      state.brands.length
 
     // FIX (2026-07-02): estas 3 métricas siempre daban $0/0% — buscaban keys
     // ('revenue', 'facturado', 'payroll', 'inboundCosts', etc.) que no existen

@@ -19,6 +19,7 @@ import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
@@ -757,8 +758,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // esta campaña — usados para el checkbox "seleccionar todas" del recordatorio.
   const remindablePendingIds = filteredInfluencers
     .filter(ci => ci.influencer && campaignDeliverables.some(d =>
-      d.influencer?.id === ci.influencer!.id &&
-      !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
+      d.influencer?.id === ci.influencer!.id && !isDeliverableComplete(d)
     ))
     .map(ci => ci.influencer!.id)
   // FIX: antes buscaba solo en confirmedInfluencers — clickear una postulante
@@ -1742,9 +1742,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const myDelivs    = campaignDeliverables.filter(d => d.influencer?.id === inf.id)
                     const delivsDone  = myDelivs.filter(d => d.status === 'published').length
                     const delivsTotal = myDelivs.length
-                    const myPending   = myDelivs.filter(d =>
-                      !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
-                    ).length
+                    const myPending   = myDelivs.filter(d => !isDeliverableComplete(d)).length
                     const p = delivsTotal > 0
                       ? Math.round(myDelivs.reduce((sum, d) => {
                           if (d.status === 'published') return sum + 100
@@ -2134,7 +2132,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     }
                     for (const key of Array.from(statsByInfluencerId.keys())) {
                       const own = campaignDeliverables.filter(d => d.influencer?.id === key)
-                      const ownDone = own.filter(d => !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)).length
+                      const ownDone = own.filter(isDeliverableComplete).length
                       const ownRated = own.filter(d => d.content_rating != null)
                       const pct = own.length > 0 ? Math.round((ownDone / own.length) * 100) : 0
                       const avgRating = ownRated.length > 0

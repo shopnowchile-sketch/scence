@@ -7,6 +7,7 @@ import {
   visibilityLimitMessage,
   PLAN_ERROR_CODES,
 } from '@/lib/plan-limits'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // GET /api/brand-campaigns — campañas de la marca autenticada
 // Acepta los mismos filtros que /api/campaigns (status/type/platform/visibility/search)
@@ -23,6 +24,8 @@ export async function GET(req: NextRequest) {
   const platform   = sp.get('platform')
   const visibility = sp.get('visibility')
   const search     = sp.get('search')
+  const dateFrom   = sp.get('date_from')
+  const dateTo     = sp.get('date_to')
 
   const admin = createAdminClient()
 
@@ -82,6 +85,8 @@ export async function GET(req: NextRequest) {
   if (platform)   query = query.contains('platforms', [platform])
   if (visibility) query = query.eq('visibility', visibility)
   if (search)     query = query.ilike('name', `%${search}%`)
+  if (dateFrom)   query = query.gte('start_date', dateFrom)
+  if (dateTo)     query = query.lte('start_date', dateTo)
 
   const { data, error } = await query
 
@@ -104,7 +109,7 @@ export async function GET(req: NextRequest) {
       ...c,
       influencer_count:  row.campaign_influencers?.length ?? 0,
       deliverable_count: deliverables.length,
-      deliverable_done:  deliverables.filter(d => d.status === 'published' || d.status === 'approved').length,
+      deliverable_done:  deliverables.filter(isDeliverableComplete).length,
     }
   })
 

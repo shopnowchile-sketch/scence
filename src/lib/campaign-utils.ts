@@ -2,6 +2,8 @@
 // Used by admin, brand, and influencer portals.
 // Single source of truth for status configs, formatters, and types.
 
+import { isDeliverableComplete } from './deliverable-status'
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type CampaignMode = 'admin' | 'brand' | 'influencer'
@@ -23,6 +25,7 @@ export interface CampaignDeliverable {
   due_date: string | null
   status: DeliverableStatus
   content_url: string | null
+  published_url?: string | null
   notes?: string | null
   influencer_id?: string | null
   influencer?: { id: string; display_name: string; avatar_url: string | null } | null
@@ -105,7 +108,7 @@ export function fmtMoney(n: number | null | undefined, currency = 'CLP') {
 
 export function deliverableProgress(deliverables: CampaignDeliverable[]) {
   const total = deliverables.length
-  const done  = deliverables.filter(d => d.status === 'approved' || d.status === 'published').length
+  const done  = deliverables.filter(isDeliverableComplete).length
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0
   return { total, done, pct }
 }

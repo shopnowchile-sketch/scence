@@ -101,18 +101,52 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     }
   }
 
-  // Métricas del roster
-  const totalFollowers = influencers.reduce((acc, inf) => {
+  // Métricas del roster — "En roster" (arriba, `total`) ya usa el conteo real
+  // del servidor. Estas 3 en cambio se calculaban sobre `influencers`, que es
+  // solo la página actual (48 filas, INFLUENCERS_PAGE_SIZE) — con un roster
+  // de cientos/miles, "Alcance total" y "Verificados" mostraban el dato de
+  // 48 personas etiquetado como si fuera el total. Fetch aparte con los
+  // mismos filtros activos pero sin paginar, solo para estos 3 números.
+  const [statsInfluencers, setStatsInfluencers] = useState<Influencer[]>([])
+  useEffect(() => {
+    const params = new URLSearchParams({ page: '1', limit: '5000' })
+    if (filters.search)                             params.set('search', filters.search)
+    if (filters.platforms.length === 1)             params.set('platform', filters.platforms[0])
+    if (filters.categories.length === 1)            params.set('category', filters.categories[0])
+    if (filters.country)                            params.set('country', filters.country)
+    if (filters.commune)                            params.set('commune', filters.commune)
+    if (filters.isVerified !== null)                params.set('verified', String(filters.isVerified))
+    if (filters.isActive === false)                 params.set('is_active', 'false')
+    else if (filters.isActive === true)             params.set('is_active', 'true')
+
+    let cancelled = false
+    fetch(`${isBrandPortal ? '/api/brand/influencers' : '/api/influencers'}?${params}`)
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(json => {
+        if (cancelled) return
+        const rows = (json.data ?? []).map((inf: Record<string, unknown>) => ({
+          ...inf,
+          social_profiles: inf.social_profiles ?? inf.influencer_social_profiles ?? [],
+        }))
+        setStatsInfluencers(rows as Influencer[])
+      })
+      .catch(() => { if (!cancelled) setStatsInfluencers([]) })
+    return () => { cancelled = true }
+  }, [isBrandPortal, filters.search, filters.platforms, filters.categories, filters.country, filters.commune, filters.isVerified, filters.isActive])
+
+  const totalFollowers = statsInfluencers.reduce((acc, inf) => {
     const primary = inf.social_profiles?.find(s => s.is_primary) ?? inf.social_profiles?.[0]
     return acc + (primary?.followers ?? 0)
   }, 0)
 
-  const avgEngagement = influencers.length
-    ? influencers.reduce((acc, inf) => {
+  const avgEngagement = statsInfluencers.length
+    ? statsInfluencers.reduce((acc, inf) => {
         const primary = inf.social_profiles?.find(s => s.is_primary)
         return acc + (primary?.engagement_rate ?? 0)
-      }, 0) / influencers.length
+      }, 0) / statsInfluencers.length
     : 0
+
+  const verifiedCount = statsInfluencers.filter(i => i.is_verified).length
 
   return (
     <div className="space-y-6">
@@ -218,7 +252,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
             </div>
             <div>
               <div className="text-xl font-bold text-gray-900">
-                {influencers.filter(i => i.is_verified).length}
+                {verifiedCount}
               </div>
               <div className="text-xs text-gray-400">Verificados</div>
             </div>

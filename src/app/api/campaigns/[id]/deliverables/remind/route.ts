@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, deliverableReminderEmail } from '@/lib/resend'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 type Params = { params: { id: string } }
 
@@ -49,9 +50,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const pending = (deliverables ?? []).filter(d =>
-    !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
-  )
+  const pending = (deliverables ?? []).filter(d => !isDeliverableComplete(d))
 
   if (pending.length === 0) {
     return NextResponse.json({ error: 'Esta influencer no tiene entregables pendientes en esta campaña' }, { status: 422 })

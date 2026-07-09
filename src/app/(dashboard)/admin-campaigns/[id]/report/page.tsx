@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Influencer {
@@ -447,9 +448,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                 // criterio que decide si el influencer aparece en el reporte
                 // (antes solo contaba status==='published', y mostraba 0%
                 // para influencers que ya habían entregado el link).
-                const doneCount = infDeliverables.filter(d =>
-                  !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)
-                ).length
+                const doneCount = infDeliverables.filter(isDeliverableComplete).length
                 const pct = infDeliverables.length > 0 ? Math.round((doneCount / infDeliverables.length) * 100) : 0
                 const uploadedDates = infDeliverables.map(d => d.published_at).filter(Boolean) as string[]
                 const lastUploaded = uploadedDates.length > 0

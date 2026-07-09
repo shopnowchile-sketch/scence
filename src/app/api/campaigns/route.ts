@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // ── GET /api/campaigns ────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -18,6 +19,8 @@ export async function GET(request: NextRequest) {
   const visibility = searchParams.get('visibility')
   const brandId    = searchParams.get('brandId')
   const search     = searchParams.get('search')
+  const dateFrom   = searchParams.get('date_from')
+  const dateTo     = searchParams.get('date_to')
   const page       = parseInt(searchParams.get('page') ?? '1', 10)
   const limit      = parseInt(searchParams.get('limit') ?? '50', 10)
 
@@ -49,6 +52,8 @@ export async function GET(request: NextRequest) {
   if (platform)   query = query.contains('platforms', [platform])
   if (visibility) query = query.eq('visibility', visibility)
   if (search)     query = query.ilike('name', `%${search}%`)
+  if (dateFrom)   query = query.gte('start_date', dateFrom)
+  if (dateTo)     query = query.lte('start_date', dateTo)
 
   // Filtro por marca: incluye tanto la marca principal (brand_id) como
   // co-marcas colaboradoras (campaign_brands) — mismo criterio que ya usa
@@ -80,7 +85,7 @@ export async function GET(request: NextRequest) {
       ? admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds)
       : { data: [] },
     campaignIds.length
-      ? admin.from('campaign_deliverables').select('campaign_id, status').in('campaign_id', campaignIds)
+      ? admin.from('campaign_deliverables').select('campaign_id, status, content_url, published_url').in('campaign_id', campaignIds)
       : { data: [] },
   ])
 
@@ -93,7 +98,10 @@ export async function GET(request: NextRequest) {
   const delDone:  Record<string, number> = {}
   for (const r of cdRows ?? []) {
     delCount[r.campaign_id] = (delCount[r.campaign_id] ?? 0) + 1
-    if (r.status === 'published' || r.status === 'approved') {
+    // Mismo criterio único de "completado" que el resto de la app (ver
+    // src/lib/deliverable-status.ts) — antes solo miraba status
+    // published/approved, sin contar entregas ya subidas pero aún en revisión.
+    if (isDeliverableComplete(r)) {
       delDone[r.campaign_id] = (delDone[r.campaign_id] ?? 0) + 1
     }
   }

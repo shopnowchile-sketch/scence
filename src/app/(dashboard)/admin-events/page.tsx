@@ -397,6 +397,11 @@ function Skeleton() {
 export default function EventsPage() {
   const router = useRouter()
   const [events, setEvents]     = useState<Event[]>([])
+  // Set aparte, sin filtro de estado, solo para los KPIs — antes "Total
+  // eventos", "Entradas vendidas", etc. se calculaban sobre `events`, que ya
+  // venía filtrado por `statusFilter`, así que cambiar de pill rompía el
+  // significado de "Total" (ver mismo fix en BillingClient.tsx).
+  const [allEvents, setAllEvents] = useState<Event[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [showNew, setShowNew]   = useState(false)
@@ -419,10 +424,20 @@ export default function EventsPage() {
     }
   }
 
+  async function loadAllEvents() {
+    try {
+      const res  = await fetch('/api/events')
+      const json = await res.json()
+      if (res.ok) setAllEvents(json.data ?? [])
+    } catch { /* KPIs se quedan con el valor anterior, no es crítico */ }
+  }
+
   useEffect(() => { loadEvents() }, [statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadAllEvents() }, [])
 
   const handleCreated = (event: Event) => {
     setEvents(prev => [event, ...prev])
+    setAllEvents(prev => [event, ...prev])
   }
 
   return (
@@ -444,7 +459,7 @@ export default function EventsPage() {
       </div>
 
       {/* KPIs */}
-      {!loading && !error && <KPIs events={events} />}
+      {!loading && !error && <KPIs events={allEvents} />}
 
       {/* Filter bar */}
       <div className="card p-3 flex items-center gap-2 flex-wrap">

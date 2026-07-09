@@ -11,6 +11,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -246,9 +247,7 @@ export default function InfluencerDashboard() {
   // más abajo y CampaignDetail.tsx en admin): URL subida o status aprobado/
   // completado/publicado. Antes solo miraba status, así que un entregable ya
   // entregado pero todavía 'pending'/'in_review' contaba como pendiente.
-  const pendingDeliverablesCount = allDeliverables.filter(d =>
-    !d.content_url && !d.published_url && !['approved', 'completed', 'published'].includes(d.status)
-  ).length
+  const pendingDeliverablesCount = allDeliverables.filter(d => !isDeliverableComplete(d)).length
   const pendingPct = totalDeliverables > 0 ? Math.round((pendingDeliverablesCount / totalDeliverables) * 100) : 0
 
   const gaugeData = [
@@ -275,9 +274,7 @@ export default function InfluencerDashboard() {
       // publicado — antes solo miraba status === 'approved'/'published', por
       // lo que un entregable ya subido pero aún 'pending'/'in_review' contaba
       // como 0%, mostrando 0% aunque la influencer ya hubiera entregado todo.
-      const done   = delivs.filter(d =>
-        !!d.content_url || !!d.published_url || ['approved', 'completed', 'published'].includes(d.status)
-      ).length
+      const done   = delivs.filter(isDeliverableComplete).length
       const pct    = total > 0 ? Math.round((done / total) * 100) : 0
       return { ci: x.ci, pct, total }
     })

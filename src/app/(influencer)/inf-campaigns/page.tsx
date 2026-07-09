@@ -8,6 +8,7 @@ import {
   FileText, ChevronRight, Loader2, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -64,7 +65,7 @@ type ApiRow = {
     visibility?: string | null
     brand?: { id: string; name: string; logo_url: string | null } | null
   } | null
-  campaign_deliverables: Array<{ id: string; status: string; due_date: string | null }>
+  campaign_deliverables: Array<{ id: string; status: string; due_date: string | null; content_url?: string | null; published_url?: string | null }>
 }
 
 // Una postulación pending solo está garantizado que ya se ve en "Disponibles
@@ -83,11 +84,13 @@ function toRow(row: ApiRow): Campaign | null {
   const c = row.campaign
   if (!c?.id) return null
   const total = row.campaign_deliverables?.length ?? 0
-  const done  = (row.campaign_deliverables ?? []).filter(d => d.status === 'approved' || d.status === 'published').length
+  const done  = (row.campaign_deliverables ?? []).filter(isDeliverableComplete).length
   // Próxima entrega: la fecha más próxima entre los entregables que aún
-  // faltan por subir/aprobar (no entre los ya aprobados/publicados).
+  // faltan por subir/aprobar (no entre los ya completados — mismo criterio
+  // unificado que el resto de la app: URL subida o status aprobado/
+  // completado/publicado).
   const nextDue = (row.campaign_deliverables ?? [])
-    .filter(d => d.status !== 'approved' && d.status !== 'published' && d.due_date)
+    .filter(d => !isDeliverableComplete(d) && d.due_date)
     .map(d => d.due_date as string)
     .sort()[0] ?? null
   return {
@@ -119,6 +122,10 @@ export default function MyCampaignsPage() {
   const [openCampaigns, setOpenCampaigns] = useState<OpenCampaign[]>([])
   const [applying,      setApplying]      = useState<string | null>(null)
   const [brandFilter,   setBrandFilter]   = useState<string>('')
+  // Filtro por status para "Asignadas por agencia" / "Mis campañas" — antes
+  // no había forma de acotar la vista salvo el filtro de marca que solo
+  // aplica a "Disponibles para postular".
+  const [campStatusFilter, setCampStatusFilter] = useState<string>('')
 
   // FIX (2026-07-04): antes, si /api/influencer/my-campaigns fallaba (o
   // simplemente tardaba/erroraba por lo que sea), el `throw` cortaba la
@@ -223,8 +230,11 @@ export default function MyCampaignsPage() {
     )
   }
 
-  const assigned    = campaigns.filter(c => !c.self_created)
-  const selfCreated = campaigns.filter(c => c.self_created)
+  const campaignsFiltered = campStatusFilter
+    ? campaigns.filter(c => c.status === campStatusFilter)
+    : campaigns
+  const assigned    = campaignsFiltered.filter(c => !c.self_created)
+  const selfCreated = campaignsFiltered.filter(c => c.self_created)
 
   return (
     <div className="space-y-6">
@@ -411,6 +421,31 @@ export default function MyCampaignsPage() {
         </div>
       )}
 
+      {/* Filtro por status — aplica a "Asignadas por agencia" y "Mis campañas" */}
+      {campaigns.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setCampStatusFilter('')}
+            className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+              campStatusFilter === '' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            Todas
+          </button>
+          {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+            <button
+              key={key}
+              onClick={() => setCampStatusFilter(key)}
+              className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                campStatusFilter === key ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              )}
+            >
+              {cfg.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Assigned campaigns */}
       {assigned.length > 0 && (
         <div>
@@ -434,6 +469,13 @@ export default function MyCampaignsPage() {
           </div>
         </div>
       )}
+
+      {campaigns.length > 0 && campaignsFiltered.length === 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 flex flex-col items-center py-10">
+          <FileText className="h-8 w-8 text-gray-200 mb-2" />
+          <p className="text-sm text-gray-400">No hay campañas con este status.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -445,14 +487,20 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   // una campaña privada que no se filtra arriba), el badge debe reflejar
   // eso en vez del status de la campaña ("Activa") — mismo fix que en el
   // detalle de campaña, para que nunca contradiga el estado real.
+  // FIX: antes solo cubría 'pending' — una postulación/invitación rechazada
+  // se quedaba sin override y mostraba el badge de STATUS_CONFIG[c.status]
+  // (ej. "Activa" en verde) para una campaña en la que en realidad quedó
+  // afuera. Mismo criterio ya usado para "En revisión".
   const stCfg   = c.application_status === 'pending'
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
+    : c.application_status === 'rejected'
+    ? { label: 'Rechazada', color: 'bg-red-100 text-red-600' }
     : STATUS_CONFIG[c.status] ?? STATUS_CONFIG.active
   const pct     = c.deliverables_total > 0 ? Math.round((c.deliverables_done / c.deliverables_total) * 100) : 0
   // El clic en la fila siempre lleva al detalle de la campaña. "Próxima
   // entrega" es solo informativa acá (pedido de Pri: el link a entregables
   // vive en el dashboard/detalle, no reemplaza el detalle de campaña).
-  const isActive = c.status === 'active' && c.application_status !== 'pending'
+  const isActive = c.status === 'active' && c.application_status !== 'pending' && c.application_status !== 'rejected'
 
   return (
     <button

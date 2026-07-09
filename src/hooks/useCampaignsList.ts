@@ -10,6 +10,8 @@ interface ListParams {
   visibility?: string
   brandId?: string
   search?: string
+  dateFrom?: string
+  dateTo?: string
   page?: number
   limit?: number
   apiBase?: string
@@ -24,6 +26,8 @@ async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; t
   if (params.visibility) sp.set('visibility', params.visibility)
   if (params.brandId)    sp.set('brandId', params.brandId)
   if (params.search)     sp.set('search', params.search)
+  if (params.dateFrom)   sp.set('date_from', params.dateFrom)
+  if (params.dateTo)     sp.set('date_to', params.dateTo)
   if (params.page)       sp.set('page', String(params.page))
   if (params.limit)      sp.set('limit', String(params.limit))
 

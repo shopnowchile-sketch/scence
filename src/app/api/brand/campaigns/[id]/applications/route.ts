@@ -75,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Verificar que la aplicación exista y esté pendiente
   const { data: application } = await admin
     .from('campaign_influencers')
-    .select('id, application_status')
+    .select('id, application_status, origin')
     .eq('id', application_id)
     .eq('campaign_id', params.id)
     .single()
@@ -83,6 +83,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!application) return NextResponse.json({ error: 'Aplicación no encontrada' }, { status: 404 })
   if (application.application_status !== 'pending') {
     return NextResponse.json({ error: 'Solo se pueden gestionar aplicaciones pendientes' }, { status: 422 })
+  }
+
+  // Gap encontrado en UAT: una invitación (origin='invitation') la manda la
+  // marca — quien debe aceptarla es el influencer invitado (PATCH
+  // /api/influencer/campaigns/[id]/apply), no la propia marca "aprobando" su
+  // propia invitación sin que el influencer haya dicho nada. La marca sí
+  // puede rechazar/retirar una invitación pendiente (se mantiene abajo).
+  if (action === 'accept' && application.origin === 'invitation') {
+    return NextResponse.json({
+      error: 'Esta es una invitación enviada por ti — falta que el influencer la acepte, no puedes aprobarla tú.',
+    }, { status: 422 })
   }
 
   if (action === 'accept') {

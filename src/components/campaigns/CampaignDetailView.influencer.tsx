@@ -25,6 +25,9 @@ type Deliverable = {
 
 type CampaignRow = {
   id: string | null; status: string; application_status?: string | null; fee: number | null; currency: string
+  // origin: 'application' (el influencer postuló, la marca decide) vs
+  // 'invitation' (la marca invitó, el influencer decide — ver handleRespond).
+  origin?: string | null
   _self_created?: boolean
   // FIX (2026-07-02): campaign_deliverables viene del backend como sibling de
   // `campaign` (join separado sobre campaign_influencer_id), no anidado dentro
@@ -183,6 +186,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const [preview, setPreview] = useState<PreviewCampaign | null>(null)
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
+  const [responding, setResponding] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -220,6 +224,26 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       toast.error(e instanceof Error ? e.message : 'Error al enviar solicitud')
     }
     setApplying(false)
+  }
+
+  async function handleRespond(action: 'accept' | 'reject') {
+    if (!id) return
+    if (action === 'reject' && !confirm('¿Rechazar esta invitación? No podrás deshacerlo.')) return
+    setResponding(true)
+    try {
+      const res  = await fetch(`/api/influencer/campaigns/${id}/apply`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast.success(action === 'accept' ? '¡Invitación aceptada!' : 'Invitación rechazada')
+      load()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al responder la invitación')
+    }
+    setResponding(false)
   }
 
   if (loading) return (
@@ -343,8 +367,29 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Postulación en revisión — aún no hay deliverables asignados */}
-      {isPending && (
+      {/* Invitación de marca pendiente — el influencer decide (accept/reject).
+          Antes esto no existía: la marca invitaba y el influencer se quedaba
+          viendo "en revisión" para siempre, sin ningún botón para responder. */}
+      {isPending && data.origin === 'invitation' && (
+        <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 space-y-3">
+          <p className="text-sm text-violet-700 font-medium">
+            {c.brand?.name ?? 'Esta marca'} te invitó a participar en esta campaña.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => handleRespond('reject')} disabled={responding}
+              className="flex-1 py-2.5 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors">
+              Rechazar
+            </button>
+            <button onClick={() => handleRespond('accept')} disabled={responding}
+              className="flex-1 py-2.5 text-sm font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
+              {responding ? 'Enviando…' : 'Aceptar invitación'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Postulación propia en revisión — la marca decide, no hay acción acá */}
+      {isPending && data.origin !== 'invitation' && (
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center gap-3">
           <Clock className="h-5 w-5 text-amber-500 flex-shrink-0" />
           <p className="text-sm text-amber-700 font-medium">

@@ -215,24 +215,44 @@ export default function ApplicationsPage() {
                         </div>
                       )}
 
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          onClick={() => decide(app.id, 'reject')}
-                          disabled={isActing}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border border-red-200 text-red-600 text-sm font-semibold rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
-                        >
-                          {isActing ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                          Rechazar
-                        </button>
-                        <button
-                          onClick={() => decide(app.id, 'accept')}
-                          disabled={isActing}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors"
-                        >
-                          {isActing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                          Aceptar
-                        </button>
-                      </div>
+                      {/* Invitación (la mandó la marca): falta que el influencer
+                          responda — la marca solo puede retirarla, no "aprobarla"
+                          ella misma. Postulación (la mandó el influencer): la
+                          marca sí decide, aceptar o rechazar. */}
+                      {app.origin === 'invitation' ? (
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className="flex-1 text-xs text-gray-400 flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5" /> Esperando respuesta del influencer
+                          </span>
+                          <button
+                            onClick={() => decide(app.id, 'reject')}
+                            disabled={isActing}
+                            className="flex items-center justify-center gap-1.5 py-2.5 px-4 border border-red-200 text-red-600 text-sm font-semibold rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
+                          >
+                            {isActing ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                            Retirar invitación
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() => decide(app.id, 'reject')}
+                            disabled={isActing}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border border-red-200 text-red-600 text-sm font-semibold rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
+                          >
+                            {isActing ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                            Rechazar
+                          </button>
+                          <button
+                            onClick={() => decide(app.id, 'accept')}
+                            disabled={isActing}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors"
+                          >
+                            {isActing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                            Aceptar
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}

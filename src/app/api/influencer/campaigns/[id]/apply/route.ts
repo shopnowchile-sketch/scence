@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, campaignNewApplicationEmail } from '@/lib/resend'
+import { acceptCampaignApplication } from '@/lib/campaign-applications'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -133,4 +134,70 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     .eq('origin', 'application')
 
   return NextResponse.json({ ok: true })
+}
+
+// PATCH /api/influencer/campaigns/[id]/apply
+// Influencer responde a una INVITACIÓN de marca (origin='invitation') a una
+// campaña privada — accept crea deliverables + activa campaña (misma lógica
+// compartida que usa el portal Marca al aprobar postulaciones, ver
+// src/lib/campaign-applications.ts), reject solo marca application_status.
+//
+// Gap encontrado en UAT: la marca podía "aceptar" su propia invitación desde
+// /brand-campaigns/[id]/applications, pero el influencer invitado nunca tenía
+// forma de aceptar o rechazar — quedaba "En revisión" para siempre sin que
+// nadie del lado correcto pudiera decidir. Este endpoint es la pieza que
+// faltaba, scopeada estrictamente a la propia fila del influencer.
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const supabase = createServerClient()
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = createAdminClient()
+
+  const { data: influencer } = await admin
+    .from('influencers')
+    .select('id')
+    .eq('user_id', user.id)
+    .single()
+  if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
+
+  let body: { action?: 'accept' | 'reject' }
+  try { body = await req.json() } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+  if (body.action !== 'accept' && body.action !== 'reject') {
+    return NextResponse.json({ error: "action debe ser 'accept' o 'reject'" }, { status: 422 })
+  }
+
+  const { data: row } = await admin
+    .from('campaign_influencers')
+    .select('id, application_status, origin')
+    .eq('campaign_id', params.id)
+    .eq('influencer_id', influencer.id)
+    .single()
+
+  if (!row) return NextResponse.json({ error: 'Invitación no encontrada' }, { status: 404 })
+  if (row.origin !== 'invitation') {
+    return NextResponse.json({ error: 'Esto no es una invitación de marca (usa DELETE para retirar una postulación propia)' }, { status: 422 })
+  }
+  if (row.application_status !== 'pending') {
+    return NextResponse.json({ error: 'Esta invitación ya fue gestionada' }, { status: 422 })
+  }
+
+  if (body.action === 'accept') {
+    const result = await acceptCampaignApplication(admin, {
+      campaignId: params.id,
+      applicationId: row.id,
+    })
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ ok: true, status: 'accepted' })
+  }
+
+  const { error: updateError } = await admin
+    .from('campaign_influencers')
+    .update({ application_status: 'rejected', updated_at: new Date().toISOString() })
+    .eq('id', row.id)
+
+  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+  return NextResponse.json({ ok: true, status: 'rejected' })
 }

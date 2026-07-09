@@ -54,8 +54,8 @@ export async function PATCH(request: Request) {
 
   // Instagram obligatorio en el portal marca (mismo criterio que influencer:
   // se valida el estado FINAL resultante, existente + lo que llega en este
-  // PATCH, para que no se pueda vaciar el campo). Ver BrandProfileGate en
-  // (brand)/layout.tsx, que redirige a /brand-profile si falta.
+  // PATCH, para que no se pueda vaciar el campo). Ver el gate en
+  // (brand)/layout.tsx, que redirige a /brand-settings/organization si falta.
   const { data: existingBrand } = await admin
     .from('brands')
     .select('instagram')

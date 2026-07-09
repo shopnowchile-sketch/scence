@@ -102,7 +102,23 @@ export function BrandCampaignForm() {
         }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error)
+      if (!res.ok) {
+        // Mismo caso que el toast de invitar (ver invite/page.tsx): límite de
+        // plan sin ninguna acción para resolverlo. Caso borde acá (ya se
+        // pre-chequea el límite al montar la página) pero puede pasar si el
+        // límite cambió entre que se abrió el form y que se envía.
+        if (json.code && String(json.code).startsWith('PLAN_LIMIT_')) {
+          toast.error(json.error, {
+            action: {
+              label: 'Subir de plan',
+              onClick: () => router.push('/brand-settings/plan'),
+            },
+          })
+          setLoading(false)
+          return
+        }
+        throw new Error(json.error)
+      }
       toast.success('Campaña creada')
       router.push(`/brand-campaigns/${json.data.id}`)
     } catch (e) { toast.error((e as Error).message) }
@@ -117,7 +133,7 @@ export function BrandCampaignForm() {
   if (planReady && atCampaignLimit) {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
-        <button onClick={() => router.push('/brand/dashboard')}
+        <button onClick={() => router.push('/brand-dash')}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
           <ArrowLeft className="h-4 w-4" /> Volver
         </button>
@@ -134,7 +150,7 @@ export function BrandCampaignForm() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <button onClick={() => router.push('/brand/dashboard')}
+        <button onClick={() => router.push('/brand-dash')}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
           <ArrowLeft className="h-4 w-4" /> Volver
         </button>
@@ -297,7 +313,7 @@ export function BrandCampaignForm() {
 
         {/* Submit */}
         <div className="flex gap-3 pb-8">
-          <button type="button" onClick={() => router.push('/brand/dashboard')}
+          <button type="button" onClick={() => router.push('/brand-dash')}
             className="flex-1 py-3 border border-gray-200 text-sm font-semibold text-gray-600 rounded-xl hover:bg-gray-50 transition-colors">
             Cancelar
           </button>

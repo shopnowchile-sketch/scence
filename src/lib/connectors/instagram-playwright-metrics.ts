@@ -15,11 +15,36 @@
  * Apify.
  */
 
+import { randomUUID } from 'crypto'
+import { readdirSync, rmSync } from 'fs'
+import path from 'path'
 import type { Browser, Route } from 'playwright-core'
 import type { DeliverableMetrics, DeliverableMetricsResult } from '../deliverables/metrics-types'
 
 const NAV_TIMEOUT_MS = 20_000
 const OVERALL_TIMEOUT_MS = 45_000
+
+// Vercel reutiliza el mismo contenedor ("warm") entre invocaciones, y /tmp
+// persiste entre ellas. Chromium no siempre limpia su directorio de perfil
+// temporal al cerrar (ver github.com/Sparticuz/chromium/issues/231) -- con
+// varias sincronizaciones seguidas /tmp se llena y page.goto empieza a
+// tirar "ERR_INSUFFICIENT_RESOURCES" aunque el link sea válido. Se barre
+// cualquier perfil de una corrida anterior antes de lanzar uno nuevo
+// (auto-healing, no depende de que el cierre previo haya sido limpio) y
+// cada corrida usa su propio directorio.
+const TMP_PROFILE_PREFIX = 'pw-profile-'
+
+function cleanupStaleProfiles() {
+  try {
+    for (const entry of readdirSync('/tmp')) {
+      if (entry.startsWith(TMP_PROFILE_PREFIX)) {
+        rmSync(path.join('/tmp', entry), { recursive: true, force: true })
+      }
+    }
+  } catch {
+    // /tmp no legible o vacío -- no es fatal
+  }
+}
 
 function parseCompactNumber(raw: string): number | null {
   const cleaned = raw.trim().replace(/,/g, '')
@@ -43,9 +68,11 @@ async function launchBrowser() {
   const { chromium } = await import('playwright-core')
 
   if (isVercel) {
+    cleanupStaleProfiles()
     const chromiumBinary = (await import('@sparticuz/chromium')).default
+    const userDataDir = path.join('/tmp', `${TMP_PROFILE_PREFIX}${randomUUID()}`)
     return chromium.launch({
-      args: chromiumBinary.args,
+      args: [...chromiumBinary.args, `--user-data-dir=${userDataDir}`],
       executablePath: await chromiumBinary.executablePath(),
       headless: true,
     })

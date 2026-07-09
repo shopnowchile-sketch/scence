@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = [
   '/terms', '/privacy',
   '/api/stripe/webhook',   // Stripe webhook — no auth needed (verified by signature)
   '/api/webhooks/resend',  // Resend webhook — no auth needed (verified by Svix signature)
+  '/api/crm-leads/bulk-send/process', // job interno server-to-server — verificado con INTERNAL_JOB_SECRET, no lleva cookies de usuario
 ]
 
 export async function middleware(request: NextRequest) {

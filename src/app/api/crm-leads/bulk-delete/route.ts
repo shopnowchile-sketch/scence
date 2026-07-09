@@ -27,26 +27,39 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'No hay leads seleccionados' }, { status: 422 })
   }
 
-  if (uniqueIds.length > 100) {
-    return NextResponse.json({ error: 'Máximo 100 leads por eliminación' }, { status: 422 })
+  if (uniqueIds.length > 20000) {
+    return NextResponse.json({ error: 'Máximo 20.000 leads por eliminación' }, { status: 422 })
   }
 
-  await admin.from('crm_email_events').delete().in('lead_id', uniqueIds)
-  await admin.from('crm_lead_activities').delete().in('lead_id', uniqueIds)
+  // Con miles de ids, mandarlos todos en un solo .in(...) puede superar el
+  // límite de largo de URL de PostgREST — se hace en tandas chicas (esto es
+  // borrado puro en la BD, sin llamadas externas, así que es rápido y no
+  // necesita background job como el envío masivo de emails).
+  const CHUNK = 300
+  let deleted = 0
 
-  const { data, error } = await admin
-    .from('crm_leads')
-    .delete()
-    .in('id', uniqueIds)
-    .select('id')
+  for (let i = 0; i < uniqueIds.length; i += CHUNK) {
+    const chunk = uniqueIds.slice(i, i + CHUNK)
 
-  if (error) {
-    console.error('[DELETE /api/crm-leads/bulk-delete]', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    await admin.from('crm_email_events').delete().in('lead_id', chunk)
+    await admin.from('crm_lead_activities').delete().in('lead_id', chunk)
+
+    const { data, error } = await admin
+      .from('crm_leads')
+      .delete()
+      .in('id', chunk)
+      .select('id')
+
+    if (error) {
+      console.error('[DELETE /api/crm-leads/bulk-delete]', error)
+      return NextResponse.json({ error: error.message, deleted }, { status: 500 })
+    }
+
+    deleted += data?.length ?? 0
   }
 
   return NextResponse.json({
-    deleted: data?.length ?? 0,
+    deleted,
     requested: uniqueIds.length,
   })
 }

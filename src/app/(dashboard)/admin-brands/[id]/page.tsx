@@ -10,6 +10,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
+import { BrandModal } from '@/components/brands/BrandModal'
 
 type Campaign = {
   id: string
@@ -83,6 +84,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const router = useRouter()
   const [brand, setBrand] = useState<Brand | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [tab, setTab] = useState<'overview' | 'campaigns' | 'influencers' | 'locations' | 'billing' | 'access' | 'history'>('overview')
   const [influencers, setInfluencers] = useState<BrandInfluencer[]>([])
   const [loadingInf, setLoadingInf] = useState(false)
@@ -292,6 +295,22 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     toast.success(status === 'approved' ? 'Marca aprobada' : status === 'suspended' ? 'Marca suspendida' : 'Marca pendiente')
   }
 
+  async function deleteBrand() {
+    if (!brand) return
+    if (!confirm(`¿Eliminar la marca "${brand.name}"? Esto no eliminará las campañas asociadas.`)) return
+
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/brands/${brand.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      toast.success('Marca eliminada')
+      router.push('/admin-brands')
+    } catch {
+      toast.error('Error al eliminar')
+      setDeleting(false)
+    }
+  }
+
   async function invite() {
     if (!brand) return
 
@@ -363,9 +382,23 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                 <Send className="h-4 w-4 inline mr-1" /> Invitar acceso
               </button>
             )}
+            <button onClick={() => setShowEditModal(true)} className="px-3 py-2 text-sm font-semibold bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100">
+              <Pencil className="h-4 w-4 inline mr-1" /> Editar
+            </button>
+            <button onClick={deleteBrand} disabled={deleting} className="px-3 py-2 text-sm font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50">
+              <Trash2 className="h-4 w-4 inline mr-1" /> Eliminar
+            </button>
           </div>
         </div>
       </div>
+
+      {showEditModal && (
+        <BrandModal
+          editing={brand}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => load()}
+        />
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="card p-4">

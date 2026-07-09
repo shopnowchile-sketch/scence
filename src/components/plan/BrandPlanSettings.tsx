@@ -122,6 +122,37 @@ export function BrandPlanSettings() {
       return
     }
 
+    // Mercado Pago: antes este botón nunca llamaba al backend (que sí está
+    // implementado, ver /api/mercadopago/checkout) y siempre caía directo al
+    // mailto manual — aunque MERCADOPAGO_ACCESS_TOKEN estuviera configurado.
+    // Ahora intenta el checkout real primero; si el endpoint avisa que Mercado
+    // Pago todavía no está activado (`json.manual`), recién ahí cae al mailto.
+    setCheckoutLoading(tier)
+    try {
+      const res = await fetch('/api/mercadopago/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      })
+
+      const json = await res.json()
+
+      if (res.ok && json.url) {
+        window.location.href = json.url
+        return
+      }
+
+      if (!json.manual) {
+        toast.error(json.error ?? 'No se pudo iniciar Mercado Pago')
+        return
+      }
+      // json.manual === true: Mercado Pago aún no configurado, sigue al mailto.
+    } catch {
+      // Error de red — igual cae al mailto como respaldo.
+    } finally {
+      setCheckoutLoading(null)
+    }
+
     const subject = `Quiero activar Plan ${plan.label} en SCENCE por ${paymentMethod}`
     const body = `Hola, quiero activar el Plan ${plan.label} (${formatPriceCLP(plan.price_monthly_clp)} CLP/mes) para mi marca. Prefiero pagar por ${paymentMethod}. Entiendo que la suscripción mínima es de 3 meses, con primer mes gratis y segundo mes con 50% de descuento.`
 

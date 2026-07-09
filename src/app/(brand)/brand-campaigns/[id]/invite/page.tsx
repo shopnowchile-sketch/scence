@@ -99,7 +99,22 @@ export default function InviteInfluencerPage() {
         }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error)
+      if (!res.ok) {
+        // Límite de plan (roster lleno, etc.) — antes era un toast plano sin
+        // ninguna acción; ahora lleva directo a activar/subir de plan en vez
+        // de dejar a la marca sin saber qué hacer.
+        if (json.code && String(json.code).startsWith('PLAN_LIMIT_')) {
+          toast.error(json.error, {
+            action: {
+              label: 'Subir de plan',
+              onClick: () => router.push('/brand-settings/plan'),
+            },
+          })
+          setSending(false)
+          return
+        }
+        throw new Error(json.error)
+      }
       toast.success('Invitación enviada')
       router.push(`/brand-campaigns/${campaignId}`)
     } catch (e) {

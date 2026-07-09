@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "app/api/campaign-deliverables/[id]/sync-metrics/route.ts": {
+      "memory": 1769,
+      "maxDuration": 60
+    }
+  }
+}

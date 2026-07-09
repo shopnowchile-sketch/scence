@@ -21,19 +21,12 @@
  * el patrón de polling que sí usamos para sync masivo de perfiles.
  */
 
+import type { DeliverableMetrics, DeliverableMetricsResult } from './metrics-types'
+export type { DeliverableMetrics, DeliverableMetricsResult } from './metrics-types'
+
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN
 const POST_ACTOR = 'apify/instagram-post-scraper'
 const REEL_ACTOR = 'apify/instagram-reel-scraper'
-
-export interface DeliverableMetrics {
-  views: number | null
-  likes: number | null
-  comments: number | null
-}
-
-export type DeliverableMetricsResult =
-  | { data: DeliverableMetrics }
-  | { error: string }
 
 function pickActor(url: string): string {
   return /\/reel\//i.test(url) ? REEL_ACTOR : POST_ACTOR

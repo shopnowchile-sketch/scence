@@ -1,21 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { fetchDeliverablePostMetrics, computeEngagementRate } from '@/lib/deliverables/apify-metrics'
+import { computeEngagementRate } from '@/lib/deliverables/apify-metrics'
+import { fetchMetricsWithFallback } from '@/lib/deliverables/fetch-metrics'
 
 type Params = { params: { id: string } }
+
+// Puede lanzar Chromium (fallback Playwright) — necesita más que el default.
+export const maxDuration = 60
 
 /**
  * POST /api/campaign-deliverables/[id]/sync-metrics
  * Trae métricas reales (views/likes/comments) del link publicado del
- * deliverable usando Apify, y las guarda en campaign_deliverables.performance.
+ * deliverable y las guarda en campaign_deliverables.performance.
+ *
+ * Proveedor: Apify primero; si falla (sin token, sin créditos, error),
+ * fallback automático a scraping propio con Playwright — ver
+ * src/lib/deliverables/fetch-metrics.ts para el orden de prioridad
+ * completo (incluye el slot reservado para Instagram API oficial).
  *
  * Permisos:
  *  - admin (sin is_brand/is_influencer): cualquier deliverable.
  *  - marca: solo deliverables de campañas propias (dueña o co-marca).
  *  - influencer: solo sus propios deliverables.
  *
- * No inventa reach/impressions/saves/shares — si Apify no las entrega,
- * quedan fuera del JSONB guardado (ver src/lib/deliverables/apify-metrics.ts).
+ * No inventa reach/impressions/saves/shares — si ningún proveedor las
+ * entrega, quedan fuera del JSONB guardado.
  */
 export async function POST(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
@@ -78,7 +87,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Este deliverable todavía no tiene link de publicación' }, { status: 422 })
   }
 
-  const result = await fetchDeliverablePostMetrics(url)
+  const result = await fetchMetricsWithFallback(url)
   if ('error' in result) {
     return NextResponse.json({ error: result.error }, { status: 502 })
   }
@@ -107,7 +116,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
         likes:    result.data.likes,
         comments: result.data.comments,
       },
-      metrics_provider:    'apify',
+      metrics_provider:    result.provider,
       metrics_updated_at:  now,
       engagement_rate:     engagementRate,
       updated_at:          now,

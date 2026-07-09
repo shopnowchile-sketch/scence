@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       if (emailStatus === 'bounced') q = applyIdsEmailFilter(q, emailEventSets.bounced)
       if (emailStatus === 'failed_bounced') q = applyIdsEmailFilter(q, new Set(Array.from(emailEventSets.failed).concat(Array.from(emailEventSets.bounced))))
       if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
-      if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%`)
+      if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
       return q
     }
 
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
 
   let query = admin
     .from('crm_leads')
-    .select('id, contact_name, company_name, email, phone_1, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at', { count: 'exact' })
+    .select('id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range((page - 1) * limit, page * limit - 1)
 
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
   if (emailStatus === 'not_sent') query = query.is('contacted_at', null)
 
   if (search) {
-    query = query.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%`)
+    query = query.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
   }
 
   const { data, error, count } = await query
@@ -287,13 +287,14 @@ export async function POST(request: NextRequest) {
   const contactName = typeof body.contact_name === 'string' ? body.contact_name.trim() : ''
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const phone1 = typeof body.phone_1 === 'string' ? body.phone_1.trim() : ''
+  const instagram = typeof body.instagram === 'string' ? body.instagram.trim() : ''
   const commune = typeof body.commune === 'string' ? body.commune.trim() : ''
   const region = typeof body.region === 'string' ? body.region.trim() : ''
   const industry = typeof body.industry === 'string' ? body.industry.trim() : ''
   const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'manual'
 
-  if (!companyName && !email) {
-    return NextResponse.json({ error: 'Debes ingresar al menos empresa o email' }, { status: 422 })
+  if (!companyName && !email && !instagram) {
+    return NextResponse.json({ error: 'Debes ingresar al menos empresa, email o Instagram' }, { status: 422 })
   }
 
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -319,6 +320,7 @@ export async function POST(request: NextRequest) {
       contact_name: contactName || null,
       email: email || null,
       phone_1: phone1 || null,
+      instagram: instagram || null,
       commune: commune || null,
       region: region || null,
       industry: industry || null,
@@ -326,7 +328,7 @@ export async function POST(request: NextRequest) {
       qualification_status: 'unqualified',
       imported_at: new Date().toISOString(),
     })
-    .select('id, contact_name, company_name, email, phone_1, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at')
+    .select('id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at')
     .single()
 
   if (error) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getOrgId } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -88,6 +89,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (body.qualification_status === 'qualified' || body.qualification_status === 'rejected') {
       update.qualified_at = new Date().toISOString()
     }
+    // FIX: antes solo el envío automático de email (send-intro/route.ts)
+    // marcaba contacted_at — al cambiar el estado a mano (ej. después de un
+    // DM de Instagram/WhatsApp) el estado quedaba en "Contactado" pero
+    // "Último contacto" seguía en "Nunca" para siempre.
+    if (body.qualification_status === 'contacted') {
+      update.contacted_at = new Date().toISOString()
+    }
   }
   if (body.qualification_notes !== undefined) update.qualification_notes = body.qualification_notes
 
@@ -109,5 +117,80 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     })
   }
 
-  return NextResponse.json({ data })
+  // ── Integración CRM -> Brands ─────────────────────────────────────────────
+  // Al convertir un lead (qualification_status = 'converted') se crea
+  // automáticamente la marca en `brands` con los campos mapeados, y se deja
+  // el vínculo en `crm_leads.converted_brand_id` — columna que ya existía
+  // desde la migración original (20260703000000_crm_leads.sql) pero nunca se
+  // había usado. Idempotente: si el lead ya tiene converted_brand_id (porque
+  // ya se convirtió antes), NO crea una segunda marca aunque se repita el
+  // PATCH — así que reintentar tras un error es seguro.
+  let convertedBrandId: string | null = data.converted_brand_id ?? null
+  let brandCreated = false
+
+  if (body.qualification_status === 'converted' && !data.converted_brand_id) {
+    const brandName = data.company_name || data.contact_name || data.email || data.instagram
+
+    if (!brandName) {
+      return NextResponse.json({
+        data,
+        error: 'Estado actualizado a "Convertido", pero no se pudo crear la marca: el lead no tiene empresa, contacto, email ni Instagram para usar como nombre.',
+      }, { status: 422 })
+    }
+
+    const orgId = await getOrgId(user.id, user.user_metadata, admin)
+    if (!orgId) {
+      return NextResponse.json({
+        data,
+        error: 'Estado actualizado a "Convertido", pero no se encontró organización para crear la marca.',
+      }, { status: 400 })
+    }
+
+    const noteParts = [
+      data.qualification_notes ? String(data.qualification_notes).trim() : null,
+      `Convertido automáticamente desde el CRM (lead ${data.id}, fuente: ${data.source ?? 'desconocida'}).`,
+    ].filter(Boolean)
+
+    const { data: brand, error: brandError } = await admin
+      .from('brands')
+      .insert({
+        organization_id: orgId,
+        created_by: user.id,
+        name: brandName,
+        website: data.website ?? null,
+        industry: data.industry ?? null,
+        instagram: data.instagram ?? null,
+        contact_name: data.contact_name ?? null,
+        contact_email: data.email ?? null,
+        contact_phone: data.phone_1 ?? null,
+        address_city: data.commune ?? null,
+        address_region: data.region ?? null,
+        rut: data.company_rut ?? null,
+        notes: noteParts.join(' · '),
+      })
+      .select('id')
+      .single()
+
+    if (brandError) {
+      console.error('[PATCH /api/crm-leads/[id]] error creando marca desde lead convertido', brandError)
+      return NextResponse.json({
+        data,
+        error: `Estado actualizado a "Convertido", pero no se pudo crear la marca: ${brandError.message}`,
+      }, { status: 500 })
+    }
+
+    convertedBrandId = brand.id
+    brandCreated = true
+
+    await admin.from('crm_leads').update({ converted_brand_id: convertedBrandId }).eq('id', params.id)
+
+    await admin.from('crm_lead_activities').insert({
+      lead_id: params.id,
+      action_type: 'note',
+      description: `Marca creada automáticamente en SCENCE al convertir el lead (brand ${convertedBrandId}).`,
+      created_by: user.id,
+    })
+  }
+
+  return NextResponse.json({ data: { ...data, converted_brand_id: convertedBrandId }, brand_created: brandCreated })
 }

@@ -13,6 +13,7 @@ type Lead = {
   company_name: string | null
   email: string | null
   phone_1: string | null
+  instagram: string | null
   commune: string | null
   region: string | null
   industry: string | null
@@ -34,6 +35,7 @@ type LeadForm = {
   contact_name: string
   email: string
   phone_1: string
+  instagram: string
   commune: string
   region: string
   industry: string
@@ -45,6 +47,7 @@ const EMPTY_FORM: LeadForm = {
   contact_name: '',
   email: '',
   phone_1: '',
+  instagram: '',
   commune: '',
   region: '',
   industry: '',
@@ -59,7 +62,7 @@ const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: 
   converted:   { label: 'Convertido',    cls: 'bg-violet-100 text-violet-700' },
 }
 
-type ColumnKey = 'contact' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
+type ColumnKey = 'contact' | 'instagram' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
 type EmailStats = {
   sent: number
@@ -72,6 +75,7 @@ type EmailStats = {
 
 const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
   { key: 'contact', label: 'Contacto' },
+  { key: 'instagram', label: 'Instagram' },
   { key: 'location', label: 'Ubicación' },
   { key: 'industry', label: 'Rubro' },
   { key: 'source', label: 'Origen' },
@@ -186,8 +190,8 @@ SCENCE`)
   }
 
   async function createLead() {
-    if (!form.company_name.trim() && !form.email.trim()) {
-      toast.error('Ingresa al menos empresa o email')
+    if (!form.company_name.trim() && !form.email.trim() && !form.instagram.trim()) {
+      toast.error('Ingresa al menos empresa, email o Instagram')
       return
     }
 
@@ -396,7 +400,16 @@ SCENCE`)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qualification_status: status }),
       })
-      if (!r.ok) throw new Error()
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        // Si falla la creación de la marca al convertir, el backend igual
+        // guarda el estado y devuelve el motivo puntual — se muestra ese
+        // mensaje en vez de revertir la fila como si nada hubiera pasado.
+        toast.error(j.error ?? 'No se pudo actualizar la calificación')
+        if (!j.data) load()
+        return
+      }
+      if (j.brand_created) toast.success('Convertido — marca creada en SCENCE ✓')
     } catch {
       toast.error('No se pudo actualizar la calificación')
       load()
@@ -687,6 +700,7 @@ SCENCE`)
               </th>
               <th className="px-4 py-3 font-semibold">Empresa</th>
               {isColumnVisible('contact') && <th className="px-4 py-3 font-semibold">Contacto</th>}
+              {isColumnVisible('instagram') && <th className="px-4 py-3 font-semibold">Instagram</th>}
               {isColumnVisible('location') && <th className="px-4 py-3 font-semibold">Ubicación</th>}
               {isColumnVisible('industry') && <th className="px-4 py-3 font-semibold">Rubro</th>}
               {isColumnVisible('source') && <th className="px-4 py-3 font-semibold">Origen</th>}
@@ -699,9 +713,9 @@ SCENCE`)
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
             ) : leads.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
             ) : leads.map(lead => {
               const cfg = STATUS_CONFIG[lead.qualification_status] ?? STATUS_CONFIG.unqualified
               return (
@@ -722,8 +736,23 @@ SCENCE`)
                   </td>
 {isColumnVisible('contact') && (
                   <td className="px-4 py-3 text-gray-600">
-                    <div className="truncate max-w-[180px]">{lead.contact_name || '—'}</div>
-                    <div className="text-xs text-gray-400 truncate max-w-[180px]">{lead.email}</div>
+                    <div className="truncate max-w-[180px]">{lead.email || '—'}</div>
+                    {lead.contact_name && <div className="text-xs text-gray-400 truncate max-w-[180px]">{lead.contact_name}</div>}
+                  </td>
+                  )}
+{isColumnVisible('instagram') && (
+                  <td className="px-4 py-3 text-gray-600 text-xs">
+                    {lead.instagram ? (
+                      <a
+                        href={`https://instagram.com/${lead.instagram.replace(/^@/, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-violet-600 hover:underline truncate max-w-[160px] inline-block"
+                      >
+                        {lead.instagram}
+                      </a>
+                    ) : '—'}
                   </td>
                   )}
 {isColumnVisible('location') && <td className="px-4 py-3 text-gray-500 text-xs">{lead.commune || '—'}</td>}
@@ -1011,6 +1040,7 @@ SCENCE`)
               <input value={form.contact_name} onChange={e => updateForm('contact_name', e.target.value)} placeholder="Contacto" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.email} onChange={e => updateForm('email', e.target.value)} placeholder="Email" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.phone_1} onChange={e => updateForm('phone_1', e.target.value)} placeholder="Teléfono" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.instagram} onChange={e => updateForm('instagram', e.target.value)} placeholder="@instagram" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.commune} onChange={e => updateForm('commune', e.target.value)} placeholder="Comuna / ciudad" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.region} onChange={e => updateForm('region', e.target.value)} placeholder="Región" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.industry} onChange={e => updateForm('industry', e.target.value)} placeholder="Rubro / categoría" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />

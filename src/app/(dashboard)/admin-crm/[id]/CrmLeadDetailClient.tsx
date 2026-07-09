@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -30,6 +30,7 @@ type Lead = {
   email: string | null
   phone_1: string | null
   phone_2: string | null
+  instagram: string | null
   address: string | null
   commune: string | null
   region: string | null
@@ -40,6 +41,7 @@ type Lead = {
   website: string | null
   qualification_status: 'unqualified' | 'qualified' | 'rejected' | 'contacted' | 'converted'
   qualification_notes: string | null
+  converted_brand_id: string | null
   contacted_at: string | null
   created_at: string
   source: string | null
@@ -155,8 +157,16 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qualification_status: status }),
       })
-      if (!r.ok) throw new Error()
-      toast.success('Calificación actualizada')
+      const j = await r.json().catch(() => ({}))
+      // Si falla la creación de la marca al convertir, el backend igual
+      // guarda el cambio de estado y devuelve `data` + `error` explicando
+      // qué faltó — se muestra ese mensaje puntual en vez del genérico.
+      if (!r.ok) {
+        toast.error(j.error ?? 'No se pudo actualizar')
+        if (j.data) load()
+        return
+      }
+      toast.success(j.brand_created ? 'Convertido — marca creada en SCENCE ✓' : 'Calificación actualizada')
       load()
     } catch {
       toast.error('No se pudo actualizar')
@@ -249,9 +259,31 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
               </select>
             </div>
 
+            {lead.converted_brand_id && (
+              <Link
+                href={`/admin-brands/${lead.converted_brand_id}`}
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:underline"
+              >
+                <Building2 className="h-3.5 w-3.5" /> Ver marca en SCENCE
+              </Link>
+            )}
+
             <div className="grid grid-cols-2 gap-4 mt-5 text-sm">
               <div className="flex items-center gap-2 text-gray-600"><Mail className="h-3.5 w-3.5 text-gray-300" /> {lead.email || '—'}</div>
               <div className="flex items-center gap-2 text-gray-600"><Phone className="h-3.5 w-3.5 text-gray-300" /> {lead.phone_1 || '—'}</div>
+              <div className="flex items-center gap-2 text-gray-600">
+                <AtSign className="h-3.5 w-3.5 text-gray-300" />
+                {lead.instagram ? (
+                  <a
+                    href={`https://instagram.com/${lead.instagram.replace(/^@/, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-violet-600 hover:underline"
+                  >
+                    {lead.instagram}
+                  </a>
+                ) : '—'}
+              </div>
               <div className="flex items-center gap-2 text-gray-600"><MapPin className="h-3.5 w-3.5 text-gray-300" /> {[lead.commune, lead.region].filter(Boolean).join(' · ') || '—'}</div>
               <div className="flex items-center gap-2 text-gray-600"><Briefcase className="h-3.5 w-3.5 text-gray-300" /> {lead.industry || '—'}</div>
             </div>

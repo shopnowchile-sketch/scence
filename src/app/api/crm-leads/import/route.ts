@@ -76,6 +76,11 @@ function normalizeHeader(header: string) {
     phone_1: 'phone_1',
     celular: 'phone_1',
 
+    instagram: 'instagram',
+    ig: 'instagram',
+    handle: 'instagram',
+    usuario_instagram: 'instagram',
+
     comuna: 'commune',
     ciudad: 'commune',
     city: 'commune',
@@ -92,6 +97,10 @@ function normalizeHeader(header: string) {
 
     origen: 'source',
     source: 'source',
+
+    sitio_web: 'website',
+    website: 'website',
+    web: 'website',
   }
 
   return aliases[h] ?? h
@@ -132,6 +141,7 @@ export async function POST(request: NextRequest) {
 
     const email = (item.email ?? '').trim().toLowerCase()
     const companyName = (item.company_name ?? '').trim()
+    const instagram = (item.instagram ?? '').trim()
 
     return {
       index: index + 2,
@@ -139,6 +149,8 @@ export async function POST(request: NextRequest) {
       contact_name: (item.contact_name ?? '').trim() || null,
       email: email || null,
       phone_1: (item.phone_1 ?? '').trim() || null,
+      instagram: instagram || null,
+      website: (item.website ?? '').trim() || null,
       commune: (item.commune ?? '').trim() || null,
       region: (item.region ?? '').trim() || null,
       industry: (item.industry ?? '').trim() || null,
@@ -148,8 +160,11 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  const invalid = parsed.filter(r => !r.company_name && !r.email)
-  const valid = parsed.filter(r => r.company_name || r.email)
+  // Un lead solo-Instagram (sin empresa ni email, ej. prospección manual
+  // desde un CSV exportado de Instagram) también es válido — mismo criterio
+  // que ya usan las scheduled tasks de prospección al insertar directo.
+  const invalid = parsed.filter(r => !r.company_name && !r.email && !r.instagram)
+  const valid = parsed.filter(r => r.company_name || r.email || r.instagram)
 
   const emails = Array.from(new Set(valid.map(r => r.email).filter(Boolean))) as string[]
   const existingEmails = new Set<string>()
@@ -165,7 +180,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Dedup por Instagram handle también — mismo criterio que ya usan las
+  // scheduled tasks de prospección (comparan por handle antes de insertar),
+  // necesario para leads que no tienen email (solo-Instagram).
+  const instagramHandles = Array.from(new Set(valid.map(r => r.instagram).filter(Boolean))) as string[]
+  const existingInstagram = new Set<string>()
+
+  if (instagramHandles.length > 0) {
+    const { data: existing } = await admin
+      .from('crm_leads')
+      .select('instagram')
+      .in('instagram', instagramHandles)
+
+    for (const row of existing ?? []) {
+      if (row.instagram) existingInstagram.add(String(row.instagram).toLowerCase())
+    }
+  }
+
   const seenEmails = new Set<string>()
+  const seenInstagram = new Set<string>()
   const duplicates: typeof valid = []
   const toInsert: typeof valid = []
 
@@ -176,6 +209,13 @@ export async function POST(request: NextRequest) {
         continue
       }
       seenEmails.add(row.email)
+    } else if (row.instagram) {
+      const ig = row.instagram.toLowerCase()
+      if (existingInstagram.has(ig) || seenInstagram.has(ig)) {
+        duplicates.push(row)
+        continue
+      }
+      seenInstagram.add(ig)
     }
     toInsert.push(row)
   }

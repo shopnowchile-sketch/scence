@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Upload, Users, TrendingUp, Globe, ChevronLeft, ChevronRight, ShieldCheck, Trash2, X, Loader2 } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { Plus, Upload, Users, TrendingUp, Globe, ChevronLeft, ChevronRight, ShieldCheck, Trash2, X, Loader2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useInfluencers } from '@/hooks/useInfluencers'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
@@ -22,7 +23,16 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
   const [showBulk, setShowBulk] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
+  const [assigning, setAssigning] = useState(false)
   const { isAdmin } = useIsAdmin()
+
+  // Modo "asignar a marca" — se llega acá desde el tab Influencers del
+  // detalle de marca en admin (?assignToBrand=<id>&assignToBrandName=...).
+  // Reutiliza esta misma lista/filtros/paginación en vez de crear un picker
+  // aparte; la asignación se hace vía la barra de selección que ya existe.
+  const searchParams = useSearchParams()
+  const assignToBrand = searchParams.get('assignToBrand')
+  const assignToBrandName = searchParams.get('assignToBrandName')
 
   const {
     influencers,
@@ -86,6 +96,28 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     } catch (e) {
       toast.error(e instanceof Error ? e.message : `Error al ${verb}`)
     } finally { setDeleting(false) }
+  }
+
+  async function assignSelectedToBrand() {
+    if (!assignToBrand) return
+    const ids = Array.from(selectedIds)
+    if (!ids.length) return
+    setAssigning(true)
+    try {
+      const r = await fetch(`/api/brands/${assignToBrand}/influencers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ influencer_ids: ids }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error)
+      toast.success(`${ids.length} influencer(s) asignado(s) a ${assignToBrandName ?? 'la marca'}`)
+      clearSelection()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al asignar')
+    } finally {
+      setAssigning(false)
+    }
   }
 
   async function deleteOne(inf: Influencer) {
@@ -210,6 +242,21 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
         />
       )}
 
+      {assignToBrand && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-violet-50 border border-violet-100 text-sm text-violet-700">
+          <span className="flex items-center gap-2">
+            <UserPlus className="h-4 w-4 flex-shrink-0" />
+            Selecciona influencers de la lista para asignarlas a <strong>{assignToBrandName ?? 'la marca'}</strong>.
+          </span>
+          <Link
+            href={`/admin-brands/${assignToBrand}?tab=influencers`}
+            className="font-semibold hover:underline whitespace-nowrap"
+          >
+            ← Volver a la marca
+          </Link>
+        </div>
+      )}
+
       {/* KPIs del roster */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="card p-4">
@@ -309,6 +356,12 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
             {selectedIds.size} seleccionado(s)
           </div>
           <div className="flex items-center gap-2">
+            {assignToBrand && (
+              <button onClick={assignSelectedToBrand} disabled={assigning}
+                className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-white text-violet-700 hover:bg-violet-50 disabled:opacity-50">
+                {assigning ? 'Asignando…' : `Asignar a ${assignToBrandName ?? 'la marca'}`}
+              </button>
+            )}
             <button onClick={() => bulkDelete(false)} disabled={deleting}
               className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-50">
               Desactivar

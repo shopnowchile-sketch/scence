@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, Target, Users,
   FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2,
@@ -80,13 +80,22 @@ function money(value: number | null, currency?: string | null) {
   return `${currency ?? 'CLP'} ${value.toLocaleString('es-CL')}`
 }
 
+const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'billing', 'access', 'history'] as const
+type Tab = typeof VALID_TABS[number]
+
 export default function AdminBrandDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [brand, setBrand] = useState<Brand | null>(null)
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [tab, setTab] = useState<'overview' | 'campaigns' | 'influencers' | 'locations' | 'billing' | 'access' | 'history'>('overview')
+  // Soporta deep-link a un tab específico (?tab=influencers) — usado al
+  // volver desde /admin-influencers tras asignar influencers a la marca.
+  const initialTabParam = searchParams.get('tab')
+  const [tab, setTab] = useState<Tab>(
+    (VALID_TABS as readonly string[]).includes(initialTabParam ?? '') ? (initialTabParam as Tab) : 'overview'
+  )
   const [influencers, setInfluencers] = useState<BrandInfluencer[]>([])
   const [loadingInf, setLoadingInf] = useState(false)
   const [invoiceCampaignId, setInvoiceCampaignId] = useState('')
@@ -309,6 +318,18 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       toast.error('Error al eliminar')
       setDeleting(false)
     }
+  }
+
+  async function removeDirectInfluencer(inf: BrandInfluencer) {
+    if (!brand) return
+    if (!confirm(`¿Quitar a "${inf.display_name}" de esta marca?`)) return
+
+    const res = await fetch(`/api/brands/${brand.id}/influencers?influencer_id=${inf.id}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) return toast.error(json.error ?? 'No se pudo quitar')
+
+    setInfluencers(prev => prev.filter(i => i.id !== inf.id))
+    toast.success('Influencer quitada de la marca')
   }
 
   async function invite() {
@@ -548,7 +569,12 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         <div className="card p-5">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-bold text-gray-900">Influencers relacionadas</h2>
-            <Link href="/admin-influencers" className="text-sm font-semibold text-violet-600 hover:underline">Agregar desde influencers</Link>
+            <Link
+              href={`/admin-influencers?assignToBrand=${brand.id}&assignToBrandName=${encodeURIComponent(brand.name)}`}
+              className="text-sm font-semibold text-violet-600 hover:underline"
+            >
+              Agregar desde influencers
+            </Link>
           </div>
 
           {loadingInf ? (
@@ -558,23 +584,35 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {influencers.map(inf => (
-                <Link key={inf.id} href={`/admin-influencers/${inf.id}`} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-violet-50">
-                  {inf.avatar_url ? (
-                    <img src={inf.avatar_url} alt={inf.display_name} className="w-10 h-10 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-violet-500 text-white flex items-center justify-center font-bold">
-                      {inf.display_name.charAt(0)}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm text-gray-900 truncate">{inf.display_name}</p>
-                    {inf.via === 'direct' ? (
-                      <span className="badge badge-blue text-[10px]">Agregada por la marca</span>
+                <div key={inf.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-violet-50">
+                  <Link href={`/admin-influencers/${inf.id}`} className="flex items-center gap-3 min-w-0 flex-1">
+                    {inf.avatar_url ? (
+                      <img src={inf.avatar_url} alt={inf.display_name} className="w-10 h-10 rounded-full object-cover" />
                     ) : (
-                      <p className="text-xs text-gray-400 truncate">{inf.campaign_name}</p>
+                      <div className="w-10 h-10 rounded-full bg-violet-500 text-white flex items-center justify-center font-bold">
+                        {inf.display_name.charAt(0)}
+                      </div>
                     )}
-                  </div>
-                </Link>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 truncate">{inf.display_name}</p>
+                      {inf.via === 'direct' ? (
+                        <span className="badge badge-blue text-[10px]">Agregada por la marca</span>
+                      ) : (
+                        <p className="text-xs text-gray-400 truncate">{inf.campaign_name}</p>
+                      )}
+                    </div>
+                  </Link>
+                  {inf.via === 'direct' && (
+                    <button
+                      type="button"
+                      onClick={() => removeDirectInfluencer(inf)}
+                      title="Quitar de la marca"
+                      className="p-1.5 text-gray-300 hover:text-red-500 flex-shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}

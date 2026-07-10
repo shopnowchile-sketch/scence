@@ -92,7 +92,11 @@ export default function BrandsPage() {
   const [brands, setBrands]           = useState<Brand[]>([])
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
-  const [statusFilter, setStatusFilter] = useState('pending_approval')
+  // Default 'all': con 'pending_approval' la vista partía siempre vacía en la
+  // práctica (ver auditoría de autorregistro — pocas filas llegaban a ese
+  // estado de forma confiable antes de este fix). 'Todas' ya viene soportado
+  // por el <select> y el filtro más abajo.
+  const [statusFilter, setStatusFilter] = useState('all')
   const [sortKey, setSortKey]     = useLocalStorageState<SortKey>('scence:admin:brands:sortKey', 'name')
   const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>('scence:admin:brands:sortOrder', 'asc')
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<Record<BrandColumnKey, boolean>>(

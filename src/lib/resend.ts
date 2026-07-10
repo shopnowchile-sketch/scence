@@ -41,6 +41,37 @@ export function passwordResetEmail({ actionLink }: { actionLink: string }): stri
 </html>`
 }
 
+export function brandSignupConfirmEmail({ contactName, actionLink }: { contactName: string; actionLink: string }): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Confirma tu cuenta Scence</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:32px 0">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+    <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:32px;text-align:center">
+      <span style="color:#fff;font-size:22px;font-weight:900;letter-spacing:-0.5px">SCENCE</span>
+    </div>
+    <div style="padding:32px">
+      <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 12px">Hola ${contactName} 👋</h1>
+      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
+        Confirma tu cuenta para activar tu registro en el portal de marcas de <strong style="color:#111827">Scence</strong>.
+        Un miembro de nuestro equipo revisará tu cuenta antes de darte acceso completo.
+      </p>
+      <a href="${actionLink}"
+        style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px;margin-bottom:24px">
+        Confirmar mi cuenta →
+      </a>
+      <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:0">
+        Este link expira en 24 horas. Si no creaste esta cuenta puedes ignorar este correo.
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
+      <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence · Portal de Marcas</p>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
 export function influencerInviteEmail({
   influencerName,
   campaignName,

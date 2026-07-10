@@ -7,7 +7,7 @@ const BRAND_FIELDS = `
   contact_name, contact_email, contact_phone,
   address_street, address_number, address_city, address_region, address_country,
   address2_street, address2_number, address2_city, address2_region, address2_country,
-  organization_id, user_id
+  organization_id, user_id, status
 `
 
 async function getAuthenticatedBrandUser() {

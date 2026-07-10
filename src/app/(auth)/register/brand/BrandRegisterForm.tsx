@@ -6,7 +6,6 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Eye, EyeOff, Building2, AlertCircle, CheckCircle2 } from 'lucide-react'
-import { createBrowserClient } from '@/lib/supabase/client'
 
 const schema = z.object({
   brand_name:   z.string().min(2, 'Mínimo 2 caracteres').max(100),
@@ -31,7 +30,6 @@ const PWD_RULES = [
 ]
 
 export function BrandRegisterForm() {
-  const supabase = createBrowserClient()
   const [showPwd, setShowPwd]   = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
@@ -47,25 +45,27 @@ export function BrandRegisterForm() {
     setLoading(true)
     setError(null)
 
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name:    contact_name,
-          brand_name,
-          is_brand:     true,
-        },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
+    // Vía /api/auth/register-brand (server-side, token_hash) en vez de
+    // supabase.auth.signUp() directo — ese flujo dependía del email de
+    // confirmación automático de Supabase, que usa PKCE y fallaba si el link
+    // se abría en otro navegador/app (mismo bug ya arreglado en recuperación
+    // de contraseña e invitaciones).
+    let res: Response
+    try {
+      res = await fetch('/api/auth/register-brand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_name, contact_name, email, password }),
+      })
+    } catch {
+      setError('No pudimos crear tu cuenta. Intenta nuevamente en unos minutos.')
+      setLoading(false)
+      return
+    }
 
-    if (signUpError) {
-      setError(
-        signUpError.message === 'User already registered'
-          ? 'Este email ya está registrado. ¿Quieres iniciar sesión?'
-          : signUpError.message
-      )
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setError(json.error ?? 'No pudimos crear tu cuenta. Intenta nuevamente en unos minutos.')
       setLoading(false)
       return
     }

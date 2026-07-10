@@ -85,7 +85,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     if (linkErr) return NextResponse.json({ error: linkErr.message }, { status: 500 })
 
-    const actionLink = linkData?.properties?.action_link ?? null
+    // token_hash en vez de action_link (PKCE) — mismo fix ya validado en
+    // producción para el invite de influencers (api/influencers/[id]/invite).
+    const actionLink = linkData?.properties?.hashed_token
+      ? `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
+      : null
     let emailSent = false
     if (actionLink) {
       const { error: emailErr } = await getResend().emails.send({
@@ -152,7 +156,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     },
   })
 
-  if (inviteErr || !linkData?.properties?.action_link) {
+  if (inviteErr || !linkData?.properties?.hashed_token) {
     return NextResponse.json({
       message: `Usuario creado. Email falló — usa "Olvidé mi contraseña" con ${brand.contact_email}.`,
       user_id: authUserId,
@@ -160,13 +164,17 @@ export async function POST(_req: NextRequest, { params }: Params) {
     })
   }
 
+  // token_hash en vez de action_link (PKCE) — ver comentario en la rama de
+  // reenvío más arriba.
+  const actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
+
   const { error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: brand.contact_email,
     subject: `Bienvenido al portal de marcas — ${brand.name}`,
     html: brandInviteEmail({
       name: brand.contact_name ?? brand.name,
-      actionLink: linkData.properties.action_link,
+      actionLink,
       isResend: false,
     }),
   })
@@ -177,6 +185,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
       : `Usuario creado. Email falló — comparte el link manualmente.`,
     user_id: authUserId,
     email_sent: !emailErr,
-    action_link: linkData.properties.action_link,
+    action_link: actionLink,
   })
 }

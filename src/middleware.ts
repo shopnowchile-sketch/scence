@@ -7,6 +7,7 @@ const PUBLIC_ROUTES = [
   '/auth/callback',
   '/auth/confirm',            // verificación token_hash (recuperación/invitación) — sin sesión aún
   '/api/auth/forgot-password', // genera el link de recuperación — llamado sin sesión
+  '/api/auth/register-brand',  // autorregistro de marca — llamado sin sesión
   '/terms', '/privacy',
   '/api/stripe/webhook',   // Stripe webhook — no auth needed (verified by signature)
   '/api/webhooks/resend',  // Resend webhook — no auth needed (verified by Svix signature)

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { Clock } from 'lucide-react'
 import { BrandSidebar } from './_components/BrandSidebar'
 
 export default function BrandLayout({ children }: { children: React.ReactNode }) {
@@ -10,6 +12,9 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // portal influencer: se valida server-side en PATCH /api/brand/me, esto es
   // solo la experiencia de navegación). null = aún cargando.
   const [instagramComplete, setInstagramComplete] = useState<boolean | null>(null)
+  // Estado de aprobación admin de la marca. null = aún cargando/desconocido
+  // (no bloquear mientras carga, igual que instagramComplete).
+  const [brandStatus, setBrandStatus] = useState<string | null>(null)
   const pathname = usePathname()
   // NOTA (build fix): NO usar useSearchParams() acá. Este layout envuelve
   // TODAS las rutas /brand-*, y useSearchParams() sin un boundary Suspense
@@ -32,37 +37,150 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   const isProfilePage = pathname.startsWith('/brand-settings')
 
   useEffect(() => {
-    if (didRegister.current) return
-    didRegister.current = true
-    // Auto-crear brands record la primera vez que una marca self-registrada hace
-    // login (la fila puede no existir todavía en el primer login).
-    fetch('/api/brand/register', { method: 'POST' }).catch(() => null)
-  }, [])
+    let cancelled = false
 
-  useEffect(() => {
-    // Se re-chequea en cada navegación (no solo una vez al montar) para que,
-    // al guardar el Instagram en /brand-settings/organization y navegar a
-    // cualquier otra página, el bloqueo se levante sin quedar pegado en el
-    // estado "false" cacheado del primer fetch (bug reportado: el aviso
-    // seguía apareciendo después de completar el Instagram).
-    fetch('/api/brand/me')
-      .then(r => r.ok ? r.json() : null)
-      .then(j => setInstagramComplete(!!(j?.data?.instagram && String(j.data.instagram).trim())))
-      .catch(() => setInstagramComplete(true)) // si falla la carga, no bloquear
+    async function fetchBrandProfile() {
+      try {
+        const res = await fetch('/api/brand/me', {
+          cache: 'no-store',
+        })
+
+        if (!res.ok) {
+          console.error('[BrandLayout] brand/me failed:', res.status)
+
+          if (!cancelled) {
+            setBrandStatus('error')
+            setInstagramComplete(false)
+          }
+          return
+        }
+
+        const json = await res.json()
+
+        if (cancelled) return
+
+        setBrandStatus(json?.data?.status ?? 'error')
+        setInstagramComplete(
+          Boolean(
+            json?.data?.instagram &&
+            String(json.data.instagram).trim(),
+          ),
+        )
+      } catch (error) {
+        console.error('[BrandLayout] brand/me network error:', error)
+
+        if (!cancelled) {
+          setBrandStatus('error')
+          setInstagramComplete(false)
+        }
+      }
+    }
+
+    async function bootstrapBrand() {
+      if (didRegister.current) {
+        await fetchBrandProfile()
+        return
+      }
+
+      didRegister.current = true
+      setBrandStatus(null)
+      setInstagramComplete(null)
+
+      let registered = false
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const res = await fetch('/api/brand/register', {
+            method: 'POST',
+            cache: 'no-store',
+          })
+
+          if (res.ok) {
+            registered = true
+            break
+          }
+
+          console.error('[BrandLayout] brand/register failed:', res.status)
+        } catch (error) {
+          console.error('[BrandLayout] brand/register network error:', error)
+        }
+      }
+
+      if (cancelled) return
+
+      if (!registered) {
+        setBrandStatus('error')
+        setInstagramComplete(false)
+
+        toast.error(
+          'No pudimos preparar tu cuenta de marca. Reintenta o contáctanos si persiste.',
+          {
+            action: {
+              label: 'Reintentar',
+              onClick: () => {
+                didRegister.current = false
+                void bootstrapBrand()
+              },
+            },
+          },
+        )
+        return
+      }
+
+      await fetchBrandProfile()
+    }
+
+    void bootstrapBrand()
+
+    return () => {
+      cancelled = true
+    }
   }, [pathname])
 
   useEffect(() => {
     if (instagramComplete === false && !isProfilePage) router.replace('/brand-settings/organization?complete=1')
   }, [instagramComplete, isProfilePage, router])
 
-  const blocked = instagramComplete === null || (instagramComplete === false && !isProfilePage)
+  // Marca autorregistrada sin aprobar todavía por un admin → sin acceso al
+  // portal operativo (regla de producto explícita). Prioridad sobre el gate
+  // de Instagram: si no está aprobada, ni siquiera importa si falta Instagram.
+  const approved = brandStatus === 'approved'
+  const loadingStatus = instagramComplete === null || brandStatus === null
+  const pendingApproval = !loadingStatus && !approved
+  const blocked = loadingStatus || (approved && instagramComplete === false && !isProfilePage)
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <BrandSidebar />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
-          {blocked ? (
+          {pendingApproval ? (
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <div className="max-w-sm text-center">
+                <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+                  <Clock className="h-7 w-7 text-amber-600" />
+                </div>
+                <h2 className="text-lg font-bold text-gray-900 mb-2">
+                  {brandStatus === 'pending_approval'
+                    ? 'Tu cuenta está en revisión'
+                    : brandStatus === 'rejected'
+                      ? 'Cuenta no aprobada'
+                      : brandStatus === 'suspended'
+                        ? 'Cuenta suspendida'
+                        : 'No pudimos cargar tu cuenta'}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {brandStatus === 'pending_approval'
+                    ? 'Un administrador de SCENCE debe aprobar tu cuenta antes de que puedas acceder al portal. Te avisaremos por email apenas esté lista.'
+                    : brandStatus === 'rejected'
+                      ? 'Tu solicitud de marca no fue aprobada. Si crees que es un error, contáctanos.'
+                      : brandStatus === 'suspended'
+                        ? 'Tu cuenta está suspendida. Contáctanos para revisar el acceso.'
+                        : 'No pudimos preparar tu cuenta. Usa el botón de reintento o contáctanos.'}
+                </p>
+              </div>
+            </div>
+          ) : blocked ? (
             <div className="flex items-center justify-center min-h-[60vh]">
               <div className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
             </div>

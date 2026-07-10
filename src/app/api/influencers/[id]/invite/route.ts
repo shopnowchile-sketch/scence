@@ -105,7 +105,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: linkErr.message }, { status: 500 })
     }
 
-    const actionLink = linkData?.properties?.action_link ?? null
+    // token_hash en vez de action_link (PKCE) — el link de Supabase fallaba
+    // con "PKCE code verifier not found" si se abría en otro navegador/app
+    // distinto al que originó el request (celular con Gmail/Instagram, etc).
+    const actionLink = linkData?.properties?.hashed_token
+      ? `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/inf-dash`
+      : null
     let emailSent = false
     if (actionLink) {
       const { error: emailErr } = await sendInviteEmail(influencer.email, influencer.display_name, actionLink, true)
@@ -176,7 +181,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     },
   })
 
-  if (inviteErr || !linkData?.properties?.action_link) {
+  if (inviteErr || !linkData?.properties?.hashed_token) {
     console.error('[invite] generateLink failed:', inviteErr?.message)
     return NextResponse.json({
       message: `Usuario creado pero no se pudo generar el link de acceso. El influencer puede usar "Olvidé mi contraseña" con ${influencer.email}.`,
@@ -185,10 +190,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
     })
   }
 
+  // token_hash en vez de action_link (PKCE) — ver comentario en la rama de
+  // reenvío más arriba.
+  const actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/inf-dash`
+
   const { error: emailErr } = await sendInviteEmail(
     influencer.email,
     influencer.display_name,
-    linkData.properties.action_link,
+    actionLink,
     false,
   )
 
@@ -201,6 +210,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
       : `Usuario creado. El email falló — comparte el link manualmente.`,
     user_id: authUserId,
     email_sent: emailSent,
-    action_link: linkData.properties.action_link, // siempre retornar
+    action_link: actionLink, // siempre retornar
   })
 }

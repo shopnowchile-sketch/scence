@@ -5,6 +5,8 @@ import type { CookieOptions } from '@supabase/ssr'
 const PUBLIC_ROUTES = [
   '/login', '/register', '/forgot-password', '/reset-password',
   '/auth/callback',
+  '/auth/confirm',            // verificación token_hash (recuperación/invitación) — sin sesión aún
+  '/api/auth/forgot-password', // genera el link de recuperación — llamado sin sesión
   '/terms', '/privacy',
   '/api/stripe/webhook',   // Stripe webhook — no auth needed (verified by signature)
   '/api/webhooks/resend',  // Resend webhook — no auth needed (verified by Svix signature)

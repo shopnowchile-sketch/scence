@@ -6,12 +6,6 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Mail, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react'
-import { createBrowserClient } from '@/lib/supabase/client'
-
-// Misma convención que /api/influencers/notify-no-instagram: URL estable de
-// producción con fallback, en vez de window.location.origin (que puede variar
-// según el dominio/preview desde el que se cargue la página).
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
 const schema = z.object({
   email: z.string().email('Email inválido'),
@@ -19,7 +13,6 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export function ForgotPasswordForm() {
-  const supabase = createBrowserClient()
   const [loading, setLoading]   = useState(false)
   const [sent, setSent]         = useState(false)
   const [error, setError]       = useState<string | null>(null)
@@ -31,18 +24,26 @@ export function ForgotPasswordForm() {
   async function onSubmit({ email }: FormValues) {
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${APP_URL}/auth/callback?next=/reset-password`,
-    })
-    setLoading(false)
-    if (error) {
-      // Log real para debug (Vercel/consola); al usuario no se le muestra el
-      // mensaje crudo de Supabase — evita filtrar detalles de infraestructura
-      // y mantiene el mismo mensaje exista o no el email (no enumeration).
-      console.error('[forgot-password] resetPasswordForEmail error:', error)
+    try {
+      // Vía /api/auth/forgot-password (token_hash) en vez de
+      // supabase.auth.resetPasswordForEmail() directo — ese flujo dependía
+      // de PKCE y fallaba si el link se abría en otro navegador/app distinto
+      // al que hizo la solicitud (caso muy común con mail en el celular).
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      if (!res.ok) throw new Error('request failed')
+    } catch (err) {
+      // Log real para debug; al usuario no se le muestra el mensaje crudo —
+      // mantiene el mismo mensaje exista o no el email (no enumeration).
+      console.error('[forgot-password] request error:', err)
       setError('No pudimos enviar el correo. Intenta nuevamente en unos minutos.')
+      setLoading(false)
       return
     }
+    setLoading(false)
     setSent(true)
   }
 

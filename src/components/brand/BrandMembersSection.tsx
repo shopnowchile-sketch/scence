@@ -14,10 +14,17 @@ import { cn } from '@/lib/utils'
 interface BrandMember {
   id:          string
   email:       string
-  role:        'owner' | 'editor' | 'viewer'
+  role:        'owner' | 'brand_manager' | 'finance' | 'member'
   invited_at:  string
   joined_at:   string | null
   is_active:   boolean
+}
+
+const ROLE_LABELS: Record<BrandMember['role'], string> = {
+  owner:         'Owner',
+  brand_manager: 'Brand manager',
+  finance:       'Finanzas',
+  member:        'Miembro',
 }
 
 function SectionTitle({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
@@ -32,7 +39,7 @@ export function BrandMembersSection() {
   const [members,  setMembers]  = useState<BrandMember[]>([])
   const [loading,  setLoading]  = useState(true)
   const [newEmail, setNewEmail] = useState('')
-  const [newRole,  setNewRole]  = useState<'editor' | 'viewer'>('editor')
+  const [newRole,  setNewRole]  = useState<'brand_manager' | 'finance' | 'member'>('member')
   const [inviting, setInviting] = useState(false)
 
   const load = useCallback(async () => {
@@ -105,11 +112,12 @@ export function BrandMembersSection() {
         />
         <select
           value={newRole}
-          onChange={e => setNewRole(e.target.value as 'editor' | 'viewer')}
-          className="input-base w-28"
+          onChange={e => setNewRole(e.target.value as 'brand_manager' | 'finance' | 'member')}
+          className="input-base w-36"
         >
-          <option value="editor">Editor</option>
-          <option value="viewer">Viewer</option>
+          <option value="member">Miembro</option>
+          <option value="brand_manager">Brand manager</option>
+          <option value="finance">Finanzas</option>
         </select>
         <button
           onClick={handleInvite}
@@ -140,7 +148,7 @@ export function BrandMembersSection() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{m.email}</p>
                 <p className="text-[10px] text-gray-400">
-                  {m.joined_at ? '✓ Activo' : '⏳ Invitación pendiente'} · {m.role}
+                  {m.joined_at ? '✓ Activo' : '⏳ Invitación pendiente'} · {ROLE_LABELS[m.role] ?? m.role}
                 </p>
               </div>
               {m.is_active && m.role !== 'owner' && (

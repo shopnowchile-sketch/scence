@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/influencers/ranking'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -16,17 +17,17 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const metaBrandId = user.user_metadata?.brand_id as string | undefined
 
-  let brandQuery = admin
+  const access = await resolveBrandAccess(user.id)
+  if (!access) {
+    return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  }
+
+  const { data: brand, error: brandError } = await admin
     .from('brands')
     .select('id, organization_id, name')
-    .limit(1)
-
-  if (metaBrandId) brandQuery = brandQuery.eq('id', metaBrandId)
-  else brandQuery = brandQuery.eq('user_id', user.id)
-
-  const { data: brand, error: brandError } = await brandQuery.maybeSingle()
+    .eq('id', access.brandId)
+    .maybeSingle()
 
   if (brandError) {
     console.error('[GET /api/brand/influencers/ranking] brand:', brandError)

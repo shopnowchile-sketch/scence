@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { acceptCampaignApplication } from '@/lib/campaign-applications'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -14,9 +15,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
-  const { data: brand } = await admin
-    .from('brands').select('id').eq('user_id', user.id).single()
-  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  const brand = { id: access.brandId }
 
   // Verificar ownership de la campaña
   const { data: campaign } = await admin
@@ -51,9 +52,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
-  const { data: brand } = await admin
-    .from('brands').select('id, name').eq('user_id', user.id).single()
-  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  const brand = { id: access.brandId }
 
   const { data: campaign } = await admin
     .from('campaigns')

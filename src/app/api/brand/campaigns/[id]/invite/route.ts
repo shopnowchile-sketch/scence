@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
 import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -19,11 +20,14 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
-  // Verificar que la campaña pertenece a esta marca
+  // Verificar que la campaña pertenece a esta marca (owner o miembro activo)
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
   const { data: brand } = await admin
     .from('brands')
     .select('id, name, organization_id')
-    .eq('user_id', user.id)
+    .eq('id', access.brandId)
     .single()
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })

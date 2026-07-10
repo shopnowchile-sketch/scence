@@ -364,3 +364,103 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
 
   return brand
 }
+
+/**
+ * resolveBrandAccess — resuelve el acceso de un usuario a una marca: owner
+ * directo (`brands.user_id`) o miembro activo (`brand_members.user_id` +
+ * `is_active=true`). Fuente única de verdad para el portal de marca desde
+ * el multiusuario por marca (spec Pri 2026-07-10, "Opción A" — reutiliza
+ * `brand_members`, NO usa `organization_members` ni el patrón legacy
+ * `user_metadata.brand_id`).
+ *
+ * Asume una marca por usuario (owner de una O miembro de una), igual que el
+ * resto del portal de marca hoy. Si el usuario es owner Y tiene además una
+ * fila en `brand_members` (caso alexrabi91, ver backfill de la migración),
+ * el rol 'owner' siempre gana.
+ */
+export type BrandAccess = {
+  brandId: string
+  organizationId: string
+  role: 'owner' | 'brand_manager' | 'finance' | 'member'
+  isOwner: boolean
+}
+
+export async function resolveBrandAccess(userId: string): Promise<BrandAccess | null> {
+  const admin = createAdminClient()
+
+  const { data: owned } = await admin
+    .from('brands')
+    .select('id, organization_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (owned) {
+    return { brandId: owned.id, organizationId: owned.organization_id, role: 'owner', isOwner: true }
+  }
+
+  const { data: membership } = await admin
+    .from('brand_members')
+    .select('brand_id, role')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!membership) return null
+
+  const { data: brand } = await admin
+    .from('brands')
+    .select('organization_id')
+    .eq('id', membership.brand_id)
+    .maybeSingle()
+
+  if (!brand) return null
+
+  return {
+    brandId: membership.brand_id,
+    organizationId: brand.organization_id,
+    role: (membership.role as BrandAccess['role']) ?? 'member',
+    isOwner: false,
+  }
+}
+
+/**
+ * linkPendingBrandMembership — vincula una invitación pendiente de
+ * `brand_members` (email coincide, `user_id` todavía null) al usuario que
+ * acaba de iniciar sesión por primera vez. Se llama ANTES de
+ * `ensureBrandRow()` en el bootstrap del portal de marca
+ * (`/api/brand/register`) para que un usuario invitado (ej. mateluna641)
+ * nunca dispare la creación de una marca u organización propia — spec Pri
+ * 2026-07-10, punto 3: "al aceptar: vincular user_id, completar joined_at,
+ * activar is_active, no crear otra marca, no crear otra organización, no
+ * cambiar brands.user_id".
+ *
+ * Retorna true si vinculó algo (el caller debe volver a resolver el acceso
+ * después de llamar esto).
+ */
+export async function linkPendingBrandMembership(user: User): Promise<boolean> {
+  if (!user.email) return false
+  const admin = createAdminClient()
+
+  const { data: pending } = await admin
+    .from('brand_members')
+    .select('id')
+    .is('user_id', null)
+    .ilike('email', user.email)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+
+  if (!pending) return false
+
+  const { error } = await admin
+    .from('brand_members')
+    .update({ user_id: user.id, joined_at: new Date().toISOString() })
+    .eq('id', pending.id)
+
+  if (error) {
+    console.error('[linkPendingBrandMembership] failed to link:', error.message)
+    return false
+  }
+
+  return true
+}

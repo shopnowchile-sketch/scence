@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 // GET /api/brand/influencers/communes
 // Mismo alcance de influencers que /api/brand/influencers (campañas propias +
@@ -16,14 +17,10 @@ export async function GET() {
   }
 
   const admin = createAdminClient()
-  const metaBrandId = user.user_metadata?.brand_id as string | undefined
 
-  let brandQuery = admin.from('brands').select('id').limit(1)
-  brandQuery = metaBrandId ? brandQuery.eq('id', metaBrandId) : brandQuery.eq('user_id', user.id)
-  const { data: brand, error: brandError } = await brandQuery.maybeSingle()
-
-  if (brandError) return NextResponse.json({ error: brandError.message }, { status: 500 })
-  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  const brand = { id: access.brandId }
 
   const { data: primaryCampaigns } = await admin.from('campaigns').select('id').eq('brand_id', brand.id)
   const { data: collaboratorRows } = await admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id)

@@ -8,6 +8,7 @@ import {
   PLAN_ERROR_CODES,
 } from '@/lib/plan-limits'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 // GET /api/brand-campaigns — campañas de la marca autenticada
 // Acepta los mismos filtros que /api/campaigns (status/type/platform/visibility/search)
@@ -29,11 +30,16 @@ export async function GET(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  // Resolver brand_id desde user_id
+  // Resolver brand: owner o miembro activo de brand_members (multiusuario
+  // por marca, spec Pri 2026-07-10 — reemplaza el filtro exclusivo por
+  // brands.user_id).
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
   const { data: brand } = await admin
     .from('brands')
     .select('id, name, organization_id')
-    .eq('user_id', user.id)
+    .eq('id', access.brandId)
     .single()
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
@@ -125,10 +131,13 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
   const { data: brand } = await admin
     .from('brands')
     .select('id, organization_id, status')
-    .eq('user_id', user.id)
+    .eq('id', access.brandId)
     .single()
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })

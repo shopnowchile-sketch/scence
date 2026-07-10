@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 // GET /api/brand/influencers
 // Marca ve influencers relacionadas a SUS campañas/asignaciones.
@@ -18,21 +19,19 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const metaBrandId = user.user_metadata?.brand_id as string | undefined
 
-  // Owner: por user_id. Invitado: por metadata.brand_id.
-  let brandQuery = admin
-    .from('brands')
-    .select('id, organization_id, name')
-    .limit(1)
-
-  if (metaBrandId) {
-    brandQuery = brandQuery.eq('id', metaBrandId)
-  } else {
-    brandQuery = brandQuery.eq('user_id', user.id)
+  // Owner o miembro activo de brand_members (retira el patrón legacy
+  // user_metadata.brand_id — spec Pri 2026-07-10).
+  const access = await resolveBrandAccess(user.id)
+  if (!access) {
+    return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   }
 
-  const { data: brand, error: brandError } = await brandQuery.maybeSingle()
+  const { data: brand, error: brandError } = await admin
+    .from('brands')
+    .select('id, organization_id, name')
+    .eq('id', access.brandId)
+    .maybeSingle()
 
   if (brandError) {
     console.error('[GET /api/brand/influencers] brand:', brandError)
@@ -216,18 +215,17 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const metaBrandId = user.user_metadata?.brand_id as string | undefined
 
-  let brandQuery = admin
+  const access = await resolveBrandAccess(user.id)
+  if (!access) {
+    return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  }
+
+  const { data: brand, error: brandError } = await admin
     .from('brands')
     .select('id, organization_id, name')
-    .limit(1)
-
-  brandQuery = metaBrandId
-    ? brandQuery.eq('id', metaBrandId)
-    : brandQuery.eq('user_id', user.id)
-
-  const { data: brand, error: brandError } = await brandQuery.maybeSingle()
+    .eq('id', access.brandId)
+    .maybeSingle()
 
   if (brandError) {
     console.error('[POST /api/brand/influencers] brand:', brandError)

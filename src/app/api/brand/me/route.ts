@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandPlan } from '@/lib/plan-limits'
+import { resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 
 const BRAND_FIELDS = `
   id, name, logo_url, website, instagram, industry, rut,
@@ -10,37 +11,54 @@ const BRAND_FIELDS = `
   organization_id, user_id, status
 `
 
-async function getAuthenticatedBrandUser() {
+// FIX (2026-07-10, multiusuario por marca): antes resolvía la marca solo por
+// `brands.user_id = user.id` (owner). Ahora resuelve por resolveBrandAccess
+// (owner o miembro activo de brand_members) — ver spec Pri "Opción A".
+async function getBrandAccess(): Promise<
+  { access: BrandAccess; error: null } | { access: null; error: 'Unauthorized' | 'Forbidden' }
+> {
   const supabase = createServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return { user: null, error: 'Unauthorized' }
-  if (!user.user_metadata?.is_brand) return { user: null, error: 'Forbidden' }
-  return { user, error: null }
+  if (error || !user) return { access: null, error: 'Unauthorized' }
+  if (!user.user_metadata?.is_brand) return { access: null, error: 'Forbidden' }
+
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return { access: null, error: 'Forbidden' }
+
+  return { access, error: null }
 }
 
 // GET /api/brand/me — perfil completo de la marca
 export async function GET() {
-  const { user, error: authErr } = await getAuthenticatedBrandUser()
-  if (!user) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
+  const { access, error: authErr } = await getBrandAccess()
+  if (!access) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
 
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('brands')
     .select(BRAND_FIELDS)
-    .eq('user_id', user.id)
+    .eq('id', access.brandId)
     .single()
 
   if (error || !data) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
   // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
   const orgPlan = await resolveBrandPlan(admin, data.organization_id)
-  return NextResponse.json({ data: { ...data, org_plan: orgPlan } })
+  return NextResponse.json({
+    data: { ...data, org_plan: orgPlan, member_role: access.role, is_owner: access.isOwner },
+  })
 }
 
 // PATCH /api/brand/me — actualizar perfil completo
+// Editar el perfil de la marca queda reservado a owner y brand_manager — los
+// roles finance/member tienen acceso de lectura (campañas, billing) pero no
+// deberían poder cambiar los datos públicos/legales de la marca.
 export async function PATCH(request: Request) {
-  const { user, error: authErr } = await getAuthenticatedBrandUser()
-  if (!user) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
+  const { access, error: authErr } = await getBrandAccess()
+  if (!access) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
+  if (!access.isOwner && access.role !== 'brand_manager') {
+    return NextResponse.json({ error: 'No tienes permiso para editar el perfil de la marca' }, { status: 403 })
+  }
 
   const body = await request.json()
   const {
@@ -59,7 +77,7 @@ export async function PATCH(request: Request) {
   const { data: existingBrand } = await admin
     .from('brands')
     .select('instagram')
-    .eq('user_id', user.id)
+    .eq('id', access.brandId)
     .single()
   const finalInstagram = 'instagram' in body
     ? String(instagram ?? '').trim()
@@ -90,7 +108,7 @@ export async function PATCH(request: Request) {
       address2_region:  address2_region  || null,
       address2_country: address2_country || null,
     })
-    .eq('user_id', user.id)
+    .eq('id', access.brandId)
     .select(BRAND_FIELDS)
     .single()
 

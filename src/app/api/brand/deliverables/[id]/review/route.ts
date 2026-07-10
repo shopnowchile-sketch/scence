@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -12,14 +13,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
-  // Resolver brand
-  const { data: brand } = await admin
-    .from('brands')
-    .select('id')
-    .eq('user_id', user.id)
-    .single()
-
-  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  // Resolver brand: owner o miembro activo
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  const brand = { id: access.brandId }
 
   let body: { action: 'approve' | 'reject'; review_notes?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }

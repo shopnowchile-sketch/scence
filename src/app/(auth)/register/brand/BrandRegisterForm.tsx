@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Eye, EyeOff, Building2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { createBrowserClient } from '@/lib/supabase/client'
 
 const schema = z.object({
   brand_name:   z.string().min(2, 'Mínimo 2 caracteres').max(100),
@@ -34,6 +35,11 @@ export function BrandRegisterForm() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
   const [success, setSuccess]   = useState(false)
+  // FIX (2026-07-10): si el correo de confirmación no pudo enviarse, la
+  // cuenta y la fila de marca ya quedaron creadas (pending_approval, visible
+  // en /admin-brands) — pero no tiene sentido decirle "revisa tu email" si
+  // no le llegó nada. Distingue ese caso para mostrar el mensaje correcto.
+  const [emailSent, setEmailSent] = useState(true)
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -44,6 +50,18 @@ export function BrandRegisterForm() {
   async function onSubmit({ brand_name, contact_name, email, password }: FormValues) {
     setLoading(true)
     setError(null)
+
+    // FIX (2026-07-10): si el navegador ya tenía una sesión activa (marca
+    // anterior de una prueba previa, ej. reportado con "Empresa1"), esa
+    // sesión seguía viva después de registrar una cuenta nueva — el
+    // registro es 100% server-side (admin.auth.admin.createUser) y nunca
+    // toca la sesión del navegador. Resultado confuso: se ve "Revisa tu
+    // email" pero cualquier otra pestaña/navegación seguía mostrando el
+    // portal de la marca vieja. Se cierra la sesión local ANTES de crear la
+    // cuenta nueva, para que el navegador quede limpio y sin ambigüedad.
+    const supabase = createBrowserClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) await supabase.auth.signOut()
 
     // Vía /api/auth/register-brand (server-side, token_hash) en vez de
     // supabase.auth.signUp() directo — ese flujo dependía del email de
@@ -70,6 +88,12 @@ export function BrandRegisterForm() {
       return
     }
 
+    // NO navegar al portal — nunca. El registro es server-side y no crea
+    // sesión en el navegador, así que no hay a dónde "entrar" todavía de
+    // todos modos; esto solo deja explícito que esta pantalla es siempre el
+    // final del flujo hasta que la marca confirme el email y sea aprobada.
+    const json = await res.json().catch(() => ({}))
+    setEmailSent(json.email_sent !== false)
     setSuccess(true)
     setLoading(false)
   }
@@ -77,12 +101,18 @@ export function BrandRegisterForm() {
   if (success) {
     return (
       <div className="card p-8 text-center shadow-card-md">
-        <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+        <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${emailSent ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+          {emailSent
+            ? <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+            : <AlertCircle className="h-7 w-7 text-amber-600" />}
         </div>
-        <h2 className="text-lg font-bold text-gray-900 mb-2">¡Revisa tu email!</h2>
+        <h2 className="text-lg font-bold text-gray-900 mb-2">
+          {emailSent ? '¡Revisa tu email!' : 'Cuenta creada'}
+        </h2>
         <p className="text-sm text-gray-500">
-          Te enviamos un enlace de confirmación. Haz clic en él para activar tu cuenta y acceder al portal de marcas.
+          {emailSent
+            ? 'Te enviamos un enlace de confirmación. Haz clic en él para activar tu cuenta y acceder al portal de marcas.'
+            : 'Tu cuenta quedó creada, pero no pudimos enviarte el correo de confirmación. Contáctanos para que te ayudemos a activarla.'}
         </p>
         <Link href="/login" className="mt-6 inline-block text-sm text-violet-600 font-semibold hover:underline">
           ← Volver al login

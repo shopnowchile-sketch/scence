@@ -68,19 +68,33 @@ export async function ensureOrg(user: User): Promise<string | null> {
 
   const admin = createAdminClient()
 
-  // Create org
-  const { data: org, error: orgErr } = await admin
-    .from('organizations')
-    .insert({
-      name: orgName,
-      slug: orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60),
-      type: 'brand',
-    })
-    .select('id')
-    .single()
+  // FIX (2026-07-10, root cause de fmicchile@gmail.com/Empresa1 y probable
+  // causa de más cuentas atascadas): `organizations.slug` es UNIQUE. Cuando
+  // el usuario no trae `organization_name` en su metadata (ej. el flujo
+  // viejo de /register, o cualquier cuenta futura sin ese campo), el
+  // fallback usa el dominio del email ("gmail", "hotmail", "outlook"...) —
+  // eso NO es único por marca, es único por PROVEEDOR de email. La primera
+  // marca de gmail.com que se registra se queda con el slug "gmail"; la
+  // segunda choca con un 23505 y `ensureOrg` fallaba devolviendo null sin
+  // reintentar, dejando a esa marca sin organización ni fila `brands` para
+  // siempre. Ahora: si el slug base ya existe, se reintenta UNA vez con un
+  // sufijo corto y estable (primeros 6 caracteres del user.id, no cambia
+  // entre reintentos) — nunca se reutiliza la organización ajena que ganó el
+  // slug base, cada usuario se queda con la suya propia.
+  const baseSlug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'org'
+  const suffix = user.id.slice(0, 6)
 
-  if (orgErr) {
-    console.error('[ensureOrg] failed to create org:', orgErr.message)
+  const insertOrg = (slug: string) =>
+    admin.from('organizations').insert({ name: orgName, slug, type: 'brand' }).select('id').single()
+
+  let { data: org, error: orgErr } = await insertOrg(baseSlug)
+
+  if (orgErr?.code === '23505') {
+    ;({ data: org, error: orgErr } = await insertOrg(`${baseSlug}-${suffix}`.slice(0, 60)))
+  }
+
+  if (orgErr || !org) {
+    console.error('[ensureOrg] failed to create org:', orgErr?.message)
     return null
   }
 
@@ -240,4 +254,113 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
   }
 
   return influencer
+}
+
+/**
+ * ensureBrandRow — auto-provisiona la fila `brands` para una marca.
+ *
+ * FIX (2026-07-10, root cause "Empresa1 no aparece en /admin-brands"): antes,
+ * la fila en `brands` solo se creaba en el PRIMER LOGIN exitoso (ver
+ * /api/brand/register, llamado por (brand)/layout.tsx al montar). Si el
+ * email de confirmación no llegaba, o el usuario cerraba la pestaña en la
+ * pantalla "Revisa tu email" sin volver a intentar, la cuenta quedaba
+ * existiendo SOLO en auth.users — invisible en el admin, sin organización,
+ * sin fila de marca. Confirmado por SQL: fmicchile@gmail.com (Empresa1)
+ * creado 2026-07-10 sin brand_id.
+ *
+ * Ahora esta función se llama en DOS puntos: (1) justo después de crear el
+ * auth user en /api/auth/register-brand — así la marca existe y es visible
+ * en el admin como pending_approval aunque el email de confirmación falle o
+ * nunca se abra; (2) en /api/brand/register en el primer login — no-op si ya
+ * existe (idempotente), sirve de red de seguridad para cuentas creadas antes
+ * de este fix o para cualquier caso donde el punto (1) no se haya podido
+ * ejecutar.
+ *
+ * Mismo patrón que ensureInfluencerRow: dedup por user_id, dedup/vinculación
+ * por email huérfano (fila creada a mano por admin o de un intento anterior
+ * fallido), ensureOrg() para organización propia del tenant (SCENCE es
+ * multi-org por marca), status inicial 'pending_approval', recuperación de
+ * carrera 23505.
+ */
+export async function ensureBrandRow(user: User): Promise<{ id: string; name: string; status: string } | null> {
+  const admin = createAdminClient()
+
+  const { data: existing } = await admin
+    .from('brands')
+    .select('id, name, status')
+    .eq('user_id', user.id)
+    .single()
+
+  if (existing) return existing
+
+  const contactEmail = user.email ?? null
+  const brandName    = (user.user_metadata?.brand_name as string | undefined) ?? user.email ?? 'Mi Marca'
+  const contactName  = (user.user_metadata?.full_name as string | undefined) ?? null
+
+  if (contactEmail) {
+    const { data: orphan } = await admin
+      .from('brands')
+      .select('id, name, status')
+      .is('user_id', null)
+      .ilike('contact_email', contactEmail)
+      .limit(1)
+      .maybeSingle()
+
+    if (orphan) {
+      const { error: linkErr } = await admin
+        .from('brands')
+        .update({ user_id: user.id })
+        .eq('id', orphan.id)
+      if (linkErr) {
+        console.error('[ensureBrandRow] failed to link orphan row:', linkErr.message)
+      } else {
+        return orphan
+      }
+    }
+  }
+
+  const orgId = await ensureOrg(user)
+  if (!orgId) {
+    console.error('[ensureBrandRow] no se pudo aprovisionar la organización')
+    return null
+  }
+
+  const rawReferral = user.user_metadata?.referred_by_instagram
+  const referredByInstagram = typeof rawReferral === 'string' && rawReferral.trim()
+    ? rawReferral.trim().replace(/^@/, '').toLowerCase()
+    : null
+
+  const { data: brand, error } = await admin
+    .from('brands')
+    .insert({
+      organization_id: orgId,
+      user_id:         user.id,
+      name:            brandName,
+      contact_name:    contactName,
+      contact_email:   contactEmail,
+      created_by:      user.id,
+      status:          'pending_approval',
+      metadata:        referredByInstagram ? { referred_by_instagram: referredByInstagram } : null,
+    })
+    .select('id, name, status')
+    .single()
+
+  if (error) {
+    // Carrera: la misma protección que ensureInfluencerRow — dos llamadas
+    // casi simultáneas (register-brand + primer login casi inmediato,
+    // reintento de red) pueden pasar el chequeo `existing` antes de que la
+    // otra termine de insertar.
+    if (error.code === '23505') {
+      const { data: wonByOther } = await admin
+        .from('brands')
+        .select('id, name, status')
+        .eq('user_id', user.id)
+        .single()
+      if (wonByOther) return wonByOther
+    }
+    console.error('[ensureBrandRow] failed to create brand row:', error.message)
+    return null
+  }
+
+  return brand
 }

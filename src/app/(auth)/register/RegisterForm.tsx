@@ -95,16 +95,20 @@ function TypeSelector({ onSelect }: { onSelect: (t: AccountType) => void }) {
 
 // ── Success screen ────────────────────────────────────────────────────────────
 
-function SuccessScreen({ type }: { type: AccountType }) {
+function SuccessScreen({ type, emailSent = true }: { type: AccountType; emailSent?: boolean }) {
   return (
     <div className="card p-8 text-center shadow-card-md">
-      <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-        <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+      <div className={cn('w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4', emailSent ? 'bg-emerald-100' : 'bg-amber-100')}>
+        {emailSent
+          ? <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+          : <AlertCircle className="h-7 w-7 text-amber-600" />}
       </div>
-      <h2 className="text-lg font-bold text-gray-900 mb-2">¡Revisa tu email!</h2>
+      <h2 className="text-lg font-bold text-gray-900 mb-2">{emailSent ? '¡Revisa tu email!' : 'Cuenta creada'}</h2>
       <p className="text-sm text-gray-500">
-        Te enviamos un enlace de confirmación. Haz clic en él para activar tu cuenta y acceder al{' '}
-        {type === 'brand' ? 'portal de marcas' : 'portal de creadores'}.
+        {emailSent
+          ? <>Te enviamos un enlace de confirmación. Haz clic en él para activar tu cuenta y acceder al{' '}
+              {type === 'brand' ? 'portal de marcas' : 'portal de creadores'}.</>
+          : 'Tu cuenta quedó creada, pero no pudimos enviarte el correo de confirmación. Contáctanos para que te ayudemos a activarla.'}
       </p>
       <Link href="/login" className="mt-6 inline-block text-sm text-violet-600 font-semibold hover:underline">
         ← Volver al login
@@ -116,35 +120,65 @@ function SuccessScreen({ type }: { type: AccountType }) {
 // ── Brand form ────────────────────────────────────────────────────────────────
 
 function BrandForm({ onBack }: { onBack: () => void }) {
-  const supabase = createBrowserClient()
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [emailSent, setEmailSent] = useState(true)
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<BrandValues>({
     resolver: zodResolver(brandSchema),
   })
   const pwd = watch('password') ?? ''
 
+  // FIX (2026-07-10): este es el formulario de marca que la gente realmente
+  // usa (el login enlaza a /register, no a /register/brand). Antes llamaba a
+  // supabase.auth.signUp() con PKCE — mismo bug ya resuelto en el resto de la
+  // app (recuperación, invitaciones, /register/brand). Ahora reusa
+  // exactamente el mismo endpoint server-side que BrandRegisterForm.tsx:
+  // mismo contrato, misma validación de contraseña, mismo manejo de
+  // email_sent:false, mismo "no navegar al portal", mismo signOut de sesión
+  // previa antes de crear la cuenta nueva.
   async function onSubmit({ brand_name, contact_name, referred_by, email, password }: BrandValues) {
     setLoading(true); setError(null)
-    const { error: e } = await supabase.auth.signUp({
-      email, password,
-      options: {
-        data: { full_name: contact_name, brand_name, referred_by_instagram: referred_by || null, is_brand: true },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (e) {
-      setError(e.message === 'User already registered' ? 'Este email ya está registrado' : e.message)
+
+    const supabase = createBrowserClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) await supabase.auth.signOut()
+
+    let res: Response
+    try {
+      res = await fetch('/api/auth/register-brand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand_name,
+          contact_name,
+          email,
+          password,
+          referred_by_instagram: referred_by || null,
+        }),
+      })
+    } catch {
+      setError('No pudimos crear tu cuenta. Intenta nuevamente en unos minutos.')
       setLoading(false)
       return
     }
-    setSuccess(true); setLoading(false)
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setError(json.error ?? 'No pudimos crear tu cuenta. Intenta nuevamente en unos minutos.')
+      setLoading(false)
+      return
+    }
+
+    const json = await res.json().catch(() => ({}))
+    setEmailSent(json.email_sent !== false)
+    setSuccess(true)
+    setLoading(false)
   }
 
-  if (success) return <SuccessScreen type="brand" />
+  if (success) return <SuccessScreen type="brand" emailSent={emailSent} />
 
   return (
     <div className="card p-8 shadow-card-md">

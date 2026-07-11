@@ -116,7 +116,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       )
     `)
     .eq('id', params.id)
-    .eq('organization_id', brand.organization_id)
     .eq('is_active', true)
     .single()
 

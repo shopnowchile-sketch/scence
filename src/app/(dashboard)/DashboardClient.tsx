@@ -225,17 +225,23 @@ function isPendingDeliverable(record: UnknownRecord) {
   return !['completed', 'done', 'approved', 'cancelled', 'canceled', 'deleted'].includes(status)
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJson(url: string, timeoutMs = 12000): Promise<unknown> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+
   try {
     const response = await fetch(url, {
       credentials: 'include',
       cache: 'no-store',
+      signal: controller.signal,
     })
 
     if (!response.ok) return null
     return await response.json()
   } catch {
     return null
+  } finally {
+    window.clearTimeout(timeout)
   }
 }
 
@@ -459,21 +465,19 @@ export function DashboardClient() {
     async function loadDashboard() {
       setState((current) => ({ ...current, loading: true, error: null }))
 
+      // Solo se piden los endpoints realmente usados por el dashboard.
+      // Se eliminaron /api/analytics (revenue/payroll ya vienen en /api/dashboard)
+      // y /api/invoices (su data no se consumía) para no bloquear la carga con
+      // dos endpoints pesados/redundantes. Ver kpis.revenue_month/payroll_month.
       const [
         dashboard,
-        analytics,
         campaignsRaw,
         influencersRaw,
-        brandsRaw,
-        invoicesRaw,
         deliverablesRaw,
       ] = await Promise.all([
-        fetchJson('/api/dashboard'),
-        fetchJson('/api/analytics'),
+        fetchJson('/api/dashboard', 30000),
         fetchJson('/api/campaigns'),
         fetchJson('/api/influencers?limit=100'),
-        fetchJson('/api/brands?limit=5000'),
-        fetchJson('/api/invoices'),
         fetchJson('/api/deliverables'),
       ])
 
@@ -483,12 +487,12 @@ export function DashboardClient() {
         loading: false,
         error: null,
         dashboard,
-        analytics,
+        analytics: null,
         campaigns: pickArray(campaignsRaw, ['campaigns', 'data', 'items']),
         influencers: pickArray(influencersRaw, ['influencers', 'data', 'items']),
-        brands: pickArray(brandsRaw, ['brands', 'data', 'items']),
-        brandsTotalRaw: deepNumber(brandsRaw, ['total'], 0),
-        invoices: pickArray(invoicesRaw, ['invoices', 'data', 'items']),
+        brands: [],
+        brandsTotalRaw: 0,
+        invoices: [],
         deliverables: pickArray(deliverablesRaw, ['deliverables', 'data', 'items']),
       })
     }
@@ -517,9 +521,7 @@ export function DashboardClient() {
       deepNumber(state.dashboard, ['totalInfluencers', 'influencersTotal', 'influencersRoster'], state.influencers.length)
 
     const brandsTotal =
-      deepNumber(state.dashboard, ['totalBrands', 'brandsTotal', 'registeredBrands'], 0) ||
-      state.brandsTotalRaw ||
-      state.brands.length
+      deepNumber(state.dashboard, ['total_brands', 'totalBrands', 'brandsTotal', 'registeredBrands'], 0)
 
     // FIX (2026-07-02): estas 3 métricas siempre daban $0/0% — buscaban keys
     // ('revenue', 'facturado', 'payroll', 'inboundCosts', etc.) que no existen
@@ -572,11 +574,9 @@ export function DashboardClient() {
       state.influencers.filter(hasPortalAccess).length || influencersTotal
 
     const brandsEntered =
-      deepNumber(state.dashboard, ['brandsEntered', 'brandsIngresaron', 'brandPortalEntered'], 0) ||
-      state.brands.filter(hasEnteredPortal).length
+      deepNumber(state.dashboard, ['brands_entered', 'brandsEntered', 'brandsIngresaron', 'brandPortalEntered'], 0)
 
-    const brandsWithAccess =
-      state.brands.filter(hasPortalAccess).length || brandsTotal
+    const brandsWithAccess = brandsTotal
 
     const pendingDeliverables = state.deliverables.filter(isPendingDeliverable).slice(0, 4)
     const campaignsForList = (activeCampaigns.length ? activeCampaigns : state.campaigns).slice(0, 3)

@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
-import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
 // ── GET /api/dashboard — aggregated KPIs ──────────────────────────────────────
 export async function GET() {
@@ -35,15 +34,18 @@ export async function GET() {
   const [
     campaignsRes,
     influencersCountRes,
-    influencersRes,
+    influencersEnteredCountRes,
+    brandsCountRes,
+    brandsEnteredCountRes,
     invoicesMonthRes,
     payrollMonthRes,
     pendingDeliverablesRes,
     recentActivityRes,
     pendingApplicationsRes,
   ] = await Promise.all([
+    // Solo el CONTEO de campañas activas (no se descargan las filas).
     db.from('campaigns')
-      .select('id, status', { count: 'exact', head: false })
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId)
       .not('status', 'in', '("canceled","completed")'),
 
@@ -52,23 +54,22 @@ export async function GET() {
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId),
 
-    // FIX (2026-07-02): antes "Live influencers" y "Acceso al portal de
-    // influencers" se calculaban en el cliente a partir de
-    // /api/influencers?limit=100 — con 1452 influencers reales eso
-    // undercounteaba brutalmente (ej. "35/99" en vez del roster completo).
-    // Acá se trae id/user_id/display_name de TODA la org para cruzar con
-    // profiles.last_seen_at. FIX #2 (2026-07-03, reportado por Pri): un
-    // `.limit(5000)` del lado cliente NO evita el tope de Max Rows del
-    // proyecto Supabase (1000 por defecto, se aplica siempre) — confirmado
-    // que el KPI seguía en "1000". Se pagina con fetchAllRows para traer el
-    // roster completo real.
-    fetchAllRows(
-      (from, to) => db.from('influencers')
-        .select('id, user_id, display_name')
-        .eq('organization_id', orgId)
-        .range(from, to),
-      { maxRows: 5000 }
-    ),
+    // Conteo exacto de influencers que tienen cuenta de acceso.
+    // No descarga las filas completas del roster.
+    db.from('influencers')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .not('user_id', 'is', null),
+
+    // Conteos de marcas sin descargar su listado completo.
+    db.from('brands')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId),
+
+    db.from('brands')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .not('user_id', 'is', null),
 
     db.from('invoices')
       .select('total, currency')
@@ -138,44 +139,68 @@ export async function GET() {
   const margin    = revenueThisMonth - payrollThisMonth
   const marginPct = revenueThisMonth > 0 ? Math.round((margin / revenueThisMonth) * 100) : 0
 
-  // Cruce influencers de la org ↔ acceso + presencia
-  // "entered" = tiene cuenta de portal (user_id IS NOT NULL) — más correcto
-  //   semánticamente que last_seen_at, que depende de que el heartbeat haya
-  //   disparado DESPUÉS del deploy. Con el criterio anterior el KPI siempre
-  //   daba 0 para influencers que ingresaron antes del deploy del heartbeat.
-  // "live" = last_seen_at dentro de los últimos 10 min (heartbeat real).
-  const orgInfluencers = influencersRes.data ?? []
-  const influencersEntered = orgInfluencers.filter(i => i.user_id).length
+  // Totales mediante COUNT, sin descargar las aproximadamente 1.700 filas.
+  const totalInfluencers = influencersCountRes.count ?? 0
+  const influencersEntered = influencersEnteredCountRes.count ?? 0
+  const totalBrands = brandsCountRes.count ?? 0
+  const brandsEntered = brandsEnteredCountRes.count ?? 0
 
-  const userIds = orgInfluencers.map(i => i.user_id).filter((id): id is string => Boolean(id))
-  let lastSeenMap: Record<string, string | null> = {}
-  if (userIds.length > 0) {
-    // Paginar la query de profiles para evitar URLs demasiado largas con
-    // muchos IDs en el .in(). Se usa fetchAllRows igual que en influencers.
-    const profsRes = await fetchAllRows(
-      (from, to) => db.from('profiles').select('id, last_seen_at').in('id', userIds).range(from, to),
-      { maxRows: 5000 }
+  // Consultar solamente perfiles vistos durante los últimos 10 minutos.
+  const tenMinAgoIso = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+
+  const liveProfilesRes = await db.from('profiles')
+    .select('id, last_seen_at')
+    .gte('last_seen_at', tenMinAgoIso)
+    .order('last_seen_at', { ascending: false })
+    .limit(500)
+
+  const liveProfileIds = (liveProfilesRes.data ?? [])
+    .map(profile => profile.id)
+    .filter((id): id is string => Boolean(id))
+
+  let liveInfluencers: Array<{
+    id: string
+    name: string | null
+    last_seen_at: string | null
+  }> = []
+
+  if (liveProfileIds.length > 0) {
+    const liveInfluencersRes = await db.from('influencers')
+      .select('id, user_id, display_name')
+      .eq('organization_id', orgId)
+      .in('user_id', liveProfileIds)
+
+    const lastSeenMap = Object.fromEntries(
+      (liveProfilesRes.data ?? []).map(profile => [
+        profile.id as string,
+        profile.last_seen_at as string | null,
+      ])
     )
-    lastSeenMap = Object.fromEntries((profsRes.data ?? []).map(p => [p.id as string, p.last_seen_at as string | null]))
+
+    liveInfluencers = (liveInfluencersRes.data ?? [])
+      .map(influencer => ({
+        id: influencer.id,
+        name: influencer.display_name,
+        last_seen_at: influencer.user_id
+          ? lastSeenMap[influencer.user_id] ?? null
+          : null,
+      }))
+      .filter(influencer => influencer.last_seen_at !== null)
+      .sort(
+        (a, b) =>
+          new Date(b.last_seen_at as string).getTime() -
+          new Date(a.last_seen_at as string).getTime()
+      )
+      .slice(0, 10)
   }
-
-  const tenMinAgoMs = Date.now() - 10 * 60 * 1000
-  const influencersWithSeen = orgInfluencers.map(i => ({
-    ...i,
-    last_seen_at: i.user_id ? lastSeenMap[i.user_id] ?? null : null,
-  }))
-  const liveInfluencers = influencersWithSeen
-    .filter(i => i.last_seen_at && new Date(i.last_seen_at).getTime() > tenMinAgoMs)
-    .sort((a, b) => new Date(b.last_seen_at as string).getTime() - new Date(a.last_seen_at as string).getTime())
-    .slice(0, 10)
-    .map(i => ({ id: i.id, name: i.display_name, last_seen_at: i.last_seen_at }))
-
-  const totalInfluencers = influencersCountRes.count ?? orgInfluencers.length
 
   return NextResponse.json({
     kpis: {
-      active_campaigns:  campaignsRes.data?.length ?? 0,
+      active_campaigns:  campaignsRes.count ?? 0,
       total_influencers: totalInfluencers,
+      total_brands:      totalBrands,
+      brands_entered:    brandsEntered,
+      brands_pending:    Math.max(0, totalBrands - brandsEntered),
       revenue_month:     revenueThisMonth,
       payroll_month:     payrollThisMonth,
       margin,

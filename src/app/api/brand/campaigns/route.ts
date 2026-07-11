@@ -181,6 +181,7 @@ export async function POST(req: NextRequest) {
     content_guidelines?: string
     hashtags?: string[]
     platforms?: string[]
+    address?: string
     deliverable_templates?: Array<{ type: string; quantity: number; description?: string; due_date?: string }>
   }
 
@@ -190,7 +191,7 @@ export async function POST(req: NextRequest) {
 
   const { name, type, visibility, description, start_date, end_date,
           budget_total, application_deadline, max_influencers,
-          content_guidelines, hashtags, platforms, deliverable_templates } = body
+          content_guidelines, hashtags, platforms, address, deliverable_templates } = body
 
   if (!name?.trim()) return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
   if (!type) return NextResponse.json({ error: 'El tipo es requerido' }, { status: 422 })
@@ -236,6 +237,7 @@ export async function POST(req: NextRequest) {
       content_guidelines:   content_guidelines ?? null,
       hashtags:             hashtags ?? [],
       platforms:            platforms ?? [],
+      address:              (address && String(address).trim()) ? String(address).trim() : null,
       currency:             'CLP',
     })
     .select('id, name, status, visibility')

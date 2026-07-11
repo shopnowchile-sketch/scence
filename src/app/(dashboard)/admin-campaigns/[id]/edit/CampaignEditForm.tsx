@@ -53,6 +53,7 @@ const schema = z.object({
   approval_required:     z.boolean(),
   brand_id:              z.string().optional(),
   visibility:            z.enum(['private', 'open']).default('private'),
+  address:               z.string().max(300).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -104,6 +105,7 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
       deliverable_templates: [],
       brand_id:              '',
       visibility:            'private',
+      address:               '',
     },
   })
 
@@ -127,6 +129,7 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
         brand_id:              (c.brand_id as string) ?? '',
         approval_required:     c.approval_required as boolean,
         visibility:            (c.visibility as FormValues['visibility']) ?? 'private',
+        address:               (c.address as string) ?? '',
       })
     }
   }, [res, reset])
@@ -152,6 +155,7 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
         brand_id:              isBrandPortal ? ((res?.data as unknown as { brand_id?: string })?.brand_id ?? null) : (data.brand_id || null),
         approval_required:     data.approval_required,
         visibility:            data.visibility || 'private',
+        address:               data.address?.trim() || null,
       })
       toast.success('Campaña actualizada')
       router.push(`${basePath}/${id}`)
@@ -307,6 +311,15 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha fin</label>
               <input type="date" {...register('end_date')} className="input-base w-full" />
             </div>
+          </div>
+
+          {/* Dirección / ubicación */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Dirección / ubicación <span className="text-gray-400 text-xs">(opcional)</span>
+            </label>
+            <input {...register('address')} className="input-base w-full"
+              placeholder="Dónde se realizará (evento, activación, tienda…)" />
           </div>
 
           {/* Budget */}

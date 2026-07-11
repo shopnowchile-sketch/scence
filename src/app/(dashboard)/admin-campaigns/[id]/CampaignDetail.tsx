@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -1112,6 +1112,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <Users className="h-3.5 w-3.5 text-gray-300" />
                 <strong className="text-gray-800">{campaignInfluencers.length}</strong> influencers
               </span>
+              {c.address && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <MapPin className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
+                  <span className="truncate max-w-[220px]">{c.address}</span>
+                </span>
+              )}
               {c.brief_url && (
                 <a href={c.brief_url} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1 text-violet-600 hover:underline">
@@ -1210,6 +1216,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 el overview lo entienda por completo las marcas... las guías de
                 contenido" — es lo primero que una marca necesita leer para saber
                 qué se espera de la campaña. */}
+            {c.address && (
+              <div className="card p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-violet-500" /> Ubicación
+                </h3>
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{c.address}</p>
+              </div>
+            )}
+
             {c.content_guidelines && (
               <div className="card p-5 border-2 border-violet-100 bg-violet-50/20">
                 <h3 className="text-sm font-semibold text-violet-800 mb-2 flex items-center gap-2">

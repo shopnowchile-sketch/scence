@@ -107,6 +107,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'deliverable_templates',
     'approval_required',
     'visibility',
+    'address',
   ]
 
   const updates: Record<string, unknown> = {}

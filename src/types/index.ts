@@ -211,6 +211,7 @@ export interface Campaign {
   visibility?: 'private' | 'open'
   start_date: string | null
   end_date: string | null
+  address?: string | null          // dirección/ubicación donde se realizará la campaña
   budget_total: number | null
   budget_spent: number
   currency: Currency

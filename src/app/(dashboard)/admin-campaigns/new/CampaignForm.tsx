@@ -63,6 +63,7 @@ const schema = z.object({
   deliverable_templates: z.array(deliverableSchema).optional(),
   brand_id: z.string().optional(),
   visibility: z.enum(['private', 'open']).default('private'),
+  address: z.string().max(300).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -304,6 +305,14 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha fin</label>
           <input type="date" {...register('end_date')} className="input-base w-full" />
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Dirección / ubicación <span className="text-gray-400 text-xs">(opcional)</span>
+        </label>
+        <input {...register('address')} className="input-base w-full"
+          placeholder="Dónde se realizará (evento, activación, tienda…)" />
       </div>
 
       {portal === 'admin' && (
@@ -592,6 +601,7 @@ export function CampaignForm({
       deliverable_templates: [],
       brand_id: '',
       visibility: 'private',
+      address: '',
     },
   })
 
@@ -611,6 +621,7 @@ export function CampaignForm({
       commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
       brand_id: data.brand_id || null,
       visibility: data.visibility || 'private',
+      address: data.address?.trim() || null,
     }
   }
 

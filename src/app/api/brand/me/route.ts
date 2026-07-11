@@ -8,7 +8,7 @@ const BRAND_FIELDS = `
   contact_name, contact_email, contact_phone,
   address_street, address_number, address_city, address_region, address_country,
   address2_street, address2_number, address2_city, address2_region, address2_country,
-  organization_id, user_id, status
+  organization_id, user_id, status, subscription_plan_override
 `
 
 // FIX (2026-07-10, multiusuario por marca): antes resolvía la marca solo por
@@ -42,8 +42,8 @@ export async function GET() {
 
   if (error || !data) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
-  const orgPlan = await resolveBrandPlan(admin, data.organization_id)
+  // Plan efectivo individual de esta marca.
+  const orgPlan = await resolveBrandPlan(admin, data.organization_id, data.id)
   return NextResponse.json({
     data: { ...data, org_plan: orgPlan, member_role: access.role, is_owner: access.isOwner },
   })

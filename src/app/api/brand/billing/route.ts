@@ -27,7 +27,7 @@ export async function GET() {
   const [plans, subscription, orgPlan] = await Promise.all([
     getActivePlans(admin),
     getOrgSubscription(admin, orgId),
-    resolveBrandPlan(admin, orgId),
+    resolveBrandPlan(admin, orgId, access.brandId),
   ])
 
   return NextResponse.json({ plans, subscription, org_plan: orgPlan })

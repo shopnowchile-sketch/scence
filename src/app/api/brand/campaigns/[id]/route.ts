@@ -185,7 +185,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     )
   }
 
-  const orgPlan = await resolveBrandPlan(admin, campaignBase.organization_id)
+  const orgPlan = await resolveBrandPlan(admin, campaignBase.organization_id, brand.id)
   const limits = getPlanLimits(orgPlan)
 
   const nextVisibility =

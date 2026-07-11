@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
 
   // ── Plan gating ───────────────────────────────────────────────────────────
   // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
-  const orgPlan = await resolveBrandPlan(admin, brand.organization_id)
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const limits  = getPlanLimits(orgPlan)
 
   // Contar campañas activas (draft, active, pending_approval, paused — todo excepto completed/canceled)

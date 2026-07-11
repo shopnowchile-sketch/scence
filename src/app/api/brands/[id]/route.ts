@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandPlan } from '@/lib/plan-limits'
+import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
 
 type Params = { params: { id: string } }
 
@@ -48,8 +48,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     last_sign_in_at = u?.user?.last_sign_in_at ?? null
   }
 
-  // Plan de suscripción efectivo (solo lectura, para card "Plan de suscripción" en Billing).
-  const org_plan = brand.organization_id ? await resolveBrandPlan(admin, brand.organization_id) : 'free'
+  // Plan interno efectivo individual de la marca.
+  const org_plan = brand.organization_id
+    ? await resolveBrandPlan(admin, brand.organization_id, brand.id)
+    : 'basic'
 
   // Influencers agregadas/asignadas directamente a esta marca vía brand_influencers
   // (además de las que vienen por campañas, que el cliente resuelve aparte).
@@ -78,6 +80,26 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id: _id, organization_id: _oi, created_by: _cb, created_at: _ca, ...rest } = body
 
+  if ('subscription_plan_override' in rest) {
+    const rawValue = rest.subscription_plan_override
+    const normalized =
+      rawValue === null || rawValue === undefined || rawValue === ''
+        ? null
+        : String(rawValue).toLowerCase().trim()
+
+    if (
+      normalized !== null &&
+      !(PLAN_TIERS as readonly string[]).includes(normalized)
+    ) {
+      return NextResponse.json(
+        { error: 'El plan debe ser basic, growth, pro o heredar' },
+        { status: 422 },
+      )
+    }
+
+    rest.subscription_plan_override = normalized
+  }
+
   const { data, error } = await admin
     .from('brands')
     .update({ ...rest, updated_at: new Date().toISOString() })
@@ -86,7 +108,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data })
+
+  const org_plan = data.organization_id
+    ? await resolveBrandPlan(admin, data.organization_id, data.id)
+    : 'basic'
+
+  return NextResponse.json({ data: { ...data, org_plan } })
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {

@@ -3,8 +3,10 @@
  * Fuente de verdad de límites internos por plan de marca en SCENCE.
  *
  * Fuente de plan (en orden de prioridad):
- *   1. subscriptions.status IN ('active','trialing') → subscription_plans.tier
- *   2. Fallback: organizations.subscription_plan (TEXT, DEFAULT 'free')
+ *   1. brands.subscription_plan_override
+ *   2. subscriptions.status IN ('active','trialing') → subscription_plans.tier
+ *   3. organizations.subscription_plan
+ *   4. Basic como fallback
  *
  * Mapping de valores a tier:
  *   'free' | null | '' | 'starter' | 'basic'   → basic  (más restrictivo)
@@ -102,8 +104,27 @@ export function formatPriceCLP(amount: number): string {
 export async function resolveBrandPlan(
   admin: SupabaseClient,
   organizationId: string,
+  brandId?: string | null,
 ): Promise<string> {
-  // 1. Intentar suscripción activa/trialing con su tier
+  // 1. Override manual individual de la marca.
+  if (brandId) {
+    const { data: brand } = await admin
+      .from('brands')
+      .select('subscription_plan_override')
+      .eq('id', brandId)
+      .maybeSingle()
+
+    const override = brand?.subscription_plan_override
+
+    if (
+      typeof override === 'string' &&
+      (PLAN_TIERS as readonly string[]).includes(override)
+    ) {
+      return override
+    }
+  }
+
+  // 2. Suscripción financiera activa de la organización.
   const { data: sub } = await admin
     .from('subscriptions')
     .select('status, plan:subscription_plans(tier)')
@@ -116,14 +137,15 @@ export async function resolveBrandPlan(
   const tier = (sub?.plan as { tier?: string } | null)?.tier
   if (tier) return tier
 
-  // 2. Fallback a organizations.subscription_plan
+  // 3. Plan heredado de la organización.
   const { data: org } = await admin
     .from('organizations')
     .select('subscription_plan')
     .eq('id', organizationId)
     .single()
 
-  return org?.subscription_plan ?? 'free'
+  // 4. Basic.
+  return org?.subscription_plan ?? 'basic'
 }
 
 // ── Códigos de error para respuestas API ──────────────────────────────────────

@@ -35,6 +35,7 @@ type Brand = {
   last_sign_in_at?: string | null
   campaigns?: Campaign[]
   org_plan?: string | null
+  subscription_plan_override?: 'basic' | 'growth' | 'pro' | null
   direct_influencers?: Array<{ id: string; display_name: string; avatar_url: string | null }>
 }
 
@@ -80,7 +81,7 @@ function money(value: number | null, currency?: string | null) {
   return `${currency ?? 'CLP'} ${value.toLocaleString('es-CL')}`
 }
 
-const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'billing', 'access', 'history'] as const
+const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'plan', 'billing', 'access', 'history'] as const
 type Tab = typeof VALID_TABS[number]
 
 export default function AdminBrandDetailPage({ params }: { params: { id: string } }) {
@@ -102,6 +103,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [invoiceAmount, setInvoiceAmount] = useState('')
   const [invoiceEmail, setInvoiceEmail] = useState('')
   const [creatingInvoice, setCreatingInvoice] = useState(false)
+  const [planOverride, setPlanOverride] = useState<'' | 'basic' | 'growth' | 'pro'>('')
+  const [savingPlan, setSavingPlan] = useState(false)
   const [locations, setLocations] = useState<BrandLocation[]>([])
   const [loadingLocations, setLoadingLocations] = useState(false)
   const [newLocation, setNewLocation] = useState({
@@ -125,6 +128,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       if (!res.ok) throw new Error(json.error ?? 'Error cargando marca')
       setBrand(json.data)
       setInvoiceEmail(json.data?.contact_email ?? '')
+      setPlanOverride(json.data?.subscription_plan_override ?? '')
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -286,6 +290,40 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
     setLocations(prev => prev.filter(l => l.id !== location.id))
     toast.success('Lugar eliminado')
+  }
+
+  async function savePlanOverride() {
+    if (!brand) return
+
+    setSavingPlan(true)
+
+    try {
+      const res = await fetch(`/api/brands/${brand.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscription_plan_override: planOverride || null,
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new Error(json.error ?? 'No se pudo actualizar el plan')
+      }
+
+      setBrand(prev => prev ? {
+        ...prev,
+        subscription_plan_override: json.data.subscription_plan_override ?? null,
+        org_plan: json.data.org_plan ?? prev.org_plan,
+      } : prev)
+
+      toast.success('Plan de la marca actualizado')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el plan')
+    } finally {
+      setSavingPlan(false)
+    }
   }
 
   async function updateStatus(status: 'approved' | 'pending_approval' | 'suspended') {
@@ -451,6 +489,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             ['campaigns', 'Campañas'],
             ['influencers', 'Influencers'],
             ['locations', 'Lugares'],
+            ['plan', 'Plan'],
             ['billing', 'Billing'],
             ['access', 'Acceso'],
             ['history', 'Historial'],
@@ -748,32 +787,107 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         </div>
       )}
 
-      {tab === 'billing' && (
+      {tab === 'plan' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="card p-5 space-y-3 lg:col-span-2">
+          <div className="card p-5 space-y-5">
             <div>
-              <h2 className="font-bold text-gray-900">Plan de suscripción</h2>
+              <h2 className="font-bold text-gray-900">Plan de la marca</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Plan efectivo de la organización (solo lectura — la activación sigue siendo manual).
+                Define los permisos y límites internos de esta marca. No modifica facturas ni pagos.
               </p>
             </div>
+
             {(() => {
               const tier = getPlanTier(brand.org_plan)
               const info = PLAN_LIMITS[tier]
+
               return (
-                <div className="flex items-center gap-3">
-                  <span className={cn(
-                    'badge text-xs font-bold',
-                    tier === 'pro' ? 'badge-green' : tier === 'growth' ? 'badge-blue' : 'badge-gray'
-                  )}>
-                    {info.label}
-                  </span>
-                  <span className="text-sm text-gray-600">{formatPriceCLP(info.price_monthly_clp)} CLP/mes</span>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase">Plan efectivo actual</p>
+                  <div className="flex items-center gap-3">
+                    <span className={cn(
+                      'badge text-xs font-bold',
+                      tier === 'pro'
+                        ? 'badge-green'
+                        : tier === 'growth'
+                          ? 'badge-blue'
+                          : 'badge-gray'
+                    )}>
+                      {info.label}
+                    </span>
+                    <span className="text-sm text-gray-600">
+                      {formatPriceCLP(info.price_monthly_clp)} CLP/mes
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    {brand.subscription_plan_override
+                      ? 'Asignado manualmente a esta marca.'
+                      : 'Heredado desde la suscripción o configuración general.'}
+                  </p>
                 </div>
               )
             })()}
+
+            <label className="block">
+              <span className="text-xs font-semibold text-gray-500 uppercase">
+                Asignación administrativa
+              </span>
+              <select
+                value={planOverride}
+                onChange={event => setPlanOverride(
+                  event.target.value as '' | 'basic' | 'growth' | 'pro'
+                )}
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              >
+                <option value="">Heredar configuración general</option>
+                <option value="basic">Basic</option>
+                <option value="growth">Growth</option>
+                <option value="pro">Pro</option>
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={savePlanOverride}
+              disabled={savingPlan}
+              className="w-full py-2.5 text-sm font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-60"
+            >
+              {savingPlan ? 'Guardando…' : 'Guardar plan'}
+            </button>
           </div>
 
+          <div className="card p-5 space-y-4">
+            <h2 className="font-bold text-gray-900">Límites por plan</h2>
+
+            {(['basic', 'growth', 'pro'] as const).map(tier => {
+              const info = PLAN_LIMITS[tier]
+
+              return (
+                <div key={tier} className="rounded-xl border border-gray-100 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-gray-900">{info.label}</span>
+                    <span className="text-xs text-gray-500">
+                      {formatPriceCLP(info.price_monthly_clp)}/mes
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {info.max_active_campaigns >= 999
+                      ? 'Campañas activas sin límite práctico'
+                      : `${info.max_active_campaigns} campaña activa`}
+                    {' · '}
+                    {info.max_roster_influencers >= 999
+                      ? 'Roster sin límite práctico'
+                      : `${info.max_roster_influencers} influencers en roster`}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === 'billing' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="card p-5 space-y-4">
             <div>
               <h2 className="font-bold text-gray-900">Crear factura</h2>

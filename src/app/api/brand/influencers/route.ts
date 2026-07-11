@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
 
   // Pro ve el catálogo completo. Basic/Growth ven únicamente su roster privado:
   // asignadas directamente desde Admin/marca + participantes aceptadas.
-  const orgPlan    = await resolveBrandPlan(admin, brand.organization_id)
+  const orgPlan    = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const fullAccess = canViewFullInfluencerBase(orgPlan)
 
   let restrictedInfluencerIds: string[] | null = null

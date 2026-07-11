@@ -40,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const orgPlan = await resolveBrandPlan(admin, brand.organization_id)
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const fullAccess = canViewFullInfluencerBase(orgPlan)
 
   // Campañas donde la marca es principal o colaboradora

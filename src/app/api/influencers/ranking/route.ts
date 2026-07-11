@@ -50,51 +50,71 @@ export async function GET(req: NextRequest) {
   // aplica SIEMPRE, sin importar el .limit() del cliente. Confirmado en vivo:
   // total seguía en 1000 con 1452 influencers reales. Se pagina con
   // fetchAllRows (múltiples .range() de a 1000) para traer el dataset completo.
-  const { data: influencers, error: infErr } = await fetchAllRows(
-    (from, to) => {
-      let q = admin
-        .from('influencers')
-        .select(`
-          id,
-          user_id,
-          display_name,
-          email,
-          city,
-          commune,
-          country,
-          categories,
-          rating,
-          social_profiles:influencer_social_profiles (
-            platform,
-            username,
-            followers,
-            engagement_rate,
-            is_primary
-          )
-        `)
-        .range(from, to)
-      if (orgId) q = q.eq('organization_id', orgId)
-      return q
-    },
-    { maxRows: 5000 }
-  )
+  // Las 3 descargas son independientes → se corren en PARALELO. Antes eran 3
+  // cascadas secuenciales (fetchAllRows uno tras otro) cuya SUMA acercaba el
+  // endpoint al timeout serverless: "Agregar influencer" se quedaba cargando.
+  // Ahora el tiempo total es el del query más lento, no la suma. `profiles` va
+  // después porque depende de los user_id de los influencers.
+  const [
+    { data: influencers, error: infErr },
+    { data: campaignInfluencersRaw, error: ciErr },
+    { data: deliverables, error: delErr },
+  ] = await Promise.all([
+    fetchAllRows(
+      (from, to) => {
+        let q = admin
+          .from('influencers')
+          .select(`
+            id,
+            user_id,
+            display_name,
+            email,
+            city,
+            commune,
+            country,
+            categories,
+            rating,
+            social_profiles:influencer_social_profiles (
+              platform,
+              username,
+              followers,
+              engagement_rate,
+              is_primary
+            )
+          `)
+          .range(from, to)
+        if (orgId) q = q.eq('organization_id', orgId)
+        return q
+      },
+      { maxRows: 5000 }
+    ),
+    fetchAllRows(
+      (from, to) => admin
+        .from('campaign_influencers')
+        .select('id, influencer_id, status, campaign:campaigns(name)')
+        .range(from, to),
+      { maxRows: 5000 }
+    ),
+    fetchAllRows(
+      (from, to) => admin
+        .from('campaign_deliverables')
+        .select('influencer_id, campaign_influencer_id, status')
+        .range(from, to),
+      { maxRows: 10000 }
+    ),
+  ])
 
   if (infErr) {
     console.error('[GET /api/influencers/ranking] influencers:', infErr)
     return NextResponse.json({ error: (infErr as Error).message ?? 'Error' }, { status: 500 })
   }
-
-  const { data: campaignInfluencersRaw, error: ciErr } = await fetchAllRows(
-    (from, to) => admin
-      .from('campaign_influencers')
-      .select('id, influencer_id, status, campaign:campaigns(name)')
-      .range(from, to),
-    { maxRows: 5000 }
-  )
-
   if (ciErr) {
     console.error('[GET /api/influencers/ranking] campaign_influencers:', ciErr)
     return NextResponse.json({ error: (ciErr as Error).message ?? 'Error' }, { status: 500 })
+  }
+  if (delErr) {
+    console.error('[GET /api/influencers/ranking] deliverables:', delErr)
+    return NextResponse.json({ error: (delErr as Error).message ?? 'Error' }, { status: 500 })
   }
 
   const campaignInfluencers = (campaignInfluencersRaw ?? []).map(ci => ({
@@ -103,19 +123,6 @@ export async function GET(req: NextRequest) {
     status: ci.status,
     campaign_name: (ci.campaign as { name?: string | null } | null)?.name ?? null,
   }))
-
-  const { data: deliverables, error: delErr } = await fetchAllRows(
-    (from, to) => admin
-      .from('campaign_deliverables')
-      .select('influencer_id, campaign_influencer_id, status')
-      .range(from, to),
-    { maxRows: 10000 }
-  )
-
-  if (delErr) {
-    console.error('[GET /api/influencers/ranking] deliverables:', delErr)
-    return NextResponse.json({ error: (delErr as Error).message ?? 'Error' }, { status: 500 })
-  }
 
   const userIds = (influencers ?? [])
     .map(inf => inf.user_id)

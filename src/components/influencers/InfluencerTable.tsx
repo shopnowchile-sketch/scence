@@ -133,8 +133,8 @@ export function InfluencerTable({
                 ['status', 'Estado'],
                 ['commune', 'Comuna'],
                 ['birthDate', 'Fecha de nacimiento'],
-                ['lastConnection', 'Última conexión'],
                 ...(portal === 'admin' ? ([
+                  ['lastConnection', 'Última conexión'],
                   ['registeredBy', 'Registrada por'],
                   ['associatedBrands', 'Marcas asignadas'],
                 ] as const) : []),
@@ -168,7 +168,7 @@ export function InfluencerTable({
             {visible.status         && <col style={{ width: widths.status }} />}
             {visible.commune        && <col style={{ width: widths.commune }} />}
             {visible.birthDate      && <col style={{ width: widths.birthDate }} />}
-            {visible.lastConnection && <col style={{ width: widths.lastConnection }} />}
+            {portal === 'admin' && visible.lastConnection && <col style={{ width: widths.lastConnection }} />}
             {portal === 'admin' && visible.registeredBy      && <col style={{ width: widths.registeredBy }} />}
             {portal === 'admin' && visible.associatedBrands  && <col style={{ width: widths.associatedBrands }} />}
             <col style={{ width: 90 }} />
@@ -197,7 +197,7 @@ export function InfluencerTable({
               {visible.status && <TH col="is_active" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('status', e)}>Estado</TH>}
               {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('commune', e)}>Comuna</TH>}
               {visible.birthDate && <TH col="birth_date" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('birthDate', e)}>Fecha nacimiento</TH>}
-              {visible.lastConnection && (
+              {portal === 'admin' && visible.lastConnection && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('lastConnection', e)}>Última conexión</SortableTH>
               )}
               {portal === 'admin' && visible.registeredBy && (
@@ -379,7 +379,7 @@ export function InfluencerTable({
                   )}
 
                   {/* Última conexión */}
-                  {visible.lastConnection && (
+                  {portal === 'admin' && visible.lastConnection && (
                     <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {inf.last_sign_in_at
                       ? new Date(inf.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })

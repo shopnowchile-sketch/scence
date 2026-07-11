@@ -43,7 +43,8 @@ export function BrandOrgForm() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const forcedComplete = searchParams.get('complete') === '1'
-  const [form,   setForm]   = useState<BrandProfile>({} as BrandProfile)
+  const [form, setForm] = useState<BrandProfile>({} as BrandProfile)
+  const [organizationId, setOrganizationId] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
 
@@ -55,6 +56,7 @@ export function BrandOrgForm() {
       const res  = await fetch('/api/brand/me')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
+      setOrganizationId(json.data.organization_id ?? '')
       setForm({
         name:          json.data.name          ?? '',
         rut:           json.data.rut           ?? '',
@@ -127,6 +129,13 @@ export function BrandOrgForm() {
           </div>
           <Field label="RUT">
             <input value={form.rut ?? ''} onChange={set('rut')} placeholder="76.123.456-7" className="input-base w-full" />
+          </Field>
+          <Field label="Organization ID">
+            <input
+              value={organizationId}
+              readOnly
+              className="input-base w-full bg-gray-50 text-gray-500 font-mono text-xs"
+            />
           </Field>
           <Field label="Industria / Rubro">
             <input value={form.industry ?? ''} onChange={set('industry')} placeholder="Moda, Belleza…" className="input-base w-full" />

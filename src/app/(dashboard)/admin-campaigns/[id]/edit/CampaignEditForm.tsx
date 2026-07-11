@@ -129,7 +129,7 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
         brand_id:              (c.brand_id as string) ?? '',
         approval_required:     c.approval_required as boolean,
         visibility:            (c.visibility as FormValues['visibility']) ?? 'private',
-        address:               (c.address as string) ?? '',
+        address:               (((c.metadata as Record<string, unknown> | null)?.address as string | undefined) ?? ''),
       })
     }
   }, [res, reset])

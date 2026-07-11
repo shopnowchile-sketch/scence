@@ -196,7 +196,11 @@ export async function POST(request: NextRequest) {
       brief_url: brief_url ?? null,
       brand_id: brand_id ?? null,
       commission_rate: commission_rate ?? null,
-      address: (address !== undefined && address !== null && String(address).trim() !== '') ? String(address).trim() : null,
+      metadata: {
+        address: (address !== undefined && address !== null && String(address).trim() !== '')
+          ? String(address).trim()
+          : null,
+      },
       deliverable_templates: Array.isArray(deliverable_templates) && (deliverable_templates as unknown[]).length > 0
         ? deliverable_templates
         : [],

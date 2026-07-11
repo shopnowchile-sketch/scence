@@ -5,8 +5,6 @@ import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import {
   resolveBrandPlan,
   canViewFullInfluencerBase,
-  fullInfluencerBaseMessage,
-  PLAN_ERROR_CODES,
 } from '@/lib/plan-limits'
 
 // GET /api/brand/influencers
@@ -64,20 +62,66 @@ export async function GET(req: NextRequest) {
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
-  // ── Visibilidad por plan (regla centralizada en plan-limits) ──────────────
-  // Solo Pro navega la base COMPLETA de influencers. Basic y Growth NO tienen
-  // catálogo: a sus postulantes las ven en el endpoint de aplicaciones de cada
-  // campaña, nunca por acá. Enforcement en backend, no solo en la UI.
+  // Pro ve el catálogo completo. Basic/Growth ven únicamente su roster privado:
+  // asignadas directamente desde Admin/marca + participantes aceptadas.
   const orgPlan    = await resolveBrandPlan(admin, brand.organization_id)
   const fullAccess = canViewFullInfluencerBase(orgPlan)
 
+  let restrictedInfluencerIds: string[] | null = null
+
   if (!fullAccess) {
-    return NextResponse.json({
-      error: fullInfluencerBaseMessage(orgPlan),
-      code:  PLAN_ERROR_CODES.INFLUENCER_BASE,
-      plan:  orgPlan,
-      full_access: false,
-    }, { status: 403 })
+    const [
+      { data: primaryCampaigns, error: primaryError },
+      { data: collaboratorRows, error: collaboratorError },
+      { data: directRows, error: directError },
+    ] = await Promise.all([
+      admin.from('campaigns').select('id').eq('brand_id', brand.id),
+      admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
+      admin.from('brand_influencers').select('influencer_id').eq('brand_id', brand.id),
+    ])
+
+    const relationError = primaryError ?? collaboratorError ?? directError
+    if (relationError) {
+      return NextResponse.json({ error: relationError.message }, { status: 500 })
+    }
+
+    const campaignIds = Array.from(new Set([
+      ...(primaryCampaigns ?? []).map(row => row.id),
+      ...(collaboratorRows ?? []).map(row => row.campaign_id),
+    ].filter(Boolean)))
+
+    let acceptedInfluencerIds: string[] = []
+
+    if (campaignIds.length > 0) {
+      const { data: acceptedRows, error: acceptedError } = await admin
+        .from('campaign_influencers')
+        .select('influencer_id')
+        .in('campaign_id', campaignIds)
+        .eq('application_status', 'accepted')
+
+      if (acceptedError) {
+        return NextResponse.json({ error: acceptedError.message }, { status: 500 })
+      }
+
+      acceptedInfluencerIds = (acceptedRows ?? [])
+        .map(row => row.influencer_id)
+        .filter(Boolean)
+    }
+
+    restrictedInfluencerIds = Array.from(new Set([
+      ...acceptedInfluencerIds,
+      ...(directRows ?? []).map(row => row.influencer_id).filter(Boolean),
+    ]))
+
+    if (restrictedInfluencerIds.length === 0) {
+      return NextResponse.json({
+        data: [],
+        total: 0,
+        page,
+        limit,
+        full_access: false,
+      })
+    }
   }
 
   // Columnas explícitas — NUNCA '*'. La marca no debe recibir email, phone,
@@ -106,6 +150,12 @@ export async function GET(req: NextRequest) {
         id, deliverable_type, base_rate, currency, is_active
       )
     `, { count: 'exact' })
+
+  if (restrictedInfluencerIds) {
+    query = query.in('id', restrictedInfluencerIds)
+  }
+
+  query = query
     .order(sortBy, { ascending: sortDir })
     .range((page - 1) * limit, page * limit - 1)
 

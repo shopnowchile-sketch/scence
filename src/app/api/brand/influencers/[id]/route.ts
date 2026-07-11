@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { resolveBrandPlan, canViewFullInfluencerBase } from '@/lib/plan-limits'
 
 type Params = { params: { id: string } }
 
@@ -39,6 +40,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id)
+  const fullAccess = canViewFullInfluencerBase(orgPlan)
+
   // Campañas donde la marca es principal o colaboradora
   const { data: primaryCampaigns, error: primaryErr } = await admin
     .from('campaigns')
@@ -71,6 +75,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .from('campaign_influencers')
       .select('influencer_id')
       .in('campaign_id', campaignIds)
+      .eq('application_status', 'accepted')
 
     if (ciErr) {
       console.error('[GET /api/brand/influencers/[id]] campaign_influencers:', ciErr)
@@ -94,7 +99,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const allowedIds = new Set([...campaignInfluencerIds, ...directInfluencerIds])
 
-  if (!allowedIds.has(params.id)) {
+  if (!fullAccess && !allowedIds.has(params.id)) {
     // Mismo mensaje que "no encontrado" real — no confirmar existencia del ID
     return NextResponse.json({ error: 'Influencer no encontrado' }, { status: 404 })
   }

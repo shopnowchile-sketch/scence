@@ -249,9 +249,12 @@ export function InfluencerTable({
                               {inf.display_name}
                             </Link>
                           ) : (
-                            <span className="text-sm font-semibold text-gray-900">
+                            <Link
+                              href={`/brand-influencers/${inf.id}`}
+                              className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
+                            >
                               {inf.display_name}
-                            </span>
+                            </Link>
                           )}
                           {inf.is_verified && (
                             <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
@@ -426,9 +429,11 @@ export function InfluencerTable({
                           <Send className="h-3.5 w-3.5" />
                         </button>
                       )}
-                      {portal === 'admin' && (
+                      {(portal === 'admin' || portal === 'brand') && (
                         <Link
-                          href={`/admin-influencers/${inf.id}`}
+                          href={portal === 'admin'
+                            ? `/admin-influencers/${inf.id}`
+                            : `/brand-influencers/${inf.id}`}
                           className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                           title="Ver perfil"
                         >

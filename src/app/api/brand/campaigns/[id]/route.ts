@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: campaignBase, error: baseError } = await admin
     .from('campaigns')
-    .select('id, brand_id')
+    .select('id, brand_id, created_by_brand_id')
     .eq('id', params.id)
     .single()
 
@@ -28,7 +28,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: baseError.message }, { status: 500 })
   }
 
-  let hasAccess = campaignBase.brand_id === brand.id
+  const canEdit =
+    campaignBase.brand_id === brand.id ||
+    campaignBase.created_by_brand_id === brand.id
+
+  let hasAccess = canEdit
 
   if (!hasAccess) {
     const { data: coBrand } = await admin
@@ -66,7 +70,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ data })
+  return NextResponse.json({
+    data: {
+      ...data,
+      _brand_permissions: {
+        isBrand: true,
+        canView: true,
+        canEdit,
+        brandId: brand.id,
+      },
+    },
+  })
 }
 
 
@@ -107,7 +121,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'deliverable_templates',
     'approval_required',
     'visibility',
-    'address',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -132,7 +145,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data: campaignBase, error: baseError } = await admin
     .from('campaigns')
-    .select('id, brand_id')
+    .select('id, brand_id, created_by_brand_id, metadata')
     .eq('id', params.id)
     .single()
 
@@ -143,21 +156,36 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: baseError.message }, { status: 500 })
   }
 
-  let hasAccess = campaignBase.brand_id === brand.id
+  const canEdit =
+    campaignBase.brand_id === brand.id ||
+    campaignBase.created_by_brand_id === brand.id
 
-  if (!hasAccess) {
-    const { data: coBrand } = await admin
-      .from('campaign_brands')
-      .select('campaign_id')
-      .eq('campaign_id', params.id)
-      .eq('brand_id', brand.id)
-      .maybeSingle()
-
-    hasAccess = !!coBrand
+  if (!canEdit) {
+    return NextResponse.json(
+      { error: 'Solo la marca creadora puede editar esta campaña' },
+      { status: 403 },
+    )
   }
 
-  if (!hasAccess) {
-    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  if ('address' in body) {
+    const existingMetadata =
+      campaignBase.metadata &&
+      typeof campaignBase.metadata === 'object' &&
+      !Array.isArray(campaignBase.metadata)
+        ? (campaignBase.metadata as Record<string, unknown>)
+        : {}
+
+    const normalizedAddress =
+      body.address !== undefined &&
+      body.address !== null &&
+      String(body.address).trim() !== ''
+        ? String(body.address).trim()
+        : null
+
+    updates.metadata = {
+      ...existingMetadata,
+      address: normalizedAddress,
+    }
   }
 
   const { data, error } = await admin

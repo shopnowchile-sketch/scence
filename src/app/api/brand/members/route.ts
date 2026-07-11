@@ -71,17 +71,52 @@ export async function GET() {
   if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('brand_members')
-    .select('id, email, role, invited_at, joined_at, is_active')
-    .eq('brand_id', viewer.access.brandId)
-    .order('invited_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const [
+    { data: members, error: membersError },
+    { data: brand, error: brandError },
+  ] = await Promise.all([
+    admin
+      .from('brand_members')
+      .select('id, email, role, invited_at, joined_at, is_active')
+      .eq('brand_id', viewer.access.brandId)
+      .order('invited_at', { ascending: false }),
+    admin
+      .from('brands')
+      .select('user_id, contact_email, created_at')
+      .eq('id', viewer.access.brandId)
+      .maybeSingle(),
+  ])
 
-  // Owner siempre primero (sort estable: mantiene el orden por invited_at desc
-  // dentro de cada grupo) — mismo criterio que ya usa /api/settings/team con is_owner.
-  const sorted = (data ?? []).slice().sort((a, b) => {
+  const queryError = membersError ?? brandError
+  if (queryError) {
+    return NextResponse.json({ error: queryError.message }, { status: 500 })
+  }
+
+  const rows = [...(members ?? [])]
+
+  if (brand?.user_id) {
+    const { data: ownerAuth } = await admin.auth.admin.getUserById(brand.user_id)
+    const ownerEmail = ownerAuth?.user?.email ?? brand.contact_email
+
+    const alreadyIncluded = rows.some(member =>
+      member.role === 'owner' ||
+      (!!ownerEmail && member.email.toLowerCase() === ownerEmail.toLowerCase())
+    )
+
+    if (ownerEmail && !alreadyIncluded) {
+      rows.unshift({
+        id: `owner-${brand.user_id}`,
+        email: ownerEmail,
+        role: 'owner',
+        invited_at: brand.created_at ?? new Date().toISOString(),
+        joined_at: brand.created_at ?? new Date().toISOString(),
+        is_active: true,
+      })
+    }
+  }
+
+  const sorted = rows.slice().sort((a, b) => {
     if (a.role === 'owner' && b.role !== 'owner') return -1
     if (a.role !== 'owner' && b.role === 'owner') return 1
     return 0

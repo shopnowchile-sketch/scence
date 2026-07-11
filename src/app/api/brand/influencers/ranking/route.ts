@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
         .from('campaign_influencers')
         .select('id, influencer_id, status, campaign_id, campaign:campaigns(name)')
         .in('campaign_id', campaignIds)
+        .eq('application_status', 'accepted')
         .range(from, to),
       { maxRows: 5000 }
     )

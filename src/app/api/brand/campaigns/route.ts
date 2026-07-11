@@ -240,7 +240,9 @@ export async function POST(req: NextRequest) {
       content_guidelines:   content_guidelines ?? null,
       hashtags:             hashtags ?? [],
       platforms:            platforms ?? [],
-      address:              (address && String(address).trim()) ? String(address).trim() : null,
+      metadata: {
+        address: (address && String(address).trim()) ? String(address).trim() : null,
+      },
       currency:             'CLP',
     })
     .select('id, name, status, visibility')

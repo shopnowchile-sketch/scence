@@ -174,12 +174,45 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   // Strip server-managed fields
-  const { id: _id, created_at: _ca, created_by: _cb, organization_id: _oi, budget_spent: _bs, ...rest } = body
+  const { id: _id, created_at: _ca, created_by: _cb, organization_id: _oi, budget_spent: _bs, address, ...rest } = body
 
   // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
   // propia campaña, aunque el formulario ya no muestre ese campo.
   if (user.user_metadata?.is_brand) {
     delete rest.brand_id
+  }
+
+  if ('address' in body) {
+    const { data: existingCampaign } = await admin
+      .from('campaigns')
+      .select('metadata')
+      .eq('id', params.id)
+      .maybeSingle()
+
+    const existingMetadata =
+      existingCampaign?.metadata &&
+      typeof existingCampaign.metadata === 'object' &&
+      !Array.isArray(existingCampaign.metadata)
+        ? (existingCampaign.metadata as Record<string, unknown>)
+        : {}
+
+    const incomingMetadata =
+      rest.metadata &&
+      typeof rest.metadata === 'object' &&
+      !Array.isArray(rest.metadata)
+        ? (rest.metadata as Record<string, unknown>)
+        : {}
+
+    rest.metadata = {
+      ...existingMetadata,
+      ...incomingMetadata,
+      address:
+        address !== undefined &&
+        address !== null &&
+        String(address).trim() !== ''
+          ? String(address).trim()
+          : null,
+    }
   }
 
   // Scope update to the user's own org — salvo admin/super_admin/owner de
@@ -226,7 +259,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { action, ...fields } = body
+  const { action, address, ...fields } = body
 
   // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
   // propia campaña vía PATCH, aunque el formulario ya no muestre ese campo.
@@ -245,6 +278,39 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     fields.status = 'canceled'
   } else if (action === 'submit_for_approval') {
     fields.status = 'pending_approval'
+  }
+
+  if ('address' in body) {
+    const { data: existingCampaign } = await admin
+      .from('campaigns')
+      .select('metadata')
+      .eq('id', params.id)
+      .maybeSingle()
+
+    const existingMetadata =
+      existingCampaign?.metadata &&
+      typeof existingCampaign.metadata === 'object' &&
+      !Array.isArray(existingCampaign.metadata)
+        ? (existingCampaign.metadata as Record<string, unknown>)
+        : {}
+
+    const incomingMetadata =
+      fields.metadata &&
+      typeof fields.metadata === 'object' &&
+      !Array.isArray(fields.metadata)
+        ? (fields.metadata as Record<string, unknown>)
+        : {}
+
+    fields.metadata = {
+      ...existingMetadata,
+      ...incomingMetadata,
+      address:
+        address !== undefined &&
+        address !== null &&
+        String(address).trim() !== ''
+          ? String(address).trim()
+          : null,
+    }
   }
 
   // Scope update to the user's own org — salvo admin/super_admin/owner de

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, Target, Users,
   FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2,
+  Search, X, Loader2, UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -60,6 +61,14 @@ type BrandInfluencer = {
   via?: 'direct'
 }
 
+type PickerInfluencer = {
+  id: string
+  display_name: string
+  avatar_url: string | null
+  city?: string | null
+  country?: string | null
+}
+
 function initials(name: string) {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
 }
@@ -99,6 +108,12 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   )
   const [influencers, setInfluencers] = useState<BrandInfluencer[]>([])
   const [loadingInf, setLoadingInf] = useState(false)
+  const [showInfluencerPicker, setShowInfluencerPicker] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [pickerResults, setPickerResults] = useState<PickerInfluencer[]>([])
+  const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set())
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [assigningInfluencers, setAssigningInfluencers] = useState(false)
   const [invoiceCampaignId, setInvoiceCampaignId] = useState('')
   const [invoiceAmount, setInvoiceAmount] = useState('')
   const [invoiceEmail, setInvoiceEmail] = useState('')
@@ -196,6 +211,137 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   useEffect(() => { if (tab === 'influencers') loadInfluencers() }, [tab, loadInfluencers])
   useEffect(() => { if (tab === 'locations') loadLocations() }, [tab, brand?.id])
 
+  useEffect(() => {
+    if (!showInfluencerPicker) return
+
+    let cancelled = false
+
+    const timer = window.setTimeout(async () => {
+      setPickerLoading(true)
+
+      try {
+        const query = new URLSearchParams({
+          page: '1',
+          limit: '50',
+          is_active: 'true',
+        })
+
+        if (pickerSearch.trim()) {
+          query.set('search', pickerSearch.trim())
+        }
+
+        const res = await fetch(`/api/influencers?${query}`)
+        const json = await res.json().catch(() => ({}))
+
+        if (!res.ok) {
+          throw new Error(json.error ?? 'No se pudieron cargar las influencers')
+        }
+
+        if (!cancelled) {
+          setPickerResults((json.data ?? []).map((inf: Record<string, unknown>) => ({
+            id: String(inf.id),
+            display_name: String(inf.display_name ?? 'Sin nombre'),
+            avatar_url: typeof inf.avatar_url === 'string' ? inf.avatar_url : null,
+            city: typeof inf.city === 'string' ? inf.city : null,
+            country: typeof inf.country === 'string' ? inf.country : null,
+          })))
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'No se pudieron cargar las influencers')
+          setPickerResults([])
+        }
+      } finally {
+        if (!cancelled) setPickerLoading(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [showInfluencerPicker, pickerSearch])
+
+  function togglePickerInfluencer(id: string) {
+    const alreadyDirect = brand?.direct_influencers?.some(inf => inf.id === id)
+    if (alreadyDirect) return
+
+    setPickerSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function assignInfluencersFromPicker() {
+    if (!brand || pickerSelected.size === 0) return
+
+    const selectedIds = Array.from(pickerSelected)
+    setAssigningInfluencers(true)
+
+    try {
+      const res = await fetch(`/api/brands/${brand.id}/influencers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ influencer_ids: selectedIds }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new Error(json.error ?? 'No se pudieron agregar las influencers')
+      }
+
+      const added = pickerResults.filter(inf => pickerSelected.has(inf.id))
+
+      setInfluencers(prev => {
+        const seen = new Set(prev.map(inf => inf.id))
+        return [
+          ...prev,
+          ...added
+            .filter(inf => !seen.has(inf.id))
+            .map(inf => ({
+              id: inf.id,
+              display_name: inf.display_name,
+              avatar_url: inf.avatar_url,
+              status: 'active',
+              via: 'direct' as const,
+            })),
+        ]
+      })
+
+      setBrand(prev => {
+        if (!prev) return prev
+
+        const current = prev.direct_influencers ?? []
+        const seen = new Set(current.map(inf => inf.id))
+
+        return {
+          ...prev,
+          direct_influencers: [
+            ...current,
+            ...added
+              .filter(inf => !seen.has(inf.id))
+              .map(inf => ({
+                id: inf.id,
+                display_name: inf.display_name,
+                avatar_url: inf.avatar_url,
+              })),
+          ],
+        }
+      })
+
+      toast.success(`${selectedIds.length} influencer${selectedIds.length !== 1 ? 's' : ''} agregada${selectedIds.length !== 1 ? 's' : ''} a la marca`)
+      setPickerSelected(new Set())
+      setPickerSearch('')
+      setShowInfluencerPicker(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudieron agregar las influencers')
+    } finally {
+      setAssigningInfluencers(false)
+    }
+  }
 
   async function createInvoice() {
     if (!brand) return
@@ -459,6 +605,137 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         />
       )}
 
+      {showInfluencerPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onMouseDown={() => setShowInfluencerPicker(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl bg-white shadow-xl"
+            onMouseDown={event => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <h2 className="font-bold text-gray-900">Agregar influencers</h2>
+                <p className="text-sm text-gray-500">Selecciona quiénes aparecerán en la base privada de {brand.name}.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInfluencerPicker(false)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={pickerSearch}
+                  onChange={event => setPickerSearch(event.target.value)}
+                  placeholder="Buscar por nombre, Instagram o email"
+                  className="input-base w-full pl-9"
+                  autoFocus
+                />
+              </div>
+
+              <div className="max-h-[420px] space-y-2 overflow-y-auto">
+                {pickerLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-12 text-sm text-gray-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Buscando influencers…
+                  </div>
+                ) : pickerResults.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-gray-400">No se encontraron influencers.</p>
+                ) : (
+                  pickerResults.map(inf => {
+                    const alreadyDirect = brand.direct_influencers?.some(item => item.id === inf.id)
+                    const selected = pickerSelected.has(inf.id)
+
+                    return (
+                      <button
+                        key={inf.id}
+                        type="button"
+                        disabled={alreadyDirect}
+                        onClick={() => togglePickerInfluencer(inf.id)}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors',
+                          alreadyDirect
+                            ? 'cursor-not-allowed border-gray-100 bg-gray-50 opacity-60'
+                            : selected
+                              ? 'border-violet-500 bg-violet-50'
+                              : 'border-gray-200 hover:border-violet-300 hover:bg-violet-50/40'
+                        )}
+                      >
+                        {inf.avatar_url ? (
+                          <img src={inf.avatar_url} alt={inf.display_name} className="h-10 w-10 rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-500 font-bold text-white">
+                            {inf.display_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-gray-900">{inf.display_name}</p>
+                          <p className="truncate text-xs text-gray-400">
+                            {[inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
+                          </p>
+                        </div>
+
+                        <div className={cn(
+                          'flex h-5 w-5 items-center justify-center rounded border text-xs',
+                          alreadyDirect
+                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                            : selected
+                              ? 'border-violet-600 bg-violet-600 text-white'
+                              : 'border-gray-300 text-transparent'
+                        )}>
+                          ✓
+                        </div>
+
+                        {alreadyDirect && (
+                          <span className="text-xs font-semibold text-emerald-600">Ya agregada</span>
+                        )}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4">
+              <p className="text-sm text-gray-500">
+                {pickerSelected.size} seleccionada{pickerSelected.size !== 1 ? 's' : ''}
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInfluencerPicker(false)}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={pickerSelected.size === 0 || assigningInfluencers}
+                  onClick={assignInfluencersFromPicker}
+                  className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {assigningInfluencers ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4" />
+                  )}
+                  Agregar a la marca
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="card p-4">
           <Target className="h-5 w-5 text-violet-600 mb-2" />
@@ -608,12 +885,18 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         <div className="card p-5">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-bold text-gray-900">Influencers relacionadas</h2>
-            <Link
-              href={`/admin-influencers?assignToBrand=${brand.id}&assignToBrandName=${encodeURIComponent(brand.name)}`}
-              className="text-sm font-semibold text-violet-600 hover:underline"
+            <button
+              type="button"
+              onClick={() => {
+                setPickerSelected(new Set())
+                setPickerSearch('')
+                setShowInfluencerPicker(true)
+              }}
+              className="flex items-center gap-1.5 text-sm font-semibold text-violet-600 hover:text-violet-700"
             >
-              Agregar desde influencers
-            </Link>
+              <UserPlus className="h-4 w-4" />
+              Agregar influencers
+            </button>
           </div>
 
           {loadingInf ? (

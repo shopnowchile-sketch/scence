@@ -224,7 +224,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       .select('id', { count: 'exact', head: true })
       .eq('brand_id', brand.id)
       .neq('id', params.id)
-      .not('status', 'in', '("completed","canceled")')
+      .eq('status', 'active')
 
     if (campaignCountError) {
       return NextResponse.json({ error: campaignCountError.message }, { status: 500 })

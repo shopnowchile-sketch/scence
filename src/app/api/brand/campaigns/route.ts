@@ -3,7 +3,6 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import {
   resolveBrandPlan,
   getPlanLimits,
-  campaignLimitMessage,
   visibilityLimitMessage,
   PLAN_ERROR_CODES,
 } from '@/lib/plan-limits'
@@ -155,21 +154,6 @@ export async function POST(req: NextRequest) {
   // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
   const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const limits  = getPlanLimits(orgPlan)
-
-  // Contar campañas activas (draft, active, pending_approval, paused — todo excepto completed/canceled)
-  const { count: activeCampaignCount } = await admin
-    .from('campaigns')
-    .select('id', { count: 'exact', head: true })
-    .eq('brand_id', brand.id)
-    .not('status', 'in', '("completed","canceled")')
-
-  if ((activeCampaignCount ?? 0) >= limits.max_active_campaigns) {
-    return NextResponse.json({
-      error: campaignLimitMessage(orgPlan),
-      code:  PLAN_ERROR_CODES.CAMPAIGN_LIMIT,
-      plan:  orgPlan,
-    }, { status: 403 })
-  }
 
   let body: {
     name: string

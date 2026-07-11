@@ -566,7 +566,7 @@ export function CampaignForm({
         const limits = getPlanLimits(plan)
         const campaigns = camsJson?.data ?? []
         const active = campaigns.filter(
-          (c: { status: string }) => !['completed', 'canceled'].includes(c.status)
+          (c: { status: string }) => c.status === 'active'
         ).length
         const openCampaigns = campaigns.filter(
           (c: { visibility?: string }) => c.visibility === 'open'

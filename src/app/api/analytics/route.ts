@@ -52,6 +52,8 @@ export async function GET(request: NextRequest) {
         campaign:campaigns!inner (organization_id)
       `)
       .eq('campaign.organization_id', orgId ?? 'none')
+      // Solo participantes aceptados — no postulantes/invitados pendientes.
+      .eq('application_status', 'accepted')
       .limit(100),
 
     // Deliverable stats (scoped by org via campaign join)

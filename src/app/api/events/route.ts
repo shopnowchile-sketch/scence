@@ -118,6 +118,8 @@ export async function POST(request: NextRequest) {
         .from('campaign_influencers')
         .select('influencer_id')
         .eq('campaign_id', campaign_id as string)
+        // Solo participantes aceptados reciben tareas de evento (no pendientes).
+        .eq('application_status', 'accepted')
 
       for (const ci of campaignInfluencers ?? []) {
         await createInfluencerTasks(admin, {

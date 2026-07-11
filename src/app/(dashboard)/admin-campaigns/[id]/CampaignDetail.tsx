@@ -732,7 +732,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   const c = res.data as CampaignDetail
   const campaignInfluencers     = c.campaign_influencers ?? []
-  const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status !== 'pending')
+  // Participantes reales = solo ACEPTadas. Se excluyen pending (postulantes/
+  // invitadas sin aceptar) y rejected (no forman parte de la campaña).
+  const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status === 'accepted')
   // Plataformas presentes entre las influencers confirmadas de esta campaña
   // (no una lista fija — evita mostrar opciones vacías en campañas con pocas plataformas).
   const infPlatformOptions = Array.from(new Set(
@@ -996,7 +998,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-3.5 w-3.5" /> },
-    { id: 'influencers',  label: `Influencers (${campaignInfluencers.length})`, icon: <Users className="h-3.5 w-3.5" /> },
+    { id: 'influencers',  label: `Influencers (${confirmedInfluencers.length})`, icon: <Users className="h-3.5 w-3.5" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
     { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-3.5 w-3.5" /> },

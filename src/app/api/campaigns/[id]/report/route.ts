@@ -17,7 +17,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id, name, logo_url, website, contact_name, contact_email, contact_phone
       ),
       campaign_influencers (
-        id, fee, status, notes,
+        id, fee, status, notes, application_status,
         influencer:influencers (
           id, display_name, avatar_url, city, country,
           influencer_social_profiles (platform, username, followers, engagement_rate)
@@ -41,5 +41,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ data: campaign })
+  // Solo participantes ACEPTADos en el reporte — se excluyen postulantes/
+  // invitados pendientes y rechazados (no son parte operativa de la campaña).
+  const campaignData = campaign as typeof campaign & {
+    campaign_influencers?: Array<{ application_status?: string }>
+  }
+  if (Array.isArray(campaignData.campaign_influencers)) {
+    campaignData.campaign_influencers = campaignData.campaign_influencers.filter(
+      (ci: { application_status?: string }) =>
+        ci.application_status === 'accepted'
+    )
+  }
+
+  return NextResponse.json({ data: campaignData })
 }

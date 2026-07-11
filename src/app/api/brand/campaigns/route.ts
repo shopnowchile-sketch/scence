@@ -107,13 +107,16 @@ export async function GET(req: NextRequest) {
   // pinte igual en ambos portales. Se agregan sin quitar los arrays
   // anidados, porque brand-dash/page.tsx y brand/dashboard/page.tsx ya
   // dependen de ellos completos.
-  type Row = { campaign_influencers?: unknown[]; campaign_deliverables?: Array<{ status: string }> }
+  type Row = { campaign_influencers?: Array<{ application_status?: string }>; campaign_deliverables?: Array<{ status: string }> }
   const enriched = (data ?? []).map(c => {
     const row = c as Row
     const deliverables = row.campaign_deliverables ?? []
+    // Participantes = solo filas ACEPTADas (no pending/rejected). No se toca el
+    // array anidado (brand-dash lo usa completo); solo el conteo.
+    const acceptedCount = (row.campaign_influencers ?? []).filter(ci => ci.application_status === 'accepted').length
     return {
       ...c,
-      influencer_count:  row.campaign_influencers?.length ?? 0,
+      influencer_count:  acceptedCount,
       deliverable_count: deliverables.length,
       deliverable_done:  deliverables.filter(isDeliverableComplete).length,
     }

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import {
+  resolveBrandPlan,
+  canViewFullInfluencerBase,
+  fullInfluencerBaseMessage,
+  PLAN_ERROR_CODES,
+} from '@/lib/plan-limits'
 
 // GET /api/brand/influencers
 // Marca ve influencers relacionadas a SUS campañas/asignaciones.
@@ -58,73 +64,20 @@ export async function GET(req: NextRequest) {
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
-  // 1) campañas donde la marca es principal
-  const { data: primaryCampaigns, error: primaryErr } = await admin
-    .from('campaigns')
-    .select('id')
-    .eq('brand_id', brand.id)
+  // ── Visibilidad por plan (regla centralizada en plan-limits) ──────────────
+  // Solo Pro navega la base COMPLETA de influencers. Basic y Growth NO tienen
+  // catálogo: a sus postulantes las ven en el endpoint de aplicaciones de cada
+  // campaña, nunca por acá. Enforcement en backend, no solo en la UI.
+  const orgPlan    = await resolveBrandPlan(admin, brand.organization_id)
+  const fullAccess = canViewFullInfluencerBase(orgPlan)
 
-  if (primaryErr) {
-    console.error('[GET /api/brand/influencers] campaigns:', primaryErr)
-    return NextResponse.json({ error: primaryErr.message }, { status: 500 })
-  }
-
-  // 2) campañas donde la marca es colaboradora
-  const { data: collaboratorRows, error: cbErr } = await admin
-    .from('campaign_brands')
-    .select('campaign_id')
-    .eq('brand_id', brand.id)
-
-  if (cbErr) {
-    console.error('[GET /api/brand/influencers] campaign_brands:', cbErr)
-    return NextResponse.json({ error: cbErr.message }, { status: 500 })
-  }
-
-  const campaignIds = Array.from(new Set([
-    ...(primaryCampaigns ?? []).map(c => c.id),
-    ...(collaboratorRows ?? []).map(r => r.campaign_id),
-  ].filter(Boolean)))
-
-  // 3) influencers asignadas a esas campañas
-  let campaignInfluencerIds: string[] = []
-  if (campaignIds.length > 0) {
-    const { data: ciRows, error: ciErr } = await admin
-      .from('campaign_influencers')
-      .select('influencer_id')
-      .in('campaign_id', campaignIds)
-
-    if (ciErr) {
-      console.error('[GET /api/brand/influencers] campaign_influencers:', ciErr)
-      return NextResponse.json({ error: ciErr.message }, { status: 500 })
-    }
-
-    campaignInfluencerIds = (ciRows ?? [])
-      .map(r => r.influencer_id)
-      .filter(Boolean)
-  }
-
-  // 4) influencers asignadas directamente a la marca, si existe brand_influencers
-  let directInfluencerIds: string[] = []
-  try {
-    const { data: directRows } = await admin
-      .from('brand_influencers')
-      .select('influencer_id')
-      .eq('brand_id', brand.id)
-
-    directInfluencerIds = (directRows ?? [])
-      .map(r => r.influencer_id)
-      .filter(Boolean)
-  } catch {
-    directInfluencerIds = []
-  }
-
-  const influencerIds = Array.from(new Set([
-    ...campaignInfluencerIds,
-    ...directInfluencerIds,
-  ]))
-
-  if (influencerIds.length === 0) {
-    return NextResponse.json({ data: [], total: 0, page, limit })
+  if (!fullAccess) {
+    return NextResponse.json({
+      error: fullInfluencerBaseMessage(orgPlan),
+      code:  PLAN_ERROR_CODES.INFLUENCER_BASE,
+      plan:  orgPlan,
+      full_access: false,
+    }, { status: 403 })
   }
 
   // Columnas explícitas — NUNCA '*'. La marca no debe recibir email, phone,
@@ -153,7 +106,6 @@ export async function GET(req: NextRequest) {
         id, deliverable_type, base_rate, currency, is_active
       )
     `, { count: 'exact' })
-    .in('id', influencerIds)
     .order(sortBy, { ascending: sortDir })
     .range((page - 1) * limit, page * limit - 1)
 
@@ -188,6 +140,7 @@ export async function GET(req: NextRequest) {
     total: count ?? filtered.length,
     page,
     limit,
+    full_access: fullAccess,
   })
 }
 

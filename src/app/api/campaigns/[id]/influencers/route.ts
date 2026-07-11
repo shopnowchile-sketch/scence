@@ -69,7 +69,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     .maybeSingle()
   const isNewAssignment = !existingCi
 
-  // Upsert to handle duplicate adds gracefully
+  // Upsert to handle duplicate adds gracefully.
+  // Alta DIRECTA del admin = participación inmediata (no es una solicitud): se
+  // marca aceptada/activa explícitamente, sin depender de los defaults de la
+  // tabla (que dejarían application_status='pending' y la excluirían de
+  // participantes + del acceso al detalle privado). origin se mantiene en
+  // 'invitation' (único valor compatible con el CHECK actual junto a
+  // 'application') — no se crea un origen nuevo ni migración.
   const { data, error } = await admin
     .from('campaign_influencers')
     .upsert(
@@ -78,7 +84,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         influencer_id,
         fee: fee ?? null,
         notes: notes ?? null,
-        status: 'draft',  // valid campaign_status enum value
+        status: 'active',
+        application_status: 'accepted',
+        accepted_at: new Date().toISOString(),
       },
       { onConflict: 'campaign_id,influencer_id' }
     )

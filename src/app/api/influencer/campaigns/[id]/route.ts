@@ -49,9 +49,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   }
 
+  // Control de acceso por estado (opción A): solo una postulación/invitación
+  // ACEPTADA desbloquea el detalle privado. Antes de aceptar (pending o no
+  // postulada) se entrega un DTO público limitado: se ocultan las instrucciones
+  // detalladas (content_guidelines) y el brief privado (brief_url). Los datos
+  // necesarios para decidir (nombre, marca, descripción pública, tipo, fechas,
+  // presupuesto/remuneración, entregables generales, plazo) quedan visibles.
+  const isAccepted = existing?.application_status === 'accepted'
+  const payload: Record<string, unknown> = { ...campaign }
+  if (!isAccepted) {
+    // Campos privados: solo tras aceptación.
+    delete payload.content_guidelines
+    delete payload.brief_url
+  }
+
   return NextResponse.json({
     data: {
-      ...campaign,
+      ...payload,
       _applied: !!existing,
       application_status: existing?.application_status ?? null,
     },

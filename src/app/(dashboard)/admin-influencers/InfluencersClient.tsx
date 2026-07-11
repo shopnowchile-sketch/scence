@@ -9,6 +9,8 @@ import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { InfluencerFilters } from '@/components/influencers/InfluencerFilters'
 import { InfluencerTable } from '@/components/influencers/InfluencerTable'
 import { BulkUploadModal } from '@/components/influencers/BulkUploadModal'
+import { PlanUpgradeWall } from '@/components/plan/PlanUpgradeWall'
+import { canViewFullInfluencerBase } from '@/lib/plan-limits'
 import { formatFollowers } from '@/lib/utils'
 import type { Influencer } from '@/types'
 import Link from 'next/link'
@@ -139,6 +141,21 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
   // de cientos/miles, "Alcance total" y "Verificados" mostraban el dato de
   // 48 personas etiquetado como si fuera el total. Fetch aparte con los
   // mismos filtros activos pero sin paginar, solo para estos 3 números.
+  // Plan de la marca (para gating del catálogo). Solo Pro navega la base.
+  // La regla vive en plan-limits (no se duplica): canViewFullInfluencerBase.
+  const [brandPlan, setBrandPlan] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isBrandPortal) return
+    let cancelled = false
+    fetch('/api/brand/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(json => { if (!cancelled) setBrandPlan(json?.data?.org_plan ?? 'free') })
+      .catch(() => { if (!cancelled) setBrandPlan('free') })
+    return () => { cancelled = true }
+  }, [isBrandPortal])
+
+  const brandCanBrowse = !isBrandPortal || (brandPlan !== null && canViewFullInfluencerBase(brandPlan))
+
   const [statsInfluencers, setStatsInfluencers] = useState<Influencer[]>([])
   useEffect(() => {
     const params = new URLSearchParams({ page: '1', limit: '5000' })
@@ -179,6 +196,35 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     : 0
 
   const verifiedCount = statsInfluencers.filter(i => i.is_verified).length
+
+  // Basic/Growth (sin base completa): NO se muestra catálogo ni relacionadas.
+  // Se ve el upgrade wall + CTA para crear una campaña pública. A las postulantes
+  // se las revisa dentro de cada campaña, no acá. Solo Pro navega la base.
+  if (isBrandPortal && brandPlan !== null && !brandCanBrowse) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Influencers</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Descubre talento para tus campañas</p>
+        </div>
+        <PlanUpgradeWall
+          title="El catálogo completo es parte de Pro"
+          description="Tu plan actual no incluye explorar toda la base de SCENCE. Publica una campaña pública para recibir postulaciones —revisas y apruebas dentro de cada campaña— o sube a Pro para navegar el catálogo e invitar directamente con fee."
+          currentPlan={brandPlan}
+          requiredPlan="pro"
+        />
+        <div className="flex justify-center">
+          <Link
+            href="/brand-campaigns/new"
+            className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Crear campaña pública
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

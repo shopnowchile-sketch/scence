@@ -82,7 +82,9 @@ export async function GET(request: NextRequest) {
   // Batch-fetch influencer counts and deliverable counts for this page
   const [{ data: ciRows }, { data: cdRows }] = await Promise.all([
     campaignIds.length
-      ? admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds)
+      // Participantes = solo postulaciones/invitaciones ACEPTADas. Las filas
+      // pending (postulantes/invitadas sin aceptar) o rejected NO cuentan.
+      ? admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds).eq('application_status', 'accepted')
       : { data: [] },
     campaignIds.length
       ? admin.from('campaign_deliverables').select('campaign_id, status, content_url, published_url').in('campaign_id', campaignIds)

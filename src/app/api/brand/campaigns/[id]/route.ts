@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import {
+  campaignLimitMessage,
+  getPlanLimits,
+  PLAN_ERROR_CODES,
+  resolveBrandPlan,
+  visibilityLimitMessage,
+} from '@/lib/plan-limits'
 
 type Params = { params: { id: string } }
 
@@ -129,6 +136,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (key in body) updates[key] = body[key]
   }
 
+  const statusByAction: Record<string, string> = {
+    submit_for_approval: 'active',
+    activate: 'active',
+    pause: 'paused',
+    complete: 'completed',
+  }
+
+  if (typeof body.action === 'string' && statusByAction[body.action]) {
+    updates.status = statusByAction[body.action]
+  }
+
   if (typeof updates.name === 'string') {
     const name = updates.name.trim()
     if (!name) return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
@@ -145,7 +163,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data: campaignBase, error: baseError } = await admin
     .from('campaigns')
-    .select('id, brand_id, created_by_brand_id, metadata')
+    .select('id, brand_id, created_by_brand_id, organization_id, status, visibility, metadata')
     .eq('id', params.id)
     .single()
 
@@ -167,6 +185,60 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     )
   }
 
+  const orgPlan = await resolveBrandPlan(admin, campaignBase.organization_id)
+  const limits = getPlanLimits(orgPlan)
+
+  const nextVisibility =
+    typeof updates.visibility === 'string'
+      ? updates.visibility
+      : campaignBase.visibility
+
+  if (
+    nextVisibility === 'open' &&
+    campaignBase.visibility !== 'open' &&
+    !limits.can_create_open_campaigns
+  ) {
+    const { count: previousOpenCount, error: openCountError } = await admin
+      .from('campaigns')
+      .select('id', { count: 'exact', head: true })
+      .eq('brand_id', brand.id)
+      .eq('visibility', 'open')
+      .neq('id', params.id)
+
+    if (openCountError) {
+      return NextResponse.json({ error: openCountError.message }, { status: 500 })
+    }
+
+    if ((previousOpenCount ?? 0) > 0) {
+      return NextResponse.json({
+        error: visibilityLimitMessage(orgPlan),
+        code: PLAN_ERROR_CODES.VISIBILITY_LIMIT,
+        plan: orgPlan,
+      }, { status: 403 })
+    }
+  }
+
+  if (updates.status === 'active' && campaignBase.status !== 'active') {
+    const { count: otherCampaignCount, error: campaignCountError } = await admin
+      .from('campaigns')
+      .select('id', { count: 'exact', head: true })
+      .eq('brand_id', brand.id)
+      .neq('id', params.id)
+      .not('status', 'in', '("completed","canceled")')
+
+    if (campaignCountError) {
+      return NextResponse.json({ error: campaignCountError.message }, { status: 500 })
+    }
+
+    if ((otherCampaignCount ?? 0) >= limits.max_active_campaigns) {
+      return NextResponse.json({
+        error: campaignLimitMessage(orgPlan),
+        code: PLAN_ERROR_CODES.CAMPAIGN_LIMIT,
+        plan: orgPlan,
+      }, { status: 403 })
+    }
+  }
+
   if ('address' in body) {
     const existingMetadata =
       campaignBase.metadata &&
@@ -186,6 +258,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...existingMetadata,
       address: normalizedAddress,
     }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json(
+      { error: 'No se recibieron cambios para actualizar' },
+      { status: 422 },
+    )
   }
 
   const { data, error } = await admin

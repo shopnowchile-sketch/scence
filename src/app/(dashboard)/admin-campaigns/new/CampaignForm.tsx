@@ -173,7 +173,7 @@ interface StepProps {
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
 function Step1({ register, control, errors, planGating = false, canOpen = true }: StepProps & { planGating?: boolean; canOpen?: boolean }) {
-  // Con planGating (portal marca) la campaña pública puede requerir plan Pro.
+  // En Basic, la primera campaña pública está incluida. Las siguientes requieren Growth.
   const openLocked = planGating && !canOpen
   return (
     <div className="space-y-6">
@@ -281,7 +281,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
               <div className="text-xs text-gray-500 mt-0.5">Las influencers pueden postular desde su portal.</div>
             </div>
             {openLocked && (
-              <span className="absolute top-2 right-2 text-[10px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">Pro</span>
+              <span className="absolute top-2 right-2 text-[10px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">Growth</span>
             )}
           </label>
         </div>

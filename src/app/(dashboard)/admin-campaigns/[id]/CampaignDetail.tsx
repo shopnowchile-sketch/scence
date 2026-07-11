@@ -996,11 +996,33 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
   }
 
+  function handleBack() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+      return
+    }
+
+    router.push(isBrandPortal ? '/brand-campaigns' : '/admin-campaigns')
+  }
+
   async function handleStatusAction(action: string) {
+    const brandStatusByAction: Record<string, string> = {
+      activate: 'active',
+      pause: 'paused',
+      complete: 'completed',
+    }
+
+    const payload =
+      isBrandPortal && brandStatusByAction[action]
+        ? { status: brandStatusByAction[action] }
+        : { action }
+
     try {
-      await patchCampaign.mutateAsync({ action })
-      toast.success('Estado actualizado')
-    } catch { /* handled in hook */ }
+      await patchCampaign.mutateAsync(payload)
+      toast.success(action === 'activate' ? 'Campaña activada' : 'Estado actualizado')
+    } catch {
+      // El hook muestra el error.
+    }
   }
 
   async function handleDeleteCampaign() {
@@ -1062,9 +1084,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* Breadcrumb + actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href={isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
-            <ArrowLeft className="h-4 w-4" /> Campañas
-          </Link>
+          <button
+            type="button"
+            onClick={handleBack}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" /> Volver
+          </button>
           <span className="text-gray-200">/</span>
           <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{c.name}</span>
         </div>
@@ -1086,11 +1112,26 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </Link>
           )}
           {c.status === 'draft' && (
-            <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
-              title="Enviar a aprobación"
-              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
-              <Check className="h-3.5 w-3.5" />
-            </button>
+            isBrandPortal ? (
+              <button
+                onClick={() => handleStatusAction('activate')}
+                disabled={patchCampaign.isPending}
+                title="Activar campaña"
+                className="flex items-center gap-1.5 px-3 py-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+              >
+                <Play className="h-3.5 w-3.5" />
+                <span className="text-xs font-semibold">Activar</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => handleStatusAction('submit_for_approval')}
+                disabled={patchCampaign.isPending}
+                title="Enviar a aprobación"
+                className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </button>
+            )
           )}
           {(c.status === 'pending_approval' || c.status === 'paused') && (
             <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}

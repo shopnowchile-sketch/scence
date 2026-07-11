@@ -7,7 +7,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { ChevronLeft, Loader2, AlertCircle, Save } from 'lucide-react'
-import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
 import { useCampaignDetail, usePatchCampaign } from '@/hooks/useCampaignsList'
@@ -84,6 +83,15 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
   const basePath = isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'
   const apiBase = isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns'
   const [saving, setSaving] = useState(false)
+
+  function handleBack() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+      return
+    }
+
+    router.push(`${basePath}/${id}`)
+  }
 
   const { data: res, isLoading, error } = useCampaignDetail(id, apiBase)
   const patchCampaign = usePatchCampaign(id, apiBase)
@@ -179,9 +187,13 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
       <div className="card p-12 text-center max-w-lg mx-auto mt-12">
         <AlertCircle className="h-10 w-10 text-red-300 mx-auto mb-3" />
         <p className="text-gray-500 font-medium">Campaña no encontrada</p>
-        <Link href={basePath} className="mt-4 inline-block text-sm text-violet-600 hover:underline">
-          Volver a campañas
-        </Link>
+        <button
+          type="button"
+          onClick={handleBack}
+          className="mt-4 inline-block text-sm text-violet-600 hover:underline"
+        >
+          Volver
+        </button>
       </div>
     )
   }
@@ -191,9 +203,13 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
       <div className="card p-12 text-center max-w-lg mx-auto mt-12">
         <AlertCircle className="h-10 w-10 text-amber-300 mx-auto mb-3" />
         <p className="text-gray-500 font-medium">Solo la marca creadora puede editar esta campaña</p>
-        <Link href={`${basePath}/${id}`} className="mt-4 inline-block text-sm text-violet-600 hover:underline">
-          Volver al detalle de la campaña
-        </Link>
+        <button
+          type="button"
+          onClick={handleBack}
+          className="mt-4 inline-block text-sm text-violet-600 hover:underline"
+        >
+          Volver
+        </button>
       </div>
     )
   }
@@ -202,10 +218,13 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={`${basePath}/${id}`}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"
+        >
           <ChevronLeft className="h-5 w-5" />
-        </Link>
+        </button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Editar campaña</h1>
           <p className="text-sm text-gray-400">{res.data.name}</p>
@@ -491,10 +510,13 @@ export function CampaignEditForm({ id, portal = 'admin' }: { id: string; portal?
 
         {/* Actions */}
         <div className="flex justify-between">
-          <Link href={`${basePath}/${id}`}
-            className="px-4 py-2.5 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="px-4 py-2.5 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
             Cancelar
-          </Link>
+          </button>
           <button type="submit" disabled={saving}
             className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 transition-colors">
             {saving ? (

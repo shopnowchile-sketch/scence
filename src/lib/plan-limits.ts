@@ -37,7 +37,7 @@ export const PLAN_LIMITS = {
   basic: {
     label:                     'Basic',
     price_monthly_clp:         69_990,
-    max_active_campaigns:      999,
+    max_active_campaigns:      1,
     max_roster_influencers:    10,
     can_create_open_campaigns: false,
     can_access_marketplace:    false,
@@ -48,7 +48,7 @@ export const PLAN_LIMITS = {
     price_monthly_clp:         259_000,
     max_active_campaigns:      999,
     max_roster_influencers:    50,
-    can_create_open_campaigns: false,
+    can_create_open_campaigns: true,
     can_access_marketplace:    false,
     can_view_full_influencer_base: false,  // Growth: NO base completa (solo campañas públicas + postulantes)
   },
@@ -138,7 +138,7 @@ export const PLAN_ERROR_CODES = {
 /**
  * Regla centralizada: ¿este plan puede ver TODA la base de influencers SCENCE
  * (marketplace/catálogo completo) o solo las relacionadas a sus campañas?
- * Growth y Pro → sí. Basic → no. (No duplicar esta regla en UI ni endpoints.)
+ * Solo Pro puede ver la base completa. Basic y Growth ven únicamente su roster y postulantes.
  */
 export function canViewFullInfluencerBase(orgPlan: string | null | undefined): boolean {
   return getPlanLimits(orgPlan).can_view_full_influencer_base

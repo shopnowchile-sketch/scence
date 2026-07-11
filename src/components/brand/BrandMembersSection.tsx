@@ -70,7 +70,12 @@ export function BrandMembersSection() {
       if (!res.ok) throw new Error(json.error)
       setMembers(prev => [json.data, ...prev])
       setNewEmail('')
-      toast.success('Invitación enviada')
+
+      if (json.data.email_sent) {
+        toast.success('Invitación enviada por email')
+      } else {
+        toast.warning('La invitación quedó pendiente, pero el email no pudo enviarse')
+      }
     } catch (e) {
       toast.error((e as Error).message)
     } finally {

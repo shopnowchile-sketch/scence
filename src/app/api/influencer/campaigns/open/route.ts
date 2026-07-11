@@ -49,7 +49,7 @@ export async function GET() {
     `)
     .eq('organization_id', influencer.organization_id)
     .eq('visibility', 'open')
-    .in('status', ['draft', 'pending_approval', 'active'])
+    .eq('status', 'active')
     .or(`application_deadline.is.null,application_deadline.gte.${today}`)
     .order('start_date', { ascending: true })
     .limit(50)

@@ -582,6 +582,19 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
+  const [brandRoster, setBrandRoster] = useState<Array<{
+    id: string
+    display_name: string
+    avatar_url?: string | null
+    city?: string | null
+    country?: string | null
+    social_profiles?: Array<{
+      platform: string
+      username: string | null
+      followers: number | null
+    }>
+  }>>([])
+  const [brandRosterLoading, setBrandRosterLoading] = useState(false)
   const [infSearch, setInfSearch] = useState('')
   const [infPlatform, setInfPlatform] = useState('')
   const [infStatus, setInfStatus] = useState('')
@@ -651,6 +664,35 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
   const patchCampaign = usePatchCampaign(id, apiBase)
   const removeInfluencer = useRemoveCampaignInfluencer(id)
+
+  useEffect(() => {
+    if (!isBrandPortal) return
+
+    let cancelled = false
+    setBrandRosterLoading(true)
+
+    fetch('/api/brand/influencers?scope=roster&page=1&limit=5000')
+      .then(async response => {
+        const json = await response.json()
+        if (!response.ok) {
+          throw new Error(json.error ?? 'Error cargando influencers de la marca')
+        }
+
+        if (!cancelled) {
+          setBrandRoster(Array.isArray(json.data) ? json.data : [])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setBrandRoster([])
+      })
+      .finally(() => {
+        if (!cancelled) setBrandRosterLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isBrandPortal])
 
   const campaignForEffects = res?.data as (CampaignDetail & { brand?: { id?: string } | null }) | undefined
   const primaryBrandId = campaignForEffects?.brand?.id
@@ -735,6 +777,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Participantes reales = solo ACEPTadas. Se excluyen pending (postulantes/
   // invitadas sin aceptar) y rejected (no forman parte de la campaña).
   const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status === 'accepted')
+  const campaignInfluencerIds = new Set(
+    campaignInfluencers
+      .map(ci => ci.influencer?.id)
+      .filter((value): value is string => Boolean(value))
+  )
+  const availableBrandRoster = brandRoster.filter(
+    influencer => !campaignInfluencerIds.has(influencer.id)
+  )
+
   // Plataformas presentes entre las influencers confirmadas de esta campaña
   // (no una lista fija — evita mostrar opciones vacías en campañas con pocas plataformas).
   const infPlatformOptions = Array.from(new Set(
@@ -1625,6 +1676,82 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           </div>
 
+          {isBrandPortal && (
+            <div className="card overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-800">
+                  Influencers de tu marca
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Agrega a esta campaña una influencer que ya pertenece a tu roster.
+                </p>
+              </div>
+
+              {brandRosterLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
+                </div>
+              ) : availableBrandRoster.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm text-gray-400">
+                    No hay más influencers disponibles en tu roster.
+                  </p>
+                  <Link
+                    href="/brand-influencers/new"
+                    className="inline-block mt-3 text-sm font-semibold text-violet-600 hover:underline"
+                  >
+                    + Agregar influencer a mi marca
+                  </Link>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
+                  {availableBrandRoster.map(influencer => {
+                    const primary = influencer.social_profiles?.[0]
+
+                    return (
+                      <div
+                        key={influencer.id}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
+                      >
+                        {influencer.avatar_url ? (
+                          <img
+                            src={influencer.avatar_url}
+                            alt={influencer.display_name}
+                            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center font-bold flex-shrink-0">
+                            {influencer.display_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">
+                            {influencer.display_name}
+                          </p>
+                          <p className="text-xs text-gray-400 truncate">
+                            {primary?.username
+                              ? `@${primary.username.replace(/^@/, '')}`
+                              : [influencer.city, influencer.country]
+                                  .filter(Boolean)
+                                  .join(', ') || 'Sin red registrada'}
+                          </p>
+                        </div>
+
+                        <Link
+                          href={`/brand-campaigns/${id}/invite?influencerId=${influencer.id}`}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700"
+                        >
+                          Agregar
+                        </Link>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {confirmedInfluencers.length > 0 && (
             <div className="flex items-center gap-3 flex-wrap">
               <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -1697,12 +1824,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           )}
 
           {confirmedInfluencers.length === 0 ? (
-            <div className="card p-12 text-center">
-              <Users className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Sin influencers asignados aún</p>
-              <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
-                className="mt-3 inline-block text-sm text-violet-600 hover:underline font-medium">+ Agregar el primero</Link>
-            </div>
+            isBrandPortal ? null : (
+              <div className="card p-12 text-center">
+                <Users className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+                <p className="text-sm text-gray-400">Sin influencers asignados aún</p>
+                <Link
+                  href={`/admin-campaigns/${id}/influencers/add`}
+                  className="mt-3 inline-block text-sm text-violet-600 hover:underline font-medium"
+                >
+                  + Agregar el primero
+                </Link>
+              </div>
+            )
           ) : filteredInfluencers.length === 0 ? (
             <div className="card p-12 text-center">
               <Search className="h-10 w-10 text-gray-200 mx-auto mb-3" />

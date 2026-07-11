@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url)
+  const scope    = searchParams.get('scope') ?? ''
   const search   = searchParams.get('search')
   const platform = searchParams.get('platform')
   const category = searchParams.get('category')
@@ -69,7 +70,7 @@ export async function GET(req: NextRequest) {
 
   let restrictedInfluencerIds: string[] | null = null
 
-  if (!fullAccess) {
+  if (!fullAccess || scope === 'roster') {
     const [
       { data: primaryCampaigns, error: primaryError },
       { data: collaboratorRows, error: collaboratorError },

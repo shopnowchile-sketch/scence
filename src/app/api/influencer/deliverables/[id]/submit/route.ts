@@ -31,13 +31,21 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: deliverable } = await admin
     .from('campaign_deliverables')
-    .select('id, status, influencer_id, type, title, due_date, campaign_id, campaign:campaigns(name, organization_id)')
+    .select('id, status, influencer_id, type, title, due_date, campaign_id, campaign:campaigns(name, organization_id, status)')
     .eq('id', params.id)
     .single()
 
   if (!deliverable) return NextResponse.json({ error: 'Deliverable not found' }, { status: 404 })
   if (deliverable.influencer_id !== influencer.id) {
     return NextResponse.json({ error: 'No tienes acceso a este deliverable' }, { status: 403 })
+  }
+  // Gate por estado de campaña: no se puede entregar contenido a una campaña en
+  // borrador/revisión (preasignación aún no activada).
+  {
+    const campSt = String((deliverable.campaign as unknown as { status?: string } | null)?.status ?? '')
+    if (campSt === 'draft' || campSt === 'pending_approval') {
+      return NextResponse.json({ error: 'Esta campaña aún no está activa' }, { status: 403 })
+    }
   }
   if (deliverable.status === 'approved' || deliverable.status === 'published') {
     return NextResponse.json({ error: 'Este deliverable ya fue aprobado' }, { status: 422 })

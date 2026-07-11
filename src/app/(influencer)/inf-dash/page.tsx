@@ -19,14 +19,17 @@ type Campaign = {
   id: string
   status: string
   application_status: string | null
+  origin: string | null
   fee: number | null
   currency: string
   campaign: {
     id: string
     name: string
     status: string
+    type?: string | null
     start_date: string | null
     end_date: string | null
+    deliverable_templates?: Array<{ type: string; quantity?: number }> | null
     brand: { name: string; logo_url: string | null } | null
   } | null
   campaign_deliverables: Array<{ id: string; status: string; content_url: string | null; published_url: string | null }>
@@ -260,6 +263,15 @@ export default function InfluencerDashboard() {
   // página, acá solo se filtra en el cliente sobre el mismo endpoint).
   const availableCampaigns = openCampaigns.filter(c => !c._applied)
 
+  // Invitaciones pendientes de marca (origin='invitation', pending, campaña
+  // activa): la influencer acepta/rechaza acá mismo o revisa el detalle.
+  const pendingInvitations = campaigns.filter(
+    ci => ci.origin === 'invitation'
+      && ci.application_status === 'pending'
+      && ci.campaign?.status === 'active'
+      && ci.campaign?.id
+  )
+
   // Campañas activas con su % de entregables completados — pedido: verlas
   // en el dashboard (no solo el conteo agregado del gauge). Al 100% no pasa
   // nada al hacer clic (ya no hay nada pendiente que subir); con menos de
@@ -351,6 +363,72 @@ export default function InfluencerDashboard() {
           </button>
         )}
       </div>
+
+      {/* Invitaciones pendientes — la marca te invitó. "Revisar invitación"
+          abre el detalle (vista previa limitada) donde aceptas o rechazas.
+          Solo aparecen invitaciones a campañas ACTIVAS (draft/pending_approval
+          quedan ocultas por el backend). */}
+      {pendingInvitations.length > 0 && (
+        <div className="bg-white rounded-2xl border border-violet-100 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-violet-50">
+            <Sparkles className="h-4 w-4 text-violet-500" />
+            <h2 className="text-sm font-bold text-gray-900 flex-1">Invitaciones pendientes ({pendingInvitations.length})</h2>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {pendingInvitations.map(ci => {
+              const c = ci.campaign!
+              const templates = c.deliverable_templates ?? []
+              const delivSummary = templates.length > 0
+                ? templates.slice(0, 3).map(t => `${t.quantity && t.quantity > 1 ? `${t.quantity} ` : ''}${String(t.type).replace(/_/g, ' ')}`).join(' · ')
+                  + (templates.length > 3 ? ` +${templates.length - 3}` : '')
+                : null
+              return (
+                <div key={c.id} className="flex items-start gap-3 bg-violet-50/50 rounded-xl border border-violet-100 p-3">
+                  {c.brand?.logo_url ? (
+                    <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
+                      {c.brand?.name?.charAt(0) ?? '?'}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">Invitación</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {c.brand?.name ?? 'Marca'}
+                      {c.type && <> · <span className="capitalize">{String(c.type).replace(/_/g, ' ')}</span></>}
+                    </p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[11px] text-gray-400">
+                      {(c.start_date || c.end_date) && (
+                        <span className="inline-flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {c.start_date ? new Date(c.start_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '—'}
+                          {' → '}
+                          {c.end_date ? new Date(c.end_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '—'}
+                        </span>
+                      )}
+                      {ci.fee != null && ci.fee > 0 && (
+                        <span className="font-medium text-gray-500">{ci.fee.toLocaleString('es-CL')} {ci.currency}</span>
+                      )}
+                    </div>
+                    {delivSummary && (
+                      <p className="text-[11px] text-gray-400 mt-0.5 truncate">Entregables: {delivSummary}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => router.push(`/inf-campaign/${c.id}`)}
+                    className="flex-shrink-0 self-center text-xs font-bold bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors"
+                  >
+                    Revisar invitación
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Campañas activas + % completado — al 100% no navega (nada
           pendiente); con menos, lleva directo a sus entregables. */}

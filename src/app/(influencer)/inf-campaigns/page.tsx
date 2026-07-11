@@ -21,6 +21,7 @@ type Campaign = {
   end_date: string | null
   status: string
   application_status: string | null
+  origin: string | null
   deliverables_total: number
   deliverables_done: number
   next_due: string | null
@@ -55,6 +56,7 @@ type ApiRow = {
   id: string | null
   status: string
   application_status?: string | null
+  origin?: string | null
   _self_created?: boolean
   campaign: {
     id: string
@@ -77,7 +79,13 @@ type ApiRow = {
 // UI. Confirmado en producción: 29 invitaciones pending a campañas privadas
 // + 90 postulaciones pending que hoy apuntan a campañas ya vueltas privadas.
 function isDuplicatedInOpenList(row: ApiRow): boolean {
-  return row.application_status === 'pending' && row.campaign?.visibility === 'open'
+  // Solo las POSTULACIONES pending a campañas open se muestran en "Disponibles"
+  // (con badge "En revisión"), por eso se excluyen de "Asignadas" para no
+  // duplicar. Las INVITACIONES pending NO: tienen su propia sección
+  // "Invitaciones pendientes" (Aceptar/Rechazar), así que se conservan acá.
+  return row.application_status === 'pending'
+    && row.origin !== 'invitation'
+    && row.campaign?.visibility === 'open'
 }
 
 function toRow(row: ApiRow): Campaign | null {
@@ -102,6 +110,7 @@ function toRow(row: ApiRow): Campaign | null {
     end_date:           c.end_date,
     status:             c.status ?? row.status,
     application_status: row.application_status ?? null,
+    origin:             row.origin ?? null,
     deliverables_total: total,
     deliverables_done:  done,
     next_due:           nextDue,
@@ -121,6 +130,7 @@ export default function MyCampaignsPage() {
   })
   const [openCampaigns, setOpenCampaigns] = useState<OpenCampaign[]>([])
   const [applying,      setApplying]      = useState<string | null>(null)
+  const [respondingInvite, setRespondingInvite] = useState<string | null>(null)
   const [brandFilter,   setBrandFilter]   = useState<string>('')
   // Filtro por status para "Asignadas por agencia" / "Mis campañas" — antes
   // no había forma de acotar la vista salvo el filtro de marca que solo
@@ -195,6 +205,30 @@ export default function MyCampaignsPage() {
     setApplying(null)
   }
 
+  // Aceptar/Rechazar una INVITACIÓN (origin='invitation', pending). Reutiliza
+  // el backend existente PATCH /api/influencer/campaigns/[id]/apply. Al aceptar,
+  // el backend crea deliverables/tareas (sin duplicar) y la pasa a "Mis
+  // campañas"; al rechazar, queda 'rejected' y sale de esta sección.
+  async function respondInvitation(campaignId: string, action: 'accept' | 'reject') {
+    if (action === 'reject' && !confirm('¿Rechazar esta invitación?')) return
+    setRespondingInvite(campaignId)
+    try {
+      const res = await fetch(`/api/influencer/campaigns/${campaignId}/apply`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo procesar la invitación')
+      toast.success(action === 'accept' ? '¡Invitación aceptada! Ya eres parte de la campaña.' : 'Invitación rechazada')
+      await load()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al procesar la invitación')
+    } finally {
+      setRespondingInvite(null)
+    }
+  }
+
   async function create() {
     if (!form.name.trim()) { toast.error('El nombre es requerido'); return }
     setSaving(true)
@@ -230,11 +264,24 @@ export default function MyCampaignsPage() {
     )
   }
 
+  // Invitaciones pendientes (origin='invitation', pending, campaña activa):
+  // sección propia con Aceptar/Rechazar. Se derivan de `campaigns` (sin el
+  // filtro de status, siempre activas) y se EXCLUYEN de "Asignadas" y de
+  // "Disponibles para postular" para no mostrar Postular sobre una invitación.
+  const pendingInvitations = campaigns.filter(
+    c => c.origin === 'invitation' && c.application_status === 'pending' && c.status === 'active'
+  )
+  const invitationIds = new Set(pendingInvitations.map(c => c.id))
+
+  const isPendingInvitation = (c: Campaign) =>
+    c.origin === 'invitation' && c.application_status === 'pending'
+
   const campaignsFiltered = campStatusFilter
     ? campaigns.filter(c => c.status === campStatusFilter)
     : campaigns
-  const assigned    = campaignsFiltered.filter(c => !c.self_created)
+  const assigned    = campaignsFiltered.filter(c => !c.self_created && !isPendingInvitation(c))
   const selfCreated = campaignsFiltered.filter(c => c.self_created)
+  const visibleOpenCampaigns = openCampaigns.filter(oc => !invitationIds.has(oc.id))
 
   return (
     <div className="space-y-6">
@@ -318,15 +365,73 @@ export default function MyCampaignsPage() {
         </div>
       )}
 
+      {/* Invitaciones pendientes: la marca te invitó → aceptas o rechazas.
+          No se muestra botón "Postular" — es una invitación, no una postulación. */}
+      {pendingInvitations.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" /> Invitaciones pendientes ({pendingInvitations.length})
+          </p>
+          <div className="space-y-3">
+            {pendingInvitations.map(c => (
+              <div key={c.id} className="rounded-xl p-4 border border-violet-200 bg-violet-50/50">
+                <div className="flex items-start gap-3">
+                  {c.brand_logo ? (
+                    <img src={c.brand_logo} alt={c.brand_name ?? ''} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
+                      {c.brand_name?.charAt(0) ?? '?'}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">Invitación</span>
+                    </div>
+                    {c.brand_name && <p className="text-xs font-medium text-violet-600 mt-0.5">{c.brand_name}</p>}
+                    {(c.start_date || c.end_date) && (
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {fmt(c.start_date) ?? '—'}{' → '}{fmt(c.end_date) ?? '—'}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+                    <Link href={`/inf-campaign/${c.id}`} className="text-[10px] font-semibold text-gray-400 hover:text-violet-600 transition-colors">
+                      Ver detalles
+                    </Link>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => respondInvitation(c.id, 'accept')}
+                        disabled={respondingInvite === c.id}
+                        className="text-xs font-bold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                      >
+                        {respondingInvite === c.id ? '…' : 'Aceptar'}
+                      </button>
+                      <button
+                        onClick={() => respondInvitation(c.id, 'reject')}
+                        disabled={respondingInvite === c.id}
+                        className="text-xs font-bold bg-white text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Campañas disponibles para postular */}
-      {openCampaigns.length > 0 && (
+      {visibleOpenCampaigns.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-violet-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5" /> Disponibles para postular ({openCampaigns.length})
+            <Sparkles className="h-3.5 w-3.5" /> Disponibles para postular ({visibleOpenCampaigns.length})
           </p>
 
           {(() => {
-            const brands = openCampaigns.map(c => c.brand?.name).filter((b): b is string => !!b)
+            const brands = visibleOpenCampaigns.map(c => c.brand?.name).filter((b): b is string => !!b)
             const unique = brands.filter((b, i) => brands.indexOf(b) === i)
             return unique.length > 1 ? (
               <div className="flex gap-2 flex-wrap pb-3">
@@ -347,7 +452,7 @@ export default function MyCampaignsPage() {
           })()}
 
           <div className="space-y-3">
-            {openCampaigns
+            {visibleOpenCampaigns
               .filter(c => !brandFilter || c.brand?.name === brandFilter)
               .map(c => (
               <div key={c.id} className={cn(

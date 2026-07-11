@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
-import { notifyAllInfluencersOfOpenCampaign } from '@/lib/campaign-notifications'
+import { notifyAllInfluencersOfOpenCampaign, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 
 // Margen extra: al activar una campaña pública este endpoint puede enviar
 // el aviso a todas las influencers del sistema (en batches) antes de responder.
@@ -374,12 +374,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // misma tabla de idempotencia que el botón manual de notificación —
   // si alguien ya fue avisada (por este envío o por el botón manual) no
   // se le vuelve a escribir. No bloquea la respuesta si falla el email.
-  if (action === 'activate' && data && (data as Record<string, unknown>).visibility === 'open') {
+  if (action === 'activate' && data) {
     // Se espera (await) a propósito: en un entorno serverless el proceso
     // puede cortarse apenas se devuelve la respuesta, así que un
     // "fire and forget" arriesga a que el envío nunca se complete.
-    // La función interna ya captura sus propios errores — nunca lanza.
-    await notifyAllInfluencersOfOpenCampaign(params.id, admin)
+    // Ambas funciones capturan sus propios errores — nunca lanzan.
+
+    // Preasignadas en draft (invitaciones pendientes + altas directas): se les
+    // avisa una sola vez al activar (los emails se difieren mientras es draft).
+    await notifyPreassignedInfluencersOnActivation(params.id, admin)
+
+    // Pública: además avisa al resto de la base (excluye a las preasignadas,
+    // así que no hay email duplicado). Misma tabla de idempotencia.
+    if ((data as Record<string, unknown>).visibility === 'open') {
+      await notifyAllInfluencersOfOpenCampaign(params.id, admin)
+    }
   }
 
   return NextResponse.json({ data })

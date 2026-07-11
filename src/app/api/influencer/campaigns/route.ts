@@ -21,10 +21,10 @@ export async function GET() {
   const { data, error } = await admin
     .from('campaign_influencers')
     .select(`
-      id, status, application_status, fee, currency,
+      id, status, application_status, origin, fee, currency,
       campaign:campaigns (
-        id, name, status, description, start_date, end_date,
-        budget_total, currency,
+        id, name, status, type, description, start_date, end_date,
+        budget_total, currency, deliverable_templates,
         brand:brands!brand_id (id, name, logo_url)
       ),
       campaign_deliverables (
@@ -40,8 +40,12 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Filter out canceled campaigns in JS (safer than PostgREST joined filters)
-  const filtered = (data ?? []).filter(ci => (ci.campaign as unknown as {status:string}|null)?.status !== 'canceled')
+  // Filter out canceled campaigns AND draft/pending_approval (preasignación no
+  // activada: la influencer no debe ver esas campañas ni sus deliverables).
+  const HIDDEN = new Set(['canceled', 'draft', 'pending_approval'])
+  const filtered = (data ?? []).filter(ci =>
+    !HIDDEN.has(String((ci.campaign as unknown as { status?: string } | null)?.status ?? ''))
+  )
 
   return NextResponse.json({ data: filtered })
 }

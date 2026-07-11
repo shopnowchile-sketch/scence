@@ -639,6 +639,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
   const [addingDeliverable, setAddingDeliverable] = useState(false)
+  const [addingInfluencerId, setAddingInfluencerId] = useState<string | null>(null)
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
   const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
   const [brandLocations, setBrandLocations] = useState<Array<Record<string, unknown>>>([])
@@ -777,6 +778,19 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Participantes reales = solo ACEPTadas. Se excluyen pending (postulantes/
   // invitadas sin aceptar) y rejected (no forman parte de la campaña).
   const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status === 'accepted')
+  // Pendientes separadas por origen (NO se mezclan):
+  //  - Solicitudes (postulaciones): la influencer postuló → la marca acepta/rechaza.
+  //  - Invitaciones: la marca invitó → la influencer acepta/rechaza desde su portal.
+  //    La marca NO ve botones Aceptar/Rechazar sobre una invitación.
+  const pendingApplications = campaignInfluencers.filter(
+    ci => ci.application_status === 'pending' && ci.origin === 'application'
+  )
+  const pendingInvitations = campaignInfluencers.filter(
+    ci => ci.application_status === 'pending' && ci.origin === 'invitation'
+  )
+  // Relaciones activas de la campaña (aceptadas + pendientes; excluye rechazadas)
+  // para el contador del tab — así no muestra 0 cuando hay invitaciones pendientes.
+  const activeRelations = campaignInfluencers.filter(ci => ci.application_status !== 'rejected')
   const campaignInfluencerIds = new Set(
     campaignInfluencers
       .map(ci => ci.influencer?.id)
@@ -785,6 +799,39 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const availableBrandRoster = brandRoster.filter(
     influencer => !campaignInfluencerIds.has(influencer.id)
   )
+
+  // "Agregar" (preasignación): agrega la influencer a la campaña en UN paso,
+  // sin abrir el formulario de oferta. Crea la relación pending reutilizando el
+  // endpoint de invitación existente enviando SOLO influencer_id (sin fee,
+  // mensaje ni entregables — se toman de la config general de la campaña). En
+  // draft el email/notificación quedan diferidos (lógica del backend Batch 1).
+  // El formulario de oferta se conserva solo para "Invitar con oferta".
+  async function quickAddInfluencerToCampaign(influencerId: string) {
+    if (addingInfluencerId) return
+    setAddingInfluencerId(influencerId)
+    try {
+      const res = await fetch(`/api/brand/campaigns/${id}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ influencer_id: influencerId }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (json.code && String(json.code).startsWith('PLAN_LIMIT_')) {
+          toast.error(json.error, { action: { label: 'Subir de plan', onClick: () => router.push('/brand-settings/plan') } })
+        } else {
+          toast.error(json.error ?? 'No se pudo agregar la influencer')
+        }
+        return
+      }
+      toast.success('Influencer agregada a la campaña (pendiente)')
+      void refetch()
+    } catch {
+      toast.error('Error al agregar la influencer')
+    } finally {
+      setAddingInfluencerId(null)
+    }
+  }
 
   // Plataformas presentes entre las influencers confirmadas de esta campaña
   // (no una lista fija — evita mostrar opciones vacías en campañas con pocas plataformas).
@@ -1071,7 +1118,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-3.5 w-3.5" /> },
-    { id: 'influencers',  label: `Influencers (${confirmedInfluencers.length})`, icon: <Users className="h-3.5 w-3.5" /> },
+    { id: 'influencers',  label: `Influencers (${activeRelations.length})`, icon: <Users className="h-3.5 w-3.5" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
     { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-3.5 w-3.5" /> },
@@ -1600,15 +1647,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               aprobar y ver quién postuló" — ahora el panel completo (no solo los botones) se
               oculta en Marca si _brand_permissions.canEdit es false, y los botones pegan al
               endpoint correcto según el portal. */}
-          {campaignInfluencers.filter(ci => ci.application_status === 'pending').length > 0
+          {pendingApplications.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card p-4 border-amber-200 bg-amber-50">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                {campaignInfluencers.filter(ci => ci.application_status === 'pending').length} solicitud(es) pendiente(s)
+                {pendingApplications.length} solicitud(es) pendiente(s)
               </p>
               <div className="space-y-2">
-                {campaignInfluencers.filter(ci => ci.application_status === 'pending').map(ci => {
+                {pendingApplications.map(ci => {
                   const inf = ci.influencer
                   if (!inf) return null
                   const primarySP = inf.influencer_social_profiles?.[0]
@@ -1688,6 +1735,69 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           Rechazar
                         </button>
                       </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Invitaciones pendientes (origin='invitation'): la marca invitó; la
+              influencer acepta/rechaza desde su portal cuando la campaña esté
+              activa. La marca NO ve botones Aceptar/Rechazar acá — solo el badge. */}
+          {pendingInvitations.length > 0
+            && (!isBrandPortal || c._brand_permissions?.canEdit) && (
+            <div className="card p-4 border-violet-200 bg-violet-50">
+              <p className="text-xs font-bold text-violet-700 uppercase tracking-wider mb-1 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-violet-500" />
+                {pendingInvitations.length} invitación(es) pendiente(s)
+              </p>
+              <p className="text-[11px] text-violet-500 mb-3">
+                La influencer acepta o rechaza desde su portal cuando la campaña esté activa.
+              </p>
+              <div className="space-y-2">
+                {pendingInvitations.map(ci => {
+                  const inf = ci.influencer
+                  if (!inf) return null
+                  const primarySP = inf.influencer_social_profiles?.[0]
+                  const igUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
+                  return (
+                    <div key={ci.id} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-violet-100">
+                      {inf.avatar_url ? (
+                        <img src={inf.avatar_url} alt={inf.display_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {inf.display_name.charAt(0)}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedInfluencerId(inf.id)}
+                          className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700"
+                        >
+                          {inf.display_name}
+                        </button>
+                        <p className="text-xs text-gray-400 truncate">
+                          {[inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
+                          {primarySP?.username && (
+                            <>
+                              {' · '}
+                              {igUrl ? (
+                                <a href={igUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-violet-600 hover:underline">
+                                  {PLATFORM_ICONS[primarySP.platform] ?? ''} @{primarySP.username}
+                                </a>
+                              ) : (
+                                <span>{PLATFORM_ICONS[primarySP.platform] ?? ''} @{primarySP.username}</span>
+                              )}
+                              {' · '}{((primarySP.followers ?? 0)/1000).toFixed(0)}K
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold text-violet-700 bg-violet-100 px-2.5 py-1 rounded-full flex-shrink-0">
+                        Pendiente
+                      </span>
                     </div>
                   )
                 })}
@@ -1779,12 +1889,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           </p>
                         </div>
 
-                        <Link
-                          href={`/brand-campaigns/${id}/invite?influencerId=${influencer.id}`}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700"
+                        <button
+                          type="button"
+                          onClick={() => quickAddInfluencerToCampaign(influencer.id)}
+                          disabled={addingInfluencerId === influencer.id}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-60"
                         >
-                          Agregar
-                        </Link>
+                          {addingInfluencerId === influencer.id ? 'Agregando…' : 'Agregar'}
+                        </button>
                       </div>
                     )
                   })}

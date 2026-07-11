@@ -36,7 +36,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ data })
+  // Gate por estado de campaña (preasignación en draft): una tarea vinculada a
+  // un deliverable de una campaña en borrador/revisión NO debe verse hasta que
+  // la marca la active. Las tareas sin deliverable (manuales) no se filtran.
+  const tasks = data ?? []
+  const deliverableIds = Array.from(new Set(
+    tasks.map((t: { deliverable_id?: string | null }) => t.deliverable_id).filter(Boolean) as string[]
+  ))
+
+  let hiddenDeliverableIds = new Set<string>()
+  if (deliverableIds.length > 0) {
+    const { data: delivs } = await admin
+      .from('campaign_deliverables')
+      .select('id, campaign:campaigns (status)')
+      .in('id', deliverableIds)
+
+    hiddenDeliverableIds = new Set(
+      (delivs ?? [])
+        .filter(d => {
+          const st = String((d.campaign as unknown as { status?: string } | null)?.status ?? '')
+          return st === 'draft' || st === 'pending_approval'
+        })
+        .map(d => d.id as string)
+    )
+  }
+
+  const visible = tasks.filter((t: { deliverable_id?: string | null }) =>
+    !t.deliverable_id || !hiddenDeliverableIds.has(t.deliverable_id)
+  )
+
+  return NextResponse.json({ data: visible })
 }
 
 // POST /api/influencer/tasks — create manual task (admin use)

@@ -63,9 +63,19 @@ export async function GET() {
     .order('created_at', { ascending: false })
   if (selfCreatedError) console.error('[GET /api/influencer/my-campaigns] selfCreated query failed:', selfCreatedError)
 
+  // Preasignación en draft: las campañas asignadas que aún son borrador (o
+  // están en revisión) NO son visibles para la influencer hasta que la marca
+  // las active. Se filtran acá (gate por campaign.status). Las self-created
+  // (creadas por la propia influencer) no se tocan.
+  const HIDDEN_ASSIGNED_STATUSES = new Set(['draft', 'pending_approval'])
+  const visibleAssigned = (assigned ?? []).filter((ci: Record<string, unknown>) => {
+    const camp = ci.campaign as Record<string, unknown> | null
+    return !HIDDEN_ASSIGNED_STATUSES.has(String(camp?.status ?? ''))
+  })
+
   // Merge: assigned from admin + self-created
   // Self-created are wrapped to match the assigned shape
-  const assignedIds = new Set((assigned ?? []).map((ci: Record<string, unknown>) => {
+  const assignedIds = new Set(visibleAssigned.map((ci: Record<string, unknown>) => {
     const camp = ci.campaign as Record<string, unknown> | null
     return camp?.id
   }))
@@ -82,7 +92,7 @@ export async function GET() {
       _self_created: true,
     }))
 
-  const merged = [...(assigned ?? []), ...selfWrapped]
+  const merged = [...visibleAssigned, ...selfWrapped]
   return NextResponse.json({ data: merged })
 }
 

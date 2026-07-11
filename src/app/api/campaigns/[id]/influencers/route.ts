@@ -188,11 +188,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     const inf = (data as { influencer?: { display_name?: string | null; email?: string | null } | null }).influencer
     const { data: camp } = await admin
       .from('campaigns')
-      .select('name, type')
+      .select('name, type, status')
       .eq('id', params.id)
       .single()
 
-    if (isNewAssignment && inf?.email && camp?.name) {
+    // Preasignación en draft: no enviar email todavía; se avisa al activar.
+    if (isNewAssignment && inf?.email && camp?.name && camp.status !== 'draft') {
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: inf.email,

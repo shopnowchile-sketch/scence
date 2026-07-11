@@ -46,6 +46,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .single()
 
   if (error || !campaign) return new NextResponse('Campaña no encontrada', { status: 404 })
+  // Gate por estado: una campaña en borrador/revisión no es visible para la
+  // influencer aunque tenga membership (preasignación aún no activada).
+  if (campaign.status === 'draft' || campaign.status === 'pending_approval') {
+    return new NextResponse('Campaña no encontrada', { status: 404 })
+  }
   const camp = campaign!
 
   // Get ONLY this influencer's deliverables

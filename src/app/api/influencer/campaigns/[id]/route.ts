@@ -38,6 +38,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error || !campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
+  // Preasignación en draft: una campaña en borrador/revisión NO es visible para
+  // la influencer aunque tenga fila en campaign_influencers. Solo al activarla.
+  if (campaign.status === 'draft' || campaign.status === 'pending_approval') {
+    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
+
   const { data: existing } = await admin
     .from('campaign_influencers')
     .select('id, application_status')

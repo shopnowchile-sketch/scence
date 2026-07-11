@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { getResend, FROM_EMAIL, campaignOpenAvailableEmail } from '@/lib/resend'
+import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail } from '@/lib/resend'
 
 const BATCH_SIZE = 100 // límite de resend.batch.send()
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -97,6 +97,112 @@ export async function notifyAllInfluencersOfOpenCampaign(
     return { sent, failed }
   } catch (e) {
     console.error('[notifyAllInfluencersOfOpenCampaign] fallo no bloqueante', e)
+    return { sent: 0, failed: 0, skipped: 'exception' }
+  }
+}
+
+/**
+ * notifyPreassignedInfluencersOnActivation — al activar una campaña (pública o
+ * privada), avisa UNA sola vez a las influencers que fueron PREASIGNADAS
+ * mientras la campaña estaba en borrador (invitaciones pendientes o altas
+ * directas ya aceptadas). En draft esos emails se difieren; acá se envían.
+ *
+ * Reutiliza la misma tabla de idempotencia (campaign_influencer_notifications):
+ * si a alguien ya se le avisó, no se le vuelve a escribir. Complementa a
+ * notifyAllInfluencersOfOpenCampaign, que EXCLUYE justamente a las preasignadas
+ * (las que ya tienen fila en campaign_influencers) — entre ambas se cubre a
+ * todas sin duplicar.
+ *
+ * No lanza excepción: un fallo de email nunca bloquea la activación.
+ */
+export async function notifyPreassignedInfluencersOnActivation(
+  campaignId: string,
+  admin: ReturnType<typeof createAdminClient>
+): Promise<{ sent: number; failed: number; skipped?: string }> {
+  try {
+    const { data: campaign } = await admin
+      .from('campaigns')
+      .select('id, name, type, brand_id')
+      .eq('id', campaignId)
+      .maybeSingle()
+
+    if (!campaign) return { sent: 0, failed: 0, skipped: 'no_campaign' }
+
+    let brandName = ''
+    if (campaign.brand_id) {
+      const { data: b } = await admin.from('brands').select('name').eq('id', campaign.brand_id).maybeSingle()
+      brandName = b?.name ?? ''
+    }
+
+    const [{ data: ciRows }, { data: notifiedRows }] = await Promise.all([
+      admin.from('campaign_influencers')
+        .select('influencer_id, application_status, origin, message, influencer:influencers (display_name, email, is_active)')
+        .eq('campaign_id', campaignId)
+        .not('application_status', 'eq', 'rejected'),
+      admin.from('campaign_influencer_notifications').select('influencer_id').eq('campaign_id', campaignId),
+    ])
+
+    const notified = new Set((notifiedRows ?? []).map(r => r.influencer_id).filter(Boolean))
+
+    type Row = {
+      influencer_id: string
+      application_status: string | null
+      origin: string | null
+      message: string | null
+      influencer: { display_name: string | null; email: string | null; is_active: boolean | null } | null
+    }
+    const targets = ((ciRows ?? []) as unknown as Row[]).filter(r =>
+      r.influencer?.is_active && r.influencer?.email && !notified.has(r.influencer_id)
+    )
+
+    if (targets.length === 0) return { sent: 0, failed: 0 }
+
+    let sent = 0
+    let failed = 0
+
+    for (const r of targets) {
+      const inf = r.influencer!
+      try {
+        const isInvitationPending = r.origin === 'invitation' && r.application_status === 'pending'
+        const html = isInvitationPending
+          ? influencerInviteEmail({
+              influencerName: inf.display_name ?? 'influencer',
+              campaignName:   campaign.name,
+              brandName:      brandName || 'Una marca',
+              inviteUrl:      `${APP_URL}/inf-campaigns`,
+              message:        r.message ?? undefined,
+            })
+          : campaignAssignedEmail({
+              influencerName: inf.display_name ?? 'Influencer',
+              campaignName:   campaign.name,
+              campaignType:   campaign.type,
+              campaignUrl:    `${APP_URL}/inf-campaign/${campaign.id}`,
+            })
+        const subject = isInvitationPending
+          ? `${brandName || 'Una marca'} te invitó a una campaña en Scence`
+          : `Fuiste asignada a la campaña "${campaign.name}"`
+
+        const { error: emailErr } = await getResend().emails.send({
+          from: FROM_EMAIL,
+          to:   inf.email as string,
+          subject,
+          html,
+        })
+        if (emailErr) throw new Error(emailErr.message ?? 'Resend error')
+
+        await admin
+          .from('campaign_influencer_notifications')
+          .upsert({ campaign_id: campaignId, influencer_id: r.influencer_id }, { onConflict: 'campaign_id,influencer_id' })
+        sent += 1
+      } catch (e) {
+        console.error('[notifyPreassignedInfluencersOnActivation] fallo email', e)
+        failed += 1
+      }
+    }
+
+    return { sent, failed }
+  } catch (e) {
+    console.error('[notifyPreassignedInfluencersOnActivation] fallo no bloqueante', e)
     return { sent: 0, failed: 0, skipped: 'exception' }
   }
 }

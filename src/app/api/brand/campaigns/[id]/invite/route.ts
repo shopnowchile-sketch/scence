@@ -65,8 +65,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!influencer_id) return NextResponse.json({ error: 'influencer_id requerido' }, { status: 422 })
 
   // ── Roster limit gating ───────────────────────────────────────────────────
-  // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
-  const orgPlan = await resolveBrandPlan(admin, brand.organization_id)
+  // Resolver plan efectivo: override individual de la marca (brand.id) →
+  // subscriptions activa/trialing → fallback organizations.subscription_plan.
+  // IMPORTANTE: pasar brand.id para respetar subscription_plan_override.
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const limits  = getPlanLimits(orgPlan)
 
   // IDs de todas las campañas de esta marca
@@ -97,16 +99,38 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Verificar que el influencer pertenece a la misma org
+  // Autorización por RELACIÓN (no por organization_id — modelo de org única).
+  // Se mantiene is_active. El acceso se decide igual que lista/detalle:
+  //   - Pro (base completa): puede invitar a cualquier influencer activa.
+  //   - Basic/Growth: solo su roster (brand_influencers) o influencers ya
+  //     relacionadas a alguna de sus campañas.
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, email')
+    .select('id, display_name, email, is_active')
     .eq('id', influencer_id)
-    .eq('organization_id', campaign.organization_id)
-    .eq('is_active', true)
     .single()
 
-  if (!influencer) return NextResponse.json({ error: 'Influencer no encontrado o inactivo' }, { status: 404 })
+  if (!influencer || !influencer.is_active) {
+    return NextResponse.json({ error: 'Influencer no encontrado o inactivo' }, { status: 404 })
+  }
+
+  if (!limits.can_view_full_influencer_base) {
+    const [{ data: rosterRow }, { data: relatedRow }] = await Promise.all([
+      admin.from('brand_influencers').select('influencer_id')
+        .eq('brand_id', brand.id).eq('influencer_id', influencer_id).maybeSingle(),
+      campaignIds.length > 0
+        ? admin.from('campaign_influencers').select('id')
+            .in('campaign_id', campaignIds).eq('influencer_id', influencer_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+    if (!rosterRow && !relatedRow) {
+      return NextResponse.json({
+        error: 'Tu plan solo permite invitar influencers de tu roster. Sube a Pro para invitar desde el catálogo completo.',
+        code:  PLAN_ERROR_CODES.INFLUENCER_BASE,
+        plan:  orgPlan,
+      }, { status: 403 })
+    }
+  }
 
   // Verificar que no haya invitación previa
   const { data: existing } = await admin
@@ -147,7 +171,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   // ── Notificar al influencer por email (gap G-08, cerrado 2026-07-01) ─────────
   // No bloqueante: si el influencer no tiene email o el envío falla, la invitación
   // ya quedó creada — solo se pierde la notificación, no el flujo funcional.
-  if (influencer.email) {
+  //
+  // PREASIGNACIÓN EN DRAFT: si la campaña aún es borrador, la invitación queda
+  // creada pero SILENCIOSA (sin email). El aviso se envía una sola vez al
+  // activar la campaña (ver notifyPreassignedInfluencersOnActivation).
+  if (campaign.status !== 'draft' && influencer.email) {
     try {
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,

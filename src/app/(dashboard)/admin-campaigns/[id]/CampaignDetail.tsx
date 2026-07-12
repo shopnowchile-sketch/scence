@@ -12,12 +12,12 @@ import {
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn, formatCurrency, formatDate, formatDatetime, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
-import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
+import { CampaignStatusBadge, campaignStatusLabel, campaignStatusBadgeClass, CAMPAIGN_STATUS_OPTIONS } from '@/components/campaigns/CampaignStatusBadge'
 import { BartersTab } from '@/components/campaigns/BartersTab'
 import { StarRating } from '@/components/ui/StarRating'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
-import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus } from '@/types'
+import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus, CampaignStatus } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
@@ -1072,6 +1072,33 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
   }
 
+  // Selector de estado inline (solo admin) — permite ir a cualquier estado,
+  // incluido "draft", sin pasar por la página /edit. Reusa las acciones
+  // nombradas del PATCH cuando existen para no perder sus side-effects
+  // (auto-factura al completar, avisos a influencers al activar); para
+  // "draft" —que no tiene acción asociada— se manda el status directo,
+  // que el backend ya acepta (ver PATCH /api/campaigns/[id]).
+  const STATUS_TO_ACTION: Partial<Record<CampaignStatus, string>> = {
+    active:           'activate',
+    paused:           'pause',
+    completed:        'complete',
+    canceled:         'cancel',
+    pending_approval: 'submit_for_approval',
+  }
+
+  async function handleStatusChange(newStatus: CampaignStatus) {
+    if (newStatus === c.status || patchCampaign.isPending) return
+    const action = STATUS_TO_ACTION[newStatus]
+    const payload = action ? { action } : { status: newStatus }
+
+    try {
+      await patchCampaign.mutateAsync(payload)
+      toast.success(`Estado cambiado a "${campaignStatusLabel(newStatus)}"`)
+    } catch {
+      // El hook muestra el error.
+    }
+  }
+
   async function handleDeleteCampaign() {
     if (!confirm(`¿Eliminar la campaña "${c.name}"? Quedará marcada como Cancelada (no se borra la data). Esta acción no se puede deshacer desde la interfaz.`)) return
     setDeletingCampaign(true)
@@ -1234,7 +1261,27 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-base font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>
-              <CampaignStatusBadge status={c.status} />
+              {isBrandPortal ? (
+                <CampaignStatusBadge status={c.status} />
+              ) : (
+                <div className="relative inline-flex">
+                  <select
+                    value={c.status}
+                    disabled={patchCampaign.isPending}
+                    onChange={e => handleStatusChange(e.target.value as CampaignStatus)}
+                    title="Cambiar estado de la campaña"
+                    className={cn(
+                      'badge appearance-none cursor-pointer pr-5 border-0 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50 disabled:cursor-not-allowed',
+                      campaignStatusBadgeClass(c.status)
+                    )}
+                  >
+                    {CAMPAIGN_STATUS_OPTIONS.map(s => (
+                      <option key={s} value={s}>{campaignStatusLabel(s)}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="h-3 w-3 pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-60" />
+                </div>
+              )}
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
             </div>
             {c.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>}

@@ -21,3 +21,10 @@ export function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
 }
 
 export function campaignStatusLabel(s: CampaignStatus) { return CONFIG[s].label }
+export function campaignStatusBadgeClass(s: CampaignStatus) { return CONFIG[s].cls }
+
+// Orden pensado para el selector inline de estado (admin): progresión natural
+// con draft primero y canceled al final, no el orden alfabético del type.
+export const CAMPAIGN_STATUS_OPTIONS: CampaignStatus[] = [
+  'draft', 'pending_approval', 'active', 'paused', 'completed', 'canceled',
+]

@@ -62,13 +62,15 @@ export async function GET() {
       .not('user_id', 'is', null),
 
     // Conteos de marcas sin descargar su listado completo.
+    // NOTA: a diferencia de influencers (todos bajo la org de la agencia),
+    // cada marca-cliente es su propia organización (multi-tenant). Por eso
+    // NO se filtra por organization_id aquí — igual que /api/brands
+    // (admin-brands), que ya cuenta todas las marcas de la plataforma.
     db.from('brands')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', orgId),
+      .select('id', { count: 'exact', head: true }),
 
     db.from('brands')
       .select('id', { count: 'exact', head: true })
-      .eq('organization_id', orgId)
       .not('user_id', 'is', null),
 
     db.from('invoices')

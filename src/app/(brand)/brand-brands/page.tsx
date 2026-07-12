@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Building2, Search } from 'lucide-react'
+import { Building2, Plus, Search } from 'lucide-react'
+import { BrandModal } from '@/components/brands/BrandModal'
 import { toast } from 'sonner'
 
 interface BrandRow {
@@ -39,6 +40,7 @@ export default function BrandBrandsPage() {
   const [brands, setBrands] = useState<BrandRow[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
 
   const load = useCallback(async (value = '') => {
     setLoading(true)
@@ -73,13 +75,24 @@ export default function BrandBrandsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-          Marcas
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Marcas creadas por tu empresa y colaboradoras de tus campañas
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+            Marcas
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Marcas creadas por tu empresa y colaboradoras de tus campañas
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Nueva marca
+        </button>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl">
@@ -181,6 +194,16 @@ export default function BrandBrandsPage() {
           </div>
         )}
       </div>
+
+      {showModal && (
+        <BrandModal
+          key="new-brand"
+          editing={null}
+          createEndpoint="/api/brand/brands"
+          onClose={() => setShowModal(false)}
+          onSaved={() => load(search)}
+        />
+      )}
     </div>
   )
 }

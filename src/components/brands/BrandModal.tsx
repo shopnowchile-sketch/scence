@@ -41,10 +41,12 @@ export function BrandModal({
   editing,
   onClose,
   onSaved,
+  createEndpoint = '/api/brands',
 }: {
   editing: BrandModalEditing | null
   onClose: () => void
   onSaved: () => void
+  createEndpoint?: string
 }) {
   const [form, setForm] = useState<FormData>(() =>
     editing
@@ -69,7 +71,7 @@ export function BrandModal({
     if (!form.name.trim()) return
     setSaving(true)
     try {
-      const url    = editing ? `/api/brands/${editing.id}` : '/api/brands'
+      const url    = editing ? `/api/brands/${editing.id}` : createEndpoint
       const method = editing ? 'PATCH' : 'POST'
       const res = await fetch(url, {
         method,

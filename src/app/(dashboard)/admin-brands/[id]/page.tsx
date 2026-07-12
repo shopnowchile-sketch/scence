@@ -61,6 +61,15 @@ type BrandInfluencer = {
   via?: 'direct'
 }
 
+type BrandMember = {
+  id: string
+  email: string
+  role: string
+  invited_at: string | null
+  joined_at: string | null
+  is_active: boolean
+}
+
 type PickerInfluencer = {
   id: string
   display_name: string
@@ -90,7 +99,7 @@ function money(value: number | null, currency?: string | null) {
   return `${currency ?? 'CLP'} ${value.toLocaleString('es-CL')}`
 }
 
-const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'plan', 'billing', 'access', 'history'] as const
+const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'plan', 'billing', 'access', 'members', 'history'] as const
 type Tab = typeof VALID_TABS[number]
 
 export default function AdminBrandDetailPage({ params }: { params: { id: string } }) {
@@ -122,6 +131,9 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [savingPlan, setSavingPlan] = useState(false)
   const [locations, setLocations] = useState<BrandLocation[]>([])
   const [loadingLocations, setLoadingLocations] = useState(false)
+  const [members, setMembers] = useState<BrandMember[]>([])
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [resendingMemberId, setResendingMemberId] = useState<string | null>(null)
   const [newLocation, setNewLocation] = useState({
     name: '',
     address: '',
@@ -207,9 +219,53 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     }
   }, [brand])
 
+  const loadMembers = useCallback(async () => {
+    if (!brand) return
+    setLoadingMembers(true)
+    try {
+      const res = await fetch(`/api/brands/${brand.id}/members`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error cargando usuarios')
+      setMembers(json.data ?? [])
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setLoadingMembers(false)
+    }
+  }, [brand])
+
+  async function resendMemberAccess(member: BrandMember) {
+    if (!brand) return
+    setResendingMemberId(member.id)
+    try {
+      // El owner usa el mismo flujo de invite/resend que ya existe para la
+      // marca (crea el usuario si no existe, reenvía magic link). Los
+      // miembros del equipo (brand_members) usan la ruta nueva /members.
+      const res = member.role === 'owner'
+        ? await fetch(`/api/brands/${brand.id}/invite`, { method: 'POST' })
+        : await fetch(`/api/brands/${brand.id}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ member_id: member.id }),
+          })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo reenviar el acceso')
+      toast.success(json.message ?? 'Email reenviado')
+      if (json.action_link && !json.email_sent) {
+        await navigator.clipboard.writeText(json.action_link).catch(() => {})
+        toast.info('Link copiado')
+      }
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setResendingMemberId(null)
+    }
+  }
+
   useEffect(() => { load() }, [load])
   useEffect(() => { if (tab === 'influencers') loadInfluencers() }, [tab, loadInfluencers])
   useEffect(() => { if (tab === 'locations') loadLocations() }, [tab, brand?.id])
+  useEffect(() => { if (tab === 'members') loadMembers() }, [tab, loadMembers])
 
   useEffect(() => {
     if (!showInfluencerPicker) return
@@ -769,6 +825,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             ['plan', 'Plan'],
             ['billing', 'Billing'],
             ['access', 'Acceso'],
+            ['members', 'Usuarios'],
             ['history', 'Historial'],
           ].map(([id, label]) => (
             <button
@@ -1270,6 +1327,76 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
               Suspender acceso
             </button>
           </div>
+        </div>
+      )}
+
+      {tab === 'members' && (
+        <div className="card p-5 space-y-4">
+          <div>
+            <h2 className="font-bold text-gray-900">Usuarios con acceso al portal</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Equipo que la marca agregó desde su perfil — ven lo mismo que el owner.
+            </p>
+          </div>
+
+          {loadingMembers ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : members.length === 0 ? (
+            <p className="text-sm text-gray-400">Sin usuarios registrados.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-400 uppercase font-semibold border-b border-gray-100">
+                    <th className="py-2 pr-4">Email</th>
+                    <th className="py-2 pr-4">Rol</th>
+                    <th className="py-2 pr-4">Estado</th>
+                    <th className="py-2 pr-4">Invitado</th>
+                    <th className="py-2 pr-4"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map(m => (
+                    <tr key={m.id} className="border-b border-gray-50">
+                      <td className="py-3 pr-4 font-medium text-gray-900">{m.email}</td>
+                      <td className="py-3 pr-4 capitalize">
+                        <span className={cn('badge', m.role === 'owner' ? 'badge-purple' : 'badge-gray')}>
+                          {m.role === 'owner' ? 'Owner' : m.role.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        {!m.is_active
+                          ? <span className="badge badge-red">Desactivado</span>
+                          : m.joined_at
+                            ? <span className="badge badge-green">Activo</span>
+                            : <span className="badge badge-orange">Invitación pendiente</span>}
+                      </td>
+                      <td className="py-3 pr-4 text-gray-500">
+                        {m.invited_at
+                          ? new Date(m.invited_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
+                          : '—'}
+                      </td>
+                      <td className="py-3 pr-4 text-right">
+                        {m.is_active && (
+                          <button
+                            onClick={() => resendMemberAccess(m)}
+                            disabled={resendingMemberId === m.id}
+                            className="px-3 py-1.5 text-xs font-semibold text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 disabled:opacity-50"
+                          >
+                            {resendingMemberId === m.id ? 'Enviando…' : 'Reenviar acceso'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

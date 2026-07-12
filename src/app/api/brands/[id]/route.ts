@@ -109,6 +109,39 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Auto-asignación de marca colaboradora tras aprobación (2026-07-12, pedido
+  // de Pri): si esta marca fue creada desde el flujo de "marcas colaboradoras"
+  // (POST /api/campaigns/[id]/brands con email nuevo) quedó marcada en
+  // metadata.pending_collab_campaign_id, SIN asignar todavía. Recién ahora que
+  // Admin la aprueba se la asigna a esa campaña — nunca antes. Idempotente: se
+  // limpia la metadata apenas se usa, así un PATCH posterior no la reasigna.
+  const meta = (data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata))
+    ? (data.metadata as Record<string, unknown>)
+    : {}
+  const pendingCampaignId = meta.pending_collab_campaign_id as string | undefined
+
+  if (data.status === 'approved' && pendingCampaignId) {
+    try {
+      const { error: assignError } = await admin
+        .from('campaign_brands')
+        .upsert({
+          campaign_id: pendingCampaignId,
+          brand_id: data.id,
+          role: 'collaborator',
+          assigned_by: user.id,
+        }, { onConflict: 'campaign_id,brand_id' })
+
+      if (assignError) {
+        console.error('[PATCH /api/brands/[id]] auto-asignación de co-marca falló:', assignError.message)
+      } else {
+        const { pending_collab_campaign_id: _drop1, invited_by_brand_id: _drop2, ...restMeta } = meta
+        await admin.from('brands').update({ metadata: restMeta }).eq('id', data.id)
+      }
+    } catch (e) {
+      console.error('[PATCH /api/brands/[id]] auto-asignación de co-marca — error no bloqueante:', e)
+    }
+  }
+
   const org_plan = data.organization_id
     ? await resolveBrandPlan(admin, data.organization_id, data.id)
     : 'basic'

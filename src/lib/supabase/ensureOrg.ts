@@ -132,6 +132,43 @@ export async function ensureOrg(user: User): Promise<string | null> {
 }
 
 /**
+ * provisionOrgForBrand — crea una organización aislada para una marca
+ * colaboradora liviana (sin cuenta/login todavía). Mismo patrón de slug +
+ * reintento por colisión que ensureOrg(), pero SIN ningún paso de usuario
+ * (no auth user, no `profiles`, no `organization_members`) — la marca
+ * colaboradora recién creada no tiene owner hasta que alguien se registre
+ * después con ese email.
+ *
+ * Pedido de Pri 2026-07-12 (marcas colaboradoras): "si no existe, se crea una
+ * nueva marca CON SU ORGANIZACIÓN" — necesario porque en este modelo cada
+ * marca vive en su propio org aislado (ver ensureOrg/ensureBrandRow); si la
+ * co-marca quedara bajo el org de quien invita, contaminaría los límites de
+ * plan/roster de la marca principal el día que esa co-marca se registre.
+ */
+export async function provisionOrgForBrand(brandName: string): Promise<string | null> {
+  const admin = createAdminClient()
+
+  const baseSlug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'org'
+  const suffix = Math.random().toString(36).slice(2, 8)
+
+  const insertOrg = (slug: string) =>
+    admin.from('organizations').insert({ name: brandName, slug, type: 'brand' }).select('id').single()
+
+  let { data: org, error } = await insertOrg(baseSlug)
+
+  if (error?.code === '23505') {
+    ;({ data: org, error } = await insertOrg(`${baseSlug}-${suffix}`.slice(0, 60)))
+  }
+
+  if (error || !org) {
+    console.error('[provisionOrgForBrand] failed to create org:', error?.message)
+    return null
+  }
+
+  return org.id
+}
+
+/**
  * ensureInfluencerRow — auto-provision an `influencers` row for a
  * self-registered creador on first portal entry.
  *

@@ -326,23 +326,27 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
         </div>
       </div>
 
-      {watchedVisibility === 'open' && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Preguntas de postulación <span className="text-gray-400 text-xs">(opcional)</span>
-          </label>
-          <p className="text-xs text-gray-400 mb-2">
-            Si agregas preguntas, la influencer deberá responderlas para poder postular.
-          </p>
-          <Controller
-            control={control}
-            name="application_questions"
-            render={({ field }) => (
-              <QuestionsInput value={field.value ?? []} onChange={field.onChange} />
-            )}
-          />
-        </div>
-      )}
+      {/* Preguntas de postulación — opcional en cualquier visibilidad. Pública:
+          la influencer las responde para postular. Privada: las responde para
+          aceptar la invitación (pedido de Pri 2026-07-12, mismo mecanismo,
+          reutiliza application_questions/application_answers). */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Preguntas {watchedVisibility === 'open' ? 'de postulación' : 'para aceptar la invitación'} <span className="text-gray-400 text-xs">(opcional)</span>
+        </label>
+        <p className="text-xs text-gray-400 mb-2">
+          {watchedVisibility === 'open'
+            ? 'Si agregas preguntas, la influencer deberá responderlas para poder postular.'
+            : 'Si agregas preguntas, la influencer deberá responderlas antes de poder aceptar la invitación.'}
+        </p>
+        <Controller
+          control={control}
+          name="application_questions"
+          render={({ field }) => (
+            <QuestionsInput value={field.value ?? []} onChange={field.onChange} />
+          )}
+        />
+      </div>
     </div>
   )
 }
@@ -680,7 +684,7 @@ export function CampaignForm({
       brand_id: data.brand_id || null,
       visibility: data.visibility || 'private',
       address: data.address?.trim() || null,
-      application_questions: data.visibility === 'open' ? (data.application_questions ?? []) : [],
+      application_questions: data.application_questions ?? [],
     }
   }
 

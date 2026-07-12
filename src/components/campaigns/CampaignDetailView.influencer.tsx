@@ -44,6 +44,7 @@ type CampaignRow = {
     hashtags: string[] | null; platforms: string[] | null
     start_date: string | null; end_date: string | null
     currency: string
+    application_questions?: string[] | null
     brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
   } | null
 }
@@ -242,12 +243,17 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   async function handleRespond(action: 'accept' | 'reject') {
     if (!id) return
     if (action === 'reject' && !confirm('¿Rechazar esta invitación? No podrás deshacerlo.')) return
+    const invitationQuestions = data?.campaign?.application_questions ?? []
+    if (action === 'accept' && invitationQuestions.length > 0 && invitationQuestions.some((_, i) => !answers[i]?.trim())) {
+      toast.error('Responde todas las preguntas para aceptar la invitación.')
+      return
+    }
     setResponding(true)
     try {
       const res  = await fetch(`/api/influencer/campaigns/${id}/apply`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, answers }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
@@ -410,12 +416,41 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           <p className="text-sm text-violet-700 font-medium">
             {c.brand?.name ?? 'Esta marca'} te invitó a participar en esta campaña.
           </p>
+
+          {/* Preguntas antes de aceptar — opcional, la define la marca. Si
+              existen, responderlas es obligatorio para poder aceptar (mismo
+              mecanismo que la postulación pública). Pedido de Pri 2026-07-12. */}
+          {(c.application_questions?.length ?? 0) > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-violet-600">
+                Responde antes de aceptar:
+              </p>
+              {(c.application_questions ?? []).map((q, i) => (
+                <div key={i}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{q}</label>
+                  <textarea
+                    rows={2}
+                    value={answers[i] ?? ''}
+                    onChange={e => setAnswers(a => {
+                      const next = [...a]
+                      next[i] = e.target.value
+                      return next
+                    })}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-violet-400 bg-white resize-none"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button onClick={() => handleRespond('reject')} disabled={responding}
               className="flex-1 py-2.5 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors">
               Rechazar
             </button>
-            <button onClick={() => handleRespond('accept')} disabled={responding}
+            <button
+              onClick={() => handleRespond('accept')}
+              disabled={responding || (c.application_questions ?? []).some((_, i) => !answers[i]?.trim())}
               className="flex-1 py-2.5 text-sm font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
               {responding ? 'Enviando…' : 'Aceptar invitación'}
             </button>

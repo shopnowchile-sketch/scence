@@ -88,6 +88,12 @@ export async function POST(req: NextRequest) {
 
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 422 })
 
+  // NOTA (2026-07-12): este endpoint NUNCA acepta `status` del body — cae
+  // siempre en el default de la columna ('pending_approval'). Pedido explícito
+  // de Pri para el flujo de marcas colaboradoras: "no permitir approved directo
+  // desde el frontend". La creación de marcas colaboradoras vive en
+  // POST /api/campaigns/[id]/brands (con su propia organización y sin asignar
+  // hasta que Admin apruebe), NO en este endpoint.
   const { data, error } = await admin
     .from('brands')
     .insert({

@@ -180,7 +180,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
 
-  let body: { action?: 'accept' | 'reject' }
+  let body: { action?: 'accept' | 'reject'; answers?: unknown[] }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -204,6 +204,35 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   if (body.action === 'accept') {
+    // Preguntas de la campaña (opcional, mismo mecanismo que la postulación
+    // pública) — si la campaña privada tiene preguntas, responderlas es
+    // obligatorio antes de aceptar la invitación. Pedido de Pri 2026-07-12.
+    const { data: campaign } = await admin
+      .from('campaigns')
+      .select('application_questions')
+      .eq('id', params.id)
+      .single()
+
+    const questions = Array.isArray(campaign?.application_questions) ? campaign.application_questions as string[] : []
+    const answers = Array.isArray(body.answers) ? body.answers.map(a => String(a ?? '').trim()) : []
+
+    if (questions.length > 0) {
+      const missing = questions.length !== answers.length || answers.some(a => !a)
+      if (missing) {
+        return NextResponse.json({
+          error: 'Esta invitación tiene preguntas obligatorias — responde todas para aceptar.',
+        }, { status: 422 })
+      }
+
+      const { error: answersError } = await admin
+        .from('campaign_influencers')
+        .update({
+          application_answers: questions.map((q, i) => ({ question: q, answer: answers[i] })),
+        })
+        .eq('id', row.id)
+      if (answersError) return NextResponse.json({ error: answersError.message }, { status: 500 })
+    }
+
     const result = await acceptCampaignApplication(admin, {
       campaignId: params.id,
       applicationId: row.id,

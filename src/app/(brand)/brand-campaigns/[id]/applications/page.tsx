@@ -286,19 +286,38 @@ export default function ApplicationsPage() {
                   const Icon = cfg.icon
 
                   return (
-                    <div key={app.id} className="bg-white rounded-xl border border-gray-100 px-5 py-3 flex items-center gap-3">
-                      {inf?.avatar_url
-                        ? <img src={inf.avatar_url} alt={inf?.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
-                        : <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-bold flex-shrink-0">{inf?.display_name?.[0] ?? '?'}</div>
-                      }
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-semibold text-gray-800">{inf?.display_name ?? '—'}</span>
-                        <span className="text-xs text-gray-400 ml-2">{app.origin === 'application' ? 'Postulación' : 'Invitación'}</span>
+                    <div key={app.id} className="bg-white rounded-xl border border-gray-100 px-5 py-3 space-y-2">
+                      <div className="flex items-center gap-3">
+                        {inf?.avatar_url
+                          ? <img src={inf.avatar_url} alt={inf?.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                          : <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-bold flex-shrink-0">{inf?.display_name?.[0] ?? '?'}</div>
+                        }
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-semibold text-gray-800">{inf?.display_name ?? '—'}</span>
+                          <span className="text-xs text-gray-400 ml-2">{app.origin === 'application' ? 'Postulación' : 'Invitación'}</span>
+                        </div>
+                        <span className={cn('flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full', cfg.color)}>
+                          <Icon className="h-3 w-3" />
+                          {cfg.label}
+                        </span>
                       </div>
-                      <span className={cn('flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full', cfg.color)}>
-                        <Icon className="h-3 w-3" />
-                        {cfg.label}
-                      </span>
+                      {/* Respuestas: quedan visibles también después de gestionar
+                          (aceptar/rechazar) — antes solo se veían mientras estaba
+                          pendiente. Pedido de Pri 2026-07-12: "la marca debe poder
+                          ver las respuestas", sin acotar a mientras está pendiente. */}
+                      {app.application_answers?.length > 0 && (
+                        <details className="text-xs">
+                          <summary className="text-gray-400 cursor-pointer select-none">Ver respuestas</summary>
+                          <div className="mt-2 space-y-1.5 bg-gray-50 rounded-lg px-3 py-2">
+                            {app.application_answers.map((qa, i) => (
+                              <div key={i}>
+                                <p className="text-gray-500">{qa.question}</p>
+                                <p className="text-gray-700">{qa.answer}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   )
                 })}

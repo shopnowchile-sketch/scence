@@ -574,6 +574,142 @@ function AddDeliverableForm({
   )
 }
 
+// ── Marcas colaboradoras (co-brands) ──────────────────────────────────────────
+// Rediseñado 2026-07-12 (correcciones de Pri sobre la 1ra versión):
+// - NO hay buscador abierto sobre toda la base de marcas — se busca únicamente
+//   por email exacto (dedup), nunca se lista/expone el resto de la base.
+// - Alta = { email, name } a POST /api/campaigns/[id]/brands:
+//     · si el email ya es de una marca existente -> se asigna directo (matched).
+//     · si no existe -> se crea una marca liviana + organización propia en
+//       'pending_approval', SIN asignar todavía (pending). Admin la aprueba en
+//       /admin-brands y ESO dispara la asignación automática (ver PATCH
+//       /api/brands/[id]).
+// - Nunca se acepta status='approved' desde acá.
+// - Solo pinta name + logo — nunca contact_email/website/etc.
+function CoBrandManager({
+  campaignId,
+  collaborators,
+  canManage,
+  onChanged,
+}: {
+  campaignId: string
+  collaborators: Array<{ id: string; name?: string; logo_url?: string | null }>
+  canManage: boolean
+  onChanged: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
+
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+
+  async function submit() {
+    if (!emailValid || !name.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/brands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), name: name.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      if (json.matched) {
+        toast.success('Marca existente agregada como colaboradora')
+        onChanged()
+      } else {
+        toast.success('Marca creada — queda pendiente de aprobación de Admin. Se asignará a la campaña automáticamente cuando se apruebe.')
+      }
+      setOpen(false)
+      setEmail('')
+      setName('')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error agregando marca')
+    }
+    setSaving(false)
+  }
+
+  async function remove(brandId: string) {
+    if (!confirm('¿Quitar esta marca colaboradora de la campaña?')) return
+    setRemovingId(brandId)
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/brands?brand_id=${brandId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast.success('Marca quitada')
+      onChanged()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error quitando marca')
+    }
+    setRemovingId(null)
+  }
+
+  if (!canManage) return null
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-700">
+          <Plus className="h-3.5 w-3.5" /> Agregar marca colaboradora
+        </button>
+      ) : (
+        <div className="space-y-2 bg-gray-50 rounded-xl p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500">Agregar marca colaboradora</span>
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Email del owner de la marca *</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="owner@marca.com"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre de la marca *</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Nombre de la marca"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
+            />
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Si ese email ya pertenece a una marca de SCENCE, se agrega directo. Si no, se crea una marca nueva pendiente de aprobación de Admin.
+          </p>
+          <button type="button" onClick={submit} disabled={saving || !emailValid || !name.trim()}
+            className="w-full py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            {saving ? 'Guardando…' : 'Agregar'}
+          </button>
+        </div>
+      )}
+
+      {collaborators.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {collaborators.map(b => (
+            <div key={b.id} className="flex items-center justify-between gap-2 text-xs px-2.5 py-1.5 bg-gray-50 rounded-lg">
+              <span className="text-gray-600 truncate">{b.name}</span>
+              <button type="button" onClick={() => remove(b.id)} disabled={removingId === b.id}
+                className="text-red-500 hover:text-red-600 disabled:opacity-50 flex-shrink-0">
+                {removingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: string; defaultTab?: Tab; portal?: 'admin' | 'brand' }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -1511,25 +1647,39 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 colaboradoras. Visible en ambos portales: solo se muestra nombre
                 y rol de las colaboradoras (nunca datos comerciales sensibles),
                 consistente con la regla de permisos de marca. */}
-            {campaignBrands.length > 0 && (
+            {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
               <div className="card p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                   🏢 {campaignBrands.length > 1 ? 'Marcas' : 'Marca'}
                 </h3>
-                <div className="space-y-2">
-                  {campaignBrands.map((brand, idx) => (
-                    <div key={`${brand.id ?? idx}`} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {!!brand.logo_url && (
-                          <img src={String(brand.logo_url)} alt={String(brand.name)}
-                            className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
-                        )}
-                        <span className="font-semibold text-gray-900 truncate">{String(brand.name ?? 'Marca sin nombre')}</span>
+                {campaignBrands.length > 0 && (
+                  <div className="space-y-2">
+                    {campaignBrands.map((brand, idx) => (
+                      <div key={`${brand.id ?? idx}`} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {!!brand.logo_url && (
+                            <img src={String(brand.logo_url)} alt={String(brand.name)}
+                              className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
+                          )}
+                          <span className="font-semibold text-gray-900 truncate">{String(brand.name ?? 'Marca sin nombre')}</span>
+                        </div>
+                        <span className="text-xs text-gray-400 flex-shrink-0">{String(brand._role ?? '')}</span>
                       </div>
-                      <span className="text-xs text-gray-400 flex-shrink-0">{String(brand._role ?? '')}</span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
+                {/* Gestión de colaboradoras: solo la marca principal (o admin) puede
+                    agregar/quitar — mismo gate que el resto de acciones de edición
+                    del componente. Una co-marca invitada ve la lista de arriba pero
+                    no ve este bloque de gestión. */}
+                <CoBrandManager
+                  campaignId={id}
+                  collaborators={campaignBrands
+                    .filter(b => b._role === 'Colaboradora')
+                    .map(b => ({ id: String(b.id), name: String(b.name ?? ''), logo_url: b.logo_url as string | null }))}
+                  canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
+                  onChanged={() => void refetch()}
+                />
               </div>
             )}
             {/* Visibility badge — solo admin. El estado (Pública/Por invitación) ya

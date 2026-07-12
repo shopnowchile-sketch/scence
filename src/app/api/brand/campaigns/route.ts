@@ -223,11 +223,10 @@ export async function POST(req: NextRequest) {
       budget_total:         budget_total ?? null,
       application_deadline: visibility === 'open' ? (application_deadline ?? null) : null,
       max_influencers:      visibility === 'open' ? (max_influencers ?? null) : null,
-      // Preguntas de postulación: opcionales, solo aplican a campañas públicas
-      // (donde existe el flujo de "postular"). Se filtran vacías/blancas.
-      application_questions: visibility === 'open'
-        ? (application_questions ?? []).map(q => String(q ?? '').trim()).filter(Boolean)
-        : [],
+      // Preguntas obligatorias (pública: para postular / privada: para aceptar
+      // la invitación) — opcionales en cualquier visibilidad. Se filtran
+      // vacías/blancas.
+      application_questions: (application_questions ?? []).map(q => String(q ?? '').trim()).filter(Boolean),
       content_guidelines:   content_guidelines ?? null,
       hashtags:             hashtags ?? [],
       platforms:            platforms ?? [],

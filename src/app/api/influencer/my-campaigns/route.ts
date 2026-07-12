@@ -34,10 +34,10 @@ export async function GET() {
   const { data: assigned, error: assignedError } = await admin
     .from('campaign_influencers')
     .select(`
-      id, status, application_status, origin, message, fee, currency,
+      id, status, application_status, origin, message, fee, currency, application_answers,
       campaign:campaigns (
         id, name, status, description, content_guidelines, hashtags, platforms,
-        start_date, end_date, currency, created_by, visibility,
+        start_date, end_date, currency, created_by, visibility, application_questions,
         brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
       ),
       campaign_deliverables (

@@ -24,6 +24,7 @@ interface Application {
   message: string | null
   fee: number | null
   deliverables_spec: Array<{ type: string; quantity: number; platform?: string; due_date?: string }>
+  application_answers: Array<{ question: string; answer: string }>
   created_at: string
   influencer: {
     id: string
@@ -199,6 +200,18 @@ export default function ApplicationsPage() {
                         <div className="bg-gray-50 rounded-xl px-4 py-3">
                           <p className="text-xs font-semibold text-gray-500 mb-1">Mensaje</p>
                           <p className="text-sm text-gray-700">{app.message}</p>
+                        </div>
+                      )}
+
+                      {app.application_answers?.length > 0 && (
+                        <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-2">
+                          <p className="text-xs font-semibold text-gray-500">Respuestas a la postulación</p>
+                          {app.application_answers.map((qa, i) => (
+                            <div key={i}>
+                              <p className="text-xs text-gray-500">{qa.question}</p>
+                              <p className="text-sm text-gray-700">{qa.answer}</p>
+                            </div>
+                          ))}
                         </div>
                       )}
 

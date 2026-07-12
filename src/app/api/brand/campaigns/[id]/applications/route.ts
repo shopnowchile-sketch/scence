@@ -21,13 +21,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Verificar ownership de la campaña
   const { data: campaign } = await admin
-    .from('campaigns').select('id, visibility').eq('id', params.id).eq('brand_id', brand.id).single()
+    .from('campaigns').select('id, visibility, application_questions').eq('id', params.id).eq('brand_id', brand.id).single()
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
   const { data, error } = await admin
     .from('campaign_influencers')
     .select(`
-      id, application_status, origin, message, fee, deliverables_spec, created_at,
+      id, application_status, origin, message, fee, deliverables_spec, application_answers, created_at,
       influencer:influencers (
         id, display_name, avatar_url, bio, categories, city, country,
         influencer_social_profiles (platform, username, followers, engagement_rate, is_primary)
@@ -38,7 +38,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ data: data ?? [], visibility: campaign.visibility })
+  return NextResponse.json({
+    data: data ?? [],
+    visibility: campaign.visibility,
+    application_questions: campaign.application_questions ?? [],
+  })
 }
 
 // PATCH /api/brand-campaigns/[id]/applications

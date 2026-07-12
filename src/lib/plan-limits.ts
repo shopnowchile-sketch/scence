@@ -40,7 +40,7 @@ export const PLAN_LIMITS = {
     label:                     'Basic',
     price_monthly_clp:         69_990,
     max_active_campaigns:      1,
-    max_roster_influencers:    10,
+    max_roster_influencers:    5,
     can_create_open_campaigns: false,
     can_access_marketplace:    false,
     can_view_full_influencer_base: false,  // Basic: solo influencers relacionadas

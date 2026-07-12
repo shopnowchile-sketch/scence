@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que la campaña existe, es open y está activa o en pending_approval
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, status, visibility, organization_id, application_deadline, brand_id')
+    .select('id, name, status, visibility, organization_id, application_deadline, brand_id, application_questions')
     .eq('id', params.id)
     .eq('organization_id', influencer.organization_id)
     .single()
@@ -56,24 +56,43 @@ export async function POST(req: NextRequest, { params }: Params) {
     }, { status: 422 })
   }
 
-  // Leer mensaje opcional del body
+  // Leer mensaje opcional + respuestas a las preguntas de postulación del body
   let message: string | null = null
+  let answers: string[] = []
   try {
     const body = await req.json()
     message = body?.message ?? null
+    answers = Array.isArray(body?.answers) ? body.answers.map((a: unknown) => String(a ?? '').trim()) : []
   } catch { /* body vacío es ok */ }
+
+  // Preguntas de postulación (opcional, la define la marca al crear la
+  // campaña). Si la campaña tiene preguntas, responderlas es obligatorio —
+  // pedido de Pri 2026-07-12: "solo si hay preguntas desde la marca, la
+  // influencer debe responder obligatorio con su postulación".
+  const questions = Array.isArray(campaign.application_questions) ? campaign.application_questions as string[] : []
+  if (questions.length > 0) {
+    const missing = questions.length !== answers.length || answers.some(a => !a)
+    if (missing) {
+      return NextResponse.json({
+        error: 'Esta campaña tiene preguntas obligatorias — responde todas para postular.',
+      }, { status: 422 })
+    }
+  }
 
   // Crear postulación con nuevo schema
   const { data, error } = await admin
     .from('campaign_influencers')
     .insert({
-      campaign_id:        params.id,
-      influencer_id:      influencer.id,
-      application_status: 'pending',
-      origin:             'application',
-      message:            message,
-      fee:                null,
-      deliverables_spec:  '[]',
+      campaign_id:          params.id,
+      influencer_id:        influencer.id,
+      application_status:   'pending',
+      origin:               'application',
+      message:              message,
+      fee:                  null,
+      deliverables_spec:    '[]',
+      application_answers:  questions.length > 0
+        ? questions.map((q, i) => ({ question: q, answer: answers[i] }))
+        : [],
     })
     .select('id')
     .single()

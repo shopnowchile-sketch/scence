@@ -56,6 +56,7 @@ type PreviewCampaign = {
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
   deliverable_templates: Array<{ type: string; quantity?: number; description?: string }> | null
+  application_questions: string[] | null
   application_deadline: string | null
   brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
   _applied: boolean
@@ -187,6 +188,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
   const [responding, setResponding] = useState(false)
+  // Respuestas a las preguntas de postulación (opcional, solo si la campaña
+  // tiene application_questions) — pedido de Pri 2026-07-12.
+  const [answers, setAnswers] = useState<string[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -212,10 +216,19 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
   async function handleApply() {
     if (!preview) return
+    const questions = preview.application_questions ?? []
+    if (questions.length > 0 && questions.some((_, i) => !answers[i]?.trim())) {
+      toast.error('Responde todas las preguntas para postular.')
+      return
+    }
     if (!confirm(`¿Enviar solicitud para unirte a "${preview.name}"? El equipo la revisará y te confirmará.`)) return
     setApplying(true)
     try {
-      const res  = await fetch(`/api/influencer/campaigns/${id}/apply`, { method: 'POST' })
+      const res  = await fetch(`/api/influencer/campaigns/${id}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+      })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       toast.success('¡Solicitud enviada! El equipo te confirmará pronto.')
@@ -296,7 +309,29 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
         {/* CTA arriba, antes del detalle de deliverables (pedido: que se vea
             de inmediato, sin scrollear todo el brief primero). */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          {!p._applied && (p.application_questions?.length ?? 0) > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-gray-500">
+                Esta marca pide responder antes de postular:
+              </p>
+              {(p.application_questions ?? []).map((q, i) => (
+                <div key={i}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{q}</label>
+                  <textarea
+                    rows={2}
+                    value={answers[i] ?? ''}
+                    onChange={e => setAnswers(a => {
+                      const next = [...a]
+                      next[i] = e.target.value
+                      return next
+                    })}
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-violet-400 bg-gray-50 resize-none"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
           {p._applied ? (
             <div className="flex items-center gap-2 text-sm font-semibold text-green-600">
               <CheckCircle2 className="h-4 w-4" />

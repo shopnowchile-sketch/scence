@@ -170,6 +170,7 @@ export async function POST(req: NextRequest) {
     platforms?: string[]
     address?: string
     deliverable_templates?: Array<{ type: string; quantity: number; description?: string; due_date?: string }>
+    application_questions?: string[]
   }
 
   try { body = await req.json() } catch {
@@ -178,7 +179,8 @@ export async function POST(req: NextRequest) {
 
   const { name, type, visibility, description, start_date, end_date,
           budget_total, application_deadline, max_influencers,
-          content_guidelines, hashtags, platforms, address, deliverable_templates } = body
+          content_guidelines, hashtags, platforms, address, deliverable_templates,
+          application_questions } = body
 
   if (!name?.trim()) return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
   if (!type) return NextResponse.json({ error: 'El tipo es requerido' }, { status: 422 })
@@ -221,6 +223,11 @@ export async function POST(req: NextRequest) {
       budget_total:         budget_total ?? null,
       application_deadline: visibility === 'open' ? (application_deadline ?? null) : null,
       max_influencers:      visibility === 'open' ? (max_influencers ?? null) : null,
+      // Preguntas de postulación: opcionales, solo aplican a campañas públicas
+      // (donde existe el flujo de "postular"). Se filtran vacías/blancas.
+      application_questions: visibility === 'open'
+        ? (application_questions ?? []).map(q => String(q ?? '').trim()).filter(Boolean)
+        : [],
       content_guidelines:   content_guidelines ?? null,
       hashtags:             hashtags ?? [],
       platforms:            platforms ?? [],

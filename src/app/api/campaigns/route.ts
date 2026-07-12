@@ -155,6 +155,8 @@ export async function POST(request: NextRequest) {
     deliverable_templates,
     organization_id,
     address,
+    visibility,
+    application_questions,
   } = body as Record<string, unknown>
 
   // Validate required fields
@@ -203,6 +205,11 @@ export async function POST(request: NextRequest) {
       },
       deliverable_templates: Array.isArray(deliverable_templates) && (deliverable_templates as unknown[]).length > 0
         ? deliverable_templates
+        : [],
+      // Preguntas de postulación (opcional, solo tiene sentido en campañas
+      // públicas/open — mismo criterio que /api/brand/campaigns).
+      application_questions: visibility === 'open' && Array.isArray(application_questions)
+        ? (application_questions as unknown[]).map(q => String(q ?? '').trim()).filter(Boolean)
         : [],
       organization_id: orgId,
       created_by: user.id,

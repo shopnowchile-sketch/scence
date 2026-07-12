@@ -23,7 +23,7 @@ const PLAN_DEFS: Array<{
       'Campañas privadas ilimitadas',
       'Primera campaña pública incluida',
       'Contenido ilimitado',
-      'Hasta 10 creadoras activas',
+      'Hasta 5 creadoras activas',
       'Programa de afiliados / códigos',
       '1 marca incluida',
       'Hasta 5 usuarios',

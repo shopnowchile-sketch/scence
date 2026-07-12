@@ -64,6 +64,7 @@ const schema = z.object({
   brand_id: z.string().optional(),
   visibility: z.enum(['private', 'open']).default('private'),
   address: z.string().max(300).optional(),
+  application_questions: z.array(z.string().min(1)).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -131,6 +132,43 @@ function HashtagInput({ value = [], onChange }: { value?: string[]; onChange: (v
   )
 }
 
+// ── Preguntas de postulación (opcional, solo campañas públicas) ───────────────
+// Pedido de Pri 2026-07-12: la marca puede agregar preguntas para que las
+// influencers respondan al postular. Es opcional — si no se agrega ninguna,
+// postular sigue siendo igual que antes. Si se agrega al menos una, responder
+// pasa a ser obligatorio del lado influencer (ver /apply route).
+function QuestionsInput({ value = [], onChange }: { value?: string[]; onChange: (v: string[]) => void }) {
+  const [input, setInput] = useState('')
+  function add() {
+    const q = input.trim()
+    if (q) onChange([...value, q])
+    setInput('')
+  }
+  return (
+    <div>
+      <div className="flex gap-2 mb-2">
+        <input
+          className="input-base flex-1"
+          placeholder="Ej. ¿Por qué quieres participar en esta campaña?"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+        />
+        <button type="button" onClick={add}
+          className="px-3 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition-colors">+</button>
+      </div>
+      <div className="space-y-1.5">
+        {value.map((q, i) => (
+          <div key={i} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+            <span className="flex-1 text-sm text-gray-700">{q}</span>
+            <button type="button" onClick={() => onChange(value.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500 transition-colors">×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Tag input ─────────────────────────────────────────────────────────────────
 function TagInput({ value = [], onChange, placeholder = 'Agregar tag' }: { value?: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
   const [input, setInput] = useState('')
@@ -175,6 +213,7 @@ interface StepProps {
 function Step1({ register, control, errors, planGating = false, canOpen = true }: StepProps & { planGating?: boolean; canOpen?: boolean }) {
   // En Basic, la primera campaña pública está incluida. Las siguientes requieren Growth.
   const openLocked = planGating && !canOpen
+  const watchedVisibility = useWatch({ control, name: 'visibility' })
   return (
     <div className="space-y-6">
       <div>
@@ -286,6 +325,24 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
           </label>
         </div>
       </div>
+
+      {watchedVisibility === 'open' && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Preguntas de postulación <span className="text-gray-400 text-xs">(opcional)</span>
+          </label>
+          <p className="text-xs text-gray-400 mb-2">
+            Si agregas preguntas, la influencer deberá responderlas para poder postular.
+          </p>
+          <Controller
+            control={control}
+            name="application_questions"
+            render={({ field }) => (
+              <QuestionsInput value={field.value ?? []} onChange={field.onChange} />
+            )}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -602,6 +659,7 @@ export function CampaignForm({
       brand_id: '',
       visibility: 'private',
       address: '',
+      application_questions: [],
     },
   })
 
@@ -622,6 +680,7 @@ export function CampaignForm({
       brand_id: data.brand_id || null,
       visibility: data.visibility || 'private',
       address: data.address?.trim() || null,
+      application_questions: data.visibility === 'open' ? (data.application_questions ?? []) : [],
     }
   }
 
@@ -707,6 +766,7 @@ export function CampaignForm({
     name: 1, type: 1, platforms: 1, visibility: 1,
     start_date: 2, end_date: 2, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
     hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
+    application_questions: 1,
   }
 
   function onInvalid(formErrors: FieldErrors<FormValues>) {

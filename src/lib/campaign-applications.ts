@@ -128,13 +128,14 @@ export async function acceptCampaignApplication(
     console.error('[acceptCampaignApplication] auto-deliverables failed:', e)
   }
 
-  // Activar la campaña si estaba en draft/pending_approval
-  if (['draft', 'pending_approval'].includes(campaign.status ?? '')) {
-    await admin
-      .from('campaigns')
-      .update({ status: 'active', updated_at: new Date().toISOString() })
-      .eq('id', campaignId)
-  }
+  // NOTA (2026-07-12, pedido de Pri): antes esta función activaba la campaña
+  // sola cuando estaba en draft/pending_approval. Eso se sacó — la activación
+  // es una acción manual de la marca (botón "Activar", PATCH /api/campaigns/[id]
+  // action=activate), que además dispara los emails de aviso
+  // (notifyPreassignedInfluencersOnActivation / notifyAllInfluencersOfOpenCampaign).
+  // Auto-activar acá bypasseaba ese flujo: la campaña quedaba activa sin que
+  // se avisara a nadie. Aceptar una postulación/invitación ya NO cambia
+  // campaigns.status — solo el status de la fila campaign_influencers.
 
   // Email de aprobación — no bloqueante
   if (app.influencer?.email) {

@@ -1,20 +1,35 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
- * Tablas hijas que referencian influencer_id. Se borran antes del influencer
- * para evitar violaciones de FK. Si una tabla no existe o no tiene la columna,
- * el error se ignora (cleanup best-effort).
+ * Tablas hijas que referencian influencer_id (columna por defecto) o la columna
+ * indicada en `column`. Se borran antes del influencer para evitar violaciones
+ * de FK. Si una tabla no existe o no tiene la columna, el error se ignora
+ * (cleanup best-effort).
+ *
+ * Auditado 2026-07-11 contra information_schema (FKs reales hacia influencers.id)
+ * tras un merge que fallaba: la lista original no cubría contracts,
+ * influencer_payment_methods, affiliate_links (estaba mal escrita como
+ * 'affiliates'), booking_influencers, barters, brand_influencers,
+ * campaign_influencer_notifications y locations (columna owner_influencer_id).
+ * Si se agregan tablas nuevas con FK a influencers.id, sumarlas aquí también.
  */
-const CHILD_TABLES = [
-  'influencer_social_profiles',
-  'influencer_rate_cards',
-  'campaign_influencers',
-  'campaign_deliverables',
-  'payroll_items',
-  'bookings',
-  'affiliates',
-  'events',
-  'influencer_tasks',
+const CHILD_TABLES: ReadonlyArray<{ table: string; column: string }> = [
+  { table: 'influencer_social_profiles', column: 'influencer_id' },
+  { table: 'influencer_rate_cards', column: 'influencer_id' },
+  { table: 'campaign_influencers', column: 'influencer_id' },
+  { table: 'campaign_deliverables', column: 'influencer_id' },
+  { table: 'payroll_items', column: 'influencer_id' },
+  { table: 'bookings', column: 'influencer_id' },
+  { table: 'booking_influencers', column: 'influencer_id' },
+  { table: 'affiliate_links', column: 'influencer_id' },
+  { table: 'events', column: 'influencer_id' },
+  { table: 'influencer_tasks', column: 'influencer_id' },
+  { table: 'contracts', column: 'influencer_id' },
+  { table: 'influencer_payment_methods', column: 'influencer_id' },
+  { table: 'barters', column: 'influencer_id' },
+  { table: 'brand_influencers', column: 'influencer_id' },
+  { table: 'campaign_influencer_notifications', column: 'influencer_id' },
+  { table: 'locations', column: 'owner_influencer_id' },
 ] as const
 
 export interface HardDeleteResult {
@@ -36,8 +51,8 @@ export async function hardDeleteInfluencers(
   if (!ids.length) return { deleted: 0, requestedIds: [], childErrors }
 
   // 1. Borrar filas hijas (best-effort, no bloquea si la tabla no existe)
-  for (const table of CHILD_TABLES) {
-    const { error } = await admin.from(table).delete().in('influencer_id', ids)
+  for (const { table, column } of CHILD_TABLES) {
+    const { error } = await admin.from(table).delete().in(column, ids)
     if (error) {
       const msg = error.message ?? ''
       // Ignorar tablas/columnas inexistentes

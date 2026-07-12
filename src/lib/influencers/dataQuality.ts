@@ -56,6 +56,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
   const PAGE = 1000
   let from = 0
   const all: ScanInfluencer[] = []
+  const seenIds = new Set<string>()
 
   for (;;) {
     const { data, error } = await admin
@@ -65,13 +66,23 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         social_profiles:influencer_social_profiles ( platform, profile_url, username, followers )
       `)
       .eq('organization_id', orgId)
+      // Desempate estable por id: con imports masivos, cientos de filas
+      // comparten el mismo created_at (una sola sentencia INSERT evalúa
+      // now() una vez para todas sus filas). Ordenar solo por created_at
+      // hace que la paginación por range() sea inestable con tantos
+      // empates — la misma fila puede aparecer en dos páginas seguidas,
+      // generando un "duplicado" fantasma (mismo id dos veces) que rompe
+      // el merge (keepId y su único mergeId terminan siendo el mismo id).
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1)
 
     if (error) throw new Error(error.message)
     if (!data || data.length === 0) break
 
     for (const inf of data) {
+      if (seenIds.has(inf.id)) continue // red de seguridad extra contra el mismo id repetido
+      seenIds.add(inf.id)
       const profiles = (inf.social_profiles ?? []) as Array<{
         platform: string; profile_url: string | null; username: string | null; followers: number | null
       }>

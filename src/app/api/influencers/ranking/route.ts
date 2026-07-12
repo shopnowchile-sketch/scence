@@ -130,14 +130,30 @@ export async function GET(req: NextRequest) {
 
   const lastSeenMap: Record<string, string | null> = {}
 
+  // FIX (2026-07-11, "Agregar influencer" colgado en prod): con ~1548
+  // user_ids (roster de 2446 influencers) este .in() se armaba en UNA sola
+  // request GET vía PostgREST — la URL resultante (cientos de UUIDs) queda
+  // fuera de los límites razonables de la capa REST/proxy y la request nunca
+  // vuelve a responder (se cuelga sin error, el fetch queda pendiente para
+  // siempre). Se trocea en lotes chicos ejecutados en paralelo, mismo
+  // criterio que fetchAllRows más arriba pero para IN en vez de range().
   if (userIds.length > 0) {
-    const { data: profiles } = await admin
-      .from('profiles')
-      .select('id, last_seen_at')
-      .in('id', userIds)
+    const CHUNK = 150
+    const chunks: string[][] = []
+    for (let i = 0; i < userIds.length; i += CHUNK) chunks.push(userIds.slice(i, i + CHUNK))
 
-    for (const profile of profiles ?? []) {
-      lastSeenMap[profile.id as string] = (profile.last_seen_at as string | null) ?? null
+    const results = await Promise.all(
+      chunks.map(ids => admin.from('profiles').select('id, last_seen_at').in('id', ids))
+    )
+
+    for (const { data: profiles, error: profErr } of results) {
+      if (profErr) {
+        console.error('[GET /api/influencers/ranking] profiles chunk failed:', profErr)
+        continue // no bloquear el ranking entero por un lote — last_sign_in_at queda null para esos
+      }
+      for (const profile of profiles ?? []) {
+        lastSeenMap[profile.id as string] = (profile.last_seen_at as string | null) ?? null
+      }
     }
   }
 

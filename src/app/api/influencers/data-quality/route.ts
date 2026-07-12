@@ -3,6 +3,10 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { loadScan, findDuplicates, buildReport } from '@/lib/influencers/dataQuality'
 
+// Nunca cachear (ver nota en /api/influencers/duplicates/route.ts).
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // GET /api/influencers/data-quality — métricas de calidad de datos del roster
 export async function GET(_req: NextRequest) {
   const supabase = createServerClient()

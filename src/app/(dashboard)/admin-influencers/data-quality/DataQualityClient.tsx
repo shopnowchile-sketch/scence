@@ -80,8 +80,8 @@ export function DataQualityClient() {
     setLoading(true)
     try {
       const [rq, dq] = await Promise.all([
-        fetch('/api/influencers/data-quality').then(r => r.json()),
-        fetch('/api/influencers/duplicates').then(r => r.json()),
+        fetch('/api/influencers/data-quality', { cache: 'no-store' }).then(r => r.json()),
+        fetch('/api/influencers/duplicates', { cache: 'no-store' }).then(r => r.json()),
       ])
       if (rq.report) setReport(rq.report)
       if (dq.groups) {

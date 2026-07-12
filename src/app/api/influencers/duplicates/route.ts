@@ -3,6 +3,13 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { loadScan, findDuplicates } from '@/lib/influencers/dataQuality'
 
+// Nunca cachear: esta ruta se usa para decidir qué combinar/eliminar. Sin esto,
+// Vercel puede servir un snapshot viejo de grupos duplicados (ids ya combinados
+// en un intento anterior), causando "keepId y mergeIds son requeridos" / 404 al
+// intentar combinar de nuevo registros que ya no existen.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // GET /api/influencers/duplicates — grupos de duplicados por email / instagram_url / instagram
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()

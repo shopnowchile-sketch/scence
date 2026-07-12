@@ -191,8 +191,11 @@ export async function GET() {
           new Date(b.last_seen_at as string).getTime() -
           new Date(a.last_seen_at as string).getTime()
       )
-      .slice(0, 10)
   }
+
+  // Conteo real de conectados (antes de recortar la lista de preview).
+  const liveInfluencersCount = liveInfluencers.length
+  const liveInfluencersPreview = liveInfluencers.slice(0, 10)
 
   return NextResponse.json({
     kpis: {
@@ -210,7 +213,8 @@ export async function GET() {
       entered: influencersEntered,
       pending: Math.max(0, totalInfluencers - influencersEntered),
     },
-    live_influencers: liveInfluencers,
+    live_influencers: liveInfluencersPreview,
+    live_influencers_count: liveInfluencersCount,
     pending_deliverables: pendingDeliverablesRes.data ?? [],
     pending_applications_count: pendingApplicationsRes.count ?? 0,
     recent_activity:      recentActivityRes.data ?? [],

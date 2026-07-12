@@ -557,6 +557,13 @@ export function DashboardClient() {
       time: 'hace instantes',
     }))
 
+    // Conteo real de conectados — puede ser mayor al largo de liveInfluencers,
+    // que solo trae un preview (top 6) para no saturar la card.
+    const liveInfluencersCountReal = deepNumber(state.dashboard, ['live_influencers_count', 'liveInfluencersCount'], -1)
+    const liveInfluencersCount = liveInfluencersCountReal >= 0
+      ? liveInfluencersCountReal
+      : liveSource.length
+
     // FIX (2026-07-02): antes se derivaba del array capado /api/influencers?limit=100
     // (con 1452 influencers reales, undercounteaba brutalmente — "35/99" en vez del
     // roster real). Ahora /api/dashboard trae influencer_portal.{entered,pending}
@@ -598,6 +605,7 @@ export function DashboardClient() {
       margin,
       marginPercent,
       liveInfluencers,
+      liveInfluencersCount,
       influencersEntered,
       influencersPending: influencersPendingReal >= 0
         ? influencersPendingReal
@@ -668,7 +676,7 @@ export function DashboardClient() {
                 <h2 className="text-base font-bold text-gray-950">Live influencers</h2>
                 <RefreshCw className="h-3.5 w-3.5 text-gray-300" />
               </div>
-              <div className="text-3xl font-black text-gray-950">{computed.liveInfluencers.length}</div>
+              <div className="text-3xl font-black text-gray-950">{computed.liveInfluencersCount}</div>
             </div>
 
             {computed.liveInfluencers.length ? (

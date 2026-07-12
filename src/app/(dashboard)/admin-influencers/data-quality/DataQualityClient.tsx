@@ -103,8 +103,17 @@ export function DataQualityClient() {
 
   useEffect(() => { load() }, [load])
 
+  // Fallback: si por lo que sea keepChoice[g.key] no está seteado (carrera de
+  // estado, doble click antes de que cargue, etc.), NUNCA saltar el grupo en
+  // silencio — se recalcula el mismo default que usa load() (más followers).
+  // Pri: "que nunca se equivoque". Sin este fallback, un keepChoice vacío
+  // hacía que "Combinar todos" reportara "0 combinados" sin error visible.
+  function resolveKeepId(g: DuplicateGroup): string | undefined {
+    return keepChoice[g.key] ?? [...g.influencers].sort((a, b) => b.followers - a.followers)[0]?.id
+  }
+
   async function handleMerge(g: DuplicateGroup) {
-    const keepId = keepChoice[g.key]
+    const keepId = resolveKeepId(g)
     if (!keepId) return
     const mergeIds = g.influencers.filter(i => i.id !== keepId).map(i => i.id)
     if (!confirm(`Combinar ${mergeIds.length} duplicado(s) en el registro seleccionado y eliminar permanentemente el resto. ¿Continuar?`)) return
@@ -142,12 +151,33 @@ export function DataQualityClient() {
     setMergeAllProgress({ done: 0, total: groups.length })
     let okCount = 0
     let mergedRecords = 0
+    let alreadyResolved = 0
     const failed: string[] = []
 
+    // Un mismo par duplicado puede aparecer en varios grupos a la vez (p.ej.
+    // coincide por email Y por Instagram) → 2-3 "grupos" distintos apuntan a
+    // los mismos ids. Si el primero ya los combina/borra, un grupo posterior
+    // no debe operar sobre ids que ya no existen (404 / keeper equivocado).
+    // consumedIds trackea qué ids ya se resolvieron en esta misma pasada.
+    const consumedIds = new Set<string>()
+
     for (const g of groups) {
-      const keepId = keepChoice[g.key]
-      const mergeIds = g.influencers.filter(i => i.id !== keepId).map(i => i.id)
+      const alive = g.influencers.filter(i => !consumedIds.has(i.id))
+      if (alive.length < 2) {
+        // Ya resuelto por un grupo anterior en esta misma pasada (no es un error).
+        alreadyResolved++
+        setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
+        continue
+      }
+      let keepId = keepChoice[g.key]
+      if (!keepId || !alive.some(i => i.id === keepId)) {
+        // La selección original ya no está viva (o no hay selección) — recalcular
+        // sobre los ids que SÍ siguen vivos, nunca dejar el grupo sin resolver.
+        keepId = [...alive].sort((a, b) => b.followers - a.followers)[0]?.id
+      }
+      const mergeIds = alive.filter(i => i.id !== keepId).map(i => i.id)
       if (!keepId || mergeIds.length === 0) {
+        failed.push(`${g.value}: no se pudo determinar el registro a conservar`)
         setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
         continue
       }
@@ -160,16 +190,18 @@ export function DataQualityClient() {
         if (!r.ok) throw new Error(j.error)
         okCount++
         mergedRecords += j.merged ?? mergeIds.length
+        mergeIds.forEach(id => consumedIds.add(id))
       } catch (e) {
         failed.push(`${g.value}: ${e instanceof Error ? e.message : 'error'}`)
       }
       setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
     }
 
+    const resolvedNote = alreadyResolved > 0 ? ` · ${alreadyResolved} ya resuelto(s) por otro grupo` : ''
     if (failed.length === 0) {
-      toast.success(`${okCount} grupo(s) combinados · ${mergedRecords} duplicado(s) eliminados`)
+      toast.success(`${okCount} grupo(s) combinados · ${mergedRecords} duplicado(s) eliminados${resolvedNote}`)
     } else {
-      toast.error(`${okCount} grupo(s) combinados, ${failed.length} fallaron. Ver consola.`)
+      toast.error(`${okCount} grupo(s) combinados, ${failed.length} fallaron${resolvedNote}. Ver consola.`)
       console.error('[merge-all] grupos fallidos:', failed)
     }
     setMergingAll(false)
@@ -178,7 +210,7 @@ export function DataQualityClient() {
   }
 
   async function handleDeleteDuplicates(g: DuplicateGroup) {
-    const keepId = keepChoice[g.key]
+    const keepId = resolveKeepId(g)
     const ids = g.influencers.filter(i => i.id !== keepId).map(i => i.id)
     if (!ids.length) return
     if (!confirm(`Eliminar permanentemente ${ids.length} duplicado(s), conservando solo el registro seleccionado. Esta acción no se puede deshacer. ¿Continuar?`)) return

@@ -23,7 +23,7 @@ export async function GET() {
     .select(`
       id, status, gross_amount, net_amount, currency,
       paid_at, description, payment_reference, created_at,
-      payroll_run:payroll_runs (id, period_label, paid_at),
+      payroll_run:payroll_runs (id, period_start, period_end),
       campaign_influencer:campaign_influencers (
         campaign:campaigns (id, name)
       )

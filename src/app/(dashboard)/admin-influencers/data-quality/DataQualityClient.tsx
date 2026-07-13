@@ -17,11 +17,22 @@ interface Report {
   inactive: number
   withoutInstagram: number
   withInstagram: number
+  withoutCommune: number
+  withoutAddress: number
+  missingAnyRequired: number
   duplicateGroups: number
   duplicateRecords: number
   duplicatesByEmail: number
-  duplicatesByInstagramUrl: number
   duplicatesByInstagram: number
+  duplicatesByMixed: number
+  communeRanking: RankingItem[]
+  nicheRanking: RankingItem[]
+}
+
+interface RankingItem {
+  value: string | null
+  label: string
+  count: number
 }
 
 interface ScanInfluencer {
@@ -37,28 +48,66 @@ interface ScanInfluencer {
 
 interface DuplicateGroup {
   key: string
-  type: 'email' | 'instagram_url' | 'instagram'
+  type: 'email' | 'instagram' | 'mixed'
   value: string
   influencers: ScanInfluencer[]
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  email: 'Email', instagram_url: 'Instagram URL', instagram: 'Instagram @',
+  email: 'Email', instagram: 'Instagram', mixed: 'Email + Instagram',
 }
 
-function StatCard({ icon: Icon, label, value, tone = 'violet' }: {
-  icon: React.ElementType; label: string; value: number | string; tone?: string
+// href opcional: si viene, la tarjeta completa es un link (pedido Pri:
+// tarjetas clickeables hacia /admin-influencers con el filtro correspondiente,
+// o hacia una sección de esta misma pantalla como #duplicados-detectados).
+function StatCard({ icon: Icon, label, value, tone = 'violet', href }: {
+  icon: React.ElementType; label: string; value: number | string; tone?: string; href?: string
+}) {
+  const content = (
+    <div className="flex items-center gap-3">
+      <div className={`w-9 h-9 rounded-lg bg-${tone}-100 flex items-center justify-center flex-shrink-0`}>
+        <Icon className={`h-4 w-4 text-${tone}-600`} />
+      </div>
+      <div>
+        <div className="text-xl font-bold text-gray-900">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+        <div className="text-xs text-gray-400">{label}</div>
+      </div>
+    </div>
+  )
+  if (href) {
+    return (
+      <Link href={href} className="card p-4 block hover:shadow-md hover:border-violet-200 transition-shadow">
+        {content}
+      </Link>
+    )
+  }
+  return <div className="card p-4">{content}</div>
+}
+
+// Ranking por comuna / nicho (pedido Pri 2026-07-13): lista simple ordenada
+// de mayor a menor, cada fila clickeable hacia /admin-influencers con el
+// filtro correspondiente. "Sin comuna"/"Sin nicho" usa el sentinel __none__
+// en la URL — InfluencersClient lo resuelve client-side (mismo patrón que
+// "Sin Instagram"), ya que no hay filtro server-side de "IS NULL".
+function RankingList({ title, items, paramName }: {
+  title: string; items: RankingItem[]; paramName: 'commune' | 'niche'
 }) {
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-3">
-        <div className={`w-9 h-9 rounded-lg bg-${tone}-100 flex items-center justify-center flex-shrink-0`}>
-          <Icon className={`h-4 w-4 text-${tone}-600`} />
-        </div>
-        <div>
-          <div className="text-xl font-bold text-gray-900">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-          <div className="text-xs text-gray-400">{label}</div>
-        </div>
+    <div className="card p-5">
+      <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{title}</h3>
+      <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+        {items.map(item => (
+          <Link
+            key={item.value ?? '__none__'}
+            href={`/admin-influencers?${paramName}=${encodeURIComponent(item.value ?? '__none__')}`}
+            className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            <span className={`truncate ${item.value === null ? 'text-gray-400 italic' : 'text-gray-700'}`}>
+              {item.label}
+            </span>
+            <span className="text-xs font-semibold text-gray-500 flex-shrink-0">{item.count.toLocaleString()}</span>
+          </Link>
+        ))}
       </div>
     </div>
   )
@@ -337,13 +386,35 @@ export function DataQualityClient() {
         </div>
       ) : (
         <>
-          {/* KPIs */}
+          {/* KPIs — clickeables: Total/Sin Instagram/Duplicados llevan directo,
+              Activos/Inactivos son 2 links dentro de la misma tarjeta (no se
+              parte en 2 tarjetas para no romper el grid de 4 columnas). */}
           {report && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard icon={Database} label="Total influencers" value={report.total} tone="violet" />
-              <StatCard icon={Users} label="Activos / Inactivos" value={`${report.active} / ${report.inactive}`} tone="blue" />
-              <StatCard icon={Instagram} label="Sin Instagram" value={report.withoutInstagram} tone="amber" />
-              <StatCard icon={AlertTriangle} label="Registros duplicados" value={report.duplicateRecords} tone="red" />
+              <StatCard icon={Database} label="Total influencers" value={report.total} tone="violet" href="/admin-influencers" />
+
+              <div className="card p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <Users className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-gray-900">
+                      <Link href="/admin-influencers?status=active" className="hover:underline hover:text-blue-700">
+                        {report.active.toLocaleString()}
+                      </Link>
+                      <span className="text-gray-300"> / </span>
+                      <Link href="/admin-influencers?status=inactive" className="hover:underline hover:text-blue-700">
+                        {report.inactive.toLocaleString()}
+                      </Link>
+                    </div>
+                    <div className="text-xs text-gray-400">Activos / Inactivos</div>
+                  </div>
+                </div>
+              </div>
+
+              <StatCard icon={Instagram} label="Sin Instagram" value={report.withoutInstagram} tone="amber" href="/admin-influencers?data_quality=missing_instagram" />
+              <StatCard icon={AlertTriangle} label="Registros duplicados" value={report.duplicateRecords} tone="red" href="#duplicados-detectados" />
             </div>
           )}
 
@@ -354,8 +425,8 @@ export function DataQualityClient() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   { icon: Mail, label: 'Por email', value: report.duplicatesByEmail },
-                  { icon: Instagram, label: 'Por Instagram URL', value: report.duplicatesByInstagramUrl },
-                  { icon: Instagram, label: 'Por Instagram @', value: report.duplicatesByInstagram },
+                  { icon: Instagram, label: 'Por Instagram', value: report.duplicatesByInstagram },
+                  { icon: GitMerge, label: 'Email + Instagram', value: report.duplicatesByMixed },
                 ].map(s => (
                   <div key={s.label} className="flex items-center gap-3">
                     <s.icon className="h-4 w-4 text-gray-400" />
@@ -366,6 +437,14 @@ export function DataQualityClient() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Ranking por comuna / nicho */}
+          {report && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <RankingList title="Ranking por comuna" items={report.communeRanking} paramName="commune" />
+              <RankingList title="Ranking por nicho" items={report.nicheRanking} paramName="niche" />
             </div>
           )}
 
@@ -388,7 +467,10 @@ export function DataQualityClient() {
                 <Instagram className="h-5 w-5 text-amber-500" />
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / comuna / dirección)</p>
-                  <p className="text-xs text-gray-500">{report.withoutInstagram} sin Instagram · puede haber más sin comuna o dirección. Los tres son obligatorios para usar el portal.</p>
+                  <p className="text-xs text-gray-500">
+                    {report.withoutInstagram} sin Instagram · {report.withoutCommune} sin comuna · {report.withoutAddress} sin dirección ·{' '}
+                    <strong>{report.missingAnyRequired} con algún dato obligatorio faltante</strong>. Los tres son obligatorios para usar el portal.
+                  </p>
                 </div>
               </div>
               <button onClick={handleNotifyNoInstagram} disabled={busy === 'no-instagram'}
@@ -400,7 +482,7 @@ export function DataQualityClient() {
           )}
 
           {/* Duplicados */}
-          <div className="space-y-3">
+          <div id="duplicados-detectados" className="space-y-3 scroll-mt-6">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
                 Duplicados detectados ({groups.length} grupo{groups.length !== 1 ? 's' : ''})

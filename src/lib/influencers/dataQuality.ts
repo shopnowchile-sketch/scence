@@ -9,11 +9,29 @@ export interface ScanInfluencer {
   instagram_url: string | null
   instagram_username: string | null
   followers: number
+  commune: string | null
+  address: string | null
+  categories: string[] | null
 }
 
+// Ranking por comuna / nicho (pedido Pri 2026-07-13): value=null representa
+// "Sin comuna" / "Sin nicho" — se incluye como una fila más del ranking (no
+// aparte), así el orden de mayor a menor queda consistente entre ambos casos.
+export interface RankingItem {
+  value: string | null
+  label: string
+  count: number
+}
+
+// FIX (2026-07-13, pedido Pri): antes 'instagram_url' e 'instagram' eran DOS
+// criterios de duplicado separados que nunca se comparaban entre sí — un
+// mismo perfil guardado como URL en una fila y como username en otra nunca
+// se detectaba como duplicado. Ahora hay un solo tipo 'instagram' (ver
+// extractInstagramHandle). 'mixed' = un grupo fusionado que comparte
+// influencers detectados por más de un criterio (ver mergeOverlappingGroups).
 export interface DuplicateGroup {
   key: string
-  type: 'email' | 'instagram_url' | 'instagram'
+  type: 'email' | 'instagram' | 'mixed'
   value: string
   influencers: ScanInfluencer[]
 }
@@ -24,11 +42,18 @@ export interface DataQualityReport {
   inactive: number
   withoutInstagram: number
   withInstagram: number
+  withoutCommune: number
+  withoutAddress: number
+  // Con Instagram Y comuna Y dirección — el resto le falta al menos uno de
+  // los 3 datos obligatorios para usar el portal (ver ProfileCompletionGate).
+  missingAnyRequired: number
   duplicateGroups: number
   duplicateRecords: number
   duplicatesByEmail: number
-  duplicatesByInstagramUrl: number
   duplicatesByInstagram: number
+  duplicatesByMixed: number
+  communeRanking: RankingItem[]
+  nicheRanking: RankingItem[]
 }
 
 function normUrl(url: string | null): string | null {
@@ -51,6 +76,23 @@ function normEmail(e: string | null): string | null {
   return v || null
 }
 
+// Unifica instagram_url e instagram_username en UN solo identificador
+// normalizado (pedido Pri #1). Prioriza el username explícito; si no hay,
+// extrae el primer segmento de path de la URL (con o sin dominio
+// instagram.com), le quita @ / query string / slash final.
+function extractInstagramHandle(url: string | null, username: string | null): string | null {
+  const fromUsername = normHandle(username)
+  if (fromUsername) return fromUsername
+  if (!url) return null
+
+  let u = url.trim().toLowerCase()
+  if (!u) return null
+  u = u.replace(/^https?:\/\//, '').replace(/[?#].*$/, '')
+  const domainMatch = u.match(/^(?:www\.)?instagram\.com\/([^/]+)/)
+  const raw = domainMatch ? domainMatch[1] : u.replace(/^\/+/, '').split('/')[0]
+  return normHandle(raw)
+}
+
 /** Carga todos los influencers de la org con su perfil de Instagram resuelto. */
 export async function loadScan(admin: SupabaseClient, orgId: string): Promise<ScanInfluencer[]> {
   const PAGE = 1000
@@ -62,7 +104,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     const { data, error } = await admin
       .from('influencers')
       .select(`
-        id, display_name, email, is_active, created_at,
+        id, display_name, email, is_active, created_at, commune, address, categories,
         social_profiles:influencer_social_profiles ( platform, profile_url, username, followers )
       `)
       .eq('organization_id', orgId)
@@ -97,6 +139,9 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         instagram_url: ig?.profile_url ?? null,
         instagram_username: ig?.username ?? null,
         followers: totalFollowers,
+        commune: (inf as { commune?: string | null }).commune ?? null,
+        address: (inf as { address?: string | null }).address ?? null,
+        categories: (inf as { categories?: string[] | null }).categories ?? null,
       })
     }
 
@@ -107,10 +152,69 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
   return all
 }
 
-/** Agrupa duplicados por email, instagram_url e instagram (username). */
+/**
+ * Fusiona grupos de duplicados superpuestos (pedido Pri #2): si A coincide
+ * con B por email y B con C por Instagram, el resultado es UN solo grupo
+ * A+B+C, no dos grupos separados que comparten a B. Union-Find simple sobre
+ * ids de influencer.
+ */
+function mergeOverlappingGroups(rawGroups: DuplicateGroup[]): DuplicateGroup[] {
+  const parent = new Map<string, string>()
+
+  function find(x: string): string {
+    if (!parent.has(x)) parent.set(x, x)
+    let root = x
+    while (parent.get(root) !== root) root = parent.get(root)!
+    let cur = x
+    while (parent.get(cur) !== root) {
+      const next = parent.get(cur)!
+      parent.set(cur, root)
+      cur = next
+    }
+    return root
+  }
+
+  function union(a: string, b: string) {
+    const ra = find(a)
+    const rb = find(b)
+    if (ra !== rb) parent.set(ra, rb)
+  }
+
+  for (const g of rawGroups) {
+    const ids = g.influencers.map(i => i.id)
+    for (let i = 1; i < ids.length; i++) union(ids[0], ids[i])
+  }
+
+  const byRoot = new Map<string, {
+    influencersById: Map<string, ScanInfluencer>
+    types: Set<DuplicateGroup['type']>
+    values: Set<string>
+  }>()
+
+  for (const g of rawGroups) {
+    const root = find(g.influencers[0].id)
+    if (!byRoot.has(root)) byRoot.set(root, { influencersById: new Map(), types: new Set(), values: new Set() })
+    const bucket = byRoot.get(root)!
+    for (const inf of g.influencers) bucket.influencersById.set(inf.id, inf)
+    bucket.types.add(g.type)
+    bucket.values.add(g.value)
+  }
+
+  return Array.from(byRoot.entries()).map(([root, bucket]) => ({
+    key: `merged:${root}`,
+    type: bucket.types.size === 1 ? (Array.from(bucket.types)[0] as DuplicateGroup['type']) : 'mixed',
+    value: Array.from(bucket.values).join(' + '),
+    influencers: Array.from(bucket.influencersById.values()),
+  }))
+}
+
+/**
+ * Agrupa duplicados por email e Instagram (URL o username unificados en un
+ * solo criterio — ver extractInstagramHandle), y fusiona grupos que
+ * comparten algún influencer entre sí (ver mergeOverlappingGroups).
+ */
 export function findDuplicates(scan: ScanInfluencer[]): DuplicateGroup[] {
-  const groups: DuplicateGroup[] = []
-  const seen = new Set<string>() // ids ya asignados a un grupo (un id puede aparecer en varios tipos)
+  const rawGroups: DuplicateGroup[] = []
 
   const buildFor = (
     type: DuplicateGroup['type'],
@@ -125,42 +229,80 @@ export function findDuplicates(scan: ScanInfluencer[]): DuplicateGroup[] {
     }
     for (const [value, list] of Array.from(map.entries())) {
       if (list.length < 2) continue
-      const groupKey = `${type}:${value}`
-      // marca ids
-      list.forEach((i: ScanInfluencer) => seen.add(i.id))
-      groups.push({ key: groupKey, type, value, influencers: list })
+      rawGroups.push({ key: `${type}:${value}`, type, value, influencers: list })
     }
   }
 
   buildFor('email', i => normEmail(i.email))
-  buildFor('instagram_url', i => normUrl(i.instagram_url))
-  buildFor('instagram', i => normHandle(i.instagram_username))
+  buildFor('instagram', i => extractInstagramHandle(i.instagram_url, i.instagram_username))
 
-  return groups
+  return mergeOverlappingGroups(rawGroups)
+}
+
+/**
+ * Ranking genérico de mayor a menor por un campo con 0..N valores por
+ * influencer (comuna = 1 valor, categorías/nicho = array). "Sin <label>" se
+ * agrega como una fila más y entra en el mismo orden desc. Pri: "no contar
+ * dos veces al mismo influencer" — se dedupean valores repetidos dentro del
+ * mismo influencer antes de sumar (p.ej. la misma categoría dos veces en su
+ * array), así cada influencer aporta como máximo 1 al conteo de un mismo valor.
+ */
+function buildRanking(
+  scan: ScanInfluencer[],
+  getValues: (i: ScanInfluencer) => (string | null)[],
+  noneLabel: string,
+): RankingItem[] {
+  const counts = new Map<string, number>()
+  let none = 0
+  for (const inf of scan) {
+    const values = Array.from(new Set(
+      getValues(inf).map(v => v?.trim()).filter((v): v is string => Boolean(v))
+    ))
+    if (values.length === 0) { none++; continue }
+    for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1)
+  }
+  const items: RankingItem[] = Array.from(counts.entries()).map(([value, count]) => ({ value, label: value, count }))
+  items.push({ value: null, label: noneLabel, count: none })
+  return items.sort((a, b) => b.count - a.count)
 }
 
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
   const active = scan.filter(i => i.is_active).length
   const withInstagram = scan.filter(i => i.instagram_url || i.instagram_username).length
+  const withoutCommune = scan.filter(i => !i.commune || !i.commune.trim()).length
+  const withoutAddress = scan.filter(i => !i.address || !i.address.trim()).length
+  const missingAnyRequired = scan.filter(i =>
+    !(i.instagram_url || i.instagram_username) || !i.commune?.trim() || !i.address?.trim()
+  ).length
+
   const dupRecordIds = new Set<string>()
-  let byEmail = 0, byUrl = 0, byHandle = 0
+  let byEmail = 0, byInstagram = 0, byMixed = 0
   for (const g of groups) {
     g.influencers.forEach(i => dupRecordIds.add(i.id))
     if (g.type === 'email') byEmail += g.influencers.length - 1
-    else if (g.type === 'instagram_url') byUrl += g.influencers.length - 1
-    else byHandle += g.influencers.length - 1
+    else if (g.type === 'instagram') byInstagram += g.influencers.length - 1
+    else byMixed += g.influencers.length - 1
   }
+
+  const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna')
+  const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
+
   return {
     total: scan.length,
     active,
     inactive: scan.length - active,
     withoutInstagram: scan.length - withInstagram,
     withInstagram,
+    withoutCommune,
+    withoutAddress,
+    missingAnyRequired,
     duplicateGroups: groups.length,
     duplicateRecords: dupRecordIds.size,
     duplicatesByEmail: byEmail,
-    duplicatesByInstagramUrl: byUrl,
-    duplicatesByInstagram: byHandle,
+    duplicatesByInstagram: byInstagram,
+    duplicatesByMixed: byMixed,
+    communeRanking,
+    nicheRanking,
   }
 }
 

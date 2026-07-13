@@ -34,6 +34,27 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
   const assignToBrand = searchParams.get('assignToBrand')
   const assignToBrandName = searchParams.get('assignToBrandName')
 
+  // Filtros que llegan por URL desde /admin-influencers/data-quality (pedido
+  // Pri: tarjetas clickeables que "abren la tabla con el filtro correcto").
+  // `status` reusa el filtro isActive que YA existe end-to-end (server +
+  // hook) — se aplica una sola vez al montar. `data_quality=missing_instagram`
+  // no tiene un filtro server-side equivalente; se resuelve client-side sobre
+  // la página ya cargada, mismo patrón que el filtro de postulaciones de
+  // campaña (CampaignDetail.tsx) — sin crear endpoint ni campo nuevo en
+  // useInfluencers.
+  const statusParam = searchParams.get('status')
+  const missingInstagram = searchParams.get('data_quality') === 'missing_instagram'
+
+  // Ranking por comuna/nicho de la misma pantalla de Data Quality (pedido Pri
+  // 2026-07-13). Valor real -> reusa filters.commune / filters.categories
+  // (ya soportados end-to-end por /api/influencers). Sentinel "__none__"
+  // ("Sin comuna"/"Sin nicho") no tiene equivalente server-side (no hay
+  // filtro "IS NULL"), se resuelve client-side igual que missingInstagram.
+  const communeParam = searchParams.get('commune')
+  const nicheParam = searchParams.get('niche')
+  const noCommune = communeParam === '__none__'
+  const noNiche = nicheParam === '__none__'
+
   const {
     influencers,
     total,
@@ -60,6 +81,26 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     setView('list')
     initialViewApplied.current = true
   }, [setView])
+
+  const urlFiltersApplied = useRef(false)
+  useEffect(() => {
+    if (urlFiltersApplied.current) return
+    if (statusParam === 'active') updateFilter({ isActive: true })
+    else if (statusParam === 'inactive') updateFilter({ isActive: false })
+    if (communeParam && !noCommune) updateFilter({ commune: communeParam })
+    if (nicheParam && !noNiche) updateFilter({ categories: [nicheParam] })
+    urlFiltersApplied.current = true
+  }, [statusParam, communeParam, noCommune, nicheParam, noNiche, updateFilter])
+
+  // "Sin Instagram" / "Sin comuna" / "Sin nicho" — sin equivalente de filtro
+  // server-side ("IS NULL" / array vacío), se resuelven client-side sobre la
+  // página ya cargada (mismo patrón para los 3).
+  const visibleInfluencers = influencers.filter(inf => {
+    if (missingInstagram && inf.social_profiles?.some(sp => sp.platform === 'instagram' && (sp.username || sp.profile_url))) return false
+    if (noCommune && inf.commune?.trim()) return false
+    if (noNiche && inf.categories && inf.categories.length > 0) return false
+    return true
+  })
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -415,7 +456,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
       {!loading && !error && (
         <div className="animate-fade-in">
           <InfluencerTable
-            influencers={influencers}
+            influencers={visibleInfluencers}
             onSort={toggleSort}
             sortBy={filters.sortBy}
             sortOrder={filters.sortOrder}

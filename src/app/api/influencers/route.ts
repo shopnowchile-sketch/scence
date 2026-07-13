@@ -41,6 +41,13 @@ export async function GET(request: NextRequest) {
   const category   = searchParams.get('category')
   const country    = searchParams.get('country')
   const commune    = searchParams.get('commune')
+  // El filtro "Comuna" del front (InfluencerFilters) manda todas las
+  // variantes crudas de esa comuna real separadas por coma (ver
+  // /api/influencers/communes + src/lib/communes-chile.ts groupCommunes) —
+  // influencers.commune sigue sin normalizar en la base, así que hace falta
+  // matchear cualquiera de esas variantes. Si viene un solo valor (deep links
+  // viejos, ej. desde data-quality ranking) se comporta igual que antes.
+  const communeList = commune ? commune.split(',').map(s => s.trim()).filter(Boolean) : []
   const verified   = searchParams.get('verified')
   const isActive   = searchParams.get('is_active')
   // Columnas ordenables directo en Postgres. 'followers'/'engagement_rate' se
@@ -114,7 +121,8 @@ export async function GET(request: NextRequest) {
       (from, to) => {
         let q = admin.from('influencers').select(SELECT).range(from, to)
         if (country)  q = q.eq('country', country)
-        if (commune)  q = q.eq('commune', commune)
+        if (communeList.length === 1) q = q.eq('commune', communeList[0])
+        else if (communeList.length > 1) q = q.in('commune', communeList)
         if (verified === 'true')  q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
         if (isActive === 'true')  q = q.eq('is_active', true)
@@ -174,7 +182,8 @@ export async function GET(request: NextRequest) {
       .range((page - 1) * limit, page * limit - 1)
 
     if (country)  query = query.eq('country', country)
-    if (commune)  query = query.eq('commune', commune)
+    if (communeList.length === 1) query = query.eq('commune', communeList[0])
+    else if (communeList.length > 1) query = query.in('commune', communeList)
     if (verified === 'true')  query = query.eq('is_verified', true)
     if (isActive === 'false') query = query.eq('is_active', false)
     if (isActive === 'true')  query = query.eq('is_active', true)

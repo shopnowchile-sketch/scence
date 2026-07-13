@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { groupCommunes } from '@/lib/communes-chile'
 
 // GET /api/influencers/communes
 // Lista de comunas distintas presentes en el roster (para poblar el filtro de
@@ -30,9 +31,13 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const communes = Array.from(new Set(
-    (data ?? []).map(r => r.commune).filter((c): c is string => !!c && c.trim() !== '')
-  )).sort((a, b) => a.localeCompare(b, 'es'))
+  // Agrupa por comuna real (mayúsculas/tildes/espacios distintos del mismo
+  // valor) sin tocar la base — pedido de Pri 2026-07-13. `variants` trae
+  // todos los valores crudos que existen hoy para esa comuna, para que el
+  // filtro pueda seguir matcheando aunque el dato en `influencers.commune`
+  // no esté normalizado todavía.
+  const raw = (data ?? []).map(r => r.commune).filter((c): c is string => !!c && c.trim() !== '')
+  const communes = groupCommunes(raw)
 
   return NextResponse.json({ data: communes })
 }

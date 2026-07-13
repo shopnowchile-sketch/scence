@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { groupCommunes } from '@/lib/communes-chile'
 
 // GET /api/brand/influencers/communes
 // Mismo alcance de influencers que /api/brand/influencers (campañas propias +
@@ -55,9 +56,10 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const communes = Array.from(new Set(
-    (data ?? []).map(r => r.commune).filter((c): c is string => !!c && c.trim() !== '')
-  )).sort((a, b) => a.localeCompare(b, 'es'))
+  // Mismo criterio que /api/influencers/communes: agrupa por comuna real sin
+  // tocar la base (pedido de Pri 2026-07-13).
+  const raw = (data ?? []).map(r => r.commune).filter((c): c is string => !!c && c.trim() !== '')
+  const communes = groupCommunes(raw)
 
   return NextResponse.json({ data: communes })
 }

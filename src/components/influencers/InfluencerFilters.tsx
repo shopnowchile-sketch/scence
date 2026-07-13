@@ -32,7 +32,13 @@ export function InfluencerFilters({
   apiBase = '/api/influencers',
 }: InfluencerFiltersProps) {
   const sortValue = `${filters.sortBy ?? 'created_at'}:${filters.sortOrder ?? 'desc'}`
-  const [communes, setCommunes] = useState<string[]>([])
+  // { label, variants } — label es la comuna real (formato oficial cuando
+  // matchea; ver src/lib/communes-chile.ts), variants son todos los valores
+  // crudos que hoy existen en influencers.commune para esa comuna (mismo
+  // valor con distinta mayúscula/tilde/espacio). Se filtra por todos los
+  // variants a la vez para que el filtro funcione aunque el dato en la base
+  // todavía no esté normalizado — pedido de Pri 2026-07-13.
+  const [communes, setCommunes] = useState<{ label: string; variants: string[] }[]>([])
 
   useEffect(() => {
     fetch(`${apiBase}/communes`)
@@ -68,7 +74,7 @@ export function InfluencerFilters({
             >
               <option value="">Todas las comunas</option>
               {communes.map(c => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c.label} value={c.variants.join(',')}>{c.label}</option>
               ))}
             </select>
           )}

@@ -53,6 +53,10 @@ export async function GET(req: NextRequest) {
   const category = searchParams.get('category')
   const country  = searchParams.get('country')
   const commune  = searchParams.get('commune')
+  // Mismo criterio que /api/influencers: el filtro puede mandar varias
+  // variantes crudas de la misma comuna separadas por coma (ver
+  // /api/brand/influencers/communes + src/lib/communes-chile.ts).
+  const communeList = commune ? commune.split(',').map(s => s.trim()).filter(Boolean) : []
   const verified = searchParams.get('verified')
   const isActive = searchParams.get('is_active')
   const rawSort  = searchParams.get('sort_by') ?? 'created_at'
@@ -161,7 +165,8 @@ export async function GET(req: NextRequest) {
     .range((page - 1) * limit, page * limit - 1)
 
   if (country) query = query.eq('country', country)
-  if (commune) query = query.eq('commune', commune)
+  if (communeList.length === 1) query = query.eq('commune', communeList[0])
+  else if (communeList.length > 1) query = query.in('commune', communeList)
   if (verified === 'true') query = query.eq('is_verified', true)
   if (isActive === 'false') query = query.eq('is_active', false)
   if (isActive === 'true') query = query.eq('is_active', true)

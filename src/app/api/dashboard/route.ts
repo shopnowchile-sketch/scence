@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
 // ── GET /api/dashboard — aggregated KPIs ──────────────────────────────────────
@@ -34,7 +35,7 @@ export async function GET() {
   const [
     campaignsRes,
     influencersCountRes,
-    influencersEnteredCountRes,
+    influencersWithAccountRes,
     brandsCountRes,
     brandsEnteredCountRes,
     invoicesMonthRes,
@@ -54,10 +55,14 @@ export async function GET() {
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId),
 
-    // Conteo exacto de influencers que tienen cuenta de acceso.
-    // No descarga las filas completas del roster.
+    // FIX (2026-07-13, pedido Pri): esto antes era un head-count de
+    // "user_id IS NOT NULL" y se mostraba como "Han ingresado" — pero eso
+    // mide "tiene cuenta creada", no "entró alguna vez al portal". Ahora se
+    // traen los user_id (liviano, solo esa columna) para resolver cuántos
+    // tienen una conexión real vía resolveLastSeen (profiles.last_seen_at
+    // primero, auth.users.last_sign_in_at como respaldo) más abajo.
     db.from('influencers')
-      .select('id', { count: 'exact', head: true })
+      .select('user_id')
       .eq('organization_id', orgId)
       .not('user_id', 'is', null),
 
@@ -143,9 +148,20 @@ export async function GET() {
 
   // Totales mediante COUNT, sin descargar las aproximadamente 1.700 filas.
   const totalInfluencers = influencersCountRes.count ?? 0
-  const influencersEntered = influencersEnteredCountRes.count ?? 0
   const totalBrands = brandsCountRes.count ?? 0
   const brandsEntered = brandsEnteredCountRes.count ?? 0
+
+  // "Han ingresado" real (no solo "tiene cuenta") — mismo criterio que la
+  // tabla de influencers: profiles.last_seen_at primero, auth.users.last_sign_in_at
+  // como respaldo (ver resolveLastSeen). Los que tienen user_id pero ninguna
+  // de las dos señales cuentan como "aún no ingresan", junto con los que
+  // directamente no tienen cuenta — el widget de arriba es binario
+  // (entered/pending) así que ambos casos van al mismo bucket "pending".
+  const influencerUserIds = (influencersWithAccountRes.data ?? [])
+    .map(row => row.user_id as string | null)
+    .filter((id): id is string => Boolean(id))
+  const influencerLastSeenMap = await resolveLastSeen(db, influencerUserIds)
+  const influencersEntered = influencerUserIds.filter(uid => Boolean(influencerLastSeenMap[uid])).length
 
   // Consultar solamente perfiles vistos durante los últimos 10 minutos.
   const tenMinAgoIso = new Date(Date.now() - 10 * 60 * 1000).toISOString()

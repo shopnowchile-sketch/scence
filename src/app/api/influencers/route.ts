@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getPrimarySocial } from '@/lib/influencers/ranking'
+import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 
 // 'followers' / 'engagement_rate' viven en la tabla join (influencer_social_profiles),
 // no son columnas de `influencers` — Postgres/PostgREST no puede hacer .order() por
@@ -10,7 +11,13 @@ import { getPrimarySocial } from '@/lib/influencers/ranking'
 // estas 2 columnas se trae el dataset filtrado completo (sin cap de fila real,
 // vía fetchAllRows) y se ordena/pagina en JS usando el mismo criterio de "red
 // social primaria" que ya usa Ranking (getPrimarySocial).
-const JOIN_SORT_COLS = ['followers', 'engagement_rate'] as const
+// FIX (2026-07-13, pedido Pri): mismo problema que followers/engagement —
+// `last_sign_in_at` no vive en `influencers` (viene de `profiles.last_seen_at`,
+// enriquecido más abajo vía resolveLastSeen), así que tampoco puede ordenarse
+// con .order() directo. Reusa el mismo mecanismo de "traer todo,
+// ordenar/paginar en JS". Nulls (nunca conectado) siempre al final, en ambas
+// direcciones — pedido explícito.
+const JOIN_SORT_COLS = ['followers', 'engagement_rate', 'last_sign_in_at'] as const
 
 // ── GET /api/influencers ──────────────────────────────────────────────────────
 // Roster global — SOLO admin/staff SCENCE. Marca e influencer usan sus propias
@@ -126,16 +133,35 @@ export async function GET(request: NextRequest) {
         ? allRows.filter(inf => (inf.social_profiles as Array<{ platform: string }>).some(sp => sp.platform === platform))
         : allRows
 
-      const joinField = rawSort === 'followers' ? 'followers' : 'engagement_rate'
-      const valueOf = (inf: Record<string, unknown>) => {
-        const primary = getPrimarySocial(inf as never) as { followers?: number | null; engagement_rate?: number | null } | null
-        return Number((joinField === 'followers' ? primary?.followers : primary?.engagement_rate) ?? 0)
+      let sorted: Record<string, unknown>[]
+
+      if (rawSort === 'last_sign_in_at') {
+        // Se busca acá, ANTES de paginar, porque hace falta para ordenar el
+        // dataset completo (no solo la página final).
+        const uids = withPlatform.map(inf => inf.user_id as string | null).filter(Boolean) as string[]
+        const seenMap = await resolveLastSeen(admin, uids)
+        const withTs = withPlatform.map(inf => {
+          const uid = inf.user_id as string | null
+          const seen = uid ? seenMap[uid] ?? null : null
+          return { inf, ts: seen ? new Date(seen).getTime() : null }
+        })
+        // Nulls (nunca conectado) siempre al final, sin importar la dirección.
+        const withDate    = withTs.filter((x): x is { inf: Record<string, unknown>; ts: number } => x.ts !== null)
+        const withoutDate = withTs.filter(x => x.ts === null).map(x => x.inf)
+        withDate.sort((a, b) => sortDir ? a.ts - b.ts : b.ts - a.ts)
+        sorted = [...withDate.map(x => x.inf), ...withoutDate]
+      } else {
+        const joinField = rawSort === 'followers' ? 'followers' : 'engagement_rate'
+        const valueOf = (inf: Record<string, unknown>) => {
+          const primary = getPrimarySocial(inf as never) as { followers?: number | null; engagement_rate?: number | null } | null
+          return Number((joinField === 'followers' ? primary?.followers : primary?.engagement_rate) ?? 0)
+        }
+        sorted = [...withPlatform].sort((a, b) => {
+          const va = valueOf(a)
+          const vb = valueOf(b)
+          return sortDir ? va - vb : vb - va
+        })
       }
-      const sorted = [...withPlatform].sort((a, b) => {
-        const va = valueOf(a)
-        const vb = valueOf(b)
-        return sortDir ? va - vb : vb - va
-      })
 
       count = sorted.length
       data = sorted.slice((page - 1) * limit, page * limit)
@@ -181,20 +207,10 @@ export async function GET(request: NextRequest) {
       )
     : data
 
-  // Enriquecer última conexión en batch, sin consultar auth.users uno por uno
+  // Enriquecer última conexión en batch — profiles.last_seen_at primero,
+  // auth.users.last_sign_in_at como respaldo (ver resolveLastSeen arriba).
   const userIds = filtered.map(inf => inf.user_id as string | null).filter(Boolean) as string[]
-  const lastSeenMap: Record<string, string | null> = {}
-
-  if (userIds.length > 0) {
-    const { data: profiles } = await admin
-      .from('profiles')
-      .select('id, last_seen_at')
-      .in('id', userIds)
-
-    for (const profile of profiles ?? []) {
-      lastSeenMap[profile.id as string] = (profile.last_seen_at as string | null) ?? null
-    }
-  }
+  const lastSeenMap = await resolveLastSeen(admin, userIds)
 
   const withLastSeen: Array<Record<string, unknown>> = filtered.map(inf => {
     const uid = inf.user_id as string | null | undefined

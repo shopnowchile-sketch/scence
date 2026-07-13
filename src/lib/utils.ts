@@ -28,11 +28,18 @@ export function timeAgo(date: string | Date): string {
   return formatDistanceToNow(new Date(date), { addSuffix: true, locale: es })
 }
 
-export function formatFollowers(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
-  return n.toString()
+export function formatFollowers(n: number | null | undefined): string {
+  // FIX (bug visto en vivo, 2026-07-13): influencers sin sync de followers
+  // traen `null` desde la base (influencer_social_profiles.followers) y
+  // varios callers (ej. InfluencerTable.tsx, InfluencerCard.tsx) lo pasaban
+  // sin default — crasheaba toda la pantalla con "Cannot read properties of
+  // null (reading 'toString')". Se normaliza acá, en el único lugar, en vez
+  // de parchar cada caller.
+  const num = n ?? 0
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`
+  if (num >= 1_000) return `${(num / 1_000).toFixed(0)}K`
+  return num.toString()
 }
 
 export function slugify(text: string): string {

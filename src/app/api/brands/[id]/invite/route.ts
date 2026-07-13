@@ -68,22 +68,77 @@ export async function POST(_req: NextRequest, { params }: Params) {
     )
   }
 
-  // ── Ya tiene cuenta → reenviar magic link ────────────────────────────────────
+  const contactEmail = brand.contact_email.trim().toLowerCase()
+
+  // Búsqueda paginada de auth.users por email. Con >1.6k usuarios,
+  // admin.auth.admin.listUsers() SIN paginar solo trae la primera página
+  // (perPage default bajo) — puede no encontrar una cuenta que sí existe y
+  // arriesgar crear un duplicado más abajo. Mismo patrón ya usado en
+  // crm-leads/[id]/route.ts.
+  async function findAuthUserByEmail(email: string) {
+    let page = 1
+    const perPage = 1000
+    for (;;) {
+      const { data: usersPage, error: usersErr } = await admin.auth.admin.listUsers({ page, perPage })
+      if (usersErr || !usersPage?.users?.length) return null
+      const match = usersPage.users.find(u => u.email?.toLowerCase() === email)
+      if (match) return match
+      if (usersPage.users.length < perPage) return null
+      page++
+    }
+  }
+
+  // ── Ya tiene cuenta vinculada (brands.user_id) → reenviar magic link ─────────
+  // FIX (bug Limitless, 2026-07-13): antes esta rama llamaba generateLink con
+  // brand.contact_email SIN verificar que coincidiera con el email real del
+  // owner en auth.users. Si el email de contacto se había editado desde el
+  // admin y NO se había sincronizado auth.users todavía (el bug del PATCH),
+  // generateLink no encontraba ningún usuario con ese email y Supabase creaba
+  // uno NUEVO en silencio — brands.user_id seguía apuntando al usuario viejo,
+  // y el usuario nuevo (logueado de verdad) no encontraba su marca. Ahora se
+  // verifica primero que auth.users.email del owner coincida con
+  // contact_email; si no coincide, se detiene y pide sincronizar desde la
+  // edición de marca. Nunca se llama a un método que pueda crear otra cuenta.
   if (brand.user_id) {
+    const { data: ownerAuth, error: ownerAuthErr } = await admin.auth.admin.getUserById(brand.user_id)
+
+    if (ownerAuthErr || !ownerAuth?.user) {
+      console.error('[POST /api/brands/[id]/invite] owner auth user no encontrado:', ownerAuthErr?.message)
+      return NextResponse.json({ error: 'Usuario de autenticación del owner no encontrado' }, { status: 404 })
+    }
+
+    const currentAuthEmail = ownerAuth.user.email?.trim().toLowerCase() ?? null
+
+    if (currentAuthEmail !== contactEmail) {
+      return NextResponse.json(
+        {
+          error:
+            'El correo de contacto no coincide con el correo de acceso del owner. Sincronízalo primero editando la marca antes de reenviar la invitación.',
+        },
+        { status: 409 },
+      )
+    }
+
+    // Merge de metadata (no reemplazo) — antes esto pisaba user_metadata
+    // completo, arriesgando perder organization_id u otros campos que
+    // ensureOrg() ya le hubiera fijado al usuario.
     await admin.auth.admin.updateUserById(brand.user_id, {
-      user_metadata: { is_brand: true, brand_id: params.id },
+      user_metadata: { ...ownerAuth.user.user_metadata, is_brand: true, brand_id: params.id },
     })
 
     const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
       type: 'magiclink',
-      email: brand.contact_email,
+      email: contactEmail,
       options: {
         redirectTo: `${APP_URL}/brand-dash`,
         data: { is_brand: true, brand_id: params.id },
       },
     })
 
-    if (linkErr) return NextResponse.json({ error: linkErr.message }, { status: 500 })
+    if (linkErr) {
+      console.error('[POST /api/brands/[id]/invite] generateLink falló:', linkErr.message)
+      return NextResponse.json({ error: 'No se pudo generar el link de acceso' }, { status: 500 })
+    }
 
     // token_hash en vez de action_link (PKCE) — mismo fix ya validado en
     // producción para el invite de influencers (api/influencers/[id]/invite).
@@ -94,7 +149,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (actionLink) {
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
-        to: brand.contact_email,
+        to: contactEmail,
         subject: 'Tu link de acceso a Scence',
         html: brandInviteEmail({ name: brand.contact_name ?? brand.name, actionLink, isResend: true }),
       })
@@ -103,7 +158,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     return NextResponse.json({
       message: emailSent
-        ? `Email reenviado a ${brand.contact_email}`
+        ? `Email reenviado a ${contactEmail}`
         : `Link generado (email falló — usa el link directo)`,
       already_linked: true,
       email_sent: emailSent,
@@ -111,9 +166,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
     })
   }
 
-  // ── Crear o vincular auth user ────────────────────────────────────────────────
-  const { data: existingUsers } = await admin.auth.admin.listUsers()
-  const existingUser = existingUsers?.users?.find(u => u.email === brand.contact_email)
+  // ── Sin cuenta vinculada todavía → crear o vincular auth user ────────────────
+  const existingUser = await findAuthUserByEmail(contactEmail)
 
   let authUserId: string
 
@@ -129,7 +183,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     authUserId = existingUser.id
   } else {
     const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
-      email: brand.contact_email,
+      email: contactEmail,
       email_confirm: true,
       user_metadata: {
         is_brand: true,
@@ -138,18 +192,23 @@ export async function POST(_req: NextRequest, { params }: Params) {
       },
     })
     if (createErr || !newUser?.user) {
-      return NextResponse.json({ error: createErr?.message ?? 'Error creando usuario' }, { status: 500 })
+      console.error('[POST /api/brands/[id]/invite] createUser falló:', createErr?.message)
+      return NextResponse.json({ error: 'No se pudo crear el usuario de acceso' }, { status: 500 })
     }
     authUserId = newUser.user.id
   }
 
   // Vincular user_id en la fila de brands
-  await admin.from('brands').update({ user_id: authUserId }).eq('id', params.id)
+  const { error: linkBrandErr } = await admin.from('brands').update({ user_id: authUserId }).eq('id', params.id)
+  if (linkBrandErr) {
+    console.error('[POST /api/brands/[id]/invite] no se pudo vincular user_id a la marca:', linkBrandErr.message)
+    return NextResponse.json({ error: 'No se pudo vincular el usuario a la marca' }, { status: 500 })
+  }
 
   // Generar magic link
   const { data: linkData, error: inviteErr } = await admin.auth.admin.generateLink({
     type: 'magiclink',
-    email: brand.contact_email,
+    email: contactEmail,
     options: {
       redirectTo: `${APP_URL}/brand-dash`,
       data: { is_brand: true, brand_id: params.id },
@@ -157,8 +216,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
   })
 
   if (inviteErr || !linkData?.properties?.hashed_token) {
+    console.error('[POST /api/brands/[id]/invite] generateLink falló en primer invite:', inviteErr?.message)
     return NextResponse.json({
-      message: `Usuario creado. Email falló — usa "Olvidé mi contraseña" con ${brand.contact_email}.`,
+      message: `Usuario creado. Email falló — usa "Olvidé mi contraseña" con ${contactEmail}.`,
       user_id: authUserId,
       email_sent: false,
     })
@@ -170,7 +230,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to: brand.contact_email,
+    to: contactEmail,
     subject: `Bienvenido al portal de marcas — ${brand.name}`,
     html: brandInviteEmail({
       name: brand.contact_name ?? brand.name,
@@ -181,7 +241,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     message: !emailErr
-      ? `Invitación enviada a ${brand.contact_email}`
+      ? `Invitación enviada a ${contactEmail}`
       : `Usuario creado. Email falló — comparte el link manualmente.`,
     user_id: authUserId,
     email_sent: !emailErr,

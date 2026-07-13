@@ -136,6 +136,7 @@ export interface CampaignInfluencerDetail {
     city: string | null
   commune: string | null
     country: string | null
+    categories: string[] | null
     influencer_social_profiles: Array<{
       platform: string
       username: string | null
@@ -330,7 +331,7 @@ export interface InfluencerFilters {
   // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
   // Columnas que sí ordenan de verdad server-side: display_name, rating, commune,
   // city, country, is_verified, created_at, updated_at.
-  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date'
+  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at'
   sortOrder: 'asc' | 'desc'
 }
 

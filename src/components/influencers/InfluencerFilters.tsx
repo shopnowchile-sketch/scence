@@ -5,7 +5,7 @@ import { Search } from 'lucide-react'
 
 export type InfluencerView = 'list'
 
-type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'commune' | 'is_active' | 'birth_date'
+type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at'
 
 type Filters = {
   search?: string
@@ -85,6 +85,8 @@ export function InfluencerFilters({
             <option value="rating:desc">Mejor rating</option>
             <option value="commune:asc">Comuna A-Z</option>
             <option value="is_active:desc">Activos primero</option>
+            <option value="last_sign_in_at:desc">Conexión más reciente</option>
+            <option value="last_sign_in_at:asc">Conexión más antigua</option>
           </select>
 
 

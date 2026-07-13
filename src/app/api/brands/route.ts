@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { resolveBrandPlan } from '@/lib/plan-limits'
+import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 
 // ── GET /api/brands ───────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -36,7 +37,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Enriquecer con last_sign_in_at + fecha de creación de cuenta desde auth.users
+  // Enriquecer con última conexión + fecha de creación de cuenta.
+  // FIX (2026-07-13, pedido Pri): antes esto miraba SOLO auth.users.last_sign_in_at
+  // del owner. Ahora usa el mismo criterio que la tabla de influencers
+  // (profiles.last_seen_at primero — heartbeat real del portal, activo en
+  // Marca desde este mismo batch — auth.users.last_sign_in_at como respaldo,
+  // ver resolveLastSeen) Y considera que una marca puede tener MÁS de un
+  // usuario con acceso (owner + brand_members): se muestra la conexión más
+  // reciente entre todos, no solo la del owner.
   type BrandRow = Record<string, unknown> & {
     id: string
     user_id?: string | null
@@ -44,29 +52,56 @@ export async function GET(req: NextRequest) {
     organization_id?: string | null
   }
   const brands = (data ?? []) as BrandRow[]
-  const userIds = brands.map(b => b.user_id).filter((id): id is string => !!id)
-  const lastSeenMap: Record<string, string | null> = {}
+  const brandIds = brands.map(b => b.id)
+  const ownerUserIds = brands.map(b => b.user_id).filter((id): id is string => !!id)
+
+  const { data: memberRows } = brandIds.length > 0
+    ? await admin.from('brand_members').select('brand_id, user_id').in('brand_id', brandIds).not('user_id', 'is', null)
+    : { data: [] as Array<{ brand_id: string; user_id: string }> }
+
+  const membersByBrand = new Map<string, string[]>()
+  for (const m of memberRows ?? []) {
+    const list = membersByBrand.get(m.brand_id) ?? []
+    list.push(m.user_id as string)
+    membersByBrand.set(m.brand_id, list)
+  }
+
+  const allUserIds = Array.from(new Set([...ownerUserIds, ...(memberRows ?? []).map(m => m.user_id as string)]))
+  const lastSeenMap = await resolveLastSeen(admin, allUserIds)
+
   const accountCreatedMap: Record<string, string | null> = {}
-  for (const uid of userIds) {
+  for (const uid of ownerUserIds) {
     const { data: u } = await admin.auth.admin.getUserById(uid)
-    if (u?.user) {
-      lastSeenMap[uid] = u.user.last_sign_in_at ?? null
-      accountCreatedMap[uid] = u.user.created_at ?? null
+    if (u?.user) accountCreatedMap[uid] = u.user.created_at ?? null
+  }
+
+  function mostRecentLastSeen(userIds: string[]): string | null {
+    let best: string | null = null
+    for (const uid of userIds) {
+      const seen = lastSeenMap[uid]
+      if (seen && (!best || new Date(seen).getTime() > new Date(best).getTime())) best = seen
     }
+    return best
   }
 
   // Plan interno efectivo individual para cada marca.
-  const enriched = await Promise.all(brands.map(async b => ({
-    ...b,
-    last_sign_in_at: b.user_id ? (lastSeenMap[b.user_id] ?? null) : null,
-    // Fecha en que se creó la cuenta: prioriza auth.users.created_at.
-    account_created_at: b.user_id
-      ? (accountCreatedMap[b.user_id] ?? b.created_at ?? null)
-      : (b.created_at ?? null),
-    org_plan: b.organization_id
-      ? await resolveBrandPlan(admin, b.organization_id, b.id)
-      : 'basic',
-  })))
+  const enriched = await Promise.all(brands.map(async b => {
+    const candidateUserIds = [
+      ...(b.user_id ? [b.user_id] : []),
+      ...(membersByBrand.get(b.id) ?? []),
+    ]
+    return {
+      ...b,
+      last_sign_in_at: mostRecentLastSeen(candidateUserIds),
+      // Fecha en que se creó la cuenta: prioriza auth.users.created_at del owner.
+      account_created_at: b.user_id
+        ? (accountCreatedMap[b.user_id] ?? b.created_at ?? null)
+        : (b.created_at ?? null),
+      org_plan: b.organization_id
+        ? await resolveBrandPlan(admin, b.organization_id, b.id)
+        : 'basic',
+    }
+  }))
 
   return NextResponse.json({ data: enriched, total: count ?? 0 })
 }

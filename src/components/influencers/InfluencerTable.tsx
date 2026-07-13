@@ -198,7 +198,7 @@ export function InfluencerTable({
               {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('commune', e)}>Comuna</TH>}
               {visible.birthDate && <TH col="birth_date" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('birthDate', e)}>Fecha nacimiento</TH>}
               {portal === 'admin' && visible.lastConnection && (
-                <SortableTH<ColKey> onResizeStart={e => startResize('lastConnection', e)}>Última conexión</SortableTH>
+                <TH col="last_sign_in_at" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('lastConnection', e)}>Última conexión</TH>
               )}
               {portal === 'admin' && visible.registeredBy && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('registeredBy', e)}>Registrada por</SortableTH>
@@ -386,7 +386,7 @@ export function InfluencerTable({
                     <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {inf.last_sign_in_at
                       ? new Date(inf.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : <span className="text-gray-300">Sin acceso</span>}
+                      : <span className="text-gray-300">Nunca</span>}
                     </td>
                   )}
 

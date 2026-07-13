@@ -5,6 +5,13 @@ import { usePathname, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Clock } from 'lucide-react'
 import { BrandSidebar } from './_components/BrandSidebar'
+// Reutilizado del portal Influencer (mismo componente, sin cambios) — pedido
+// de Pri 2026-07-13: profiles.last_seen_at solo se actualizaba vía heartbeat
+// en Influencer; Marca no tenía ningún mecanismo, así que "última conexión"
+// de marca nunca reflejaba actividad real dentro del portal. Sin props, sin
+// dependencias de datos de influencer — hace POST a /api/presence/heartbeat
+// con el usuario de la sesión (auth.getUser()), válido para cualquier rol.
+import { PresenceHeartbeat } from '../(influencer)/_components/PresenceHeartbeat'
 
 export default function BrandLayout({ children }: { children: React.ReactNode }) {
   const didRegister = useRef(false)
@@ -151,6 +158,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
+      <PresenceHeartbeat />
       <BrandSidebar />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">

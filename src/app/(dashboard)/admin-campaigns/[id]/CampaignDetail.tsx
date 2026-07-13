@@ -17,7 +17,8 @@ import { BartersTab } from '@/components/campaigns/BartersTab'
 import { StarRating } from '@/components/ui/StarRating'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
-import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus, CampaignStatus } from '@/types'
+import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus, CampaignStatus, InfluencerTier } from '@/types'
+import { getInfluencerTier } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
@@ -798,6 +799,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     notes: '',
   })
 
+  // Filtros de "solicitudes pendientes" (postulaciones a campaña pública) —
+  // pedido de Pri 2026-07-13: filtrar por seguidores, engagement, comuna y
+  // nicho. Solo esta pantalla — reutiliza getInfluencerTier() (ya existente,
+  // mismo bucketing usado en useInfluencers.ts) y el mismo criterio de
+  // minEngagement que ya está implementado ahí. Client-side sobre los datos
+  // que ya trae /api/campaigns/[id] — no hay endpoint ni componente nuevo.
+  const [pendingTierFilter, setPendingTierFilter]       = useState<InfluencerTier | ''>('')
+  const [pendingCommuneFilter, setPendingCommuneFilter] = useState('')
+  const [pendingCategoryFilter, setPendingCategoryFilter] = useState('')
+  const [pendingMinEngagement, setPendingMinEngagement] = useState(0)
+
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
   const patchCampaign = usePatchCampaign(id, apiBase)
   const removeInfluencer = useRemoveCampaignInfluencer(id)
@@ -921,6 +933,28 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const pendingApplications = campaignInfluencers.filter(
     ci => ci.application_status === 'pending' && ci.origin === 'application'
   )
+
+  // Opciones de filtro derivadas de los datos ya cargados (sin fetch aparte,
+  // sin /api/influencers/communes — acá alcanzan las ~72 postulantes en memoria).
+  const pendingCommuneOptions = Array.from(new Set(
+    pendingApplications.map(ci => ci.influencer?.commune).filter((v): v is string => Boolean(v))
+  )).sort()
+  const pendingCategoryOptions = Array.from(new Set(
+    pendingApplications.flatMap(ci => ci.influencer?.categories ?? [])
+  )).sort()
+
+  const filteredPendingApplications = pendingApplications.filter(ci => {
+    const inf = ci.influencer
+    if (!inf) return false
+    const primarySP = inf.influencer_social_profiles?.[0]
+
+    if (pendingTierFilter && getInfluencerTier(primarySP?.followers ?? 0) !== pendingTierFilter) return false
+    if (pendingCommuneFilter && inf.commune !== pendingCommuneFilter) return false
+    if (pendingCategoryFilter && !(inf.categories ?? []).includes(pendingCategoryFilter)) return false
+    if (pendingMinEngagement > 0 && (primarySP?.engagement_rate ?? 0) < pendingMinEngagement) return false
+    return true
+  })
+
   const pendingInvitations = campaignInfluencers.filter(
     ci => ci.application_status === 'pending' && ci.origin === 'invitation'
   )
@@ -1851,8 +1885,86 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                 {pendingApplications.length} solicitud(es) pendiente(s)
               </p>
+
+              {/* Filtros de postulantes — mismo estilo (select/input) que
+                  InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
+                  Solo aparecen si hay algo que filtrar (>3 postulantes). */}
+              {pendingApplications.length > 3 && (
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <select
+                    value={pendingTierFilter}
+                    onChange={e => setPendingTierFilter(e.target.value as InfluencerTier | '')}
+                    className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                  >
+                    <option value="">Todos los seguidores</option>
+                    <option value="nano">Nano (&lt;10K)</option>
+                    <option value="micro">Micro (10K-100K)</option>
+                    <option value="macro">Macro (100K-1M)</option>
+                    <option value="mega">Mega (1M+)</option>
+                  </select>
+
+                  <select
+                    value={pendingMinEngagement}
+                    onChange={e => setPendingMinEngagement(Number(e.target.value))}
+                    className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                  >
+                    <option value={0}>Todo engagement</option>
+                    <option value={1}>Engagement 1%+</option>
+                    <option value={3}>Engagement 3%+</option>
+                    <option value={5}>Engagement 5%+</option>
+                  </select>
+
+                  {pendingCommuneOptions.length > 0 && (
+                    <select
+                      value={pendingCommuneFilter}
+                      onChange={e => setPendingCommuneFilter(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                    >
+                      <option value="">Todas las comunas</option>
+                      {pendingCommuneOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  )}
+
+                  {pendingCategoryOptions.length > 0 && (
+                    <select
+                      value={pendingCategoryFilter}
+                      onChange={e => setPendingCategoryFilter(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                    >
+                      <option value="">Todos los nichos</option>
+                      {pendingCategoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                  )}
+
+                  {(pendingTierFilter || pendingCommuneFilter || pendingCategoryFilter || pendingMinEngagement > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingTierFilter('')
+                        setPendingCommuneFilter('')
+                        setPendingCategoryFilter('')
+                        setPendingMinEngagement(0)
+                      }}
+                      className="text-xs font-semibold text-amber-700 hover:underline"
+                    >
+                      Limpiar filtros
+                    </button>
+                  )}
+
+                  <span className="text-xs text-amber-600 ml-auto">
+                    Mostrando {filteredPendingApplications.length} de {pendingApplications.length}
+                  </span>
+                </div>
+              )}
+
+              {filteredPendingApplications.length === 0 && (
+                <p className="text-xs text-amber-600 italic py-2">
+                  Ningún postulante coincide con estos filtros.
+                </p>
+              )}
+
               <div className="space-y-2">
-                {pendingApplications.map(ci => {
+                {filteredPendingApplications.map(ci => {
                   const inf = ci.influencer
                   if (!inf) return null
                   const primarySP = inf.influencer_social_profiles?.[0]

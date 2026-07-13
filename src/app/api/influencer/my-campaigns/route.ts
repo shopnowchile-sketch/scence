@@ -73,9 +73,65 @@ export async function GET() {
     return !HIDDEN_ASSIGNED_STATUSES.has(String(camp?.status ?? ''))
   })
 
+  // Rechazadas sin participación real: si la postulación/invitación quedó
+  // 'rejected' y no tiene deliverables, booking, contrato ni pago asociado,
+  // ya no debe aparecer en el portal ni contar como historial (pedido de
+  // Pri 2026-07-13 — "no debe quedar en el historial si solo postuló").
+  // Si SÍ hubo participación real, la fila se mantiene visible (el label
+  // se ajusta en inf-campaigns/page.tsx a "Te invitamos a la próxima").
+  // No se borra ni modifica nada en la base — Admin y Marca siguen viendo
+  // la fila completa en campaign_influencers.
+  const rejectedNoDeliverables = visibleAssigned.filter((ci: Record<string, unknown>) => {
+    const del = (ci.campaign_deliverables as unknown[]) ?? []
+    return ci.application_status === 'rejected' && del.length === 0
+  })
+
+  let contractedIds = new Set<string>()
+  let invoicedIds   = new Set<string>()
+  let bookedCampaignIds = new Set<string>()
+
+  if (rejectedNoDeliverables.length > 0) {
+    const ciIds = rejectedNoDeliverables
+      .map((ci: Record<string, unknown>) => ci.id)
+      .filter(Boolean) as string[]
+    const campaignIds = rejectedNoDeliverables
+      .map((ci: Record<string, unknown>) => (ci.campaign as Record<string, unknown> | null)?.id)
+      .filter(Boolean) as string[]
+
+    const [contractsRes, invoiceItemsRes, bookingsRes] = await Promise.all([
+      ciIds.length
+        ? admin.from('contracts').select('campaign_influencer_id').in('campaign_influencer_id', ciIds)
+        : Promise.resolve({ data: [] as Array<{ campaign_influencer_id: string | null }> }),
+      ciIds.length
+        ? admin.from('invoice_line_items').select('campaign_influencer_id').in('campaign_influencer_id', ciIds)
+        : Promise.resolve({ data: [] as Array<{ campaign_influencer_id: string | null }> }),
+      campaignIds.length
+        ? admin.from('bookings').select('campaign_id').eq('influencer_id', influencer.id).in('campaign_id', campaignIds)
+        : Promise.resolve({ data: [] as Array<{ campaign_id: string | null }> }),
+    ])
+
+    contractedIds = new Set(
+      (contractsRes.data ?? []).map((r: { campaign_influencer_id: string | null }) => r.campaign_influencer_id).filter(Boolean) as string[]
+    )
+    invoicedIds = new Set(
+      (invoiceItemsRes.data ?? []).map((r: { campaign_influencer_id: string | null }) => r.campaign_influencer_id).filter(Boolean) as string[]
+    )
+    bookedCampaignIds = new Set(
+      (bookingsRes.data ?? []).map((r: { campaign_id: string | null }) => r.campaign_id).filter(Boolean) as string[]
+    )
+  }
+
+  const visibleAssignedFiltered = visibleAssigned.filter((ci: Record<string, unknown>) => {
+    const del = (ci.campaign_deliverables as unknown[]) ?? []
+    if (ci.application_status !== 'rejected' || del.length > 0) return true
+    const ciId   = ci.id as string
+    const campId = (ci.campaign as Record<string, unknown> | null)?.id as string | undefined
+    return contractedIds.has(ciId) || invoicedIds.has(ciId) || (!!campId && bookedCampaignIds.has(campId))
+  })
+
   // Merge: assigned from admin + self-created
   // Self-created are wrapped to match the assigned shape
-  const assignedIds = new Set(visibleAssigned.map((ci: Record<string, unknown>) => {
+  const assignedIds = new Set(visibleAssignedFiltered.map((ci: Record<string, unknown>) => {
     const camp = ci.campaign as Record<string, unknown> | null
     return camp?.id
   }))
@@ -92,7 +148,7 @@ export async function GET() {
       _self_created: true,
     }))
 
-  const merged = [...visibleAssigned, ...selfWrapped]
+  const merged = [...visibleAssignedFiltered, ...selfWrapped]
   return NextResponse.json({ data: merged })
 }
 

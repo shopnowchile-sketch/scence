@@ -596,10 +596,15 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   // se quedaba sin override y mostraba el badge de STATUS_CONFIG[c.status]
   // (ej. "Activa" en verde) para una campaña en la que en realidad quedó
   // afuera. Mismo criterio ya usado para "En revisión".
+  // "Rechazada" → "Te invitamos a la próxima": si esta fila sigue visible es
+  // porque hubo participación real (deliverables/booking/contrato/pago) —
+  // las rechazadas sin participación ya se filtran en el backend
+  // (/api/influencer/my-campaigns). Pedido de Pri 2026-07-13: tono cordial,
+  // no punitivo.
   const stCfg   = c.application_status === 'pending'
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : c.application_status === 'rejected'
-    ? { label: 'Rechazada', color: 'bg-red-100 text-red-600' }
+    ? { label: 'Te invitamos a la próxima', color: 'bg-gray-100 text-gray-500' }
     : STATUS_CONFIG[c.status] ?? STATUS_CONFIG.active
   const pct     = c.deliverables_total > 0 ? Math.round((c.deliverables_done / c.deliverables_total) * 100) : 0
   // El clic en la fila siempre lleva al detalle de la campaña. "Próxima
@@ -641,6 +646,12 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
               </span>
             )}
           </div>
+
+          {c.application_status === 'rejected' && (
+            <p className="text-xs text-gray-400 mt-1.5">
+              Gracias por postular. Seguiremos compartiendo nuevas oportunidades contigo.
+            </p>
+          )}
 
           {/* Próxima entrega, en grande — solo campañas activas con
               entregables pendientes. Pedido: que se note de inmediato,

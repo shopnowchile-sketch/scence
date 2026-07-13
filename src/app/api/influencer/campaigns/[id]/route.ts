@@ -55,6 +55,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   }
 
+  // Rechazada sin participación real: mismo criterio que
+  // /api/influencer/my-campaigns — si la postulación/invitación quedó
+  // 'rejected' y no hay deliverables, booking, contrato ni pago asociado,
+  // se bloquea el acceso al detalle igual que si no existiera (pedido de
+  // Pri 2026-07-13). No se toca la fila en la base.
+  if (existing?.application_status === 'rejected') {
+    const [delivRes, contractRes, invoiceRes, bookingRes] = await Promise.all([
+      admin.from('campaign_deliverables').select('id').eq('campaign_influencer_id', existing.id).limit(1),
+      admin.from('contracts').select('id').eq('campaign_influencer_id', existing.id).limit(1),
+      admin.from('invoice_line_items').select('id').eq('campaign_influencer_id', existing.id).limit(1),
+      admin.from('bookings').select('id').eq('campaign_id', params.id).eq('influencer_id', influencer.id).limit(1),
+    ])
+    const hasParticipation =
+      !!delivRes.data?.length || !!contractRes.data?.length || !!invoiceRes.data?.length || !!bookingRes.data?.length
+    if (!hasParticipation) {
+      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    }
+  }
+
   // Control de acceso por estado (opción A): solo una postulación/invitación
   // ACEPTADA desbloquea el detalle privado. Antes de aceptar (pending o no
   // postulada) se entrega un DTO público limitado: se ocultan las instrucciones

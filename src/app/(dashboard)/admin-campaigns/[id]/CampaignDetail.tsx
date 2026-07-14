@@ -21,6 +21,7 @@ import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus, Camp
 import { getInfluencerTier } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
@@ -936,9 +937,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   // Opciones de filtro derivadas de los datos ya cargados (sin fetch aparte,
   // sin /api/influencers/communes — acá alcanzan las ~72 postulantes en memoria).
-  const pendingCommuneOptions = Array.from(new Set(
+  // Agrupadas por comuna real (mayúsculas/tildes/espacios distintos del mismo
+  // valor) con el mismo criterio que /api/influencers/communes — pedido de
+  // Pri 2026-07-13: acá también aparecía duplicada (Copiapó/COPIAPO, Hualpen/
+  // Hualpén, La Florida/LA FLORIDA/La florida, etc.) porque esta lista se
+  // arma aparte, en memoria, y no pasaba por groupCommunes.
+  const pendingCommuneGroups = groupCommunes(
     pendingApplications.map(ci => ci.influencer?.commune).filter((v): v is string => Boolean(v))
-  )).sort()
+  )
   const pendingCategoryOptions = Array.from(new Set(
     pendingApplications.flatMap(ci => ci.influencer?.categories ?? [])
   )).sort()
@@ -949,7 +955,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     const primarySP = inf.influencer_social_profiles?.[0]
 
     if (pendingTierFilter && getInfluencerTier(primarySP?.followers ?? 0) !== pendingTierFilter) return false
-    if (pendingCommuneFilter && inf.commune !== pendingCommuneFilter) return false
+    if (pendingCommuneFilter && !pendingCommuneFilter.split(',').includes(inf.commune ?? '')) return false
     if (pendingCategoryFilter && !(inf.categories ?? []).includes(pendingCategoryFilter)) return false
     if (pendingMinEngagement > 0 && (primarySP?.engagement_rate ?? 0) < pendingMinEngagement) return false
     return true
@@ -1914,14 +1920,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <option value={5}>Engagement 5%+</option>
                   </select>
 
-                  {pendingCommuneOptions.length > 0 && (
+                  {pendingCommuneGroups.length > 0 && (
                     <select
                       value={pendingCommuneFilter}
                       onChange={e => setPendingCommuneFilter(e.target.value)}
                       className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
                     >
                       <option value="">Todas las comunas</option>
-                      {pendingCommuneOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                      {pendingCommuneGroups.map(c => (
+                        <option key={c.label} value={c.variants.join(',')}>{c.label}</option>
+                      ))}
                     </select>
                   )}
 

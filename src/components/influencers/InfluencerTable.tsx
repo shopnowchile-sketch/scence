@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { cn, formatFollowers, formatDate, PLATFORM_ICONS } from '@/lib/utils'
+import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { Influencer, InfluencerFilters } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
@@ -14,8 +14,22 @@ type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engag
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
   display_name: 220, platforms: 120, categories: 160, followers: 130,
-  engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 140, lastConnection: 170,
+  engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 100, lastConnection: 170,
   registeredBy: 140, associatedBrands: 220,
+}
+
+function calculateAge(birthDate: string): number | null {
+  const [year, month, day] = birthDate.slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return null
+
+  const today = new Date()
+  let age = today.getFullYear() - year
+  const hasNotHadBirthday =
+    today.getMonth() + 1 < month ||
+    (today.getMonth() + 1 === month && today.getDate() < day)
+
+  if (hasNotHadBirthday) age -= 1
+  return age >= 0 && age <= 120 ? age : null
 }
 
 interface Props {
@@ -88,7 +102,7 @@ export function InfluencerTable({
     rating: true,
     status: true,
     commune: true,
-    birthDate: false,
+    birthDate: true,
     lastConnection: true,
     registeredBy: true,
     associatedBrands: true,
@@ -132,7 +146,7 @@ export function InfluencerTable({
                 ['rating', 'Rating'],
                 ['status', 'Estado'],
                 ['commune', 'Comuna'],
-                ['birthDate', 'Fecha de nacimiento'],
+                ['birthDate', 'Edad'],
                 ...(portal === 'admin' ? ([
                   ['lastConnection', 'Última conexión'],
                   ['registeredBy', 'Registrada por'],
@@ -196,7 +210,7 @@ export function InfluencerTable({
               {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('rating', e)}>Rating</TH>}
               {visible.status && <TH col="is_active" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('status', e)}>Estado</TH>}
               {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('commune', e)}>Comuna</TH>}
-              {visible.birthDate && <TH col="birth_date" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('birthDate', e)}>Fecha nacimiento</TH>}
+              {visible.birthDate && <TH col="birth_date" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('birthDate', e)}>Edad</TH>}
               {portal === 'admin' && visible.lastConnection && (
                 <TH col="last_sign_in_at" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('lastConnection', e)}>Última conexión</TH>
               )}
@@ -374,10 +388,15 @@ export function InfluencerTable({
                     </td>
                   )}
 
-                  {/* Fecha de nacimiento */}
+                  {/* Edad */}
                   {visible.birthDate && (
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                      {inf.birth_date ? formatDate(inf.birth_date, 'd MMM yyyy') : '—'}
+                      {inf.birth_date
+                        ? (() => {
+                            const age = calculateAge(inf.birth_date)
+                            return age === null ? '—' : `${age} años`
+                          })()
+                        : '—'}
                     </td>
                   )}
 

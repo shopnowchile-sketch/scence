@@ -1,8 +1,8 @@
 From f0dc0b99e4042021cdafcafc23b78e354cdbc750 Mon Sep 17 00:00:00 2001
 From: Priscilla Perez <shopnowchile-sketch@users.noreply.github.com>
 Date: Fri, 17 Jul 2026 14:02:22 -0400
-Subject: [PATCH] =?UTF-8?q?perf:=20optimiza=20carga=20de=20dashboard=20y?=
- =?UTF-8?q?=20campa=C3=B1as?=
+Subject: [PATCH 1/2] =?UTF-8?q?perf:=20optimiza=20carga=20de=20dashboard?=
+ =?UTF-8?q?=20y=20campa=C3=B1as?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -415,6 +415,173 @@ index 6f3e663..e393216 100644
  // ── Fetch single ──────────────────────────────────────────────────────────────
  async function fetchCampaign(id: string, apiBase = '/api/campaigns') {
    const res = await fetch(`${apiBase}/${id}`)
+-- 
+2.51.1
+
+
+From ba3dfa43e90df22c818564c0c5da0a97537f8f91 Mon Sep 17 00:00:00 2001
+From: Priscilla Perez <shopnowchile-sketch@users.noreply.github.com>
+Date: Fri, 17 Jul 2026 14:12:50 -0400
+Subject: [PATCH 2/2] perf: evita solicitudes duplicadas en desarrollo
+
+---
+ src/app/(dashboard)/DashboardClient.tsx       | 15 +++++++-
+ .../admin-campaigns/CampaignsClient.tsx       | 34 ++++++++++++-------
+ src/app/api/campaigns/route.ts                | 17 +++++++---
+ src/hooks/useCampaignsList.ts                 |  2 ++
+ 4 files changed, 50 insertions(+), 18 deletions(-)
+
+diff --git a/src/app/(dashboard)/DashboardClient.tsx b/src/app/(dashboard)/DashboardClient.tsx
+index e57a31f..b4f1eeb 100644
+--- a/src/app/(dashboard)/DashboardClient.tsx
++++ b/src/app/(dashboard)/DashboardClient.tsx
+@@ -245,6 +245,19 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<unknown> {
+   }
+ }
+ 
++let dashboardRequest: { expiresAt: number; promise: Promise<unknown> } | null = null
++
++function fetchDashboard() {
++  if (!dashboardRequest || dashboardRequest.expiresAt <= Date.now()) {
++    const promise = fetchJson('/api/dashboard', 30000).catch(error => {
++      dashboardRequest = null
++      throw error
++    })
++    dashboardRequest = { expiresAt: Date.now() + 30_000, promise }
++  }
++  return dashboardRequest.promise
++}
++
+ function KpiCard({
+   icon,
+   value,
+@@ -467,7 +480,7 @@ export function DashboardClient() {
+ 
+       // /api/dashboard ya entrega KPI, actividad, conectados y entregables.
+       // Evitamos repetir tres consultas completas en cada entrada al dashboard.
+-      const dashboard = await fetchJson('/api/dashboard', 30000)
++      const dashboard = await fetchDashboard()
+ 
+       if (cancelled) return
+ 
+diff --git a/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx b/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx
+index aff6e9b..d038631 100644
+--- a/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx
++++ b/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx
+@@ -138,6 +138,24 @@ const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
+   { key: 'status',      label: 'Estado' },
+ ]
+ 
++let brandOptionsRequest: Promise<{ id: string; name: string }[]> | null = null
++
++function loadBrandOptions() {
++  if (!brandOptionsRequest) {
++    brandOptionsRequest = fetch('/api/brands?options=1&limit=5000')
++      .then(r => {
++        if (!r.ok) throw new Error('No se pudieron cargar las marcas')
++        return r.json()
++      })
++      .then(j => (j.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name })))
++      .catch(error => {
++        brandOptionsRequest = null
++        throw error
++      })
++  }
++  return brandOptionsRequest
++}
++
+ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
+   const isBrandPortal = portal === 'brand'
+   const [filters, setFilters]   = useState<Partial<CampaignFiltersType>>({})
+@@ -198,6 +216,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
+       (sum, c) => sum + Math.max(0, (c.deliverable_count ?? 0) - (c.deliverable_done ?? 0)),
+       0
+     ),
++    pendingApprovalCount: rawCampaigns.filter(c => c.status === 'pending_approval').length,
+   }), [rawCampaigns])
+   const summary = isBrandPortal ? localSummary : (statsSummary ?? localSummary)
+ 
+@@ -206,22 +225,13 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
+   const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
+   useEffect(() => {
+     if (isBrandPortal) return
+-    fetch('/api/brands?options=1&limit=5000')
+-      .then(r => r.json())
+-      .then(j => setBrands((j.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name }))))
++    loadBrandOptions()
++      .then(setBrands)
+       .catch(() => {})
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [])
+ 
+-  // Contador de "Pendientes de aprobación" para la pestaña (admin only) —
+-  // reusa el mismo endpoint/filtro que ya existe, solo pide el total.
+-  const { data: pendingApprovalData } = useCampaignsList({
+-    status:  'pending_approval',
+-    apiBase: '/api/campaigns',
+-    limit:   1,
+-    enabled: !isBrandPortal,
+-  })
+-  const pendingApprovalCount = isBrandPortal ? 0 : (pendingApprovalData?.total ?? 0)
++  const pendingApprovalCount = isBrandPortal ? 0 : summary.pendingApprovalCount
+ 
+   function toggleSort(key: SortKey) {
+     setSortOrder(prev => sortKey === key && prev === 'desc' ? 'asc' : 'desc')
+diff --git a/src/app/api/campaigns/route.ts b/src/app/api/campaigns/route.ts
+index 789fafc..55a2ced 100644
+--- a/src/app/api/campaigns/route.ts
++++ b/src/app/api/campaigns/route.ts
+@@ -82,11 +82,17 @@ export async function GET(request: NextRequest) {
+   const campaignIds = (data ?? []).map(c => c.id)
+ 
+   if (summary) {
+-    const { data: deliverables, error: deliverablesError } = campaignIds.length
+-      ? await admin.from('campaign_deliverables')
+-        .select('campaign_id, status, content_url, published_url')
+-        .in('campaign_id', campaignIds)
+-      : { data: [], error: null }
++    const [deliverablesResult, pendingApprovalResult] = await Promise.all([
++      campaignIds.length
++        ? admin.from('campaign_deliverables')
++          .select('campaign_id, status, content_url, published_url')
++          .in('campaign_id', campaignIds)
++        : Promise.resolve({ data: [], error: null }),
++      admin.from('campaigns')
++        .select('id', { count: 'exact', head: true })
++        .eq('status', 'pending_approval'),
++    ])
++    const { data: deliverables, error: deliverablesError } = deliverablesResult
+     if (deliverablesError) {
+       return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
+     }
+@@ -100,6 +106,7 @@ export async function GET(request: NextRequest) {
+         totalBudget: (data ?? []).reduce((total, c) => total + (c.budget_total ?? 0), 0),
+         totalSpent: (data ?? []).reduce((total, c) => total + (c.budget_spent ?? 0), 0),
+         pendingDeliverables,
++        pendingApprovalCount: pendingApprovalResult.count ?? 0,
+       },
+     })
+   }
+diff --git a/src/hooks/useCampaignsList.ts b/src/hooks/useCampaignsList.ts
+index e393216..9b80961 100644
+--- a/src/hooks/useCampaignsList.ts
++++ b/src/hooks/useCampaignsList.ts
+@@ -23,6 +23,7 @@ export interface CampaignSummary {
+   totalBudget: number
+   totalSpent: number
+   pendingDeliverables: number
++  pendingApprovalCount: number
+ }
+ 
+ function toSearchParams(params: ListParams) {
+@@ -54,6 +55,7 @@ export function useCampaignsList(params: ListParams = {}) {
+     queryKey: ['campaigns', params],
+     queryFn:  () => fetchCampaigns(params),
+     enabled:  params.enabled ?? true,
++    staleTime: 30_000,
+   })
+ }
+ 
 -- 
 2.51.1
 

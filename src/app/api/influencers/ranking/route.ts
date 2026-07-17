@@ -91,14 +91,16 @@ export async function GET(req: NextRequest) {
     fetchAllRows(
       (from, to) => admin
         .from('campaign_influencers')
-        .select('id, influencer_id, status, campaign:campaigns(name)')
+        .select('id, influencer_id, status, campaign:campaigns!inner(name, organization_id)')
+        .eq('campaign.organization_id', orgId)
         .range(from, to),
       { maxRows: 5000 }
     ),
     fetchAllRows(
       (from, to) => admin
         .from('campaign_deliverables')
-        .select('influencer_id, campaign_influencer_id, status')
+        .select('influencer_id, campaign_influencer_id, status, campaign:campaigns!inner(organization_id)')
+        .eq('campaign.organization_id', orgId)
         .range(from, to),
       { maxRows: 10000 }
     ),

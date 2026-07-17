@@ -32,6 +32,18 @@ export function useInvoices(params: InvoiceParams = {}) {
   })
 }
 
+export function useBillingSummary() {
+  return useQuery({
+    queryKey: ['billing-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/billing/summary')
+      if (!res.ok) throw new Error('Error al cargar resumen financiero')
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+}
+
 export function useCreateInvoice() {
   const qc = useQueryClient()
   return useMutation({
@@ -49,6 +61,7 @@ export function useCreateInvoice() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['billing-summary'] })
       toast.success('Factura creada')
     },
     onError: (err: Error) => toast.error(err.message),
@@ -70,7 +83,10 @@ export function usePatchInvoice() {
       }
       return res.json()
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['invoices'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['billing-summary'] })
+    },
     onError: (err: Error) => toast.error(err.message),
   })
 }
@@ -117,6 +133,7 @@ export function useCreatePayroll() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payroll'] })
+      qc.invalidateQueries({ queryKey: ['billing-summary'] })
       toast.success('Payroll creado')
     },
     onError: (err: Error) => toast.error(err.message),
@@ -138,7 +155,10 @@ export function usePatchPayroll() {
       }
       return res.json()
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll'] })
+      qc.invalidateQueries({ queryKey: ['billing-summary'] })
+    },
     onError: (err: Error) => toast.error(err.message),
   })
 }

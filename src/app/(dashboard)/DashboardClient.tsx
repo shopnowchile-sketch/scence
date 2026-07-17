@@ -245,17 +245,18 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<unknown> {
   }
 }
 
-let dashboardRequest: { expiresAt: number; promise: Promise<unknown> } | null = null
+type DashboardRequest = { expiresAt: number; promise: Promise<unknown> }
+const dashboardCache = globalThis as typeof globalThis & { __scenceDashboardRequest?: DashboardRequest }
 
 function fetchDashboard() {
-  if (!dashboardRequest || dashboardRequest.expiresAt <= Date.now()) {
+  if (!dashboardCache.__scenceDashboardRequest || dashboardCache.__scenceDashboardRequest.expiresAt <= Date.now()) {
     const promise = fetchJson('/api/dashboard', 30000).catch(error => {
-      dashboardRequest = null
+      delete dashboardCache.__scenceDashboardRequest
       throw error
     })
-    dashboardRequest = { expiresAt: Date.now() + 30_000, promise }
+    dashboardCache.__scenceDashboardRequest = { expiresAt: Date.now() + 30_000, promise }
   }
-  return dashboardRequest.promise
+  return dashboardCache.__scenceDashboardRequest.promise
 }
 
 function KpiCard({

@@ -10,7 +10,7 @@ import {
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
-  useInvoices, usePatchInvoice, useCreateInvoice,
+  useInvoices, useBillingSummary, usePatchInvoice, useCreateInvoice,
   usePayroll, usePatchPayroll, useCreatePayroll,
 } from '@/hooks/useBilling'
 import { useInfluencersList } from '@/hooks/useInfluencersList'
@@ -38,6 +38,17 @@ interface PayrollRun {
   id: string; name: string; period_start: string; period_end: string
   total_amount: number; currency: string; status: PayrollStatus
   approved_at: string | null; processed_at: string | null; items?: PayrollItem[]
+}
+interface BillingSummary {
+  invoices: {
+    total: number
+    counts: Record<string, number>
+    total_billed: number
+    total_paid: number
+    total_overdue: number
+  }
+  payroll: { total_amount: number }
+  month: { revenue: number; payroll: number; margin: number; margin_pct: number }
 }
 
 // ── Status configs ─────────────────────────────────────────────────────────────
@@ -75,11 +86,11 @@ function Avatar({ name, url, size = 8 }: { name: string; url?: string | null; si
 }
 
 // ── KPIs ──────────────────────────────────────────────────────────────────────
-function BillingKPIs({ invoices, payrolls }: { invoices: Invoice[]; payrolls: PayrollRun[] }) {
-  const totalBilled  = invoices.filter(i => i.status !== 'void').reduce((s, i) => s + i.total, 0)
-  const totalPaid    = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
-  const totalPayroll = payrolls.filter(p => p.status !== 'failed').reduce((s, p) => s + p.total_amount, 0)
+function BillingKPIs({ summary }: { summary: BillingSummary | null }) {
+  const totalBilled  = summary?.invoices.total_billed ?? 0
+  const totalPaid    = summary?.invoices.total_paid ?? 0
+  const totalOverdue = summary?.invoices.total_overdue ?? 0
+  const totalPayroll = summary?.payroll.total_amount ?? 0
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
       {[
@@ -476,17 +487,14 @@ function NewPayrollModal({ onClose }: { onClose: () => void }) {
 }
 
 // ── Finanzas este mes (movido acá desde el dashboard admin, pedido por Pri) ──
-function MonthFinanceCards() {
-  const [data, setData] = useState<{ revenue_month: number; payroll_month: number; margin: number; margin_pct: number } | null>(null)
-
-  useEffect(() => {
-    fetch('/api/dashboard')
-      .then(res => res.json())
-      .then(json => setData(json?.kpis ?? null))
-      .catch(() => setData(null))
-  }, [])
-
-  if (!data) return null
+function MonthFinanceCards({ summary }: { summary: BillingSummary | null }) {
+  if (!summary) return null
+  const data = {
+    revenue_month: summary.month.revenue,
+    payroll_month: summary.month.payroll,
+    margin: summary.month.margin,
+    margin_pct: summary.month.margin_pct,
+  }
 
   return (
     <div className="space-y-2">
@@ -543,19 +551,14 @@ export function BillingClient() {
   const [showNewPayroll, setShowNewPayroll] = useState(false)
 
   const { data: invoicesData, isLoading: loadingInvoices } = useInvoices({ status: filterStatus === 'all' ? undefined : filterStatus })
-  // KPIs y los contadores de cada pill de estado necesitan el total real, no
-  // el subset que deja el filtro activo — antes se calculaban sobre
-  // `invoices` (ya filtrado), así que al hacer clic en "Vencidas" las 4
-  // tarjetas ("Total facturado", "Cobrado", etc.) y los demás pills quedaban
-  // mal (0 o solo ese subset). Fetch aparte, sin filtro de estado.
-  const { data: allInvoicesData } = useInvoices({ limit: 10000 })
+  const { data: billingSummaryData } = useBillingSummary()
   const { data: payrollData, isLoading: loadingPayroll } = usePayroll()
   const patchInvoice = usePatchInvoice()
   const patchPayroll = usePatchPayroll()
 
   const invoices: Invoice[] = invoicesData?.data ?? []
-  const allInvoices: Invoice[] = allInvoicesData?.data ?? []
   const payrolls: PayrollRun[] = payrollData?.data ?? []
+  const billingSummary = (billingSummaryData ?? null) as BillingSummary | null
 
   function handleAction(action: string, id: string) {
     setSelected(null)
@@ -613,8 +616,8 @@ export function BillingClient() {
         </button>
       </div>
 
-      <MonthFinanceCards />
-      <BillingKPIs invoices={allInvoices} payrolls={payrolls} />
+      <MonthFinanceCards summary={billingSummary} />
+      <BillingKPIs summary={billingSummary} />
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
@@ -642,7 +645,9 @@ export function BillingClient() {
                 )}>
                 {f.label}
                 <span className="ml-1.5 text-xs opacity-70">
-                  {f.value === 'all' ? allInvoices.length : allInvoices.filter(i => i.status === f.value).length}
+                  {f.value === 'all'
+                    ? billingSummary?.invoices.total ?? 0
+                    : billingSummary?.invoices.counts[f.value] ?? 0}
                 </span>
               </button>
             ))}

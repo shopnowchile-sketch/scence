@@ -48,33 +48,23 @@ export async function GET(req: NextRequest) {
   // real tiene 1452 influencers y el cap recortaba la respuesta, no la query.
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 5000)
 
-  const { data: primaryCampaigns, error: primaryErr } = await admin
-    .from('campaigns')
-    .select('id')
-    .eq('brand_id', brand.id)
+  const [primaryResult, collaboratorResult] = await Promise.all([
+    admin.from('campaigns').select('id').eq('brand_id', brand.id),
+    admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
+  ])
 
-  if (primaryErr) {
-    return NextResponse.json({ error: primaryErr.message }, { status: 500 })
-  }
-
-  const { data: collaboratorRows, error: cbErr } = await admin
-    .from('campaign_brands')
-    .select('campaign_id')
-    .eq('brand_id', brand.id)
-
-  if (cbErr) {
-    return NextResponse.json({ error: cbErr.message }, { status: 500 })
+  if (primaryResult.error || collaboratorResult.error) {
+    return NextResponse.json({ error: (primaryResult.error ?? collaboratorResult.error)?.message }, { status: 500 })
   }
 
   const campaignIds = Array.from(new Set([
-    ...(primaryCampaigns ?? []).map(c => c.id),
-    ...(collaboratorRows ?? []).map(r => r.campaign_id),
+    ...(primaryResult.data ?? []).map(c => c.id),
+    ...(collaboratorResult.data ?? []).map(r => r.campaign_id),
   ].filter(Boolean)))
 
-  let campaignInfluencers: Array<{ id?: string | null; influencer_id?: string | null; status?: string | null; campaign_name?: string | null }> = []
-
-  if (campaignIds.length > 0) {
-    const { data: ciRows, error: ciErr } = await fetchAllRows(
+  const [campaignInfluencerResult, directResult] = await Promise.all([
+    campaignIds.length > 0
+      ? fetchAllRows(
       (from, to) => admin
         .from('campaign_influencers')
         .select('id, influencer_id, status, campaign_id, campaign:campaigns(name)')
@@ -83,33 +73,21 @@ export async function GET(req: NextRequest) {
         .range(from, to),
       { maxRows: 5000 }
     )
+      : Promise.resolve({ data: [], error: null }),
+    admin.from('brand_influencers').select('influencer_id').eq('brand_id', brand.id),
+  ])
 
-    if (ciErr) {
-      return NextResponse.json({ error: (ciErr as Error).message ?? 'Error' }, { status: 500 })
-    }
+  if (campaignInfluencerResult.error) {
+    return NextResponse.json({ error: (campaignInfluencerResult.error as Error).message ?? 'Error' }, { status: 500 })
+  }
 
-    campaignInfluencers = (ciRows ?? []).map(ci => ({
+  const campaignInfluencers = (campaignInfluencerResult.data ?? []).map(ci => ({
       id: ci.id,
       influencer_id: ci.influencer_id,
       status: ci.status,
       campaign_name: (ci.campaign as { name?: string | null } | null)?.name ?? null,
-    }))
-  }
-
-  let directInfluencerIds: string[] = []
-
-  try {
-    const { data: directRows } = await admin
-      .from('brand_influencers')
-      .select('influencer_id')
-      .eq('brand_id', brand.id)
-
-    directInfluencerIds = (directRows ?? [])
-      .map(r => r.influencer_id)
-      .filter(Boolean)
-  } catch {
-    directInfluencerIds = []
-  }
+  }))
+  const directInfluencerIds = (directResult.data ?? []).map(r => r.influencer_id).filter(Boolean)
 
   const influencerIds = Array.from(new Set([
     ...campaignInfluencers.map(ci => ci.influencer_id).filter(Boolean),
@@ -120,7 +98,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: [], total: 0, sort_by: sortBy, sort_dir: sortDir })
   }
 
-  const { data: influencers, error: infErr } = await fetchAllRows(
+  const influencersPromise = fetchAllRows(
     (from, to) => admin
       .from('influencers')
       .select(`
@@ -144,15 +122,8 @@ export async function GET(req: NextRequest) {
       .range(from, to),
     { maxRows: 5000 }
   )
-
-  if (infErr) {
-    return NextResponse.json({ error: (infErr as Error).message ?? 'Error' }, { status: 500 })
-  }
-
-  let deliverables: Array<{ influencer_id?: string | null; campaign_influencer_id?: string | null; status?: string | null }> = []
-
-  if (campaignIds.length > 0) {
-    const { data: delRows, error: delErr } = await fetchAllRows(
+  const deliverablesPromise = campaignIds.length > 0
+    ? fetchAllRows(
       (from, to) => admin
         .from('campaign_deliverables')
         .select('influencer_id, campaign_influencer_id, status, campaign_id')
@@ -160,15 +131,19 @@ export async function GET(req: NextRequest) {
         .range(from, to),
       { maxRows: 10000 }
     )
+    : Promise.resolve({ data: [], error: null })
 
-    if (delErr) {
-      return NextResponse.json({ error: (delErr as Error).message ?? 'Error' }, { status: 500 })
-    }
+  const [influencersResult, deliverablesResult] = await Promise.all([
+    influencersPromise,
+    deliverablesPromise,
+  ])
 
-    deliverables = delRows ?? []
+  if (influencersResult.error || deliverablesResult.error) {
+    const error = influencersResult.error ?? deliverablesResult.error
+    return NextResponse.json({ error: (error as Error).message ?? 'Error' }, { status: 500 })
   }
 
-  let rows = buildRankingRows(influencers ?? [], campaignInfluencers, deliverables)
+  let rows = buildRankingRows(influencersResult.data ?? [], campaignInfluencers, deliverablesResult.data ?? [])
 
   if (search) {
     rows = rows.filter(inf =>

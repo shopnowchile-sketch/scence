@@ -1,0 +1,506 @@
+From 89ea51fa8ee83f78fe584fe18041ac339e559fd1 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Fri, 17 Jul 2026 19:22:35 -0400
+Subject: [PATCH] perf: optimiza carga y ranking de influencers
+
+---
+ .../admin-influencers/InfluencersClient.tsx   | 45 +++++---------
+ src/app/api/brand/influencers/route.ts        | 60 +++++++++++++++++++
+ src/app/api/influencers/route.ts              | 55 +++++++++++++++++
+ .../influencers/InfluencerFilters.tsx         |  4 +-
+ .../influencers/InfluencerRanking.tsx         | 45 ++++++++++++--
+ src/hooks/useInfluencers.ts                   | 20 ++++---
+ src/hooks/useIsAdmin.ts                       |  4 +-
+ src/lib/client/requestCache.ts                | 34 +++++++++++
+ 8 files changed, 222 insertions(+), 45 deletions(-)
+ create mode 100644 src/lib/client/requestCache.ts
+
+diff --git a/src/app/(dashboard)/admin-influencers/InfluencersClient.tsx b/src/app/(dashboard)/admin-influencers/InfluencersClient.tsx
+index 8782a8a..fcedab3 100644
+--- a/src/app/(dashboard)/admin-influencers/InfluencersClient.tsx
++++ b/src/app/(dashboard)/admin-influencers/InfluencersClient.tsx
+@@ -12,6 +12,7 @@ import { BulkUploadModal } from '@/components/influencers/BulkUploadModal'
+ import { formatFollowers } from '@/lib/utils'
+ import type { Influencer } from '@/types'
+ import Link from 'next/link'
++import { fetchJsonCached } from '@/lib/client/requestCache'
+ 
+ interface InfluencersClientProps {
+   portal?: 'admin' | 'brand'
+@@ -174,15 +175,11 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
+     }
+   }
+ 
+-  // Métricas del roster — "En roster" (arriba, `total`) ya usa el conteo real
+-  // del servidor. Estas 3 en cambio se calculaban sobre `influencers`, que es
+-  // solo la página actual (48 filas, INFLUENCERS_PAGE_SIZE) — con un roster
+-  // de cientos/miles, "Alcance total" y "Verificados" mostraban el dato de
+-  // 48 personas etiquetado como si fuera el total. Fetch aparte con los
+-  // mismos filtros activos pero sin paginar, solo para estos 3 números.
+-  const [statsInfluencers, setStatsInfluencers] = useState<Influencer[]>([])
++  // Resumen liviano del servidor. Antes esta sección descargaba hasta 5.000
++  // perfiles completos (incluyendo tarifas) además de la página visible.
++  const [rosterSummary, setRosterSummary] = useState({ followers: 0, avg_engagement: 0, verified: 0 })
+   useEffect(() => {
+-    const params = new URLSearchParams({ page: '1', limit: '5000' })
++    const params = new URLSearchParams({ summary: '1' })
+     if (filters.search)                             params.set('search', filters.search)
+     if (filters.platforms.length === 1)             params.set('platform', filters.platforms[0])
+     if (filters.categories.length === 1)            params.set('category', filters.categories[0])
+@@ -192,34 +189,24 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
+     if (filters.isActive === false)                 params.set('is_active', 'false')
+     else if (filters.isActive === true)             params.set('is_active', 'true')
+ 
++    const url = `${isBrandPortal ? '/api/brand/influencers' : '/api/influencers'}?${params}`
+     let cancelled = false
+-    fetch(`${isBrandPortal ? '/api/brand/influencers' : '/api/influencers'}?${params}`)
+-      .then(r => r.ok ? r.json() : { data: [] })
++    fetchJsonCached<{ summary?: { followers?: number; avg_engagement?: number; verified?: number } }>(url, 15_000)
+       .then(json => {
+         if (cancelled) return
+-        const rows = (json.data ?? []).map((inf: Record<string, unknown>) => ({
+-          ...inf,
+-          social_profiles: inf.social_profiles ?? inf.influencer_social_profiles ?? [],
+-        }))
+-        setStatsInfluencers(rows as Influencer[])
++        setRosterSummary({
++          followers: Number(json.summary?.followers ?? 0),
++          avg_engagement: Number(json.summary?.avg_engagement ?? 0),
++          verified: Number(json.summary?.verified ?? 0),
++        })
+       })
+-      .catch(() => { if (!cancelled) setStatsInfluencers([]) })
++      .catch(() => { if (!cancelled) setRosterSummary({ followers: 0, avg_engagement: 0, verified: 0 }) })
+     return () => { cancelled = true }
+   }, [isBrandPortal, filters.search, filters.platforms, filters.categories, filters.country, filters.commune, filters.isVerified, filters.isActive])
+ 
+-  const totalFollowers = statsInfluencers.reduce((acc, inf) => {
+-    const primary = inf.social_profiles?.find(s => s.is_primary) ?? inf.social_profiles?.[0]
+-    return acc + (primary?.followers ?? 0)
+-  }, 0)
+-
+-  const avgEngagement = statsInfluencers.length
+-    ? statsInfluencers.reduce((acc, inf) => {
+-        const primary = inf.social_profiles?.find(s => s.is_primary)
+-        return acc + (primary?.engagement_rate ?? 0)
+-      }, 0) / statsInfluencers.length
+-    : 0
+-
+-  const verifiedCount = statsInfluencers.filter(i => i.is_verified).length
++  const totalFollowers = rosterSummary.followers
++  const avgEngagement = rosterSummary.avg_engagement
++  const verifiedCount = rosterSummary.verified
+ 
+   return (
+     <div className="space-y-6">
+diff --git a/src/app/api/brand/influencers/route.ts b/src/app/api/brand/influencers/route.ts
+index f6b7749..791d617 100644
+--- a/src/app/api/brand/influencers/route.ts
++++ b/src/app/api/brand/influencers/route.ts
+@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
+ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+ import { startApifyInstagramSync } from '@/lib/influencers/apify'
+ import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
++import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+ import {
+   resolveBrandPlan,
+   canViewFullInfluencerBase,
+@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
+   const sortDir  = searchParams.get('sort_dir') === 'asc'
+   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+   const limit    = Math.max(1, parseInt(searchParams.get('limit') ?? '48', 10))
++  const summaryOnly = searchParams.get('summary') === '1'
+ 
+   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
+   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
+@@ -119,6 +121,9 @@ export async function GET(req: NextRequest) {
+     ]))
+ 
+     if (restrictedInfluencerIds.length === 0) {
++      if (summaryOnly) {
++        return NextResponse.json({ summary: { total: 0, followers: 0, avg_engagement: 0, verified: 0 } })
++      }
+       return NextResponse.json({
+         data: [],
+         total: 0,
+@@ -129,6 +134,61 @@ export async function GET(req: NextRequest) {
+     }
+   }
+ 
++  if (summaryOnly) {
++    const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
++      (from, to) => {
++        let q = admin.from('influencers').select(`
++          id, display_name, city, commune, categories, is_verified,
++          social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
++        `).range(from, to)
++        if (restrictedInfluencerIds) q = q.in('id', restrictedInfluencerIds)
++        if (country) q = q.eq('country', country)
++        if (communeList.length === 1) q = q.eq('commune', communeList[0])
++        else if (communeList.length > 1) q = q.in('commune', communeList)
++        if (verified === 'true') q = q.eq('is_verified', true)
++        if (isActive === 'false') q = q.eq('is_active', false)
++        if (isActive === 'true') q = q.eq('is_active', true)
++        if (search) q = q.or(`display_name.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
++        if (category) q = q.contains('categories', [category])
++        return q
++      },
++      { maxRows: 10000 }
++    )
++
++    if (summaryError) {
++      const message = (summaryError as { message?: string }).message ?? 'Error cargando resumen'
++      return NextResponse.json({ error: message }, { status: 500 })
++    }
++
++    const rows = platform
++      ? summaryRows.filter(row => (row.social_profiles as Array<{ platform?: string }> | null)?.some(profile => profile.platform === platform))
++      : summaryRows
++    let followers = 0
++    let engagement = 0
++    let engagementRows = 0
++    let verifiedCount = 0
++
++    for (const row of rows) {
++      const profiles = (row.social_profiles as Array<{ followers?: number | null; engagement_rate?: number | null; is_primary?: boolean }> | null) ?? []
++      const primary = profiles.find(profile => profile.is_primary) ?? profiles[0]
++      followers += Number(primary?.followers ?? 0)
++      if (primary) {
++        engagement += Number(primary.engagement_rate ?? 0)
++        engagementRows += 1
++      }
++      if (row.is_verified) verifiedCount += 1
++    }
++
++    return NextResponse.json({
++      summary: {
++        total: rows.length,
++        followers,
++        avg_engagement: engagementRows ? engagement / engagementRows : 0,
++        verified: verifiedCount,
++      },
++    })
++  }
++
+   // Columnas explícitas — NUNCA '*'. La marca no debe recibir email, phone,
+   // whatsapp, notes, metadata ni user_id (mismo criterio que /api/brand/influencers/[id]).
+   let query = admin
+diff --git a/src/app/api/influencers/route.ts b/src/app/api/influencers/route.ts
+index 25210bd..e27969d 100644
+--- a/src/app/api/influencers/route.ts
++++ b/src/app/api/influencers/route.ts
+@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
+   const sortDir    = searchParams.get('sort_dir') === 'asc' ? true : false
+   const page       = parseInt(searchParams.get('page') ?? '1', 10)
+   const limit      = parseInt(searchParams.get('limit') ?? '100', 10)
++  const summaryOnly = searchParams.get('summary') === '1'
+ 
+   const admin = createAdminClient()
+   // Roster global admin: sin filtro de organization_id — a diferencia de
+@@ -66,6 +67,60 @@ export async function GET(request: NextRequest) {
+   // justamente ver Scence + todas las marcas con su origen (ver enriquecido
+   // más abajo: registered_by / associated_brands).
+ 
++  if (summaryOnly) {
++    const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
++      (from, to) => {
++        let q = admin.from('influencers').select(`
++          id, display_name, email, city, commune, categories, is_verified,
++          social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
++        `).range(from, to)
++        if (country) q = q.eq('country', country)
++        if (communeList.length === 1) q = q.eq('commune', communeList[0])
++        else if (communeList.length > 1) q = q.in('commune', communeList)
++        if (verified === 'true') q = q.eq('is_verified', true)
++        if (isActive === 'false') q = q.eq('is_active', false)
++        if (isActive === 'true') q = q.eq('is_active', true)
++        if (search) q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
++        if (category) q = q.contains('categories', [category])
++        return q
++      },
++      { maxRows: 10000 }
++    )
++
++    if (summaryError) {
++      const message = (summaryError as { message?: string }).message ?? 'Error cargando resumen'
++      return NextResponse.json({ error: message }, { status: 500 })
++    }
++
++    const rows = platform
++      ? summaryRows.filter(row => (row.social_profiles as Array<{ platform?: string }> | null)?.some(profile => profile.platform === platform))
++      : summaryRows
++    let followers = 0
++    let engagement = 0
++    let engagementRows = 0
++    let verifiedCount = 0
++
++    for (const row of rows) {
++      const profiles = (row.social_profiles as Array<{ followers?: number | null; engagement_rate?: number | null; is_primary?: boolean }> | null) ?? []
++      const primary = profiles.find(profile => profile.is_primary) ?? profiles[0]
++      followers += Number(primary?.followers ?? 0)
++      if (primary) {
++        engagement += Number(primary.engagement_rate ?? 0)
++        engagementRows += 1
++      }
++      if (row.is_verified) verifiedCount += 1
++    }
++
++    return NextResponse.json({
++      summary: {
++        total: rows.length,
++        followers,
++        avg_engagement: engagementRows ? engagement / engagementRows : 0,
++        verified: verifiedCount,
++      },
++    })
++  }
++
+   const SELECT = `
+       id,
+       user_id,
+diff --git a/src/components/influencers/InfluencerFilters.tsx b/src/components/influencers/InfluencerFilters.tsx
+index 8a7fc1f..1416060 100644
+--- a/src/components/influencers/InfluencerFilters.tsx
++++ b/src/components/influencers/InfluencerFilters.tsx
+@@ -2,6 +2,7 @@
+ 
+ import { useEffect, useState } from 'react'
+ import { Search } from 'lucide-react'
++import { fetchJsonCached } from '@/lib/client/requestCache'
+ 
+ export type InfluencerView = 'list'
+ 
+@@ -41,8 +42,7 @@ export function InfluencerFilters({
+   const [communes, setCommunes] = useState<{ label: string; variants: string[] }[]>([])
+ 
+   useEffect(() => {
+-    fetch(`${apiBase}/communes`)
+-      .then(r => r.json())
++    fetchJsonCached<{ data?: { label: string; variants: string[] }[] }>(`${apiBase}/communes`, 5 * 60_000)
+       .then(json => setCommunes(json.data ?? []))
+       .catch(() => setCommunes([]))
+   }, [apiBase])
+diff --git a/src/components/influencers/InfluencerRanking.tsx b/src/components/influencers/InfluencerRanking.tsx
+index 7fbc2be..632acc1 100644
+--- a/src/components/influencers/InfluencerRanking.tsx
++++ b/src/components/influencers/InfluencerRanking.tsx
+@@ -1,9 +1,9 @@
+ 'use client'
+ 
+-import { useMemo, useState } from 'react'
++import { useEffect, useMemo, useState } from 'react'
+ import Link from 'next/link'
+ import { usePathname } from 'next/navigation'
+-import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, Columns3, Search, Star, TrendingUp, Users, Send } from 'lucide-react'
++import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Columns3, Search, Star, TrendingUp, Users, Send } from 'lucide-react'
+ import { toast } from 'sonner'
+ import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
+ import type { RankingInfluencerRow, RankingSortBy } from '@/lib/influencers/ranking'
+@@ -85,6 +85,8 @@ export function InfluencerRanking({
+   const [connectionFilter, setConnectionFilter] = useState('all')
+   const [showColumns, setShowColumns] = useState(false)
+   const [bulkInviting, setBulkInviting] = useState(false)
++  const [page, setPage] = useState(1)
++  const pageSize = 50
+   const [visible, setVisible] = useLocalStorageState<VisibleColumns>('scence:admin:influencer-ranking:columns', {
+     followers: true,
+     engagement: true,
+@@ -171,6 +173,15 @@ export function InfluencerRanking({
+     return sortRankingRows(rows, sortBy, sortDir)
+   }, [influencers, search, platform, category, campaignFilter, connectionFilter, sortBy, sortDir])
+ 
++  const totalPages = Math.max(1, Math.ceil(ranked.length / pageSize))
++  const pagedRanked = useMemo(
++    () => ranked.slice((page - 1) * pageSize, page * pageSize),
++    [ranked, page]
++  )
++
++  useEffect(() => { setPage(1) }, [search, platform, category, campaignFilter, connectionFilter, sortBy, sortDir])
++  useEffect(() => { if (page > totalPages) setPage(totalPages) }, [page, totalPages])
++
+   function toggleSort(next: RankingSortBy) {
+     if (sortBy === next) {
+       setSortDir(prev => prev === 'desc' ? 'asc' : 'desc')
+@@ -344,7 +355,7 @@ export function InfluencerRanking({
+       </div>
+ 
+       <div className="text-xs text-gray-400">
+-        Mostrando {ranked.length} influencers. Ranking según KPI seleccionado, sin score compuesto.
++        Mostrando {pagedRanked.length} de {ranked.length} influencers. Ranking según KPI seleccionado, sin score compuesto.
+       </div>
+ 
+       {/* FIX (2026-07-02): overflow-hidden recortaba silenciosamente las columnas
+@@ -374,7 +385,7 @@ export function InfluencerRanking({
+           </thead>
+ 
+           <tbody>
+-            {ranked.map((inf, idx) => {
++            {pagedRanked.map((inf, idx) => {
+               const primary = getPrimarySocial(inf)
+               const followers = Number(primary?.followers ?? 0)
+               const engagement = Number(primary?.engagement_rate ?? 0)
+@@ -387,7 +398,7 @@ export function InfluencerRanking({
+                       'text-sm font-bold',
+                       idx < 3 ? 'text-violet-600' : 'text-gray-300'
+                     )}>
+-                      #{idx + 1}
++                      #{(page - 1) * pageSize + idx + 1}
+                     </span>
+                   </td>
+ 
+@@ -505,6 +516,30 @@ export function InfluencerRanking({
+           </div>
+         )}
+       </div>
++
++      {totalPages > 1 && (
++        <div className="flex items-center justify-between gap-3">
++          <span className="text-xs text-gray-400">Página {page} de {totalPages}</span>
++          <div className="flex items-center gap-2">
++            <button
++              type="button"
++              onClick={() => setPage(current => Math.max(1, current - 1))}
++              disabled={page === 1}
++              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 disabled:opacity-40"
++            >
++              <ChevronLeft className="h-4 w-4" /> Anterior
++            </button>
++            <button
++              type="button"
++              onClick={() => setPage(current => Math.min(totalPages, current + 1))}
++              disabled={page === totalPages}
++              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 disabled:opacity-40"
++            >
++              Siguiente <ChevronRight className="h-4 w-4" />
++            </button>
++          </div>
++        </div>
++      )}
+     </div>
+   )
+ }
+diff --git a/src/hooks/useInfluencers.ts b/src/hooks/useInfluencers.ts
+index c098bc6..d7fb080 100644
+--- a/src/hooks/useInfluencers.ts
++++ b/src/hooks/useInfluencers.ts
+@@ -3,6 +3,7 @@
+ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+ import type { Influencer, InfluencerFilters } from '@/types'
+ import { DEFAULT_INFLUENCER_FILTERS, getInfluencerTier } from '@/types'
++import { fetchJsonCached, invalidateCachedJson } from '@/lib/client/requestCache'
+ 
+ export const INFLUENCERS_PAGE_SIZE = 48
+ 
+@@ -52,9 +53,8 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
+       if (currentFilters.sortBy !== 'created_at')     params.set('sort_by', currentFilters.sortBy)
+       params.set('sort_dir', currentFilters.sortOrder)
+ 
+-      const res = await fetch(`${apiBase}?${params}`)
+-      if (!res.ok) throw new Error('Error cargando influencers')
+-      const json = await res.json()
++      const url = `${apiBase}?${params}`
++      const json = await fetchJsonCached<{ data?: Record<string, unknown>[]; total?: number }>(url, 15_000)
+       const rows = (json.data ?? []).map((inf: Record<string, unknown>) => ({
+         ...inf,
+         social_profiles: inf.social_profiles ?? inf.influencer_social_profiles ?? [],
+@@ -67,7 +67,7 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
+     } finally {
+       setLoading(false)
+     }
+-  }, [])
++  }, [apiBase])
+ 
+   // Debounce search — 350ms after last keystroke
+   useEffect(() => {
+@@ -86,11 +86,14 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
+ 
+   // Re-fetch when Instagram sync completes (from DataQualityClient)
+   useEffect(() => {
+-    const handler = () => fetchInfluencers(page, filters, debouncedSearch)
++    const handler = () => {
++      invalidateCachedJson(apiBase)
++      void fetchInfluencers(page, filters, debouncedSearch)
++    }
+     window.addEventListener('influencers-synced', handler)
+     return () => window.removeEventListener('influencers-synced', handler)
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [page, debouncedSearch, serverFilterKey])
++  }, [apiBase, page, debouncedSearch, serverFilterKey, fetchInfluencers, filters])
+ 
+   // Client-side post-filter: tier + multi-platform + engagement (requires join data)
+   const filtered = useMemo(() => {
+@@ -157,7 +160,10 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
+     updateFilter,
+     resetFilters,
+     toggleSort,
+-    refetch: () => fetchInfluencers(page, filters, debouncedSearch),
++    refetch: () => {
++      invalidateCachedJson(apiBase)
++      return fetchInfluencers(page, filters, debouncedSearch)
++    },
+     // Pagination
+     page,
+     setPage,
+diff --git a/src/hooks/useIsAdmin.ts b/src/hooks/useIsAdmin.ts
+index 1ee745d..90a036a 100644
+--- a/src/hooks/useIsAdmin.ts
++++ b/src/hooks/useIsAdmin.ts
+@@ -1,4 +1,5 @@
+ import { useState, useEffect } from 'react'
++import { fetchJsonCached } from '@/lib/client/requestCache'
+ 
+ export type UserRole = 'super_admin' | 'brand_manager' | 'influencer' | 'finance' | null
+ 
+@@ -9,8 +10,7 @@ export function useIsAdmin(): { isAdmin: boolean; role: UserRole; loading: boole
+ 
+   useEffect(() => {
+     let active = true
+-    fetch('/api/me/role')
+-      .then(r => r.json())
++    fetchJsonCached<{ isAdmin?: boolean; role?: UserRole }>('/api/me/role', 60_000)
+       .then(j => {
+         if (active) {
+           setIsAdmin(!!j.isAdmin)
+diff --git a/src/lib/client/requestCache.ts b/src/lib/client/requestCache.ts
+new file mode 100644
+index 0000000..6ec363f
+--- /dev/null
++++ b/src/lib/client/requestCache.ts
+@@ -0,0 +1,34 @@
++'use client'
++
++type CacheEntry = { expiresAt: number; promise: Promise<unknown> }
++
++const globalCache = globalThis as typeof globalThis & {
++  __scenceRequestCache?: Map<string, CacheEntry>
++}
++
++const cache = globalCache.__scenceRequestCache ?? new Map<string, CacheEntry>()
++globalCache.__scenceRequestCache = cache
++
++export function fetchJsonCached<T>(url: string, ttlMs = 30_000): Promise<T> {
++  const current = cache.get(url)
++  if (current && current.expiresAt > Date.now()) return current.promise as Promise<T>
++
++  const promise = fetch(url)
++    .then(async response => {
++      if (!response.ok) throw new Error(`Request failed: ${response.status}`)
++      return response.json() as Promise<T>
++    })
++    .catch(error => {
++      cache.delete(url)
++      throw error
++    })
++
++  cache.set(url, { expiresAt: Date.now() + ttlMs, promise })
++  return promise
++}
++
++export function invalidateCachedJson(prefix: string) {
++  for (const key of Array.from(cache.keys())) {
++    if (key.startsWith(prefix)) cache.delete(key)
++  }
++}
+-- 
+2.51.1
+

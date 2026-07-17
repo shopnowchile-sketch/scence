@@ -9,7 +9,7 @@ diff --git a/src/app/(brand)/layout.tsx b/src/app/(brand)/layout.tsx
        setBrandStatus(null)
        setBrandPlan(null)
        setInstagramComplete(null)
-@@ -132,6 +131,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+@@ -132,5 +131,6 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
          return
        }
  

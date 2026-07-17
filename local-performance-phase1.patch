@@ -1,0 +1,229 @@
+From 94d2bde054598d91b08e406d7beeceb6b6c1ed46 Mon Sep 17 00:00:00 2001
+From: Priscilla Perez <shopnowchile-sketch@users.noreply.github.com>
+Date: Fri, 17 Jul 2026 14:59:07 -0400
+Subject: [PATCH] =?UTF-8?q?perf:=20consolida=20navegaci=C3=B3n=20y=20carga?=
+ =?UTF-8?q?=20de=20marcas?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/api/brands/route.ts             | 67 ++++++++++++++++++++-----
+ src/app/api/navigation/summary/route.ts | 36 +++++++++++++
+ src/components/layout/Sidebar.tsx       | 45 +++++++++++------
+ 3 files changed, 120 insertions(+), 28 deletions(-)
+ create mode 100644 src/app/api/navigation/summary/route.ts
+
+diff --git a/src/app/api/brands/route.ts b/src/app/api/brands/route.ts
+index b4f0531..ef2b085 100644
+--- a/src/app/api/brands/route.ts
++++ b/src/app/api/brands/route.ts
+@@ -1,8 +1,7 @@
+ import { NextRequest, NextResponse } from 'next/server'
+ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+ import { getOrgId } from '@/lib/supabase/ensureOrg'
+-import { resolveBrandPlan } from '@/lib/plan-limits'
+-import { resolveLastSeen } from '@/lib/supabase/lastSeen'
++import { PLAN_TIERS } from '@/lib/plan-limits'
+ 
+ // ── GET /api/brands ───────────────────────────────────────────────────────────
+ export async function GET(req: NextRequest) {
+@@ -69,9 +68,24 @@ export async function GET(req: NextRequest) {
+   const brandIds = brands.map(b => b.id)
+   const ownerUserIds = brands.map(b => b.user_id).filter((id): id is string => !!id)
+ 
+-  const { data: memberRows } = brandIds.length > 0
+-    ? await admin.from('brand_members').select('brand_id, user_id').in('brand_id', brandIds).not('user_id', 'is', null)
+-    : { data: [] as Array<{ brand_id: string; user_id: string }> }
++  const organizationIds = Array.from(new Set(brands.map(b => b.organization_id).filter((id): id is string => Boolean(id))))
++
++  const [memberResult, subscriptionResult, organizationResult] = await Promise.all([
++    brandIds.length > 0
++      ? admin.from('brand_members').select('brand_id, user_id').in('brand_id', brandIds).not('user_id', 'is', null)
++      : Promise.resolve({ data: [] as Array<{ brand_id: string; user_id: string }> }),
++    organizationIds.length > 0
++      ? admin.from('subscriptions')
++        .select('organization_id, created_at, plan:subscription_plans(tier)')
++        .in('organization_id', organizationIds)
++        .in('status', ['active', 'trialing'])
++        .order('created_at', { ascending: false })
++      : Promise.resolve({ data: [] }),
++    organizationIds.length > 0
++      ? admin.from('organizations').select('id, subscription_plan').in('id', organizationIds)
++      : Promise.resolve({ data: [] }),
++  ])
++  const memberRows = memberResult.data ?? []
+ 
+   const membersByBrand = new Map<string, string[]>()
+   for (const m of memberRows ?? []) {
+@@ -80,13 +94,40 @@ export async function GET(req: NextRequest) {
+     membersByBrand.set(m.brand_id, list)
+   }
+ 
+-  const allUserIds = Array.from(new Set([...ownerUserIds, ...(memberRows ?? []).map(m => m.user_id as string)]))
+-  const lastSeenMap = await resolveLastSeen(admin, allUserIds)
++  const allUserIds = Array.from(new Set([...ownerUserIds, ...memberRows.map(m => m.user_id as string)]))
++  const { data: profiles } = allUserIds.length > 0
++    ? await admin.from('profiles').select('id, last_seen_at').in('id', allUserIds)
++    : { data: [] }
+ 
++  const lastSeenMap: Record<string, string | null> = Object.fromEntries(
++    (profiles ?? []).map(profile => [profile.id as string, profile.last_seen_at as string | null])
++  )
+   const accountCreatedMap: Record<string, string | null> = {}
+-  for (const uid of ownerUserIds) {
+-    const { data: u } = await admin.auth.admin.getUserById(uid)
+-    if (u?.user) accountCreatedMap[uid] = u.user.created_at ?? null
++  const unresolved = new Set(allUserIds.filter(id => !lastSeenMap[id] || ownerUserIds.includes(id)))
++  let authPage = 1
++  while (unresolved.size > 0) {
++    const { data: usersPage, error: usersError } = await admin.auth.admin.listUsers({ page: authPage, perPage: 1000 })
++    if (usersError || !usersPage?.users?.length) break
++    for (const authUser of usersPage.users) {
++      if (!unresolved.has(authUser.id)) continue
++      if (!lastSeenMap[authUser.id]) lastSeenMap[authUser.id] = authUser.last_sign_in_at ?? null
++      if (ownerUserIds.includes(authUser.id)) accountCreatedMap[authUser.id] = authUser.created_at ?? null
++      unresolved.delete(authUser.id)
++    }
++    if (usersPage.users.length < 1000) break
++    authPage++
++  }
++
++  const planByOrganization = new Map<string, string>()
++  for (const subscription of subscriptionResult.data ?? []) {
++    if (planByOrganization.has(subscription.organization_id)) continue
++    const tier = (subscription.plan as { tier?: string } | null)?.tier
++    if (tier) planByOrganization.set(subscription.organization_id, tier)
++  }
++  for (const organization of organizationResult.data ?? []) {
++    if (!planByOrganization.has(organization.id)) {
++      planByOrganization.set(organization.id, organization.subscription_plan ?? 'basic')
++    }
+   }
+ 
+   function mostRecentLastSeen(userIds: string[]): string | null {
+@@ -111,9 +152,9 @@ export async function GET(req: NextRequest) {
+       account_created_at: b.user_id
+         ? (accountCreatedMap[b.user_id] ?? b.created_at ?? null)
+         : (b.created_at ?? null),
+-      org_plan: b.organization_id
+-        ? await resolveBrandPlan(admin, b.organization_id, b.id)
+-        : 'basic',
++      org_plan: typeof b.subscription_plan_override === 'string' && (PLAN_TIERS as readonly string[]).includes(b.subscription_plan_override)
++        ? b.subscription_plan_override
++        : (b.organization_id ? planByOrganization.get(b.organization_id) ?? 'basic' : 'basic'),
+     }
+   }))
+ 
+diff --git a/src/app/api/navigation/summary/route.ts b/src/app/api/navigation/summary/route.ts
+new file mode 100644
+index 0000000..8a1003d
+--- /dev/null
++++ b/src/app/api/navigation/summary/route.ts
+@@ -0,0 +1,36 @@
++import { NextResponse } from 'next/server'
++import { createAdminClient, createServerClient } from '@/lib/supabase/server'
++import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
++
++export async function GET() {
++  const supabase = createServerClient()
++  const { data: { user }, error: authError } = await supabase.auth.getUser()
++  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++
++  const admin = createAdminClient()
++  const orgId = await getOrgId(user.id, user.user_metadata, admin)
++  if (!orgId) return NextResponse.json({ role: null, isAdmin: false, pendingCampaigns: 0, bookings: 0 })
++
++  const access = await getUserRole(user.id, orgId, admin)
++
++  let pendingQuery = admin
++    .from('campaigns')
++    .select('id', { count: 'exact', head: true })
++    .eq('status', 'pending_approval')
++
++  if (!access.isAdmin) pendingQuery = pendingQuery.eq('organization_id', orgId)
++
++  const [pendingResult, bookingsResult] = await Promise.all([
++    pendingQuery,
++    admin.from('bookings')
++      .select('id', { count: 'exact', head: true })
++      .eq('organization_id', orgId),
++  ])
++
++  return NextResponse.json({
++    role: access.role,
++    isAdmin: access.isAdmin,
++    pendingCampaigns: pendingResult.count ?? 0,
++    bookings: bookingsResult.count ?? 0,
++  })
++}
+diff --git a/src/components/layout/Sidebar.tsx b/src/components/layout/Sidebar.tsx
+index 8b894c1..4cb24cc 100644
+--- a/src/components/layout/Sidebar.tsx
++++ b/src/components/layout/Sidebar.tsx
+@@ -1,32 +1,47 @@
+ 'use client'
+ 
+ import { useEffect, useState } from 'react'
+-import { useIsAdmin, type UserRole } from '@/hooks/useIsAdmin'
++import type { UserRole } from '@/hooks/useIsAdmin'
+ import {
+   LayoutDashboard, Target, Users, CalendarDays,
+   CreditCard, Banknote, FileText, BarChart3,
+   Building2, Link2, Bug, CalendarCheck, Trophy, Contact } from 'lucide-react'
+ import { AppSidebar, type NavSection } from './AppSidebar'
+ 
++type NavigationSummary = { role: UserRole; bookings: number; pendingCampaigns: number }
++let navigationSummaryRequest: Promise<NavigationSummary> | null = null
++
++function loadNavigationSummary() {
++  if (!navigationSummaryRequest) {
++    navigationSummaryRequest = fetch('/api/navigation/summary')
++      .then(r => {
++        if (!r.ok) throw new Error('No se pudo cargar la navegación')
++        return r.json() as Promise<NavigationSummary>
++      })
++      .catch(error => {
++        navigationSummaryRequest = null
++        throw error
++      })
++  }
++  return navigationSummaryRequest
++}
++
+ export function Sidebar() {
+-  const { role } = useIsAdmin()
+-  const [campaignCount, setCampaignCount] = useState<number | null>(null)
++  const [role, setRole] = useState<UserRole>(null)
+   const [bookingCount,  setBookingCount]  = useState<number | null>(null)
+   const [reviewCount,   setReviewCount]   = useState<number | null>(null)
+ 
+   useEffect(() => {
+-    fetch('/api/campaigns?limit=1').then(r => r.json()).then(d => { if (typeof d.total === 'number') setCampaignCount(d.total) }).catch(() => {})
+-    fetch('/api/bookings?limit=1').then(r => r.json()).then(d => { if (Array.isArray(d.data)) setBookingCount(d.data.length) }).catch(() => {})
+-    // Badge de "Campañas" = campañas NUEVAS creadas por una marca, pendientes
+-    // de aprobación de admin (status='pending_approval'). Antes mezclaba
+-    // postulaciones de influencers + deliverables en revisión, lo que daba
+-    // números enormes (191) sin relación con "hay campañas nuevas que
+-    // revisar" — Pri pidió que el conteo sea justo ese. Reusa el mismo
+-    // endpoint/filtro que ya alimenta la pestaña "Pendientes de aprobación"
+-    // en CampaignsClient.tsx (misma fuente de verdad, sin lógica nueva).
+-    fetch('/api/campaigns?status=pending_approval&limit=1').then(r => r.json()).then(d => {
+-      if (typeof d.total === 'number' && d.total > 0) setReviewCount(d.total)
+-    }).catch(() => {})
++    let active = true
++    loadNavigationSummary()
++      .then(d => {
++        if (!active) return
++        setRole(d.role ?? null)
++        setBookingCount(typeof d.bookings === 'number' ? d.bookings : null)
++        setReviewCount(typeof d.pendingCampaigns === 'number' && d.pendingCampaigns > 0 ? d.pendingCampaigns : null)
++      })
++      .catch(() => {})
++    return () => { active = false }
+   }, [])
+ 
+   const isAdmin = role && (['super_admin', 'brand_manager'] as UserRole[]).includes(role as UserRole)
+-- 
+2.51.1
+

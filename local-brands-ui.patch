@@ -1,0 +1,377 @@
+From a3eeff4ae4a434e27067aa6d58b36124c0a6d17c Mon Sep 17 00:00:00 2001
+From: Priscilla Perez <shopnowchile-sketch@users.noreply.github.com>
+Date: Fri, 17 Jul 2026 14:41:01 -0400
+Subject: [PATCH] feat: mejora identidad visual y redes de marcas
+
+---
+ .../(dashboard)/admin-brands/[id]/page.tsx    |  1 +
+ src/app/(dashboard)/admin-brands/page.tsx     | 90 ++++++++++++++-----
+ src/app/api/brands/logo/route.ts              | 49 ++++++++++
+ src/app/api/brands/route.ts                   |  3 +-
+ src/components/brands/BrandModal.tsx          | 60 +++++++++++--
+ 5 files changed, 173 insertions(+), 30 deletions(-)
+ create mode 100644 src/app/api/brands/logo/route.ts
+
+diff --git a/src/app/(dashboard)/admin-brands/[id]/page.tsx b/src/app/(dashboard)/admin-brands/[id]/page.tsx
+index 578b46e..a3e58db 100644
+--- a/src/app/(dashboard)/admin-brands/[id]/page.tsx
++++ b/src/app/(dashboard)/admin-brands/[id]/page.tsx
+@@ -26,6 +26,7 @@ type Brand = {
+   name: string
+   logo_url: string | null
+   website: string | null
++  instagram: string | null
+   industry: string | null
+   contact_name: string | null
+   contact_email: string | null
+diff --git a/src/app/(dashboard)/admin-brands/page.tsx b/src/app/(dashboard)/admin-brands/page.tsx
+index 0608b9b..b0148c5 100644
+--- a/src/app/(dashboard)/admin-brands/page.tsx
++++ b/src/app/(dashboard)/admin-brands/page.tsx
+@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+ import Link from 'next/link'
+ import {
+   Building2, Plus, X, Globe, Mail, Phone, Target,
+-  Pencil, Trash2, ExternalLink, Search, Send,
++  Pencil, Trash2, ExternalLink, Search, Send, Instagram,
+ } from 'lucide-react'
+ import { cn } from '@/lib/utils'
+ import { toast } from 'sonner'
+@@ -57,6 +57,7 @@ interface Brand {
+   name: string
+   logo_url: string | null
+   website: string | null
++  instagram: string | null
+   industry: string | null
+   contact_name: string | null
+   contact_email: string | null
+@@ -78,6 +79,47 @@ function initials(name: string) {
+   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+ }
+ 
++const BRAND_TONES = [
++  { bg: 'bg-violet-100', text: 'text-violet-700', name: 'text-violet-700', ring: 'border-violet-200' },
++  { bg: 'bg-blue-100', text: 'text-blue-700', name: 'text-blue-700', ring: 'border-blue-200' },
++  { bg: 'bg-emerald-100', text: 'text-emerald-700', name: 'text-emerald-700', ring: 'border-emerald-200' },
++  { bg: 'bg-amber-100', text: 'text-amber-700', name: 'text-amber-700', ring: 'border-amber-200' },
++  { bg: 'bg-rose-100', text: 'text-rose-700', name: 'text-rose-700', ring: 'border-rose-200' },
++  { bg: 'bg-cyan-100', text: 'text-cyan-700', name: 'text-cyan-700', ring: 'border-cyan-200' },
++] as const
++
++function brandTone(value: string) {
++  const hash = Array.from(value).reduce((total, char) => ((total * 31) + char.charCodeAt(0)) >>> 0, 0)
++  return BRAND_TONES[hash % BRAND_TONES.length]
++}
++
++function instagramHandle(value?: string | null) {
++  return value?.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/\/$/, '') ?? ''
++}
++
++function BrandMark({ brand, size = 'md' }: { brand: Brand; size?: 'sm' | 'md' | 'lg' }) {
++  const [imageFailed, setImageFailed] = useState(false)
++  const tone = brandTone(brand.id || brand.name)
++  const sizes = size === 'sm' ? 'h-8 w-8 rounded-lg text-[10px]' : size === 'lg' ? 'h-14 w-14 rounded-xl text-sm' : 'h-12 w-12 rounded-xl text-xs'
++
++  if (brand.logo_url && !imageFailed) {
++    return (
++      <img
++        src={brand.logo_url}
++        alt=""
++        onError={() => setImageFailed(true)}
++        className={cn(sizes, 'object-contain border bg-white p-1 flex-shrink-0', tone.ring)}
++      />
++    )
++  }
++
++  return (
++    <div className={cn(sizes, 'flex items-center justify-center border font-bold leading-none flex-shrink-0', tone.bg, tone.text, tone.ring)}>
++      {initials(brand.name)}
++    </div>
++  )
++}
++
+ // ── Main page ──────────────────────────────────────────────────────────────────
+ 
+ interface BrandInfluencer {
+@@ -409,13 +451,16 @@ export default function BrandsPage() {
+                           selected?.id === b.id ? 'bg-violet-50' : '')}>
+                         <td className="px-4 py-3 overflow-hidden">
+                           <div className="flex items-center gap-3 min-w-0">
+-                            {b.logo_url
+-                              ? <img src={b.logo_url} alt={b.name} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
+-                              : <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600 font-bold text-sm flex-shrink-0">{b.name[0]}</div>
+-                            }
++                            <BrandMark brand={b} size="sm" />
+                             <div className="min-w-0">
+-                              <div className="text-sm font-semibold text-gray-900 truncate">{b.name}</div>
+-                              {b.website && <a href={b.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-violet-500 hover:underline truncate block">{b.website.replace(/^https?:\/\//, '')}</a>}
++                              <div className={cn('text-sm font-bold truncate', brandTone(b.id || b.name).name)}>{b.name}</div>
++                              {instagramHandle(b.instagram) ? (
++                                <a href={`https://instagram.com/${instagramHandle(b.instagram)}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-pink-600 hover:underline truncate flex items-center gap-1">
++                                  <Instagram className="h-3 w-3" /> @{instagramHandle(b.instagram)}
++                                </a>
++                              ) : b.website ? (
++                                <a href={b.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-gray-400 hover:underline truncate block">{b.website.replace(/^https?:\/\//, '')}</a>
++                              ) : null}
+                             </div>
+                           </div>
+                         </td>
+@@ -498,19 +543,19 @@ export default function BrandsPage() {
+                   )}
+                 >
+                   <div className="flex items-start gap-3 mb-3">
+-                    {b.logo_url ? (
+-                      <img src={b.logo_url} alt={b.name} className="w-12 h-12 rounded-xl object-contain border border-gray-100 p-1" />
+-                    ) : (
+-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+-                        {initials(b.name)}
+-                      </div>
+-                    )}
++                    <BrandMark brand={b} />
+                     <div className="flex-1 min-w-0">
+-                      <p className="font-bold text-gray-900 truncate">{b.name}</p>
++                      <p className={cn('font-bold truncate', brandTone(b.id || b.name).name)}>{b.name}</p>
+                       {b.industry && <p className="text-xs text-gray-400 truncate">{b.industry}</p>}
+                     </div>
+                   </div>
+                   <div className="space-y-1.5 text-xs text-gray-500">
++                    {instagramHandle(b.instagram) && (
++                      <div className="flex items-center gap-1.5 truncate text-pink-600">
++                        <Instagram className="h-3 w-3 flex-shrink-0" />
++                        <span className="truncate">@{instagramHandle(b.instagram)}</span>
++                      </div>
++                    )}
+                     {b.contact_email && (
+                       <div className="flex items-center gap-1.5 truncate">
+                         <Mail className="h-3 w-3 text-gray-300 flex-shrink-0" />
+@@ -562,15 +607,9 @@ export default function BrandsPage() {
+             <div className="card p-5 space-y-4">
+               <div className="flex items-start justify-between">
+                 <div className="flex items-center gap-3">
+-                  {selected.logo_url ? (
+-                    <img src={selected.logo_url} alt={selected.name} className="w-14 h-14 rounded-xl object-contain border border-gray-100 p-1" />
+-                  ) : (
+-                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold">
+-                      {initials(selected.name)}
+-                    </div>
+-                  )}
++                  <BrandMark brand={selected} size="lg" />
+                   <div>
+-                    <h3 className="font-bold text-gray-900">{selected.name}</h3>
++                    <h3 className={cn('font-bold', brandTone(selected.id || selected.name).name)}>{selected.name}</h3>
+                     {selected.industry && <p className="text-xs text-gray-400">{selected.industry}</p>}
+                   </div>
+                 </div>
+@@ -581,6 +620,11 @@ export default function BrandsPage() {
+ 
+               {/* Contact */}
+               <div className="space-y-2 text-sm">
++                {instagramHandle(selected.instagram) && (
++                  <a href={`https://instagram.com/${instagramHandle(selected.instagram)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-pink-600 hover:underline">
++                    <Instagram className="h-3.5 w-3.5" /> @{instagramHandle(selected.instagram)}
++                  </a>
++                )}
+                 {selected.contact_name && <div className="text-gray-700 font-medium">{selected.contact_name}</div>}
+                 {selected.contact_email && (
+                   <a href={`mailto:${selected.contact_email}`} className="flex items-center gap-2 text-violet-600 hover:underline">
+diff --git a/src/app/api/brands/logo/route.ts b/src/app/api/brands/logo/route.ts
+new file mode 100644
+index 0000000..f7845b0
+--- /dev/null
++++ b/src/app/api/brands/logo/route.ts
+@@ -0,0 +1,49 @@
++import { NextRequest, NextResponse } from 'next/server'
++import { createAdminClient, createServerClient } from '@/lib/supabase/server'
++import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
++
++const BUCKET = 'brand-logos'
++const MAX_SIZE = 5 * 1024 * 1024
++const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'])
++
++function extension(file: File) {
++  const fromName = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '')
++  return fromName || file.type.split('/')[1]?.replace('svg+xml', 'svg') || 'img'
++}
++
++export async function POST(request: NextRequest) {
++  const supabase = createServerClient()
++  const { data: { user }, error: authError } = await supabase.auth.getUser()
++  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++
++  const admin = createAdminClient()
++  const orgId = await getOrgId(user.id, user.user_metadata, admin)
++  const role = orgId ? await getUserRole(user.id, orgId, admin) : null
++  if (!role?.isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
++
++  const form = await request.formData()
++  const file = form.get('file')
++  if (!(file instanceof File)) return NextResponse.json({ error: 'Selecciona una imagen' }, { status: 422 })
++  if (!ALLOWED_TYPES.has(file.type)) return NextResponse.json({ error: 'Formato no permitido. Usa PNG, JPG, WebP, GIF o SVG.' }, { status: 422 })
++  if (file.size > MAX_SIZE) return NextResponse.json({ error: 'El logo no puede superar 5 MB' }, { status: 422 })
++
++  const { data: buckets } = await admin.storage.listBuckets()
++  if (!buckets?.some(bucket => bucket.name === BUCKET)) {
++    const { error: bucketError } = await admin.storage.createBucket(BUCKET, {
++      public: true,
++      fileSizeLimit: MAX_SIZE,
++      allowedMimeTypes: Array.from(ALLOWED_TYPES),
++    })
++    if (bucketError) return NextResponse.json({ error: bucketError.message }, { status: 500 })
++  }
++
++  const path = `${orgId}/${crypto.randomUUID()}.${extension(file)}`
++  const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, await file.arrayBuffer(), {
++    contentType: file.type,
++    upsert: false,
++  })
++  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 })
++
++  const { data } = admin.storage.from(BUCKET).getPublicUrl(path)
++  return NextResponse.json({ url: data.publicUrl })
++}
+diff --git a/src/app/api/brands/route.ts b/src/app/api/brands/route.ts
+index 5b3b230..b4f0531 100644
+--- a/src/app/api/brands/route.ts
++++ b/src/app/api/brands/route.ts
+@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
+   let body: Record<string, unknown>
+   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
+ 
+-  const { name, logo_url, website, industry, contact_name, contact_email, contact_phone, notes } = body
++  const { name, logo_url, website, instagram, industry, contact_name, contact_email, contact_phone, notes } = body
+ 
+   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 422 })
+ 
+@@ -150,6 +150,7 @@ export async function POST(req: NextRequest) {
+       name,
+       logo_url:      logo_url ?? null,
+       website:       website ?? null,
++      instagram:     instagram ?? null,
+       industry:      industry ?? null,
+       contact_name:  contact_name ?? null,
+       contact_email: contact_email ?? null,
+diff --git a/src/components/brands/BrandModal.tsx b/src/components/brands/BrandModal.tsx
+index 909baf5..883a73b 100644
+--- a/src/components/brands/BrandModal.tsx
++++ b/src/components/brands/BrandModal.tsx
+@@ -1,7 +1,7 @@
+ 'use client'
+ 
+-import { useState } from 'react'
+-import { X, Loader2 } from 'lucide-react'
++import { useRef, useState } from 'react'
++import { X, Loader2, ImageUp, Instagram } from 'lucide-react'
+ import { toast } from 'sonner'
+ 
+ // Extraído de admin-brands/page.tsx para poder reusarlo también en el
+@@ -14,6 +14,7 @@ export type BrandModalEditing = {
+   name: string
+   logo_url: string | null
+   website: string | null
++  instagram: string | null
+   industry: string | null
+   contact_name: string | null
+   contact_email: string | null
+@@ -22,7 +23,7 @@ export type BrandModalEditing = {
+ }
+ 
+ type FormData = {
+-  name: string; logo_url: string; website: string; industry: string
++  name: string; logo_url: string; website: string; instagram: string; industry: string
+   contact_name: string; contact_email: string; contact_phone: string; notes: string
+ }
+ 
+@@ -33,7 +34,7 @@ export const BRAND_INDUSTRIES = [
+ ]
+ 
+ const EMPTY_FORM: FormData = {
+-  name: '', logo_url: '', website: '', industry: '',
++  name: '', logo_url: '', website: '', instagram: '', industry: '',
+   contact_name: '', contact_email: '', contact_phone: '', notes: '',
+ }
+ 
+@@ -54,6 +55,7 @@ export function BrandModal({
+           name: editing.name,
+           logo_url: editing.logo_url ?? '',
+           website: editing.website ?? '',
++          instagram: editing.instagram ?? '',
+           industry: editing.industry ?? '',
+           contact_name: editing.contact_name ?? '',
+           contact_email: editing.contact_email ?? '',
+@@ -63,9 +65,29 @@ export function BrandModal({
+       : EMPTY_FORM
+   )
+   const [saving, setSaving] = useState(false)
++  const [uploadingLogo, setUploadingLogo] = useState(false)
++  const fileRef = useRef<HTMLInputElement>(null)
+ 
+   const set = (k: keyof FormData, v: string) => setForm(f => ({ ...f, [k]: v }))
+ 
++  async function uploadLogo(file: File) {
++    setUploadingLogo(true)
++    try {
++      const body = new FormData()
++      body.append('file', file)
++      const res = await fetch('/api/brands/logo', { method: 'POST', body })
++      const json = await res.json().catch(() => ({}))
++      if (!res.ok) throw new Error(json.error ?? 'No se pudo cargar el logo')
++      set('logo_url', json.url)
++      toast.success('Logo cargado')
++    } catch (error) {
++      toast.error(error instanceof Error ? error.message : 'No se pudo cargar el logo')
++    } finally {
++      setUploadingLogo(false)
++      if (fileRef.current) fileRef.current.value = ''
++    }
++  }
++
+   async function handleSubmit(e: React.FormEvent) {
+     e.preventDefault()
+     if (!form.name.trim()) return
+@@ -80,6 +102,7 @@ export function BrandModal({
+           ...form,
+           logo_url:      form.logo_url || null,
+           website:       form.website || null,
++          instagram:     form.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/\/$/, '') || null,
+           industry:      form.industry || null,
+           contact_name:  form.contact_name || null,
+           contact_email: form.contact_email || null,
+@@ -140,8 +163,33 @@ export function BrandModal({
+             </div>
+           </div>
+           <div>
+-            <label className="block text-xs font-semibold text-gray-600 mb-1">Logo URL</label>
+-            <input className="input-base w-full" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} placeholder="https://..." />
++            <label className="block text-xs font-semibold text-gray-600 mb-1">Instagram de la marca</label>
++            <div className="relative">
++              <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-pink-500" />
++              <input className="input-base w-full pl-9" value={form.instagram} onChange={e => set('instagram', e.target.value)} placeholder="@marca" />
++            </div>
++          </div>
++          <div>
++            <label className="block text-xs font-semibold text-gray-600 mb-1">Logo</label>
++            <div className="flex gap-2">
++              <input className="input-base flex-1 min-w-0" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} placeholder="URL del logo o carga un archivo" />
++              <input
++                ref={fileRef}
++                type="file"
++                accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
++                className="hidden"
++                onChange={e => { const file = e.target.files?.[0]; if (file) void uploadLogo(file) }}
++              />
++              <button
++                type="button"
++                onClick={() => fileRef.current?.click()}
++                disabled={uploadingLogo}
++                className="flex items-center gap-1.5 px-3 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
++              >
++                {uploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageUp className="h-4 w-4" />}
++                Cargar
++              </button>
++            </div>
+           </div>
+           <div className="border-t border-gray-100 pt-4">
+             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Contacto</p>
+-- 
+2.51.1
+

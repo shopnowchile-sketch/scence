@@ -93,7 +93,6 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         return
       }
 
-      didRegister.current = true
       setBrandStatus(null)
       setBrandPlan(null)
       setInstagramComplete(null)
@@ -140,6 +139,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         return
       }
 
+      didRegister.current = true
       await fetchBrandProfile()
     }
 

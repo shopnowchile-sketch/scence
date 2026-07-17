@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
+import { resolveBrandPlan } from '@/lib/plan-limits'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 
 type Params = { params: { id: string } }
@@ -97,6 +97,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { id: _id, organization_id: _oi, created_by: _cb, created_at: _ca, ...rest } = body
+
+  if (
+    ('subscription_plan_override' in rest || 'subscription_plan_override_expires_at' in rest) &&
+    (user.user_metadata?.is_brand === true || user.user_metadata?.is_influencer === true)
+  ) {
+    return NextResponse.json(
+      { error: 'Solo SCENCE puede asignar planes manuales.' },
+      { status: 403 },
+    )
+  }
 
   // FIX (bug Limitless, 2026-07-13): editar contact_email acá solo tocaba la
   // columna brands.contact_email — auth.users nunca se enteraba, el owner
@@ -209,15 +219,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (
       normalized !== null &&
-      !(PLAN_TIERS as readonly string[]).includes(normalized)
+      normalized !== 'free'
     ) {
       return NextResponse.json(
-        { error: 'El plan debe ser basic, growth, pro o heredar' },
+        { error: 'La asignación manual solo puede ser Free o heredada' },
         { status: 422 },
       )
     }
 
     rest.subscription_plan_override = normalized
+  }
+
+  if ('subscription_plan_override_expires_at' in rest) {
+    const rawExpiry = rest.subscription_plan_override_expires_at
+    if (rawExpiry === null || rawExpiry === undefined || rawExpiry === '') {
+      rest.subscription_plan_override_expires_at = null
+    } else {
+      const expiry = new Date(String(rawExpiry))
+      if (Number.isNaN(expiry.getTime())) {
+        return NextResponse.json({ error: 'Fecha de vencimiento inválida' }, { status: 422 })
+      }
+      rest.subscription_plan_override_expires_at = expiry.toISOString()
+    }
   }
 
   const { data, error } = await admin

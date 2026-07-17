@@ -12,8 +12,6 @@ export type SubscriptionPlan = {
   max_influencers: number | null
   features: string[]
   is_active: boolean
-  stripe_price_id_monthly: string | null
-  stripe_price_id_yearly: string | null
 }
 
 export async function getActivePlans(admin: SupabaseClient): Promise<SubscriptionPlan[]> {

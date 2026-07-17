@@ -12,6 +12,7 @@ import { BrandSidebar } from './_components/BrandSidebar'
 // dependencias de datos de influencer — hace POST a /api/presence/heartbeat
 // con el usuario de la sesión (auth.getUser()), válido para cualquier rol.
 import { PresenceHeartbeat } from '../(influencer)/_components/PresenceHeartbeat'
+import { hasBrandPlanAccess } from '@/lib/plan-limits'
 
 export default function BrandLayout({ children }: { children: React.ReactNode }) {
   const didRegister = useRef(false)
@@ -151,16 +152,28 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   }, [pathname])
 
   useEffect(() => {
-    if (instagramComplete === false && !isProfilePage) router.replace('/brand-settings/organization?complete=1')
-  }, [instagramComplete, isProfilePage, router])
+    if (
+      instagramComplete === false &&
+      brandPlan !== null &&
+      hasBrandPlanAccess(brandPlan) &&
+      !isProfilePage
+    ) router.replace('/brand-settings/organization?complete=1')
+  }, [brandPlan, instagramComplete, isProfilePage, router])
 
   // Marca autorregistrada sin aprobar todavía por un admin → sin acceso al
   // portal operativo (regla de producto explícita). Prioridad sobre el gate
   // de Instagram: si no está aprobada, ni siquiera importa si falta Instagram.
   const approved = brandStatus === 'approved'
-  const loadingStatus = instagramComplete === null || brandStatus === null
-  const pendingApproval = !loadingStatus && !approved
+  const loadingStatus = instagramComplete === null || brandStatus === null || (approved && brandPlan === null)
+  const isPlanPage = pathname.startsWith('/brand-settings/plan')
+  const mayChoosePlanWhilePending = brandStatus === 'pending_approval' && isPlanPage
+  const pendingApproval = !loadingStatus && !approved && !mayChoosePlanWhilePending
+  const missingPlan = approved && !hasBrandPlanAccess(brandPlan)
   const blocked = loadingStatus || (approved && instagramComplete === false && !isProfilePage)
+
+  useEffect(() => {
+    if (!loadingStatus && missingPlan && !isPlanPage) router.replace('/brand-settings/plan?required=1')
+  }, [isPlanPage, loadingStatus, missingPlan, router])
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -194,7 +207,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
                 </p>
               </div>
             </div>
-          ) : blocked ? (
+          ) : blocked || (missingPlan && !isPlanPage) ? (
             <div className="flex items-center justify-center min-h-[60vh]">
               <div className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
             </div>

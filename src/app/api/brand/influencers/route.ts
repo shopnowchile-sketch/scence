@@ -4,6 +4,7 @@ import { startApifyInstagramSync } from '@/lib/influencers/apify'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import {
   resolveBrandPlan,
+  hasBrandPlanAccess,
   canViewFullInfluencerBase,
 } from '@/lib/plan-limits'
 
@@ -242,6 +243,14 @@ export async function POST(req: NextRequest) {
   }
   if (!brand) {
     return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  }
+
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
+  if (!hasBrandPlanAccess(orgPlan)) {
+    return NextResponse.json(
+      { error: 'Debes elegir y activar un plan para gestionar creadoras.', code: 'PLAN_REQUIRED' },
+      { status: 402 },
+    )
   }
 
   let body: Record<string, unknown>

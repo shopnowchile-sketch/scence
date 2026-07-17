@@ -36,7 +36,8 @@ type Brand = {
   last_sign_in_at?: string | null
   campaigns?: Campaign[]
   org_plan?: string | null
-  subscription_plan_override?: 'basic' | 'growth' | 'pro' | null
+  subscription_plan_override?: 'free' | null
+  subscription_plan_override_expires_at?: string | null
   direct_influencers?: Array<{ id: string; display_name: string; avatar_url: string | null }>
 }
 
@@ -127,7 +128,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [invoiceAmount, setInvoiceAmount] = useState('')
   const [invoiceEmail, setInvoiceEmail] = useState('')
   const [creatingInvoice, setCreatingInvoice] = useState(false)
-  const [planOverride, setPlanOverride] = useState<'' | 'basic' | 'growth' | 'pro'>('')
+  const [planOverride, setPlanOverride] = useState<'' | 'free' | 'basic' | 'growth' | 'pro'>('')
+  const [planOverrideExpiresAt, setPlanOverrideExpiresAt] = useState('')
   const [savingPlan, setSavingPlan] = useState(false)
   const [locations, setLocations] = useState<BrandLocation[]>([])
   const [loadingLocations, setLoadingLocations] = useState(false)
@@ -156,6 +158,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       setBrand(json.data)
       setInvoiceEmail(json.data?.contact_email ?? '')
       setPlanOverride(json.data?.subscription_plan_override ?? '')
+      setPlanOverrideExpiresAt(json.data?.subscription_plan_override_expires_at?.slice(0, 10) ?? '')
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -505,6 +508,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subscription_plan_override: planOverride || null,
+          subscription_plan_override_expires_at: planOverride ? (planOverrideExpiresAt || null) : null,
         }),
       })
 
@@ -517,6 +521,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       setBrand(prev => prev ? {
         ...prev,
         subscription_plan_override: json.data.subscription_plan_override ?? null,
+        subscription_plan_override_expires_at: json.data.subscription_plan_override_expires_at ?? null,
         org_plan: json.data.org_plan ?? prev.org_plan,
       } : prev)
 
@@ -1140,6 +1145,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             {(() => {
               const tier = getPlanTier(brand.org_plan)
               const info = PLAN_LIMITS[tier]
+              const isFree = brand.org_plan === 'free'
+              const hasPlan = isFree || Boolean(brand.org_plan)
 
               return (
                 <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2">
@@ -1153,16 +1160,20 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                           ? 'badge-blue'
                           : 'badge-gray'
                     )}>
-                      {info.label}
+                      {isFree ? 'Free' : hasPlan ? info.label : 'Sin plan activo'}
                     </span>
-                    <span className="text-sm text-gray-600">
-                      {formatPriceCLP(info.price_monthly_clp)} CLP/mes
-                    </span>
+                    {hasPlan && !isFree && (
+                      <span className="text-sm text-gray-600">
+                        {formatPriceCLP(info.price_monthly_clp)} CLP/mes
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400">
-                    {brand.subscription_plan_override
-                      ? 'Asignado manualmente a esta marca.'
-                      : 'Heredado desde la suscripción o configuración general.'}
+                    {isFree
+                      ? 'Cortesía asignada manualmente por SCENCE.'
+                      : hasPlan
+                        ? 'Confirmado por una suscripción activa de Mercado Pago.'
+                        : 'La marca debe elegir y pagar un plan.'}
                   </p>
                 </div>
               )
@@ -1175,15 +1186,27 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
               <select
                 value={planOverride}
                 onChange={event => setPlanOverride(
-                  event.target.value as '' | 'basic' | 'growth' | 'pro'
+                  event.target.value as '' | 'free'
                 )}
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               >
-                <option value="">Heredar configuración general</option>
-                <option value="basic">Basic</option>
-                <option value="growth">Growth</option>
-                <option value="pro">Pro</option>
+                <option value="">Sin cortesía manual</option>
+                <option value="free">Free — cortesía SCENCE</option>
               </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-semibold text-gray-500 uppercase">
+                Vencimiento opcional
+              </span>
+              <input
+                type="date"
+                value={planOverrideExpiresAt}
+                onChange={event => setPlanOverrideExpiresAt(event.target.value)}
+                disabled={!planOverride}
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50"
+              />
+              <span className="mt-1 block text-xs text-gray-400">Vacío significa sin vencimiento.</span>
             </label>
 
             <button

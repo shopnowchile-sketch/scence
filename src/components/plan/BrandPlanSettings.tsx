@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
-import { Check, RefreshCw, Sparkles, Clock, ArrowRight, BadgeCheck } from 'lucide-react'
+import { Check, RefreshCw, Sparkles, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { PLAN_LIMITS, getPlanTier, formatPriceCLP, type PlanTier } from '@/lib/plan-limits'
@@ -64,12 +64,8 @@ const PLAN_DEFS: Array<{
   },
 ]
 
-function secondMonthPrice(amount: number) {
-  return Math.round(amount * 0.5)
-}
-
 export function BrandPlanSettings() {
-  const [orgPlan, setOrgPlan] = useState<string>('free')
+  const [orgPlan, setOrgPlan] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [checkoutLoading, setCheckoutLoading] = useState<PlanTier | null>(null)
 
@@ -79,7 +75,7 @@ export function BrandPlanSettings() {
       const res  = await fetch('/api/brand/billing')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setOrgPlan(json.org_plan ?? 'free')
+      setOrgPlan(json.org_plan ?? '')
     } catch (e) {
       toast.error((e as Error).message ?? 'Error cargando plan')
     }
@@ -90,43 +86,10 @@ export function BrandPlanSettings() {
 
   const currentTier = getPlanTier(orgPlan)
   const currentInfo = PLAN_LIMITS[currentTier]
+  const isFree = orgPlan === 'free'
+  const hasCurrentPlan = isFree || Boolean(orgPlan)
 
-  async function activatePlan(tier: PlanTier, paymentMethod: 'Mercado Pago' | 'PayPal') {
-    const plan = PLAN_LIMITS[tier]
-
-    if (paymentMethod === 'PayPal') {
-      setCheckoutLoading(tier)
-      try {
-        const res = await fetch('/api/paypal/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tier }),
-        })
-
-        const json = await res.json()
-
-        if (!res.ok) throw new Error(json.error ?? 'No se pudo iniciar PayPal')
-
-        if (json.url) {
-          window.location.href = json.url
-          return
-        }
-
-        throw new Error('PayPal no devolvió URL de pago')
-      } catch (e) {
-        toast.error((e as Error).message)
-      } finally {
-        setCheckoutLoading(null)
-      }
-
-      return
-    }
-
-    // Mercado Pago: antes este botón nunca llamaba al backend (que sí está
-    // implementado, ver /api/mercadopago/checkout) y siempre caía directo al
-    // mailto manual — aunque MERCADOPAGO_ACCESS_TOKEN estuviera configurado.
-    // Ahora intenta el checkout real primero; si el endpoint avisa que Mercado
-    // Pago todavía no está activado (`json.manual`), recién ahí cae al mailto.
+  async function activatePlan(tier: PlanTier) {
     setCheckoutLoading(tier)
     try {
       const res = await fetch('/api/mercadopago/checkout', {
@@ -142,23 +105,12 @@ export function BrandPlanSettings() {
         return
       }
 
-      if (!json.manual) {
-        toast.error(json.error ?? 'No se pudo iniciar Mercado Pago')
-        return
-      }
-      // json.manual === true: Mercado Pago aún no configurado, sigue al mailto.
+      toast.error(json.error ?? 'No se pudo iniciar Mercado Pago')
     } catch {
-      // Error de red — igual cae al mailto como respaldo.
+      toast.error('No se pudo conectar con Mercado Pago')
     } finally {
       setCheckoutLoading(null)
     }
-
-    const subject = `Quiero activar Plan ${plan.label} en SCENCE por ${paymentMethod}`
-    const body = `Hola, quiero activar el Plan ${plan.label} (${formatPriceCLP(plan.price_monthly_clp)} CLP/mes) para mi marca. Prefiero pagar por ${paymentMethod}. Entiendo que la suscripción mínima es de 3 meses, con primer mes gratis y segundo mes con 50% de descuento.`
-
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=hola@scence.cl&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-
-    window.location.href = gmailUrl
   }
 
   if (loading) {
@@ -187,9 +139,13 @@ export function BrandPlanSettings() {
       <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 flex items-center gap-3">
         <Sparkles className="h-5 w-5 text-violet-500 flex-shrink-0" />
         <p className="text-sm text-violet-700">
-          Tu plan actual: <span className="font-bold">{currentInfo.label}</span>
+          Tu plan actual: <span className="font-bold">{isFree ? 'Free' : hasCurrentPlan ? currentInfo.label : 'Sin plan activo'}</span>
           {' · '}
-          {currentTier === 'basic'
+          {!hasCurrentPlan
+            ? 'Elige un plan para habilitar el portal de tu marca'
+            : isFree
+            ? 'Acceso de cortesía asignado por SCENCE'
+            : currentTier === 'basic'
             ? 'Acceso básico a SCENCE'
             : currentTier === 'growth'
               ? 'Más creadoras, marcas y reportería'
@@ -197,42 +153,12 @@ export function BrandPlanSettings() {
         </p>
       </div>
 
-      {/* Banner: activación */}
-      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex items-start gap-3">
-        <Clock className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-semibold text-emerald-800">Activación manual disponible</p>
-          <p className="text-xs text-emerald-700 mt-0.5">
-            Puedes solicitar tu plan por Mercado Pago o PayPal. Activamos la suscripción manualmente mientras finalizamos el checkout automático.
-          </p>
-        </div>
-      </div>
-
-      {/* Oferta comercial */}
-      <div className="bg-gradient-to-r from-violet-600 to-violet-500 rounded-2xl px-6 py-5 text-white">
-        <div className="flex items-center gap-2 mb-2">
-          <BadgeCheck className="h-5 w-5 text-violet-200" />
-          <span className="text-xs font-bold text-violet-100 uppercase tracking-wide">Oferta de lanzamiento</span>
-        </div>
-        <p className="text-lg font-bold mb-1">Primer mes gratis + segundo mes con 50% de descuento</p>
-        <p className="text-sm text-violet-200">
-          Activa SCENCE con compromiso mínimo de 3 meses: prueba gratis, paga menos en el segundo mes y continúa con tu plan normal desde el tercer mes.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3 text-xs font-semibold">
-          <span className="bg-white/20 rounded-full px-3 py-1">Mes 1: Gratis</span>
-          <span className="bg-white/20 rounded-full px-3 py-1">Mes 2: −50%</span>
-          <span className="bg-white/20 rounded-full px-3 py-1">Mes 3: precio regular</span>
-          <span className="bg-white/20 rounded-full px-3 py-1">Mínimo 3 meses</span>
-        </div>
-      </div>
-
       {/* Cards de planes */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {PLAN_DEFS.map(({ tier, highlight, features }) => {
           const info       = PLAN_LIMITS[tier]
-          const isCurrent  = tier === currentTier
+          const isCurrent  = !isFree && hasCurrentPlan && tier === currentTier
           const regular    = info.price_monthly_clp
-          const discounted = secondMonthPrice(regular)
 
           return (
             <div
@@ -271,9 +197,7 @@ export function BrandPlanSettings() {
                   </span>
                   <span className="text-xs text-gray-400 mb-0.5">CLP/mes</span>
                 </div>
-                <p className="text-xs text-violet-600 font-semibold mt-1">
-                  1° mes gratis · 2° mes {formatPriceCLP(discounted)} · mínimo 3 meses
-                </p>
+                <p className="text-xs text-violet-600 font-semibold mt-1">Cobro mensual automático y seguro</p>
               </div>
 
               {/* Features */}
@@ -298,7 +222,7 @@ export function BrandPlanSettings() {
                 <div className="space-y-2">
                   <button
                     type="button"
-                    onClick={() => activatePlan(tier, 'Mercado Pago')}
+                    onClick={() => activatePlan(tier)}
                     disabled={checkoutLoading === tier}
                     className={cn(
                       'w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl transition-colors disabled:opacity-60',
@@ -307,17 +231,7 @@ export function BrandPlanSettings() {
                         : 'border border-gray-200 text-gray-700 hover:bg-gray-50',
                     )}
                   >
-                    Solicitar por Mercado Pago
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => activatePlan(tier, 'PayPal')}
-                    disabled={checkoutLoading === tier}
-                    className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
-                  >
-                    Solicitar por PayPal
+                    {checkoutLoading === tier ? 'Abriendo Mercado Pago…' : 'Elegir y pagar'}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 </div>
@@ -329,7 +243,7 @@ export function BrandPlanSettings() {
 
       {/* Nota método de pago */}
       <p className="text-xs text-gray-400 text-center pb-4">
-        Suscripción mínima de 3 meses. Activación disponible por Mercado Pago o PayPal durante la oferta de lanzamiento.
+        El cobro se procesa mensualmente mediante Mercado Pago. El plan Free solo puede ser asignado por SCENCE.
       </p>
     </div>
   )

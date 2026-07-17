@@ -3,17 +3,16 @@
  * Fuente de verdad de límites internos por plan de marca en SCENCE.
  *
  * Fuente de plan (en orden de prioridad):
- *   1. brands.subscription_plan_override
- *   2. subscriptions.status IN ('active','trialing') → subscription_plans.tier
- *   3. organizations.subscription_plan
- *   4. Basic como fallback
+ *   1. subscriptions.status IN ('active','trialing') → subscription_plans.tier
+ *   2. brands.subscription_plan_override = 'free'
+ *   3. Sin acceso operativo
  *
  * Mapping de valores a tier:
- *   'free' | null | '' | 'starter' | 'basic'   → basic  (más restrictivo)
+ *   'free' | null | '' | 'starter' | 'basic'   → basic  (límites; no implica acceso)
  *   'growth'                                     → growth
  *   'pro' | 'plus' | 'enterprise'               → pro    (sin límite práctico)
  *
- * Sin Stripe, sin billing real — solo gating interno.
+ * El cobro recurrente se procesa mediante Mercado Pago.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -22,6 +21,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const PLAN_TIERS = ['basic', 'growth', 'pro'] as const
 export type PlanTier = (typeof PLAN_TIERS)[number]
+export const PLAN_OVERRIDE_VALUES = ['free', ...PLAN_TIERS] as const
+export type BrandPlan = (typeof PLAN_OVERRIDE_VALUES)[number]
 
 export interface PlanLimits {
   label: string
@@ -38,7 +39,7 @@ export interface PlanLimits {
 export const PLAN_LIMITS = {
   basic: {
     label:                     'Basic',
-    price_monthly_clp:         69_990,
+    price_monthly_clp:         67_000,
     max_active_campaigns:      1,
     max_roster_influencers:    5,
     can_create_open_campaigns: false,
@@ -47,7 +48,7 @@ export const PLAN_LIMITS = {
   },
   growth: {
     label:                     'Growth',
-    price_monthly_clp:         259_000,
+    price_monthly_clp:         497_000,
     max_active_campaigns:      999,
     max_roster_influencers:    50,
     can_create_open_campaigns: true,
@@ -56,7 +57,7 @@ export const PLAN_LIMITS = {
   },
   pro: {
     label:                     'Pro',
-    price_monthly_clp:         699_000,
+    price_monthly_clp:         697_000,
     max_active_campaigns:      999,
     max_roster_influencers:    999,
     can_create_open_campaigns: true,
@@ -86,6 +87,17 @@ export function getPlanTier(orgPlan: string | null | undefined): PlanTier {
   return 'basic'
 }
 
+/** Free es un acceso interno asignado por SCENCE; nunca genera cobros. */
+export function isFreePlan(orgPlan: string | null | undefined): boolean {
+  return (orgPlan ?? '').toLowerCase().trim() === 'free'
+}
+
+/** Un portal operativo requiere suscripción pagada activa o Free administrativo. */
+export function hasBrandPlanAccess(orgPlan: string | null | undefined): boolean {
+  const plan = (orgPlan ?? '').toLowerCase().trim()
+  return (PLAN_OVERRIDE_VALUES as readonly string[]).includes(plan)
+}
+
 /** Formatea precio CLP. Ej: "$99.000" */
 export function formatPriceCLP(amount: number): string {
   return `$${amount.toLocaleString('es-CL')}`
@@ -106,25 +118,7 @@ export async function resolveBrandPlan(
   organizationId: string,
   brandId?: string | null,
 ): Promise<string> {
-  // 1. Override manual individual de la marca.
-  if (brandId) {
-    const { data: brand } = await admin
-      .from('brands')
-      .select('subscription_plan_override')
-      .eq('id', brandId)
-      .maybeSingle()
-
-    const override = brand?.subscription_plan_override
-
-    if (
-      typeof override === 'string' &&
-      (PLAN_TIERS as readonly string[]).includes(override)
-    ) {
-      return override
-    }
-  }
-
-  // 2. Suscripción financiera activa de la organización.
+  // 1. Una suscripción financiera activa siempre prevalece sobre cortesías.
   const { data: sub } = await admin
     .from('subscriptions')
     .select('status, plan:subscription_plans(tier)')
@@ -137,15 +131,23 @@ export async function resolveBrandPlan(
   const tier = (sub?.plan as { tier?: string } | null)?.tier
   if (tier) return tier
 
-  // 3. Plan heredado de la organización.
-  const { data: org } = await admin
-    .from('organizations')
-    .select('subscription_plan')
-    .eq('id', organizationId)
-    .single()
+  // 2. Free manual individual de la marca, con vencimiento opcional.
+  if (brandId) {
+    const { data: brand } = await admin
+      .from('brands')
+      .select('subscription_plan_override, subscription_plan_override_expires_at')
+      .eq('id', brandId)
+      .maybeSingle()
 
-  // 4. Basic.
-  return org?.subscription_plan ?? 'basic'
+    const overrideExpiresAt = brand?.subscription_plan_override_expires_at
+    const overrideIsCurrent = !overrideExpiresAt || new Date(overrideExpiresAt).getTime() > Date.now()
+    if (overrideIsCurrent && brand?.subscription_plan_override === 'free') return 'free'
+  }
+
+  // El campo histórico organizations.subscription_plan no concede acceso:
+  // puede quedar desactualizado después de una cancelación. Solo una
+  // suscripción activa o el override Free administrativo habilitan el portal.
+  return ''
 }
 
 // ── Códigos de error para respuestas API ──────────────────────────────────────

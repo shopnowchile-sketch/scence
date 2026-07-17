@@ -9,7 +9,7 @@ const PUBLIC_ROUTES = [
   '/api/auth/forgot-password', // genera el link de recuperación — llamado sin sesión
   '/api/auth/register-brand',  // autorregistro de marca — llamado sin sesión
   '/terms', '/privacy',
-  '/api/stripe/webhook',   // Stripe webhook — no auth needed (verified by signature)
+  '/api/mercadopago/webhook', // Mercado Pago — autenticado mediante firma HMAC
   '/api/webhooks/resend',  // Resend webhook — no auth needed (verified by Svix signature)
   '/api/crm-leads/bulk-send/process', // job interno server-to-server — verificado con INTERNAL_JOB_SECRET, no lleva cookies de usuario
 ]

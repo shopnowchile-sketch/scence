@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import {
   resolveBrandPlan,
+  hasBrandPlanAccess,
   getPlanLimits,
   visibilityLimitMessage,
   PLAN_ERROR_CODES,
@@ -153,6 +154,12 @@ export async function POST(req: NextRequest) {
   // ── Plan gating ───────────────────────────────────────────────────────────
   // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
   const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
+  if (!hasBrandPlanAccess(orgPlan)) {
+    return NextResponse.json(
+      { error: 'Debes elegir y activar un plan para crear campañas.', code: 'PLAN_REQUIRED' },
+      { status: 402 },
+    )
+  }
   const limits  = getPlanLimits(orgPlan)
 
   let body: {

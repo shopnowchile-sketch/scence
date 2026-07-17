@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
+import { getOrgId, provisionOrgForBrand, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPlanAccess, resolveBrandPlan } from '@/lib/plan-limits'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -132,6 +133,17 @@ export async function POST(req: NextRequest) {
 
   if (!orgId) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+  }
+
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
+  const plan = await resolveBrandPlan(admin, orgId, access.brandId)
+  if (!hasBrandPlanAccess(plan)) {
+    return NextResponse.json(
+      { error: 'Debes elegir y activar un plan para crear marcas colaboradoras.', code: 'PLAN_REQUIRED' },
+      { status: 402 },
+    )
   }
 
   let body: Record<string, unknown>

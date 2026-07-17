@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
-import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
+import { resolveBrandPlan, getPlanLimits, hasBrandPlanAccess, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
@@ -69,6 +69,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   // subscriptions activa/trialing → fallback organizations.subscription_plan.
   // IMPORTANTE: pasar brand.id para respetar subscription_plan_override.
   const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
+  if (!hasBrandPlanAccess(orgPlan)) {
+    return NextResponse.json(
+      { error: 'Debes elegir y activar un plan para invitar creadoras.', code: 'PLAN_REQUIRED' },
+      { status: 402 },
+    )
+  }
   const limits  = getPlanLimits(orgPlan)
 
   // IDs de todas las campañas de esta marca

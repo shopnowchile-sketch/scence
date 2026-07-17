@@ -26,11 +26,11 @@ export default function PrivacyPage() {
           </section>
           <section>
             <h2 className="text-base font-semibold text-gray-900 mb-2">2. Cómo usamos tu información</h2>
-            <p>Usamos tus datos para proveer y mejorar el servicio, enviar comunicaciones transaccionales (confirmaciones, notificaciones de campaña), procesar pagos vía Stripe, y cumplir obligaciones legales.</p>
+            <p>Usamos tus datos para proveer y mejorar el servicio, enviar comunicaciones transaccionales (confirmaciones, notificaciones de campaña), procesar pagos vía Mercado Pago, y cumplir obligaciones legales.</p>
           </section>
           <section>
             <h2 className="text-base font-semibold text-gray-900 mb-2">3. Compartir información</h2>
-            <p>No vendemos tus datos personales. Compartimos información únicamente con proveedores de servicios necesarios para operar Scence (Supabase para base de datos, Stripe para pagos, Resend para emails) bajo acuerdos de confidencialidad.</p>
+            <p>No vendemos tus datos personales. Compartimos información únicamente con proveedores de servicios necesarios para operar Scence (Supabase para base de datos, Mercado Pago para pagos, Resend para emails) bajo acuerdos de confidencialidad.</p>
           </section>
           <section>
             <h2 className="text-base font-semibold text-gray-900 mb-2">4. Seguridad</h2>

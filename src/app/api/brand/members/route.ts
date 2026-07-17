@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { hasBrandPlanAccess, resolveBrandPlan } from '@/lib/plan-limits'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -145,6 +146,13 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient()
+  const plan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
+  if (!hasBrandPlanAccess(plan)) {
+    return NextResponse.json(
+      { error: 'Debes elegir y activar un plan para invitar miembros.', code: 'PLAN_REQUIRED' },
+      { status: 402 },
+    )
+  }
 
   // Insertar en brand_members (invitación pendiente)
   const { data, error } = await admin
@@ -211,6 +219,13 @@ export async function DELETE(request: NextRequest) {
   if (!memberId) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
   const admin = createAdminClient()
+  const plan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
+  if (!hasBrandPlanAccess(plan)) {
+    return NextResponse.json(
+      { error: 'Debes elegir y activar un plan para administrar miembros.', code: 'PLAN_REQUIRED' },
+      { status: 402 },
+    )
+  }
   const { error } = await admin
     .from('brand_members')
     .update({ is_active: false })

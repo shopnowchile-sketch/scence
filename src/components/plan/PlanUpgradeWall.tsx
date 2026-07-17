@@ -3,7 +3,7 @@
 /**
  * PlanUpgradeWall — Bloqueador de feature por plan.
  * Muestra mensaje de límite alcanzado + CTA "Subir de plan".
- * Sin Stripe: el CTA enlaza a /brand-billing.
+ * El CTA enlaza a la selección de planes con Mercado Pago.
  */
 
 import { Lock, ArrowUpRight } from 'lucide-react'

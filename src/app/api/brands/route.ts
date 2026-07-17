@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
-import { PLAN_TIERS } from '@/lib/plan-limits'
+import { PLAN_OVERRIDE_VALUES } from '@/lib/plan-limits'
 
 // ── GET /api/brands ───────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -63,6 +63,8 @@ export async function GET(req: NextRequest) {
     user_id?: string | null
     created_at?: string | null
     organization_id?: string | null
+    subscription_plan_override?: string | null
+    subscription_plan_override_expires_at?: string | null
   }
   const brands = (data ?? []) as BrandRow[]
   const brandIds = brands.map(b => b.id)
@@ -70,7 +72,7 @@ export async function GET(req: NextRequest) {
 
   const organizationIds = Array.from(new Set(brands.map(b => b.organization_id).filter((id): id is string => Boolean(id))))
 
-  const [memberResult, subscriptionResult, organizationResult] = await Promise.all([
+  const [memberResult, subscriptionResult] = await Promise.all([
     brandIds.length > 0
       ? admin.from('brand_members').select('brand_id, user_id').in('brand_id', brandIds).not('user_id', 'is', null)
       : Promise.resolve({ data: [] as Array<{ brand_id: string; user_id: string }> }),
@@ -80,9 +82,6 @@ export async function GET(req: NextRequest) {
         .in('organization_id', organizationIds)
         .in('status', ['active', 'trialing'])
         .order('created_at', { ascending: false })
-      : Promise.resolve({ data: [] }),
-    organizationIds.length > 0
-      ? admin.from('organizations').select('id, subscription_plan').in('id', organizationIds)
       : Promise.resolve({ data: [] }),
   ])
   const memberRows = memberResult.data ?? []
@@ -124,11 +123,6 @@ export async function GET(req: NextRequest) {
     const tier = (subscription.plan as { tier?: string } | null)?.tier
     if (tier) planByOrganization.set(subscription.organization_id, tier)
   }
-  for (const organization of organizationResult.data ?? []) {
-    if (!planByOrganization.has(organization.id)) {
-      planByOrganization.set(organization.id, organization.subscription_plan ?? 'basic')
-    }
-  }
 
   function mostRecentLastSeen(userIds: string[]): string | null {
     let best: string | null = null
@@ -145,6 +139,14 @@ export async function GET(req: NextRequest) {
       ...(b.user_id ? [b.user_id] : []),
       ...(membersByBrand.get(b.id) ?? []),
     ]
+    const overrideIsCurrent = !b.subscription_plan_override_expires_at ||
+      new Date(b.subscription_plan_override_expires_at).getTime() > Date.now()
+    const manualPlan = overrideIsCurrent &&
+      typeof b.subscription_plan_override === 'string' &&
+      (PLAN_OVERRIDE_VALUES as readonly string[]).includes(b.subscription_plan_override)
+        ? b.subscription_plan_override
+        : null
+
     return {
       ...b,
       last_sign_in_at: mostRecentLastSeen(candidateUserIds),
@@ -152,9 +154,8 @@ export async function GET(req: NextRequest) {
       account_created_at: b.user_id
         ? (accountCreatedMap[b.user_id] ?? b.created_at ?? null)
         : (b.created_at ?? null),
-      org_plan: typeof b.subscription_plan_override === 'string' && (PLAN_TIERS as readonly string[]).includes(b.subscription_plan_override)
-        ? b.subscription_plan_override
-        : (b.organization_id ? planByOrganization.get(b.organization_id) ?? 'basic' : 'basic'),
+      org_plan: (b.organization_id ? planByOrganization.get(b.organization_id) : null)
+        ?? (manualPlan === 'free' ? 'free' : ''),
     }
   }))
 

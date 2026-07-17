@@ -4,6 +4,7 @@ import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import {
   campaignLimitMessage,
   getPlanLimits,
+  hasBrandPlanAccess,
   PLAN_ERROR_CODES,
   resolveBrandPlan,
   visibilityLimitMessage,
@@ -190,6 +191,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const orgPlan = await resolveBrandPlan(admin, campaignBase.organization_id, brand.id)
+  if (!hasBrandPlanAccess(orgPlan)) {
+    return NextResponse.json(
+      { error: 'Debes elegir y activar un plan para modificar campañas.', code: 'PLAN_REQUIRED' },
+      { status: 402 },
+    )
+  }
   const limits = getPlanLimits(orgPlan)
 
   const nextVisibility =

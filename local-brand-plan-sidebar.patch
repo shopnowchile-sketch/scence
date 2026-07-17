@@ -1,0 +1,162 @@
+From cc7950f4b740ce1e4ebeb86dc7f23aa176b2b254 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Fri, 17 Jul 2026 15:36:30 -0400
+Subject: [PATCH] =?UTF-8?q?feat:=20muestra=20plan=20y=20simplifica=20men?=
+ =?UTF-8?q?=C3=BA=20de=20marca?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/(brand)/_components/BrandSidebar.tsx |  6 ++----
+ src/app/(brand)/layout.tsx                   |  8 +++++++-
+ src/components/layout/AppSidebar.tsx         | 16 ++++++++++++++--
+ 3 files changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/src/app/(brand)/_components/BrandSidebar.tsx b/src/app/(brand)/_components/BrandSidebar.tsx
+index 3c863cb..fea6336 100644
+--- a/src/app/(brand)/_components/BrandSidebar.tsx
++++ b/src/app/(brand)/_components/BrandSidebar.tsx
+@@ -8,7 +8,6 @@ import {
+   CreditCard,
+   Building2,
+   Bug,
+-  Settings,
+ } from 'lucide-react'
+ import { AppSidebar, type NavSection } from '@/components/layout/AppSidebar'
+ 
+@@ -33,11 +32,10 @@ const navSections: NavSection[] = [
+     title: 'Sistema',
+     items: [
+       { href: '/brand-support',          label: 'Soporte',       icon: Bug },
+-      { href: '/brand-settings/organization', label: 'Configuración', icon: Settings },
+     ],
+   },
+ ]
+ 
+-export function BrandSidebar() {
+-  return <AppSidebar portal="brand" navSections={navSections} />
++export function BrandSidebar({ plan }: { plan?: string | null }) {
++  return <AppSidebar portal="brand" navSections={navSections} plan={plan} />
+ }
+diff --git a/src/app/(brand)/layout.tsx b/src/app/(brand)/layout.tsx
+index 414d907..53dd64e 100644
+--- a/src/app/(brand)/layout.tsx
++++ b/src/app/(brand)/layout.tsx
+@@ -22,6 +22,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+   // Estado de aprobación admin de la marca. null = aún cargando/desconocido
+   // (no bloquear mientras carga, igual que instagramComplete).
+   const [brandStatus, setBrandStatus] = useState<string | null>(null)
++  const [brandPlan, setBrandPlan] = useState<string | null>(null)
+   const pathname = usePathname()
+   // NOTA (build fix): NO usar useSearchParams() acá. Este layout envuelve
+   // TODAS las rutas /brand-*, y useSearchParams() sin un boundary Suspense
+@@ -57,6 +58,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+ 
+           if (!cancelled) {
+             setBrandStatus('error')
++            setBrandPlan(null)
+             setInstagramComplete(false)
+           }
+           return
+@@ -67,6 +69,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+         if (cancelled) return
+ 
+         setBrandStatus(json?.data?.status ?? 'error')
++        setBrandPlan(typeof json?.data?.org_plan === 'string' ? json.data.org_plan : null)
+         setInstagramComplete(
+           Boolean(
+             json?.data?.instagram &&
+@@ -78,6 +81,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+ 
+         if (!cancelled) {
+           setBrandStatus('error')
++          setBrandPlan(null)
+           setInstagramComplete(false)
+         }
+       }
+@@ -91,6 +95,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+ 
+       didRegister.current = true
+       setBrandStatus(null)
++      setBrandPlan(null)
+       setInstagramComplete(null)
+ 
+       let registered = false
+@@ -117,6 +122,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+ 
+       if (!registered) {
+         setBrandStatus('error')
++        setBrandPlan(null)
+         setInstagramComplete(false)
+ 
+         toast.error(
+@@ -159,7 +165,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+   return (
+     <div className="flex h-screen overflow-hidden bg-gray-50">
+       <PresenceHeartbeat />
+-      <BrandSidebar />
++      <BrandSidebar plan={brandPlan} />
+       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
+         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
+           {pendingApproval ? (
+diff --git a/src/components/layout/AppSidebar.tsx b/src/components/layout/AppSidebar.tsx
+index 5895f48..620c291 100644
+--- a/src/components/layout/AppSidebar.tsx
++++ b/src/components/layout/AppSidebar.tsx
+@@ -59,6 +59,7 @@ function SidebarContent({
+   portal, pathname, navSections,
+   orgName, orgInitial,
+   userName, userEmail, userInitial,
++  plan,
+   onSignOut, onNavClick,
+ }: {
+   portal: Portal
+@@ -69,6 +70,7 @@ function SidebarContent({
+   userName: string
+   userEmail: string
+   userInitial: string
++  plan?: string | null
+   onSignOut: () => void
+   onNavClick?: () => void
+ }) {
+@@ -104,7 +106,14 @@ function SidebarContent({
+               {userInitial}
+             </div>
+             <div className="flex-1 min-w-0">
+-              <div className="text-sm font-semibold text-gray-900 truncate">{userName || userEmail}</div>
++              <div className="flex items-center gap-1.5 min-w-0">
++                <div className="text-sm font-semibold text-gray-900 truncate">{userName || userEmail}</div>
++                {portal === 'brand' && plan && (
++                  <span className="flex-shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700">
++                    {plan}
++                  </span>
++                )}
++              </div>
+               <div className="text-[10px] text-gray-400">Portal {cfg.label}</div>
+             </div>
+           </div>
+@@ -190,9 +199,11 @@ interface AppSidebarProps {
+   navSections: NavSection[]
+   /** Admin only — org display name */
+   orgName?: string
++  /** Brand only — effective subscription plan */
++  plan?: string | null
+ }
+ 
+-export function AppSidebar({ portal, navSections, orgName }: AppSidebarProps) {
++export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarProps) {
+   const pathname      = usePathname()
+   const router        = useRouter()
+   const [mobileOpen,  setMobileOpen]  = useState(false)
+@@ -237,6 +248,7 @@ export function AppSidebar({ portal, navSections, orgName }: AppSidebarProps) {
+     portal, pathname, navSections,
+     orgName: resolvedOrg, orgInitial,
+     userName, userEmail, userInitial,
++    plan,
+     onSignOut: handleSignOut,
+   }
+ 
+-- 
+2.51.1
+

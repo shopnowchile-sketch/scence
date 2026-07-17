@@ -138,6 +138,25 @@ const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
   { key: 'status',      label: 'Estado' },
 ]
 
+// Color estable por marca: la misma marca conserva siempre su color en Admin
+// y Portal Marca, sin depender del orden en que lleguen las campañas.
+const BRAND_COLORS = [
+  'bg-violet-50 text-violet-700 ring-violet-200',
+  'bg-blue-50 text-blue-700 ring-blue-200',
+  'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  'bg-amber-50 text-amber-700 ring-amber-200',
+  'bg-rose-50 text-rose-700 ring-rose-200',
+  'bg-cyan-50 text-cyan-700 ring-cyan-200',
+  'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200',
+  'bg-orange-50 text-orange-700 ring-orange-200',
+] as const
+
+function brandColor(seed: string) {
+  let hash = 0
+  for (let i = 0; i < seed.length; i += 1) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0
+  return BRAND_COLORS[Math.abs(hash) % BRAND_COLORS.length]
+}
+
 let brandOptionsRequest: Promise<{ id: string; name: string }[]> | null = null
 
 function loadBrandOptions() {
@@ -364,35 +383,35 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
               total={campaigns.length}
               brands={isBrandPortal ? undefined : brands}
             />
-          </div>
+            {/* Selector integrado al bloque de filtros para evitar el espacio
+                vacío que antes quedaba entre filtros y tabla. */}
+            <div className="relative flex justify-end mt-3 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowColumns(v => !v)}
+                className="px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Columnas
+              </button>
 
-          {/* Columnas */}
-          <div className="relative flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowColumns(v => !v)}
-              className="px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
-            >
-              Columnas
-            </button>
-
-            {showColumns && (
-              <div className="absolute right-0 top-11 z-20 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-3">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Mostrar columnas</div>
-                <div className="space-y-2">
-                  {CAMPAIGN_COLUMNS.map(col => (
-                    <label key={col.key} className="flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={visibleColumns[col.key]}
-                        onChange={() => toggleColumn(col.key)}
-                      />
-                      {col.label}
-                    </label>
-                  ))}
+              {showColumns && (
+                <div className="absolute right-0 top-14 z-20 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-3">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Mostrar columnas</div>
+                  <div className="space-y-2">
+                    {CAMPAIGN_COLUMNS.map(col => (
+                      <label key={col.key} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns[col.key]}
+                          onChange={() => toggleColumn(col.key)}
+                        />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Tabla */}
@@ -435,7 +454,9 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                         {visibleColumns.brand && (
                           <td className="px-4 py-3">
                             {c.brand ? (
-                              <span className="text-sm font-semibold text-violet-600">{c.brand.name}</span>
+                              <span className={`inline-flex max-w-[180px] items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${brandColor(c.brand.id ?? c.brand.name)}`}>
+                                <span className="truncate">{c.brand.name}</span>
+                              </span>
                             ) : <span className="text-xs text-gray-300">—</span>}
                           </td>
                         )}

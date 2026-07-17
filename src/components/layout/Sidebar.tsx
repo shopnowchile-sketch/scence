@@ -1,32 +1,47 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useIsAdmin, type UserRole } from '@/hooks/useIsAdmin'
+import type { UserRole } from '@/hooks/useIsAdmin'
 import {
   LayoutDashboard, Target, Users, CalendarDays,
   CreditCard, Banknote, FileText, BarChart3,
   Building2, Link2, Bug, CalendarCheck, Trophy, Contact } from 'lucide-react'
 import { AppSidebar, type NavSection } from './AppSidebar'
 
+type NavigationSummary = { role: UserRole; bookings: number; pendingCampaigns: number }
+let navigationSummaryRequest: Promise<NavigationSummary> | null = null
+
+function loadNavigationSummary() {
+  if (!navigationSummaryRequest) {
+    navigationSummaryRequest = fetch('/api/navigation/summary')
+      .then(r => {
+        if (!r.ok) throw new Error('No se pudo cargar la navegación')
+        return r.json() as Promise<NavigationSummary>
+      })
+      .catch(error => {
+        navigationSummaryRequest = null
+        throw error
+      })
+  }
+  return navigationSummaryRequest
+}
+
 export function Sidebar() {
-  const { role } = useIsAdmin()
-  const [campaignCount, setCampaignCount] = useState<number | null>(null)
+  const [role, setRole] = useState<UserRole>(null)
   const [bookingCount,  setBookingCount]  = useState<number | null>(null)
   const [reviewCount,   setReviewCount]   = useState<number | null>(null)
 
   useEffect(() => {
-    fetch('/api/campaigns?limit=1').then(r => r.json()).then(d => { if (typeof d.total === 'number') setCampaignCount(d.total) }).catch(() => {})
-    fetch('/api/bookings?limit=1').then(r => r.json()).then(d => { if (Array.isArray(d.data)) setBookingCount(d.data.length) }).catch(() => {})
-    // Badge de "Campañas" = campañas NUEVAS creadas por una marca, pendientes
-    // de aprobación de admin (status='pending_approval'). Antes mezclaba
-    // postulaciones de influencers + deliverables en revisión, lo que daba
-    // números enormes (191) sin relación con "hay campañas nuevas que
-    // revisar" — Pri pidió que el conteo sea justo ese. Reusa el mismo
-    // endpoint/filtro que ya alimenta la pestaña "Pendientes de aprobación"
-    // en CampaignsClient.tsx (misma fuente de verdad, sin lógica nueva).
-    fetch('/api/campaigns?status=pending_approval&limit=1').then(r => r.json()).then(d => {
-      if (typeof d.total === 'number' && d.total > 0) setReviewCount(d.total)
-    }).catch(() => {})
+    let active = true
+    loadNavigationSummary()
+      .then(d => {
+        if (!active) return
+        setRole(d.role ?? null)
+        setBookingCount(typeof d.bookings === 'number' ? d.bookings : null)
+        setReviewCount(typeof d.pendingCampaigns === 'number' && d.pendingCampaigns > 0 ? d.pendingCampaigns : null)
+      })
+      .catch(() => {})
+    return () => { active = false }
   }, [])
 
   const isAdmin = role && (['super_admin', 'brand_manager'] as UserRole[]).includes(role as UserRole)

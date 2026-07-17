@@ -31,6 +31,7 @@ export async function GET() {
 
   const monthStart = format(startOfMonth(now), 'yyyy-MM-dd')
   const monthEnd   = format(endOfMonth(now), 'yyyy-MM-dd')
+  const chartStart = format(startOfMonth(subMonths(now, 5)), 'yyyy-MM-dd')
 
   const [
     campaignsRes,
@@ -79,17 +80,17 @@ export async function GET() {
       .not('user_id', 'is', null),
 
     db.from('invoices')
-      .select('total, currency')
+      .select('total, currency, issue_date')
       .eq('organization_id', orgId)
       .in('status', ['paid', 'sent'])
-      .gte('issue_date', monthStart)
+      .gte('issue_date', chartStart)
       .lte('issue_date', monthEnd),
 
     db.from('payroll_runs')
-      .select('total_amount, currency')
+      .select('total_amount, currency, created_at')
       .eq('organization_id', orgId)
       .in('status', ['approved', 'processing', 'paid'])
-      .gte('created_at', monthStart)
+      .gte('created_at', chartStart)
       .lte('created_at', monthEnd + 'T23:59:59Z'),
 
     db.from('campaign_deliverables')
@@ -115,34 +116,32 @@ export async function GET() {
       .eq('campaign.organization_id', orgId),
   ])
 
-  // Revenue chart — last 6 months
+  // Revenue chart — las mismas dos consultas cubren los seis meses. Antes se
+  // ejecutaban 12 consultas adicionales (2 por mes).
   const months = Array.from({ length: 6 }, (_, i) => {
     const d = subMonths(now, 5 - i)
-    return { start: format(startOfMonth(d), 'yyyy-MM-dd'), end: format(endOfMonth(d), 'yyyy-MM-dd'), label: format(d, 'MMM') }
+    return { key: format(d, 'yyyy-MM'), label: format(d, 'MMM') }
   })
 
-  const revenueChart = await Promise.all(
-    months.map(async m => {
-      const [rev, pay] = await Promise.all([
-        db.from('invoices').select('total')
-          .eq('organization_id', orgId)
-          .in('status', ['paid', 'sent'])
-          .gte('issue_date', m.start).lte('issue_date', m.end),
-        db.from('payroll_runs').select('total_amount')
-          .eq('organization_id', orgId)
-          .in('status', ['approved', 'processing', 'paid'])
-          .gte('created_at', m.start).lte('created_at', m.end + 'T23:59:59Z'),
-      ])
-      return {
-        month:   m.label,
-        revenue: (rev.data ?? []).reduce((s, r) => s + (r.total ?? 0), 0),
-        payroll: (pay.data ?? []).reduce((s, r) => s + (r.total_amount ?? 0), 0),
-      }
-    })
-  )
+  const revenueByMonth = new Map<string, number>()
+  for (const row of invoicesMonthRes.data ?? []) {
+    const key = row.issue_date?.slice(0, 7)
+    if (key) revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + (row.total ?? 0))
+  }
+  const payrollByMonth = new Map<string, number>()
+  for (const row of payrollMonthRes.data ?? []) {
+    const key = row.created_at?.slice(0, 7)
+    if (key) payrollByMonth.set(key, (payrollByMonth.get(key) ?? 0) + (row.total_amount ?? 0))
+  }
+  const revenueChart = months.map(m => ({
+    month: m.label,
+    revenue: revenueByMonth.get(m.key) ?? 0,
+    payroll: payrollByMonth.get(m.key) ?? 0,
+  }))
 
-  const revenueThisMonth = (invoicesMonthRes.data ?? []).reduce((s, r) => s + (r.total ?? 0), 0)
-  const payrollThisMonth = (payrollMonthRes.data ?? []).reduce((s, r) => s + (r.total_amount ?? 0), 0)
+  const currentMonthKey = monthStart.slice(0, 7)
+  const revenueThisMonth = revenueByMonth.get(currentMonthKey) ?? 0
+  const payrollThisMonth = payrollByMonth.get(currentMonthKey) ?? 0
   const margin    = revenueThisMonth - payrollThisMonth
   const marginPct = revenueThisMonth > 0 ? Math.round((margin / revenueThisMonth) * 100) : 0
 
@@ -160,17 +159,20 @@ export async function GET() {
   const influencerUserIds = (influencersWithAccountRes.data ?? [])
     .map(row => row.user_id as string | null)
     .filter((id): id is string => Boolean(id))
-  const influencerLastSeenMap = await resolveLastSeen(db, influencerUserIds)
-  const influencersEntered = influencerUserIds.filter(uid => Boolean(influencerLastSeenMap[uid])).length
-
   // Consultar solamente perfiles vistos durante los últimos 10 minutos.
   const tenMinAgoIso = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 
-  const liveProfilesRes = await db.from('profiles')
-    .select('id, last_seen_at')
-    .gte('last_seen_at', tenMinAgoIso)
-    .order('last_seen_at', { ascending: false })
-    .limit(500)
+  // Ambas operaciones son independientes; ejecutarlas juntas evita sumar sus
+  // latencias en organizaciones con muchos usuarios.
+  const [influencerLastSeenMap, liveProfilesRes] = await Promise.all([
+    resolveLastSeen(db, influencerUserIds),
+    db.from('profiles')
+      .select('id, last_seen_at')
+      .gte('last_seen_at', tenMinAgoIso)
+      .order('last_seen_at', { ascending: false })
+      .limit(500),
+  ])
+  const influencersEntered = influencerUserIds.filter(uid => Boolean(influencerLastSeenMap[uid])).length
 
   const liveProfileIds = (liveProfilesRes.data ?? [])
     .map(profile => profile.id)

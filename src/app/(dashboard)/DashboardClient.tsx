@@ -465,21 +465,9 @@ export function DashboardClient() {
     async function loadDashboard() {
       setState((current) => ({ ...current, loading: true, error: null }))
 
-      // Solo se piden los endpoints realmente usados por el dashboard.
-      // Se eliminaron /api/analytics (revenue/payroll ya vienen en /api/dashboard)
-      // y /api/invoices (su data no se consumía) para no bloquear la carga con
-      // dos endpoints pesados/redundantes. Ver kpis.revenue_month/payroll_month.
-      const [
-        dashboard,
-        campaignsRaw,
-        influencersRaw,
-        deliverablesRaw,
-      ] = await Promise.all([
-        fetchJson('/api/dashboard', 30000),
-        fetchJson('/api/campaigns'),
-        fetchJson('/api/influencers?limit=100'),
-        fetchJson('/api/deliverables'),
-      ])
+      // /api/dashboard ya entrega KPI, actividad, conectados y entregables.
+      // Evitamos repetir tres consultas completas en cada entrada al dashboard.
+      const dashboard = await fetchJson('/api/dashboard', 30000)
 
       if (cancelled) return
 
@@ -488,12 +476,12 @@ export function DashboardClient() {
         error: null,
         dashboard,
         analytics: null,
-        campaigns: pickArray(campaignsRaw, ['campaigns', 'data', 'items']),
-        influencers: pickArray(influencersRaw, ['influencers', 'data', 'items']),
+        campaigns: pickArray(dashboard, ['recentActivity', 'recent_activity']),
+        influencers: pickArray(dashboard, ['liveInfluencers', 'live_influencers']),
         brands: [],
         brandsTotalRaw: 0,
         invoices: [],
-        deliverables: pickArray(deliverablesRaw, ['deliverables', 'data', 'items']),
+        deliverables: pickArray(dashboard, ['pendingDeliverables', 'pending_deliverables']),
       })
     }
 

@@ -18,7 +18,14 @@ interface ListParams {
   enabled?: boolean
 }
 
-async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; total: number }> {
+export interface CampaignSummary {
+  active: number
+  totalBudget: number
+  totalSpent: number
+  pendingDeliverables: number
+}
+
+function toSearchParams(params: ListParams) {
   const sp = new URLSearchParams()
   if (params.status)     sp.set('status', params.status)
   if (params.type)       sp.set('type', params.type)
@@ -30,6 +37,11 @@ async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; t
   if (params.dateTo)     sp.set('date_to', params.dateTo)
   if (params.page)       sp.set('page', String(params.page))
   if (params.limit)      sp.set('limit', String(params.limit))
+  return sp
+}
+
+async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; total: number }> {
+  const sp = toSearchParams(params)
 
   const base = params.apiBase ?? '/api/campaigns'
   const res = await fetch(`${base}?${sp.toString()}`)
@@ -42,6 +54,22 @@ export function useCampaignsList(params: ListParams = {}) {
     queryKey: ['campaigns', params],
     queryFn:  () => fetchCampaigns(params),
     enabled:  params.enabled ?? true,
+  })
+}
+
+export function useCampaignsSummary(params: ListParams = {}) {
+  return useQuery({
+    queryKey: ['campaigns-summary', params],
+    queryFn: async () => {
+      const sp = toSearchParams(params)
+      sp.set('summary', '1')
+      const res = await fetch(`/api/campaigns?${sp.toString()}`)
+      if (!res.ok) throw new Error('Error al cargar resumen de campañas')
+      const json = await res.json() as { summary: CampaignSummary }
+      return json.summary
+    },
+    enabled: params.enabled ?? true,
+    staleTime: 30_000,
   })
 }
 

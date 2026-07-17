@@ -18,6 +18,20 @@ export async function GET(req: NextRequest) {
   const search = sp.get('search')
   const limit  = Number(sp.get('limit') ?? '100')
 
+  // Selectores solo necesitan id y nombre. Evita joins, consultas de sesión,
+  // usuarios de Auth y planes por cada marca.
+  if (sp.get('options') === '1') {
+    let optionsQuery = admin
+      .from('brands')
+      .select('id, name')
+      .order('name', { ascending: true })
+      .limit(Math.min(Math.max(limit, 1), 5000))
+    if (search) optionsQuery = optionsQuery.ilike('name', `%${search}%`)
+    const { data: options, error: optionsError } = await optionsQuery
+    if (optionsError) return NextResponse.json({ error: optionsError.message }, { status: 500 })
+    return NextResponse.json({ data: options ?? [], total: options?.length ?? 0 })
+  }
+
   // { count: 'exact' } es necesario para que `count` (usado abajo en el
   // `total` de la respuesta) no sea siempre null — sin esto el endpoint
   // decía `total: 0` sin importar cuántas marcas hubiera (bug real: nadie

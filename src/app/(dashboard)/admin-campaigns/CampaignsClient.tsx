@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
-import { useCampaignsList } from '@/hooks/useCampaignsList'
+import { useCampaignsList, useCampaignsSummary, type CampaignSummary } from '@/hooks/useCampaignsList'
 import { AICampaignBuilder } from '@/components/campaigns/AICampaignBuilder'
 import { CampaignFilters } from '@/components/campaigns/CampaignFilters'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
@@ -13,19 +13,14 @@ import type { Campaign, CampaignFilters as CampaignFiltersType } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 
 // ── KPI summary ───────────────────────────────────────
-function KPIs({ campaigns }: { campaigns: Campaign[] }) {
-  const active      = campaigns.filter(c => c.status === 'active').length
-  const totalBudget = campaigns.reduce((s, c) => s + (c.budget_total ?? 0), 0)
-  const totalSpent  = campaigns.reduce((s, c) => s + (c.budget_spent ?? 0), 0)
-  const pending     = campaigns.reduce((s, c) => s + ((c.deliverable_count ?? 0) - (c.deliverable_done ?? 0)), 0)
-
+function KPIs({ summary }: { summary: CampaignSummary }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
       {[
-        { icon: Target,     color: 'violet',  label: 'Campañas activas',   value: active },
-        { icon: DollarSign, color: 'emerald', label: 'Budget total',       value: formatCurrency(totalBudget, 'CLP') },
-        { icon: DollarSign, color: 'blue',    label: 'Total gastado',      value: formatCurrency(totalSpent, 'CLP') },
-        { icon: Clock,      color: 'amber',   label: 'Deliverables pend.', value: pending },
+        { icon: Target,     color: 'violet',  label: 'Campañas activas',   value: summary.active },
+        { icon: DollarSign, color: 'emerald', label: 'Budget total',       value: formatCurrency(summary.totalBudget, 'CLP') },
+        { icon: DollarSign, color: 'blue',    label: 'Total gastado',      value: formatCurrency(summary.totalSpent, 'CLP') },
+        { icon: Clock,      color: 'amber',   label: 'Deliverables pend.', value: summary.pendingDeliverables },
       ].map(({ icon: Icon, color, label, value }) => (
         <div key={label} className="card p-4">
           <div className="flex items-center gap-3">
@@ -180,32 +175,38 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
     limit:      100,
   })
 
-  const rawCampaigns: Campaign[] = data?.data ?? []
+  const rawCampaigns = useMemo<Campaign[]>(() => data?.data ?? [], [data?.data])
 
-  // Dataset separado sin cap de 100 para las KPI cards — mismos filtros que
-  // la lista, pero limit alto, así "Budget total"/"Total gastado"/etc no
-  // quedan truncados cuando hay más de 100 campañas que matchean el filtro
-  // (mismo patrón que ya se usó para billing/events/support/influencers).
-  const { data: statsData } = useCampaignsList({
+  // Resumen liviano: mantiene los KPI exactos sin descargar miles de campañas
+  // completas ni sus relaciones solo para sumar cuatro valores.
+  const { data: statsSummary } = useCampaignsSummary({
     status:     filters.status,
     type:       filters.type,
     platform:   filters.platform,
     visibility: filters.visibility,
     brandId:    filters.brandId,
-    apiBase:    isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
     search:     filters.search,
     dateFrom:   filters.dateFrom,
     dateTo:     filters.dateTo,
-    limit:      5000,
+    enabled:    !isBrandPortal,
   })
-  const statsCampaigns: Campaign[] = statsData?.data ?? []
+  const localSummary = useMemo<CampaignSummary>(() => ({
+    active: rawCampaigns.filter(c => c.status === 'active').length,
+    totalBudget: rawCampaigns.reduce((sum, c) => sum + (c.budget_total ?? 0), 0),
+    totalSpent: rawCampaigns.reduce((sum, c) => sum + (c.budget_spent ?? 0), 0),
+    pendingDeliverables: rawCampaigns.reduce(
+      (sum, c) => sum + Math.max(0, (c.deliverable_count ?? 0) - (c.deliverable_done ?? 0)),
+      0
+    ),
+  }), [rawCampaigns])
+  const summary = isBrandPortal ? localSummary : (statsSummary ?? localSummary)
 
   // Lista de marcas para el filtro (solo admin) — reutiliza /api/brands, ya
   // usado por BrandSelector en el form de creación/edición.
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
     if (isBrandPortal) return
-    fetch('/api/brands')
+    fetch('/api/brands?options=1&limit=5000')
       .then(r => r.json())
       .then(j => setBrands((j.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name }))))
       .catch(() => {})
@@ -342,7 +343,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
         </div>
       ) : (
         <>
-          <KPIs campaigns={statsCampaigns} />
+          <KPIs summary={summary} />
 
           {/* Filtros */}
           <div className="card p-4">

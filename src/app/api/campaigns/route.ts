@@ -23,16 +23,18 @@ export async function GET(request: NextRequest) {
   const dateTo     = searchParams.get('date_to')
   const page       = parseInt(searchParams.get('page') ?? '1', 10)
   const limit      = parseInt(searchParams.get('limit') ?? '50', 10)
+  const summary    = searchParams.get('summary') === '1'
 
   // Use admin client to bypass RLS — we apply our own filtering below
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
-  let query = admin
-    .from('campaigns')
-    .select('*, brand:brands!brand_id(id, name, logo_url)', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range((page - 1) * limit, page * limit - 1)
+  let query = summary
+    ? admin.from('campaigns').select('id, status, budget_total, budget_spent').limit(5000)
+    : admin.from('campaigns')
+      .select('*, brand:brands!brand_id(id, name, logo_url)', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1)
 
   // Scope: admin/super_admin/owner de Scence ve todas las campañas, sin
   // filtrar por organization_id — necesario porque las marcas auto-registradas
@@ -78,6 +80,29 @@ export async function GET(request: NextRequest) {
   }
 
   const campaignIds = (data ?? []).map(c => c.id)
+
+  if (summary) {
+    const { data: deliverables, error: deliverablesError } = campaignIds.length
+      ? await admin.from('campaign_deliverables')
+        .select('campaign_id, status, content_url, published_url')
+        .in('campaign_id', campaignIds)
+      : { data: [], error: null }
+    if (deliverablesError) {
+      return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
+    }
+    const pendingDeliverables = (deliverables ?? []).reduce(
+      (total, row) => total + (isDeliverableComplete(row) ? 0 : 1),
+      0
+    )
+    return NextResponse.json({
+      summary: {
+        active: (data ?? []).filter(c => c.status === 'active').length,
+        totalBudget: (data ?? []).reduce((total, c) => total + (c.budget_total ?? 0), 0),
+        totalSpent: (data ?? []).reduce((total, c) => total + (c.budget_spent ?? 0), 0),
+        pendingDeliverables,
+      },
+    })
+  }
 
   // Batch-fetch influencer counts and deliverable counts for this page
   const [{ data: ciRows }, { data: cdRows }] = await Promise.all([

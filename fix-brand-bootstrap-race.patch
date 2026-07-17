@@ -1,0 +1,18 @@
+diff --git a/src/app/(brand)/layout.tsx b/src/app/(brand)/layout.tsx
+--- a/src/app/(brand)/layout.tsx
++++ b/src/app/(brand)/layout.tsx
+@@ -87,7 +87,6 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+         return
+       }
+ 
+-      didRegister.current = true
+       setBrandStatus(null)
+       setBrandPlan(null)
+       setInstagramComplete(null)
+@@ -132,6 +131,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
+         return
+       }
+ 
++      didRegister.current = true
+       await fetchBrandProfile()
+     }

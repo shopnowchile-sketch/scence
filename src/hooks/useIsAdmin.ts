@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { fetchJsonCached } from '@/lib/client/requestCache'
 
 export type UserRole = 'super_admin' | 'brand_manager' | 'influencer' | 'finance' | null
 
@@ -9,8 +10,7 @@ export function useIsAdmin(): { isAdmin: boolean; role: UserRole; loading: boole
 
   useEffect(() => {
     let active = true
-    fetch('/api/me/role')
-      .then(r => r.json())
+    fetchJsonCached<{ isAdmin?: boolean; role?: UserRole }>('/api/me/role', 60_000)
       .then(j => {
         if (active) {
           setIsAdmin(!!j.isAdmin)

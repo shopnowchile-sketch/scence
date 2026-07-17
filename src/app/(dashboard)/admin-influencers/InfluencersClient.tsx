@@ -12,6 +12,7 @@ import { BulkUploadModal } from '@/components/influencers/BulkUploadModal'
 import { formatFollowers } from '@/lib/utils'
 import type { Influencer } from '@/types'
 import Link from 'next/link'
+import { fetchJsonCached } from '@/lib/client/requestCache'
 
 interface InfluencersClientProps {
   portal?: 'admin' | 'brand'
@@ -174,15 +175,11 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     }
   }
 
-  // Métricas del roster — "En roster" (arriba, `total`) ya usa el conteo real
-  // del servidor. Estas 3 en cambio se calculaban sobre `influencers`, que es
-  // solo la página actual (48 filas, INFLUENCERS_PAGE_SIZE) — con un roster
-  // de cientos/miles, "Alcance total" y "Verificados" mostraban el dato de
-  // 48 personas etiquetado como si fuera el total. Fetch aparte con los
-  // mismos filtros activos pero sin paginar, solo para estos 3 números.
-  const [statsInfluencers, setStatsInfluencers] = useState<Influencer[]>([])
+  // Resumen liviano del servidor. Antes esta sección descargaba hasta 5.000
+  // perfiles completos (incluyendo tarifas) además de la página visible.
+  const [rosterSummary, setRosterSummary] = useState({ followers: 0, avg_engagement: 0, verified: 0 })
   useEffect(() => {
-    const params = new URLSearchParams({ page: '1', limit: '5000' })
+    const params = new URLSearchParams({ summary: '1' })
     if (filters.search)                             params.set('search', filters.search)
     if (filters.platforms.length === 1)             params.set('platform', filters.platforms[0])
     if (filters.categories.length === 1)            params.set('category', filters.categories[0])
@@ -192,34 +189,24 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     if (filters.isActive === false)                 params.set('is_active', 'false')
     else if (filters.isActive === true)             params.set('is_active', 'true')
 
+    const url = `${isBrandPortal ? '/api/brand/influencers' : '/api/influencers'}?${params}`
     let cancelled = false
-    fetch(`${isBrandPortal ? '/api/brand/influencers' : '/api/influencers'}?${params}`)
-      .then(r => r.ok ? r.json() : { data: [] })
+    fetchJsonCached<{ summary?: { followers?: number; avg_engagement?: number; verified?: number } }>(url, 15_000)
       .then(json => {
         if (cancelled) return
-        const rows = (json.data ?? []).map((inf: Record<string, unknown>) => ({
-          ...inf,
-          social_profiles: inf.social_profiles ?? inf.influencer_social_profiles ?? [],
-        }))
-        setStatsInfluencers(rows as Influencer[])
+        setRosterSummary({
+          followers: Number(json.summary?.followers ?? 0),
+          avg_engagement: Number(json.summary?.avg_engagement ?? 0),
+          verified: Number(json.summary?.verified ?? 0),
+        })
       })
-      .catch(() => { if (!cancelled) setStatsInfluencers([]) })
+      .catch(() => { if (!cancelled) setRosterSummary({ followers: 0, avg_engagement: 0, verified: 0 }) })
     return () => { cancelled = true }
   }, [isBrandPortal, filters.search, filters.platforms, filters.categories, filters.country, filters.commune, filters.isVerified, filters.isActive])
 
-  const totalFollowers = statsInfluencers.reduce((acc, inf) => {
-    const primary = inf.social_profiles?.find(s => s.is_primary) ?? inf.social_profiles?.[0]
-    return acc + (primary?.followers ?? 0)
-  }, 0)
-
-  const avgEngagement = statsInfluencers.length
-    ? statsInfluencers.reduce((acc, inf) => {
-        const primary = inf.social_profiles?.find(s => s.is_primary)
-        return acc + (primary?.engagement_rate ?? 0)
-      }, 0) / statsInfluencers.length
-    : 0
-
-  const verifiedCount = statsInfluencers.filter(i => i.is_verified).length
+  const totalFollowers = rosterSummary.followers
+  const avgEngagement = rosterSummary.avg_engagement
+  const verifiedCount = rosterSummary.verified
 
   return (
     <div className="space-y-6">

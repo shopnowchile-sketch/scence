@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import {
   resolveBrandPlan,
   canViewFullInfluencerBase,
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
   const sortDir  = searchParams.get('sort_dir') === 'asc'
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit    = Math.max(1, parseInt(searchParams.get('limit') ?? '48', 10))
+  const summaryOnly = searchParams.get('summary') === '1'
 
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
@@ -119,6 +121,9 @@ export async function GET(req: NextRequest) {
     ]))
 
     if (restrictedInfluencerIds.length === 0) {
+      if (summaryOnly) {
+        return NextResponse.json({ summary: { total: 0, followers: 0, avg_engagement: 0, verified: 0 } })
+      }
       return NextResponse.json({
         data: [],
         total: 0,
@@ -127,6 +132,61 @@ export async function GET(req: NextRequest) {
         full_access: false,
       })
     }
+  }
+
+  if (summaryOnly) {
+    const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
+      (from, to) => {
+        let q = admin.from('influencers').select(`
+          id, display_name, city, commune, categories, is_verified,
+          social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
+        `).range(from, to)
+        if (restrictedInfluencerIds) q = q.in('id', restrictedInfluencerIds)
+        if (country) q = q.eq('country', country)
+        if (communeList.length === 1) q = q.eq('commune', communeList[0])
+        else if (communeList.length > 1) q = q.in('commune', communeList)
+        if (verified === 'true') q = q.eq('is_verified', true)
+        if (isActive === 'false') q = q.eq('is_active', false)
+        if (isActive === 'true') q = q.eq('is_active', true)
+        if (search) q = q.or(`display_name.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
+        if (category) q = q.contains('categories', [category])
+        return q
+      },
+      { maxRows: 10000 }
+    )
+
+    if (summaryError) {
+      const message = (summaryError as { message?: string }).message ?? 'Error cargando resumen'
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+
+    const rows = platform
+      ? summaryRows.filter(row => (row.social_profiles as Array<{ platform?: string }> | null)?.some(profile => profile.platform === platform))
+      : summaryRows
+    let followers = 0
+    let engagement = 0
+    let engagementRows = 0
+    let verifiedCount = 0
+
+    for (const row of rows) {
+      const profiles = (row.social_profiles as Array<{ followers?: number | null; engagement_rate?: number | null; is_primary?: boolean }> | null) ?? []
+      const primary = profiles.find(profile => profile.is_primary) ?? profiles[0]
+      followers += Number(primary?.followers ?? 0)
+      if (primary) {
+        engagement += Number(primary.engagement_rate ?? 0)
+        engagementRows += 1
+      }
+      if (row.is_verified) verifiedCount += 1
+    }
+
+    return NextResponse.json({
+      summary: {
+        total: rows.length,
+        followers,
+        avg_engagement: engagementRows ? engagement / engagementRows : 0,
+        verified: verifiedCount,
+      },
+    })
   }
 
   // Columnas explícitas — NUNCA '*'. La marca no debe recibir email, phone,

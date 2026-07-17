@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { Influencer, InfluencerFilters } from '@/types'
 import { DEFAULT_INFLUENCER_FILTERS, getInfluencerTier } from '@/types'
+import { fetchJsonCached, invalidateCachedJson } from '@/lib/client/requestCache'
 
 export const INFLUENCERS_PAGE_SIZE = 48
 
@@ -52,9 +53,8 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
       if (currentFilters.sortBy !== 'created_at')     params.set('sort_by', currentFilters.sortBy)
       params.set('sort_dir', currentFilters.sortOrder)
 
-      const res = await fetch(`${apiBase}?${params}`)
-      if (!res.ok) throw new Error('Error cargando influencers')
-      const json = await res.json()
+      const url = `${apiBase}?${params}`
+      const json = await fetchJsonCached<{ data?: Record<string, unknown>[]; total?: number }>(url, 15_000)
       const rows = (json.data ?? []).map((inf: Record<string, unknown>) => ({
         ...inf,
         social_profiles: inf.social_profiles ?? inf.influencer_social_profiles ?? [],
@@ -67,7 +67,7 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [apiBase])
 
   // Debounce search — 350ms after last keystroke
   useEffect(() => {
@@ -86,11 +86,14 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
 
   // Re-fetch when Instagram sync completes (from DataQualityClient)
   useEffect(() => {
-    const handler = () => fetchInfluencers(page, filters, debouncedSearch)
+    const handler = () => {
+      invalidateCachedJson(apiBase)
+      void fetchInfluencers(page, filters, debouncedSearch)
+    }
     window.addEventListener('influencers-synced', handler)
     return () => window.removeEventListener('influencers-synced', handler)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, debouncedSearch, serverFilterKey])
+  }, [apiBase, page, debouncedSearch, serverFilterKey, fetchInfluencers, filters])
 
   // Client-side post-filter: tier + multi-platform + engagement (requires join data)
   const filtered = useMemo(() => {
@@ -157,7 +160,10 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
     updateFilter,
     resetFilters,
     toggleSort,
-    refetch: () => fetchInfluencers(page, filters, debouncedSearch),
+    refetch: () => {
+      invalidateCachedJson(apiBase)
+      return fetchInfluencers(page, filters, debouncedSearch)
+    },
     // Pagination
     page,
     setPage,

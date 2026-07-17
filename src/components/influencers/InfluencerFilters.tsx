@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
+import { fetchJsonCached } from '@/lib/client/requestCache'
 
 export type InfluencerView = 'list'
 
@@ -41,8 +42,7 @@ export function InfluencerFilters({
   const [communes, setCommunes] = useState<{ label: string; variants: string[] }[]>([])
 
   useEffect(() => {
-    fetch(`${apiBase}/communes`)
-      .then(r => r.json())
+    fetchJsonCached<{ data?: { label: string; variants: string[] }[] }>(`${apiBase}/communes`, 5 * 60_000)
       .then(json => setCommunes(json.data ?? []))
       .catch(() => setCommunes([]))
   }, [apiBase])

@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
   const sortDir    = searchParams.get('sort_dir') === 'asc' ? true : false
   const page       = parseInt(searchParams.get('page') ?? '1', 10)
   const limit      = parseInt(searchParams.get('limit') ?? '100', 10)
+  const summaryOnly = searchParams.get('summary') === '1'
 
   const admin = createAdminClient()
   // Roster global admin: sin filtro de organization_id — a diferencia de
@@ -65,6 +66,60 @@ export async function GET(request: NextRequest) {
   // está garantizado admin/staff por el guard de arriba, y el objetivo es
   // justamente ver Scence + todas las marcas con su origen (ver enriquecido
   // más abajo: registered_by / associated_brands).
+
+  if (summaryOnly) {
+    const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
+      (from, to) => {
+        let q = admin.from('influencers').select(`
+          id, display_name, email, city, commune, categories, is_verified,
+          social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
+        `).range(from, to)
+        if (country) q = q.eq('country', country)
+        if (communeList.length === 1) q = q.eq('commune', communeList[0])
+        else if (communeList.length > 1) q = q.in('commune', communeList)
+        if (verified === 'true') q = q.eq('is_verified', true)
+        if (isActive === 'false') q = q.eq('is_active', false)
+        if (isActive === 'true') q = q.eq('is_active', true)
+        if (search) q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
+        if (category) q = q.contains('categories', [category])
+        return q
+      },
+      { maxRows: 10000 }
+    )
+
+    if (summaryError) {
+      const message = (summaryError as { message?: string }).message ?? 'Error cargando resumen'
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+
+    const rows = platform
+      ? summaryRows.filter(row => (row.social_profiles as Array<{ platform?: string }> | null)?.some(profile => profile.platform === platform))
+      : summaryRows
+    let followers = 0
+    let engagement = 0
+    let engagementRows = 0
+    let verifiedCount = 0
+
+    for (const row of rows) {
+      const profiles = (row.social_profiles as Array<{ followers?: number | null; engagement_rate?: number | null; is_primary?: boolean }> | null) ?? []
+      const primary = profiles.find(profile => profile.is_primary) ?? profiles[0]
+      followers += Number(primary?.followers ?? 0)
+      if (primary) {
+        engagement += Number(primary.engagement_rate ?? 0)
+        engagementRows += 1
+      }
+      if (row.is_verified) verifiedCount += 1
+    }
+
+    return NextResponse.json({
+      summary: {
+        total: rows.length,
+        followers,
+        avg_engagement: engagementRows ? engagement / engagementRows : 0,
+        verified: verifiedCount,
+      },
+    })
+  }
 
   const SELECT = `
       id,

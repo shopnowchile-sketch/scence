@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, Columns3, Search, Star, TrendingUp, Users, Send } from 'lucide-react'
+import { ArrowDown, ArrowUp, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Columns3, Search, Star, TrendingUp, Users, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import type { RankingInfluencerRow, RankingSortBy } from '@/lib/influencers/ranking'
@@ -85,6 +85,8 @@ export function InfluencerRanking({
   const [connectionFilter, setConnectionFilter] = useState('all')
   const [showColumns, setShowColumns] = useState(false)
   const [bulkInviting, setBulkInviting] = useState(false)
+  const [page, setPage] = useState(1)
+  const pageSize = 50
   const [visible, setVisible] = useLocalStorageState<VisibleColumns>('scence:admin:influencer-ranking:columns', {
     followers: true,
     engagement: true,
@@ -170,6 +172,15 @@ export function InfluencerRanking({
 
     return sortRankingRows(rows, sortBy, sortDir)
   }, [influencers, search, platform, category, campaignFilter, connectionFilter, sortBy, sortDir])
+
+  const totalPages = Math.max(1, Math.ceil(ranked.length / pageSize))
+  const pagedRanked = useMemo(
+    () => ranked.slice((page - 1) * pageSize, page * pageSize),
+    [ranked, page]
+  )
+
+  useEffect(() => { setPage(1) }, [search, platform, category, campaignFilter, connectionFilter, sortBy, sortDir])
+  useEffect(() => { if (page > totalPages) setPage(totalPages) }, [page, totalPages])
 
   function toggleSort(next: RankingSortBy) {
     if (sortBy === next) {
@@ -344,7 +355,7 @@ export function InfluencerRanking({
       </div>
 
       <div className="text-xs text-gray-400">
-        Mostrando {ranked.length} influencers. Ranking según KPI seleccionado, sin score compuesto.
+        Mostrando {pagedRanked.length} de {ranked.length} influencers. Ranking según KPI seleccionado, sin score compuesto.
       </div>
 
       {/* FIX (2026-07-02): overflow-hidden recortaba silenciosamente las columnas
@@ -374,7 +385,7 @@ export function InfluencerRanking({
           </thead>
 
           <tbody>
-            {ranked.map((inf, idx) => {
+            {pagedRanked.map((inf, idx) => {
               const primary = getPrimarySocial(inf)
               const followers = Number(primary?.followers ?? 0)
               const engagement = Number(primary?.engagement_rate ?? 0)
@@ -387,7 +398,7 @@ export function InfluencerRanking({
                       'text-sm font-bold',
                       idx < 3 ? 'text-violet-600' : 'text-gray-300'
                     )}>
-                      #{idx + 1}
+                      #{(page - 1) * pageSize + idx + 1}
                     </span>
                   </td>
 
@@ -505,6 +516,30 @@ export function InfluencerRanking({
           </div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-gray-400">Página {page} de {totalPages}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(current => Math.max(1, current - 1))}
+              disabled={page === 1}
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" /> Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+              disabled={page === totalPages}
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 disabled:opacity-40"
+            >
+              Siguiente <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

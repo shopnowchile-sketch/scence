@@ -58,9 +58,13 @@ type Tab = 'overview' | 'influencers' | 'deliverables' | 'assets' | 'locations' 
 
 // ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
 // admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
-type CiColumnKey = 'platform' | 'fee' | 'deliverables' | 'progress' | 'status'
+type CiColumnKey = 'platform' | 'categories' | 'followers' | 'engagement' | 'commune' | 'fee' | 'deliverables' | 'progress' | 'status'
 const CI_COLUMNS: Array<{ key: CiColumnKey; label: string }> = [
   { key: 'platform',     label: 'Plataforma' },
+  { key: 'categories',   label: 'Categorías' },
+  { key: 'followers',    label: 'Seguidores' },
+  { key: 'engagement',   label: 'Engagement' },
+  { key: 'commune',      label: 'Comuna' },
   { key: 'fee',          label: 'Fee' },
   { key: 'deliverables', label: 'Deliverables' },
   { key: 'progress',     label: 'Progreso' },
@@ -737,10 +741,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [infPlatform, setInfPlatform] = useState('')
   const [infStatus, setInfStatus] = useState('')
   const [ciVisibleColumns, setCiVisibleColumns] = useLocalStorageState<Record<CiColumnKey, boolean>>(
-    'scence:admin:campaign-detail:influencers:visibleColumns', DEFAULT_CI_COLUMNS
+    'scence:campaign-detail:approved-influencers:visibleColumns', DEFAULT_CI_COLUMNS
+  )
+  const [pendingVisibleColumns, setPendingVisibleColumns] = useLocalStorageState<Record<CiColumnKey, boolean>>(
+    'scence:campaign-detail:pending-influencers:visibleColumns', DEFAULT_CI_COLUMNS
   )
   function toggleCiColumn(key: CiColumnKey) {
     setCiVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+  function togglePendingColumn(key: CiColumnKey) {
+    setPendingVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
   }
   // Selección para enviar recordatorio a varios influencers a la vez (no
   // uno-a-uno) — reusa el mismo endpoint /remind, solo dispara N fetches.
@@ -1435,6 +1445,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <Target className="h-4 w-4 text-violet-600" />
           </div>
           <div className="flex-1 min-w-0">
+            {Boolean(campaignBrands[0]?.name) && (
+              <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-0.5 truncate">
+                {String(campaignBrands[0].name)}
+              </p>
+            )}
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-base font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>
               {isBrandPortal ? (
@@ -1493,23 +1508,23 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:max-w-[380px] sm:justify-end sm:flex-shrink-0" style={{ minWidth: 0 }}>
             <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
               <div className="text-sm font-bold text-gray-900">{pct}%</div>
-              <div className="text-[9px] text-gray-400">Completado</div>
+              <div className="text-[9px] font-medium text-gray-600">Completado</div>
             </div>
             {!!c.budget_total && (
               <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
                 <div className="text-sm font-bold text-gray-900">{budgetPct}%</div>
-                <div className="text-[9px] text-gray-400">Budget usado</div>
+                <div className="text-[9px] font-medium text-gray-600">Budget usado</div>
               </div>
             )}
             <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
               <div className="text-sm font-bold text-gray-900">{campaignInfluencers.length}</div>
-              <div className="text-[9px] text-gray-400">Invitadas</div>
+              <div className="text-[9px] font-medium text-gray-600">Invitadas</div>
             </div>
             <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
               <div className="text-[11px] font-bold text-violet-700 truncate">
                 {((c as { visibility?: string | null }).visibility === 'open' || (c as { visibility?: string | null }).visibility === 'public') ? 'Pública' : 'Invitación'}
               </div>
-              <div className="text-[9px] text-violet-400">Visibilidad</div>
+              <div className="text-[9px] font-medium text-violet-600">Visibilidad</div>
             </div>
             {/* Comisión — Pri: "esto es importantisimo y deberia aparecer en la
                 card de arriba... donde aparece el resumen". Antes solo vivía
@@ -1518,7 +1533,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             {!!c.commission_rate && (
               <div className="text-center bg-amber-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
                 <div className="text-sm font-bold text-amber-700">{c.commission_rate}%</div>
-                <div className="text-[9px] text-amber-500">Comisión</div>
+                <div className="text-[9px] font-medium text-amber-700">Comisión</div>
               </div>
             )}
             {/* Métricas reales de contenido (Apify) — solo aparecen si al menos
@@ -1529,15 +1544,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <>
                 <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
                   <div className="text-sm font-bold text-gray-900">{formatFollowers(totalViews)}</div>
-                  <div className="text-[9px] text-gray-400">Visualiz.</div>
+                  <div className="text-[9px] font-medium text-gray-600">Visualiz.</div>
                 </div>
                 <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
                   <div className="text-sm font-bold text-gray-900">{formatFollowers(totalInteractionsMetrics)}</div>
-                  <div className="text-[9px] text-gray-400">Interacc.</div>
+                  <div className="text-[9px] font-medium text-gray-600">Interacc.</div>
                 </div>
                 <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
                   <div className="text-sm font-bold text-violet-700">{avgCampaignEngagement !== null ? `${avgCampaignEngagement}%` : '—'}</div>
-                  <div className="text-[9px] text-violet-400">Eng. (calc.)</div>
+                  <div className="text-[9px] font-medium text-violet-600">Eng. (calc.)</div>
                 </div>
               </>
             )}
@@ -1887,10 +1902,19 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {pendingApplications.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card p-4 border-amber-200 bg-amber-50">
-              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                {pendingApplications.length} solicitud(es) pendiente(s)
-              </p>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  {pendingApplications.length} solicitud(es) pendiente(s)
+                </p>
+                <ColumnVisibilityMenu
+                  columns={CI_COLUMNS}
+                  visible={pendingVisibleColumns}
+                  onToggle={togglePendingColumn}
+                  onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)}
+                  iconOnly
+                />
+              </div>
 
               {/* Filtros de postulantes — mismo estilo (select/input) que
                   InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
@@ -1971,91 +1995,90 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </p>
               )}
 
-              <div className="space-y-2">
-                {filteredPendingApplications.map(ci => {
-                  const inf = ci.influencer
-                  if (!inf) return null
-                  const primarySP = inf.influencer_social_profiles?.[0]
-                  const igUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
-                  const applicationsEndpoint = isBrandPortal
-                    ? `/api/brand/campaigns/${id}/applications`
-                    : `/api/campaigns/${id}/applications`
-                  return (
-                    <div key={ci.id} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-amber-100">
-                      {inf.avatar_url ? (
-                        <img src={inf.avatar_url} alt={inf.display_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {inf.display_name.charAt(0)}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedInfluencerId(inf.id)}
-                          className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700"
-                        >
-                          {inf.display_name}
-                        </button>
-                        <p className="text-xs text-gray-400 truncate">
-                          {[inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
-                          {primarySP?.username && (
-                            <>
-                              {' · '}
-                              {igUrl ? (
-                                <a
-                                  href={igUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  className="text-violet-600 hover:underline"
-                                >
-                                  {PLATFORM_ICONS[primarySP.platform] ?? ''} @{primarySP.username}
-                                </a>
-                              ) : (
-                                <span>{PLATFORM_ICONS[primarySP.platform] ?? ''} @{primarySP.username}</span>
-                              )}
-                              {' · '}{((primarySP.followers ?? 0)/1000).toFixed(0)}K
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <button
-                          onClick={async () => {
-                            const res = await fetch(applicationsEndpoint, {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ application_id: ci.id, action: 'accept' }),
-                            })
-                            if (res.ok) toast.success(`Postulación de ${inf.display_name} aceptada — se le notificó por email`)
-                            else toast.error('Error al aceptar la postulación')
-                            void refetch()
-                          }}
-                          className="text-xs font-bold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700"
-                        >
-                          Aceptar
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`¿Rechazar la solicitud de ${inf.display_name}?`)) return
-                            const res = await fetch(applicationsEndpoint, {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ application_id: ci.id, action: 'reject' }),
-                            })
-                            if (!res.ok) toast.error('Error al rechazar la postulación')
-                            void refetch()
-                          }}
-                          className="text-xs font-bold bg-white text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50"
-                        >
-                          Rechazar
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              {filteredPendingApplications.length > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
+                  <table className="w-full min-w-[900px]">
+                    <thead>
+                      <tr className="border-b border-amber-100">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Influencer</th>
+                        {pendingVisibleColumns.platform && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Plataforma</th>}
+                        {pendingVisibleColumns.categories && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Categorías</th>}
+                        {pendingVisibleColumns.followers && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Seguidores</th>}
+                        {pendingVisibleColumns.engagement && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Engagement</th>}
+                        {pendingVisibleColumns.commune && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Comuna</th>}
+                        {pendingVisibleColumns.fee && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Fee</th>}
+                        {pendingVisibleColumns.deliverables && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Deliverables</th>}
+                        {pendingVisibleColumns.progress && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Progreso</th>}
+                        {pendingVisibleColumns.status && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Estado</th>}
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-amber-50">
+                      {filteredPendingApplications.map((ci, i) => {
+                        const inf = ci.influencer
+                        if (!inf) return null
+                        const primarySP = inf.influencer_social_profiles?.[0]
+                        const profileUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
+                        const gradient = GRADIENTS[i % GRADIENTS.length]
+                        const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+                        const applicationsEndpoint = isBrandPortal
+                          ? `/api/brand/campaigns/${id}/applications`
+                          : `/api/campaigns/${id}/applications`
+                        return (
+                          <tr key={ci.id} className="hover:bg-amber-50/40 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                {inf.avatar_url ? (
+                                  <img src={inf.avatar_url} alt={inf.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                                ) : (
+                                  <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>{initials}</div>
+                                )}
+                                <div className="min-w-0">
+                                  <button type="button" onClick={() => setSelectedInfluencerId(inf.id)} className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700 whitespace-nowrap">{inf.display_name}</button>
+                                  {primarySP?.username && (
+                                    profileUrl ? <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="block text-xs text-violet-600 hover:underline">@{primarySP.username}</a> : <div className="text-xs text-gray-400">@{primarySP.username}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            {pendingVisibleColumns.platform && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>}
+                            {pendingVisibleColumns.categories && <td className="px-4 py-3 text-xs text-gray-500">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>}
+                            {pendingVisibleColumns.followers && <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>}
+                            {pendingVisibleColumns.engagement && <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>}
+                            {pendingVisibleColumns.commune && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>}
+                            {pendingVisibleColumns.fee && <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>}
+                            {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-400">0/0</td>}
+                            {pendingVisibleColumns.progress && <td className="px-4 py-3 text-xs text-gray-300">Sin deliverables</td>}
+                            {pendingVisibleColumns.status && <td className="px-4 py-3"><span className="text-[11px] font-semibold rounded-full px-2 py-1 bg-amber-100 text-amber-700">Pendiente</span></td>}
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end gap-2 whitespace-nowrap">
+                                <button
+                                  onClick={async () => {
+                                    const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'accept' }) })
+                                    if (response.ok) toast.success(`Postulación de ${inf.display_name} aceptada — se le notificó por email`)
+                                    else toast.error('Error al aceptar la postulación')
+                                    void refetch()
+                                  }}
+                                  className="text-xs font-bold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700"
+                                >Aceptar</button>
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm(`¿Rechazar la solicitud de ${inf.display_name}?`)) return
+                                    const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'reject' }) })
+                                    if (!response.ok) toast.error('Error al rechazar la postulación')
+                                    void refetch()
+                                  }}
+                                  className="text-xs font-bold bg-white text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50"
+                                >Rechazar</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -2339,6 +2362,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     {ciVisibleColumns.platform && (
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataforma</th>
                     )}
+                    {ciVisibleColumns.categories && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Categorías</th>
+                    )}
+                    {ciVisibleColumns.followers && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Seguidores</th>
+                    )}
+                    {ciVisibleColumns.engagement && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Engagement</th>
+                    )}
+                    {ciVisibleColumns.commune && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Comuna</th>
+                    )}
                     {ciVisibleColumns.fee && (
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Fee</th>
                     )}
@@ -2425,12 +2460,24 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         {ciVisibleColumns.platform && (
                           <td className="px-4 py-3 text-sm text-gray-500">
                             {primarySP ? (
-                              <span className="flex items-center gap-1.5">
+                              <span className="flex items-center gap-1.5 capitalize whitespace-nowrap">
                                 {PLATFORM_ICONS[primarySP.platform]}
-                                <span className="font-medium">{((primarySP.followers ?? 0) / 1000).toFixed(0)}K</span>
+                                <span className="font-medium">{primarySP.platform}</span>
                               </span>
                             ) : '—'}
                           </td>
+                        )}
+                        {ciVisibleColumns.categories && (
+                          <td className="px-4 py-3 text-xs text-gray-500">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>
+                        )}
+                        {ciVisibleColumns.followers && (
+                          <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>
+                        )}
+                        {ciVisibleColumns.engagement && (
+                          <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>
+                        )}
+                        {ciVisibleColumns.commune && (
+                          <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>
                         )}
                         {ciVisibleColumns.fee && (
                           <td className="px-4 py-3">

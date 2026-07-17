@@ -54,6 +54,9 @@ interface CampaignReport {
   budget_total: number | null
   budget_spent: number
   currency: string
+  commission_rate: number | null
+  visibility: string | null
+  brand: { id: string; name: string; logo_url: string | null } | null
   hashtags: string[]
   platforms: string[]
   content_guidelines: string | null
@@ -151,6 +154,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
     .from('campaigns')
     .select(`
       *,
+      brand:brands!brand_id (id, name, logo_url),
       campaign_influencers (
         id, fee, status, notes,
         influencer:influencers (
@@ -290,14 +294,20 @@ export default async function CampaignReportPage({ params }: { params: { id: str
         .footer-text { font-size: 11px; opacity: 0.5; }
 
         /* Print button */
-        .print-btn { position: fixed; bottom: 24px; right: 24px; background: #7c3aed; color: white; border: none; border-radius: 12px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(124,58,237,0.4); z-index: 100; display: flex; align-items: center; gap: 8px; }
+        .report-actions { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; gap: 10px; }
+        .print-btn, .email-btn { color: white; border: none; border-radius: 12px; padding: 12px 20px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(124,58,237,0.25); }
+        .print-btn { background: #7c3aed; }
         .print-btn:hover { background: #6d28d9; }
+        .email-btn { background: #111827; }
+        .email-btn:hover { background: #374151; }
+        .email-btn:disabled { opacity: 0.6; cursor: wait; }
       `}</style>
 
       {/* Print button */}
-      <button className="print-btn no-print" id="printBtn">
-        ⬇ Descargar PDF
-      </button>
+      <div className="report-actions no-print">
+        <button className="email-btn" id="emailBtn">✉ Enviar por email</button>
+        <button className="print-btn" id="printBtn">⬇ Descargar PDF</button>
+      </div>
 
       <div className="page">
         {/* Header */}
@@ -309,6 +319,11 @@ export default async function CampaignReportPage({ params }: { params: { id: str
               <div>Generado el {today}</div>
             </div>
           </div>
+          {campaign.brand?.name && (
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 5 }}>
+              {campaign.brand.name}
+            </div>
+          )}
           <div className="campaign-title">{campaign.name}</div>
           <div className="campaign-badges">
             <span className="badge badge-status">{STATUS_LABELS[campaign.status] ?? campaign.status}</span>
@@ -320,6 +335,21 @@ export default async function CampaignReportPage({ params }: { params: { id: str
         </div>
 
         <div className="body">
+
+          <div className="section">
+            <div className="section-title">Resumen ejecutivo</div>
+            <div className="info-grid">
+              <div className="info-card"><div className="info-label">Completado</div><div className="info-value">{progressPct}%</div></div>
+              <div className="info-card"><div className="info-label">Influencers</div><div className="info-value">{campaign.campaign_influencers?.length ?? 0}</div></div>
+              <div className="info-card"><div className="info-label">Visibilidad</div><div className="info-value">{campaign.visibility === 'open' || campaign.visibility === 'public' ? 'Pública' : 'Invitación'}</div></div>
+              {campaign.commission_rate != null && campaign.commission_rate > 0 && (
+                <div className="info-card"><div className="info-label">Comisión</div><div className="info-value">{campaign.commission_rate}%</div></div>
+              )}
+              <div className="info-card"><div className="info-label">Visualizaciones</div><div className="info-value">{hasMetrics ? formatFollowers(totalViews) : '—'}</div></div>
+              <div className="info-card"><div className="info-label">Interacciones</div><div className="info-value">{hasMetrics ? formatFollowers(totalInteractions) : '—'}</div></div>
+              <div className="info-card"><div className="info-label">Engagement (calculado)</div><div className="info-value">{avgEngagementRate !== null ? `${avgEngagementRate}%` : '—'}</div></div>
+            </div>
+          </div>
 
           {/* Brief / lineamientos — primero, como pide el nuevo orden */}
           {hasBrief && (
@@ -521,6 +551,28 @@ export default async function CampaignReportPage({ params }: { params: { id: str
       <script dangerouslySetInnerHTML={{ __html: `
         document.querySelector('.print-btn')?.addEventListener('click', function() {
           window.print();
+        });
+        document.querySelector('.email-btn')?.addEventListener('click', async function() {
+          const email = window.prompt('¿A qué correo quieres enviar el reporte PDF?');
+          if (!email) return;
+          const button = this;
+          button.disabled = true;
+          button.textContent = 'Enviando…';
+          try {
+            const response = await fetch('/api/campaigns/${campaign.id}/report/email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'No se pudo enviar');
+            window.alert('Reporte PDF enviado correctamente.');
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : 'No se pudo enviar el reporte');
+          } finally {
+            button.disabled = false;
+            button.textContent = '✉ Enviar por email';
+          }
         });
       ` }} />
     </>

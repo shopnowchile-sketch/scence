@@ -23,11 +23,13 @@ export function ColumnVisibilityMenu<K extends string>({
   visible,
   onToggle,
   onReset,
+  iconOnly = false,
 }: {
   columns: Array<{ key: K; label: string }>
   visible: Record<K, boolean>
   onToggle: (key: K) => void
   onReset?: () => void
+  iconOnly?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -45,12 +47,16 @@ export function ColumnVisibilityMenu<K extends string>({
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
+        title={iconOnly ? 'Seleccionar columnas' : undefined}
+        aria-label={iconOnly ? 'Seleccionar columnas' : undefined}
         className={cn(
-          'flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-colors',
+          'flex items-center rounded-xl border text-sm font-medium transition-colors',
+          iconOnly ? 'p-2' : 'gap-1.5 px-3 py-2.5',
           open ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
         )}
       >
-        <Columns3 className="h-4 w-4" /> Columnas
+        <Columns3 className="h-4 w-4" />
+        {!iconOnly && ' Columnas'}
       </button>
 
       {open && (

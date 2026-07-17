@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits'
-import { Preference, MercadoPagoConfig } from 'mercadopago'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
 
 export async function POST(req: NextRequest) {
@@ -13,11 +11,8 @@ export async function POST(req: NextRequest) {
 
   if (!token) {
     return NextResponse.json(
-      {
-        error: 'Mercado Pago aún está pendiente de activación. Solicita tu plan y lo activamos manualmente con la oferta de lanzamiento.',
-        manual: true,
-      },
-      { status: 503 }
+      { error: 'Mercado Pago no está configurado todavía.', manual: true },
+      { status: 503 },
     )
   }
 
@@ -28,15 +23,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  if (!user.email) {
+    return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
+  }
 
-  if (!orgId) {
+  const access = await resolveBrandAccess(user.id)
+  if (!access) {
     return NextResponse.json({ error: 'No organization found' }, { status: 404 })
   }
 
   let body: { tier?: PlanTier }
-
   try {
     body = await req.json()
   } catch {
@@ -44,48 +40,60 @@ export async function POST(req: NextRequest) {
   }
 
   const tier = body.tier
-
   if (!tier || !VALID_TIERS.includes(tier)) {
     return NextResponse.json({ error: 'Plan inválido' }, { status: 422 })
   }
 
+  const admin = createAdminClient()
+  const { data: planRow, error: planError } = await admin
+    .from('subscription_plans')
+    .select('id, tier')
+    .eq('tier', tier)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (planError || !planRow) {
+    return NextResponse.json({ error: 'El plan seleccionado no está configurado en SCENCE.' }, { status: 500 })
+  }
+
   const plan = PLAN_LIMITS[tier]
-  const secondMonthAmount = Math.round(plan.price_monthly_clp * 0.5)
+  const externalReference = `${access.organizationId}:${planRow.id}:${tier}`
 
-  const client = new MercadoPagoConfig({ accessToken: token })
-  const preference = new Preference(client)
-
-  const result = await preference.create({
-    body: {
-      external_reference: `${orgId}:${tier}`,
-      items: [
-        {
-          id: `scence-${tier}-activation`,
-          title: `SCENCE ${plan.label} — activación 3 meses`,
-          description: `Mes 1 gratis, mes 2 con 50% de descuento, mes 3 a precio normal. Suscripción mínima 3 meses.`,
-          quantity: 1,
-          currency_id: 'CLP',
-          unit_price: secondMonthAmount + plan.price_monthly_clp,
-        },
-      ],
-      back_urls: {
-        success: `${APP_URL}/brand-settings/plan?checkout=success`,
-        failure: `${APP_URL}/brand-settings/plan?checkout=failure`,
-        pending: `${APP_URL}/brand-settings/plan?checkout=pending`,
-      },
-      auto_return: 'approved',
-      metadata: {
-        organization_id: orgId,
-        tier,
-        plan_label: plan.label,
-        monthly_price_clp: plan.price_monthly_clp,
-        launch_offer: 'month_1_free_month_2_50_percent_month_3_regular',
-        minimum_months: 3,
-      },
+  const mpResponse = await fetch('https://api.mercadopago.com/preapproval', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-Idempotency-Key': `${access.organizationId}-${tier}-${Date.now()}`,
     },
+    body: JSON.stringify({
+      reason: `Suscripción mensual SCENCE ${plan.label}`,
+      external_reference: externalReference,
+      payer_email: user.email,
+      auto_recurring: {
+        frequency: 1,
+        frequency_type: 'months',
+        transaction_amount: plan.price_monthly_clp,
+        currency_id: 'CLP',
+      },
+      back_url: `${APP_URL}/brand-settings/plan?checkout=success`,
+    }),
   })
 
-  return NextResponse.json({
-    url: result.init_point ?? result.sandbox_init_point,
-  })
+  const result = await mpResponse.json()
+
+  if (!mpResponse.ok) {
+    console.error('[mercadopago/checkout]', result)
+    return NextResponse.json(
+      { error: result?.message ?? 'No se pudo iniciar la suscripción en Mercado Pago.' },
+      { status: 502 },
+    )
+  }
+
+  const checkoutUrl = result.init_point ?? result.sandbox_init_point
+  if (!checkoutUrl) {
+    return NextResponse.json({ error: 'Mercado Pago no devolvió una URL de pago.' }, { status: 502 })
+  }
+
+  return NextResponse.json({ url: checkoutUrl, subscription_id: result.id })
 }

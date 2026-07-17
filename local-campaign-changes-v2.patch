@@ -1,0 +1,259 @@
+diff --git a/src/app/(dashboard)/admin-campaigns/[id]/CampaignDetail.tsx b/src/app/(dashboard)/admin-campaigns/[id]/CampaignDetail.tsx
+index cf39301..0985485 100644
+--- a/src/app/(dashboard)/admin-campaigns/[id]/CampaignDetail.tsx
++++ b/src/app/(dashboard)/admin-campaigns/[id]/CampaignDetail.tsx
+@@ -1445,6 +1445,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
+             <Target className="h-4 w-4 text-violet-600" />
+           </div>
+           <div className="flex-1 min-w-0">
++            {Boolean(campaignBrands[0]?.name) && (
++              <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-0.5 truncate">
++                {String(campaignBrands[0].name)}
++              </p>
++            )}
+             <div className="flex items-center gap-2 flex-wrap">
+               <h1 className="text-base font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>
+               {isBrandPortal ? (
+@@ -1503,23 +1508,23 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
+           <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:max-w-[380px] sm:justify-end sm:flex-shrink-0" style={{ minWidth: 0 }}>
+             <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+               <div className="text-sm font-bold text-gray-900">{pct}%</div>
+-              <div className="text-[9px] text-gray-400">Completado</div>
++              <div className="text-[9px] font-medium text-gray-600">Completado</div>
+             </div>
+             {!!c.budget_total && (
+               <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                 <div className="text-sm font-bold text-gray-900">{budgetPct}%</div>
+-                <div className="text-[9px] text-gray-400">Budget usado</div>
++                <div className="text-[9px] font-medium text-gray-600">Budget usado</div>
+               </div>
+             )}
+             <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+               <div className="text-sm font-bold text-gray-900">{campaignInfluencers.length}</div>
+-              <div className="text-[9px] text-gray-400">Invitadas</div>
++              <div className="text-[9px] font-medium text-gray-600">Invitadas</div>
+             </div>
+             <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+               <div className="text-[11px] font-bold text-violet-700 truncate">
+                 {((c as { visibility?: string | null }).visibility === 'open' || (c as { visibility?: string | null }).visibility === 'public') ? 'Pública' : 'Invitación'}
+               </div>
+-              <div className="text-[9px] text-violet-400">Visibilidad</div>
++              <div className="text-[9px] font-medium text-violet-600">Visibilidad</div>
+             </div>
+             {/* Comisión — Pri: "esto es importantisimo y deberia aparecer en la
+                 card de arriba... donde aparece el resumen". Antes solo vivía
+@@ -1528,7 +1533,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
+             {!!c.commission_rate && (
+               <div className="text-center bg-amber-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                 <div className="text-sm font-bold text-amber-700">{c.commission_rate}%</div>
+-                <div className="text-[9px] text-amber-500">Comisión</div>
++                <div className="text-[9px] font-medium text-amber-700">Comisión</div>
+               </div>
+             )}
+             {/* Métricas reales de contenido (Apify) — solo aparecen si al menos
+@@ -1539,15 +1544,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
+               <>
+                 <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                   <div className="text-sm font-bold text-gray-900">{formatFollowers(totalViews)}</div>
+-                  <div className="text-[9px] text-gray-400">Visualiz.</div>
++                  <div className="text-[9px] font-medium text-gray-600">Visualiz.</div>
+                 </div>
+                 <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                   <div className="text-sm font-bold text-gray-900">{formatFollowers(totalInteractionsMetrics)}</div>
+-                  <div className="text-[9px] text-gray-400">Interacc.</div>
++                  <div className="text-[9px] font-medium text-gray-600">Interacc.</div>
+                 </div>
+                 <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
+                   <div className="text-sm font-bold text-violet-700">{avgCampaignEngagement !== null ? `${avgCampaignEngagement}%` : '—'}</div>
+-                  <div className="text-[9px] text-violet-400">Eng. (calc.)</div>
++                  <div className="text-[9px] font-medium text-violet-600">Eng. (calc.)</div>
+                 </div>
+               </>
+             )}
+@@ -1897,10 +1902,19 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
+           {pendingApplications.length > 0
+             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
+             <div className="card p-4 border-amber-200 bg-amber-50">
+-              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+-                {pendingApplications.length} solicitud(es) pendiente(s)
+-              </p>
++              <div className="flex items-center justify-between gap-3 mb-3">
++                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-2">
++                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
++                  {pendingApplications.length} solicitud(es) pendiente(s)
++                </p>
++                <ColumnVisibilityMenu
++                  columns={CI_COLUMNS}
++                  visible={pendingVisibleColumns}
++                  onToggle={togglePendingColumn}
++                  onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)}
++                  iconOnly
++                />
++              </div>
+ 
+               {/* Filtros de postulantes — mismo estilo (select/input) que
+                   InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
+@@ -1981,15 +1995,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
+                 </p>
+               )}
+ 
+-              <div className="flex justify-end mb-3">
+-                <ColumnVisibilityMenu
+-                  columns={CI_COLUMNS}
+-                  visible={pendingVisibleColumns}
+-                  onToggle={togglePendingColumn}
+-                  onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)}
+-                />
+-              </div>
+-
+               {filteredPendingApplications.length > 0 && (
+                 <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
+                   <table className="w-full min-w-[900px]">
+diff --git a/src/app/(dashboard)/admin-campaigns/[id]/report/page.tsx b/src/app/(dashboard)/admin-campaigns/[id]/report/page.tsx
+index ad4494d..3f44d4d 100644
+--- a/src/app/(dashboard)/admin-campaigns/[id]/report/page.tsx
++++ b/src/app/(dashboard)/admin-campaigns/[id]/report/page.tsx
+@@ -54,6 +54,9 @@ interface CampaignReport {
+   budget_total: number | null
+   budget_spent: number
+   currency: string
++  commission_rate: number | null
++  visibility: string | null
++  brand: { id: string; name: string; logo_url: string | null } | null
+   hashtags: string[]
+   platforms: string[]
+   content_guidelines: string | null
+@@ -151,6 +154,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
+     .from('campaigns')
+     .select(`
+       *,
++      brand:brands!brand_id (id, name, logo_url),
+       campaign_influencers (
+         id, fee, status, notes,
+         influencer:influencers (
+@@ -290,14 +294,20 @@ export default async function CampaignReportPage({ params }: { params: { id: str
+         .footer-text { font-size: 11px; opacity: 0.5; }
+ 
+         /* Print button */
+-        .print-btn { position: fixed; bottom: 24px; right: 24px; background: #7c3aed; color: white; border: none; border-radius: 12px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(124,58,237,0.4); z-index: 100; display: flex; align-items: center; gap: 8px; }
++        .report-actions { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; gap: 10px; }
++        .print-btn, .email-btn { color: white; border: none; border-radius: 12px; padding: 12px 20px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(124,58,237,0.25); }
++        .print-btn { background: #7c3aed; }
+         .print-btn:hover { background: #6d28d9; }
++        .email-btn { background: #111827; }
++        .email-btn:hover { background: #374151; }
++        .email-btn:disabled { opacity: 0.6; cursor: wait; }
+       `}</style>
+ 
+       {/* Print button */}
+-      <button className="print-btn no-print" id="printBtn">
+-        ⬇ Descargar PDF
+-      </button>
++      <div className="report-actions no-print">
++        <button className="email-btn" id="emailBtn">✉ Enviar por email</button>
++        <button className="print-btn" id="printBtn">⬇ Descargar PDF</button>
++      </div>
+ 
+       <div className="page">
+         {/* Header */}
+@@ -309,6 +319,11 @@ export default async function CampaignReportPage({ params }: { params: { id: str
+               <div>Generado el {today}</div>
+             </div>
+           </div>
++          {campaign.brand?.name && (
++            <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 5 }}>
++              {campaign.brand.name}
++            </div>
++          )}
+           <div className="campaign-title">{campaign.name}</div>
+           <div className="campaign-badges">
+             <span className="badge badge-status">{STATUS_LABELS[campaign.status] ?? campaign.status}</span>
+@@ -321,6 +336,21 @@ export default async function CampaignReportPage({ params }: { params: { id: str
+ 
+         <div className="body">
+ 
++          <div className="section">
++            <div className="section-title">Resumen ejecutivo</div>
++            <div className="info-grid">
++              <div className="info-card"><div className="info-label">Completado</div><div className="info-value">{progressPct}%</div></div>
++              <div className="info-card"><div className="info-label">Influencers</div><div className="info-value">{campaign.campaign_influencers?.length ?? 0}</div></div>
++              <div className="info-card"><div className="info-label">Visibilidad</div><div className="info-value">{campaign.visibility === 'open' || campaign.visibility === 'public' ? 'Pública' : 'Invitación'}</div></div>
++              {campaign.commission_rate != null && campaign.commission_rate > 0 && (
++                <div className="info-card"><div className="info-label">Comisión</div><div className="info-value">{campaign.commission_rate}%</div></div>
++              )}
++              <div className="info-card"><div className="info-label">Visualizaciones</div><div className="info-value">{hasMetrics ? formatFollowers(totalViews) : '—'}</div></div>
++              <div className="info-card"><div className="info-label">Interacciones</div><div className="info-value">{hasMetrics ? formatFollowers(totalInteractions) : '—'}</div></div>
++              <div className="info-card"><div className="info-label">Engagement (calculado)</div><div className="info-value">{avgEngagementRate !== null ? `${avgEngagementRate}%` : '—'}</div></div>
++            </div>
++          </div>
++
+           {/* Brief / lineamientos — primero, como pide el nuevo orden */}
+           {hasBrief && (
+             <div className="section">
+@@ -522,6 +552,28 @@ export default async function CampaignReportPage({ params }: { params: { id: str
+         document.querySelector('.print-btn')?.addEventListener('click', function() {
+           window.print();
+         });
++        document.querySelector('.email-btn')?.addEventListener('click', async function() {
++          const email = window.prompt('¿A qué correo quieres enviar el reporte PDF?');
++          if (!email) return;
++          const button = this;
++          button.disabled = true;
++          button.textContent = 'Enviando…';
++          try {
++            const response = await fetch('/api/campaigns/${campaign.id}/report/email', {
++              method: 'POST',
++              headers: { 'Content-Type': 'application/json' },
++              body: JSON.stringify({ email })
++            });
++            const result = await response.json();
++            if (!response.ok) throw new Error(result.error || 'No se pudo enviar');
++            window.alert('Reporte PDF enviado correctamente.');
++          } catch (error) {
++            window.alert(error instanceof Error ? error.message : 'No se pudo enviar el reporte');
++          } finally {
++            button.disabled = false;
++            button.textContent = '✉ Enviar por email';
++          }
++        });
+       ` }} />
+     </>
+   )
+diff --git a/src/components/ui/ColumnVisibilityMenu.tsx b/src/components/ui/ColumnVisibilityMenu.tsx
+index ca3d4c0..aa2738c 100644
+--- a/src/components/ui/ColumnVisibilityMenu.tsx
++++ b/src/components/ui/ColumnVisibilityMenu.tsx
+@@ -23,11 +23,13 @@ export function ColumnVisibilityMenu<K extends string>({
+   visible,
+   onToggle,
+   onReset,
++  iconOnly = false,
+ }: {
+   columns: Array<{ key: K; label: string }>
+   visible: Record<K, boolean>
+   onToggle: (key: K) => void
+   onReset?: () => void
++  iconOnly?: boolean
+ }) {
+   const [open, setOpen] = useState(false)
+   const ref = useRef<HTMLDivElement>(null)
+@@ -45,12 +47,16 @@ export function ColumnVisibilityMenu<K extends string>({
+       <button
+         type="button"
+         onClick={() => setOpen(v => !v)}
++        title={iconOnly ? 'Seleccionar columnas' : undefined}
++        aria-label={iconOnly ? 'Seleccionar columnas' : undefined}
+         className={cn(
+-          'flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-colors',
++          'flex items-center rounded-xl border text-sm font-medium transition-colors',
++          iconOnly ? 'p-2' : 'gap-1.5 px-3 py-2.5',
+           open ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+         )}
+       >
+-        <Columns3 className="h-4 w-4" /> Columnas
++        <Columns3 className="h-4 w-4" />
++        {!iconOnly && ' Columnas'}
+       </button>
+ 
+       {open && (

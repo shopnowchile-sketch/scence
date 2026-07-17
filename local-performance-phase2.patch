@@ -1,0 +1,493 @@
+From c3de462660a23d47fd91f3dfa0e20fb324f2bb6a Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Fri, 17 Jul 2026 15:44:54 -0400
+Subject: [PATCH] perf: optimiza dashboard billing y ranking
+
+---
+ src/app/(dashboard)/DashboardClient.tsx       | 11 ++-
+ .../admin-billing/BillingClient.tsx           | 59 ++++++------
+ src/app/api/billing/summary/route.ts          | 93 +++++++++++++++++++
+ .../api/brand/influencers/ranking/route.ts    | 89 +++++++-----------
+ src/app/api/influencers/ranking/route.ts      |  6 +-
+ src/hooks/useBilling.ts                       | 24 ++++-
+ 6 files changed, 189 insertions(+), 93 deletions(-)
+ create mode 100644 src/app/api/billing/summary/route.ts
+
+diff --git a/src/app/(dashboard)/DashboardClient.tsx b/src/app/(dashboard)/DashboardClient.tsx
+index b4f1eeb..d5d828d 100644
+--- a/src/app/(dashboard)/DashboardClient.tsx
++++ b/src/app/(dashboard)/DashboardClient.tsx
+@@ -245,17 +245,18 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<unknown> {
+   }
+ }
+ 
+-let dashboardRequest: { expiresAt: number; promise: Promise<unknown> } | null = null
++type DashboardRequest = { expiresAt: number; promise: Promise<unknown> }
++const dashboardCache = globalThis as typeof globalThis & { __scenceDashboardRequest?: DashboardRequest }
+ 
+ function fetchDashboard() {
+-  if (!dashboardRequest || dashboardRequest.expiresAt <= Date.now()) {
++  if (!dashboardCache.__scenceDashboardRequest || dashboardCache.__scenceDashboardRequest.expiresAt <= Date.now()) {
+     const promise = fetchJson('/api/dashboard', 30000).catch(error => {
+-      dashboardRequest = null
++      delete dashboardCache.__scenceDashboardRequest
+       throw error
+     })
+-    dashboardRequest = { expiresAt: Date.now() + 30_000, promise }
++    dashboardCache.__scenceDashboardRequest = { expiresAt: Date.now() + 30_000, promise }
+   }
+-  return dashboardRequest.promise
++  return dashboardCache.__scenceDashboardRequest.promise
+ }
+ 
+ function KpiCard({
+diff --git a/src/app/(dashboard)/admin-billing/BillingClient.tsx b/src/app/(dashboard)/admin-billing/BillingClient.tsx
+index f4a0832..b243e32 100644
+--- a/src/app/(dashboard)/admin-billing/BillingClient.tsx
++++ b/src/app/(dashboard)/admin-billing/BillingClient.tsx
+@@ -10,7 +10,7 @@ import {
+ import { formatCurrency, formatDate, cn } from '@/lib/utils'
+ import { toast } from 'sonner'
+ import {
+-  useInvoices, usePatchInvoice, useCreateInvoice,
++  useInvoices, useBillingSummary, usePatchInvoice, useCreateInvoice,
+   usePayroll, usePatchPayroll, useCreatePayroll,
+ } from '@/hooks/useBilling'
+ import { useInfluencersList } from '@/hooks/useInfluencersList'
+@@ -39,6 +39,17 @@ interface PayrollRun {
+   total_amount: number; currency: string; status: PayrollStatus
+   approved_at: string | null; processed_at: string | null; items?: PayrollItem[]
+ }
++interface BillingSummary {
++  invoices: {
++    total: number
++    counts: Record<string, number>
++    total_billed: number
++    total_paid: number
++    total_overdue: number
++  }
++  payroll: { total_amount: number }
++  month: { revenue: number; payroll: number; margin: number; margin_pct: number }
++}
+ 
+ // ── Status configs ─────────────────────────────────────────────────────────────
+ const INVOICE_STATUS: Record<string, { label: string; cls: string; dot: string }> = {
+@@ -75,11 +86,11 @@ function Avatar({ name, url, size = 8 }: { name: string; url?: string | null; si
+ }
+ 
+ // ── KPIs ──────────────────────────────────────────────────────────────────────
+-function BillingKPIs({ invoices, payrolls }: { invoices: Invoice[]; payrolls: PayrollRun[] }) {
+-  const totalBilled  = invoices.filter(i => i.status !== 'void').reduce((s, i) => s + i.total, 0)
+-  const totalPaid    = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+-  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
+-  const totalPayroll = payrolls.filter(p => p.status !== 'failed').reduce((s, p) => s + p.total_amount, 0)
++function BillingKPIs({ summary }: { summary: BillingSummary | null }) {
++  const totalBilled  = summary?.invoices.total_billed ?? 0
++  const totalPaid    = summary?.invoices.total_paid ?? 0
++  const totalOverdue = summary?.invoices.total_overdue ?? 0
++  const totalPayroll = summary?.payroll.total_amount ?? 0
+   return (
+     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+       {[
+@@ -476,17 +487,14 @@ function NewPayrollModal({ onClose }: { onClose: () => void }) {
+ }
+ 
+ // ── Finanzas este mes (movido acá desde el dashboard admin, pedido por Pri) ──
+-function MonthFinanceCards() {
+-  const [data, setData] = useState<{ revenue_month: number; payroll_month: number; margin: number; margin_pct: number } | null>(null)
+-
+-  useEffect(() => {
+-    fetch('/api/dashboard')
+-      .then(res => res.json())
+-      .then(json => setData(json?.kpis ?? null))
+-      .catch(() => setData(null))
+-  }, [])
+-
+-  if (!data) return null
++function MonthFinanceCards({ summary }: { summary: BillingSummary | null }) {
++  if (!summary) return null
++  const data = {
++    revenue_month: summary.month.revenue,
++    payroll_month: summary.month.payroll,
++    margin: summary.month.margin,
++    margin_pct: summary.month.margin_pct,
++  }
+ 
+   return (
+     <div className="space-y-2">
+@@ -543,19 +551,14 @@ export function BillingClient() {
+   const [showNewPayroll, setShowNewPayroll] = useState(false)
+ 
+   const { data: invoicesData, isLoading: loadingInvoices } = useInvoices({ status: filterStatus === 'all' ? undefined : filterStatus })
+-  // KPIs y los contadores de cada pill de estado necesitan el total real, no
+-  // el subset que deja el filtro activo — antes se calculaban sobre
+-  // `invoices` (ya filtrado), así que al hacer clic en "Vencidas" las 4
+-  // tarjetas ("Total facturado", "Cobrado", etc.) y los demás pills quedaban
+-  // mal (0 o solo ese subset). Fetch aparte, sin filtro de estado.
+-  const { data: allInvoicesData } = useInvoices({ limit: 10000 })
++  const { data: billingSummaryData } = useBillingSummary()
+   const { data: payrollData, isLoading: loadingPayroll } = usePayroll()
+   const patchInvoice = usePatchInvoice()
+   const patchPayroll = usePatchPayroll()
+ 
+   const invoices: Invoice[] = invoicesData?.data ?? []
+-  const allInvoices: Invoice[] = allInvoicesData?.data ?? []
+   const payrolls: PayrollRun[] = payrollData?.data ?? []
++  const billingSummary = (billingSummaryData ?? null) as BillingSummary | null
+ 
+   function handleAction(action: string, id: string) {
+     setSelected(null)
+@@ -613,8 +616,8 @@ export function BillingClient() {
+         </button>
+       </div>
+ 
+-      <MonthFinanceCards />
+-      <BillingKPIs invoices={allInvoices} payrolls={payrolls} />
++      <MonthFinanceCards summary={billingSummary} />
++      <BillingKPIs summary={billingSummary} />
+ 
+       {/* Tabs */}
+       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+@@ -642,7 +645,9 @@ export function BillingClient() {
+                 )}>
+                 {f.label}
+                 <span className="ml-1.5 text-xs opacity-70">
+-                  {f.value === 'all' ? allInvoices.length : allInvoices.filter(i => i.status === f.value).length}
++                  {f.value === 'all'
++                    ? billingSummary?.invoices.total ?? 0
++                    : billingSummary?.invoices.counts[f.value] ?? 0}
+                 </span>
+               </button>
+             ))}
+diff --git a/src/app/api/billing/summary/route.ts b/src/app/api/billing/summary/route.ts
+new file mode 100644
+index 0000000..ed73d2b
+--- /dev/null
++++ b/src/app/api/billing/summary/route.ts
+@@ -0,0 +1,93 @@
++import { NextResponse } from 'next/server'
++import { createAdminClient, createServerClient } from '@/lib/supabase/server'
++import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
++import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
++
++const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'overdue', 'void', 'partially_paid'] as const
++
++export async function GET() {
++  const supabase = createServerClient()
++  const { data: { user }, error: authError } = await supabase.auth.getUser()
++  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++
++  const admin = createAdminClient()
++  const orgId = await getOrgId(user.id, user.user_metadata, admin)
++  if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
++
++  const access = await getUserRole(user.id, orgId, admin)
++  if (!access.isAdmin && access.role !== 'finance') {
++    return NextResponse.json({ error: 'No tienes permisos para ver finanzas' }, { status: 403 })
++  }
++
++  const monthStart = new Date()
++  monthStart.setUTCDate(1)
++  monthStart.setUTCHours(0, 0, 0, 0)
++  const monthStartDate = monthStart.toISOString().slice(0, 10)
++
++  const [invoicesResult, payrollResult] = await Promise.all([
++    fetchAllRows(
++      (from, to) => admin.from('invoices')
++        .select('status,total,issue_date')
++        .eq('organization_id', orgId)
++        .range(from, to),
++      { maxRows: 20000 },
++    ),
++    fetchAllRows(
++      (from, to) => admin.from('payroll_runs')
++        .select('status,total_amount,created_at')
++        .eq('organization_id', orgId)
++        .range(from, to),
++      { maxRows: 20000 },
++    ),
++  ])
++
++  if (invoicesResult.error || payrollResult.error) {
++    console.error('[GET /api/billing/summary]', invoicesResult.error ?? payrollResult.error)
++    return NextResponse.json({ error: 'No se pudo cargar el resumen financiero' }, { status: 500 })
++  }
++
++  const counts = Object.fromEntries(INVOICE_STATUSES.map(status => [status, 0])) as Record<string, number>
++  let totalBilled = 0
++  let totalPaid = 0
++  let totalOverdue = 0
++  let revenueMonth = 0
++
++  for (const invoice of invoicesResult.data ?? []) {
++    const status = String(invoice.status ?? '')
++    const total = Number(invoice.total ?? 0)
++    counts[status] = (counts[status] ?? 0) + 1
++    if (status !== 'void') totalBilled += total
++    if (status === 'paid') totalPaid += total
++    if (status === 'overdue') totalOverdue += total
++    if (['paid', 'sent'].includes(status) && String(invoice.issue_date ?? '') >= monthStartDate) revenueMonth += total
++  }
++
++  let totalPayroll = 0
++  let payrollMonth = 0
++  for (const run of payrollResult.data ?? []) {
++    const status = String(run.status ?? '')
++    const total = Number(run.total_amount ?? 0)
++    if (status !== 'failed') totalPayroll += total
++    if (['approved', 'processing', 'paid'].includes(status) && String(run.created_at ?? '') >= monthStart.toISOString()) {
++      payrollMonth += total
++    }
++  }
++
++  const margin = revenueMonth - payrollMonth
++  return NextResponse.json({
++    invoices: {
++      total: invoicesResult.data?.length ?? 0,
++      counts,
++      total_billed: totalBilled,
++      total_paid: totalPaid,
++      total_overdue: totalOverdue,
++    },
++    payroll: { total_amount: totalPayroll },
++    month: {
++      revenue: revenueMonth,
++      payroll: payrollMonth,
++      margin,
++      margin_pct: revenueMonth > 0 ? Math.round((margin / revenueMonth) * 100) : 0,
++    },
++  })
++}
+diff --git a/src/app/api/brand/influencers/ranking/route.ts b/src/app/api/brand/influencers/ranking/route.ts
+index 40d81bd..fe61f5e 100644
+--- a/src/app/api/brand/influencers/ranking/route.ts
++++ b/src/app/api/brand/influencers/ranking/route.ts
+@@ -48,33 +48,23 @@ export async function GET(req: NextRequest) {
+   // real tiene 1452 influencers y el cap recortaba la respuesta, no la query.
+   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 5000)
+ 
+-  const { data: primaryCampaigns, error: primaryErr } = await admin
+-    .from('campaigns')
+-    .select('id')
+-    .eq('brand_id', brand.id)
++  const [primaryResult, collaboratorResult] = await Promise.all([
++    admin.from('campaigns').select('id').eq('brand_id', brand.id),
++    admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
++  ])
+ 
+-  if (primaryErr) {
+-    return NextResponse.json({ error: primaryErr.message }, { status: 500 })
+-  }
+-
+-  const { data: collaboratorRows, error: cbErr } = await admin
+-    .from('campaign_brands')
+-    .select('campaign_id')
+-    .eq('brand_id', brand.id)
+-
+-  if (cbErr) {
+-    return NextResponse.json({ error: cbErr.message }, { status: 500 })
++  if (primaryResult.error || collaboratorResult.error) {
++    return NextResponse.json({ error: (primaryResult.error ?? collaboratorResult.error)?.message }, { status: 500 })
+   }
+ 
+   const campaignIds = Array.from(new Set([
+-    ...(primaryCampaigns ?? []).map(c => c.id),
+-    ...(collaboratorRows ?? []).map(r => r.campaign_id),
++    ...(primaryResult.data ?? []).map(c => c.id),
++    ...(collaboratorResult.data ?? []).map(r => r.campaign_id),
+   ].filter(Boolean)))
+ 
+-  let campaignInfluencers: Array<{ id?: string | null; influencer_id?: string | null; status?: string | null; campaign_name?: string | null }> = []
+-
+-  if (campaignIds.length > 0) {
+-    const { data: ciRows, error: ciErr } = await fetchAllRows(
++  const [campaignInfluencerResult, directResult] = await Promise.all([
++    campaignIds.length > 0
++      ? fetchAllRows(
+       (from, to) => admin
+         .from('campaign_influencers')
+         .select('id, influencer_id, status, campaign_id, campaign:campaigns(name)')
+@@ -83,33 +73,21 @@ export async function GET(req: NextRequest) {
+         .range(from, to),
+       { maxRows: 5000 }
+     )
++      : Promise.resolve({ data: [], error: null }),
++    admin.from('brand_influencers').select('influencer_id').eq('brand_id', brand.id),
++  ])
+ 
+-    if (ciErr) {
+-      return NextResponse.json({ error: (ciErr as Error).message ?? 'Error' }, { status: 500 })
+-    }
++  if (campaignInfluencerResult.error) {
++    return NextResponse.json({ error: (campaignInfluencerResult.error as Error).message ?? 'Error' }, { status: 500 })
++  }
+ 
+-    campaignInfluencers = (ciRows ?? []).map(ci => ({
++  const campaignInfluencers = (campaignInfluencerResult.data ?? []).map(ci => ({
+       id: ci.id,
+       influencer_id: ci.influencer_id,
+       status: ci.status,
+       campaign_name: (ci.campaign as { name?: string | null } | null)?.name ?? null,
+-    }))
+-  }
+-
+-  let directInfluencerIds: string[] = []
+-
+-  try {
+-    const { data: directRows } = await admin
+-      .from('brand_influencers')
+-      .select('influencer_id')
+-      .eq('brand_id', brand.id)
+-
+-    directInfluencerIds = (directRows ?? [])
+-      .map(r => r.influencer_id)
+-      .filter(Boolean)
+-  } catch {
+-    directInfluencerIds = []
+-  }
++  }))
++  const directInfluencerIds = (directResult.data ?? []).map(r => r.influencer_id).filter(Boolean)
+ 
+   const influencerIds = Array.from(new Set([
+     ...campaignInfluencers.map(ci => ci.influencer_id).filter(Boolean),
+@@ -120,7 +98,7 @@ export async function GET(req: NextRequest) {
+     return NextResponse.json({ data: [], total: 0, sort_by: sortBy, sort_dir: sortDir })
+   }
+ 
+-  const { data: influencers, error: infErr } = await fetchAllRows(
++  const influencersPromise = fetchAllRows(
+     (from, to) => admin
+       .from('influencers')
+       .select(`
+@@ -144,15 +122,8 @@ export async function GET(req: NextRequest) {
+       .range(from, to),
+     { maxRows: 5000 }
+   )
+-
+-  if (infErr) {
+-    return NextResponse.json({ error: (infErr as Error).message ?? 'Error' }, { status: 500 })
+-  }
+-
+-  let deliverables: Array<{ influencer_id?: string | null; campaign_influencer_id?: string | null; status?: string | null }> = []
+-
+-  if (campaignIds.length > 0) {
+-    const { data: delRows, error: delErr } = await fetchAllRows(
++  const deliverablesPromise = campaignIds.length > 0
++    ? fetchAllRows(
+       (from, to) => admin
+         .from('campaign_deliverables')
+         .select('influencer_id, campaign_influencer_id, status, campaign_id')
+@@ -160,15 +131,19 @@ export async function GET(req: NextRequest) {
+         .range(from, to),
+       { maxRows: 10000 }
+     )
++    : Promise.resolve({ data: [], error: null })
+ 
+-    if (delErr) {
+-      return NextResponse.json({ error: (delErr as Error).message ?? 'Error' }, { status: 500 })
+-    }
++  const [influencersResult, deliverablesResult] = await Promise.all([
++    influencersPromise,
++    deliverablesPromise,
++  ])
+ 
+-    deliverables = delRows ?? []
++  if (influencersResult.error || deliverablesResult.error) {
++    const error = influencersResult.error ?? deliverablesResult.error
++    return NextResponse.json({ error: (error as Error).message ?? 'Error' }, { status: 500 })
+   }
+ 
+-  let rows = buildRankingRows(influencers ?? [], campaignInfluencers, deliverables)
++  let rows = buildRankingRows(influencersResult.data ?? [], campaignInfluencers, deliverablesResult.data ?? [])
+ 
+   if (search) {
+     rows = rows.filter(inf =>
+diff --git a/src/app/api/influencers/ranking/route.ts b/src/app/api/influencers/ranking/route.ts
+index 15820cc..c49b8fb 100644
+--- a/src/app/api/influencers/ranking/route.ts
++++ b/src/app/api/influencers/ranking/route.ts
+@@ -91,14 +91,16 @@ export async function GET(req: NextRequest) {
+     fetchAllRows(
+       (from, to) => admin
+         .from('campaign_influencers')
+-        .select('id, influencer_id, status, campaign:campaigns(name)')
++        .select('id, influencer_id, status, campaign:campaigns!inner(name, organization_id)')
++        .eq('campaign.organization_id', orgId)
+         .range(from, to),
+       { maxRows: 5000 }
+     ),
+     fetchAllRows(
+       (from, to) => admin
+         .from('campaign_deliverables')
+-        .select('influencer_id, campaign_influencer_id, status')
++        .select('influencer_id, campaign_influencer_id, status, campaign:campaigns!inner(organization_id)')
++        .eq('campaign.organization_id', orgId)
+         .range(from, to),
+       { maxRows: 10000 }
+     ),
+diff --git a/src/hooks/useBilling.ts b/src/hooks/useBilling.ts
+index 3568259..93f20c5 100644
+--- a/src/hooks/useBilling.ts
++++ b/src/hooks/useBilling.ts
+@@ -32,6 +32,18 @@ export function useInvoices(params: InvoiceParams = {}) {
+   })
+ }
+ 
++export function useBillingSummary() {
++  return useQuery({
++    queryKey: ['billing-summary'],
++    queryFn: async () => {
++      const res = await fetch('/api/billing/summary')
++      if (!res.ok) throw new Error('Error al cargar resumen financiero')
++      return res.json()
++    },
++    staleTime: 60_000,
++  })
++}
++
+ export function useCreateInvoice() {
+   const qc = useQueryClient()
+   return useMutation({
+@@ -49,6 +61,7 @@ export function useCreateInvoice() {
+     },
+     onSuccess: () => {
+       qc.invalidateQueries({ queryKey: ['invoices'] })
++      qc.invalidateQueries({ queryKey: ['billing-summary'] })
+       toast.success('Factura creada')
+     },
+     onError: (err: Error) => toast.error(err.message),
+@@ -70,7 +83,10 @@ export function usePatchInvoice() {
+       }
+       return res.json()
+     },
+-    onSuccess: () => qc.invalidateQueries({ queryKey: ['invoices'] }),
++    onSuccess: () => {
++      qc.invalidateQueries({ queryKey: ['invoices'] })
++      qc.invalidateQueries({ queryKey: ['billing-summary'] })
++    },
+     onError: (err: Error) => toast.error(err.message),
+   })
+ }
+@@ -117,6 +133,7 @@ export function useCreatePayroll() {
+     },
+     onSuccess: () => {
+       qc.invalidateQueries({ queryKey: ['payroll'] })
++      qc.invalidateQueries({ queryKey: ['billing-summary'] })
+       toast.success('Payroll creado')
+     },
+     onError: (err: Error) => toast.error(err.message),
+@@ -138,7 +155,10 @@ export function usePatchPayroll() {
+       }
+       return res.json()
+     },
+-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll'] }),
++    onSuccess: () => {
++      qc.invalidateQueries({ queryKey: ['payroll'] })
++      qc.invalidateQueries({ queryKey: ['billing-summary'] })
++    },
+     onError: (err: Error) => toast.error(err.message),
+   })
+ }
+-- 
+2.51.1
+

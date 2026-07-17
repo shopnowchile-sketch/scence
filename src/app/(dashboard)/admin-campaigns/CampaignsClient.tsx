@@ -138,6 +138,24 @@ const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
   { key: 'status',      label: 'Estado' },
 ]
 
+let brandOptionsRequest: Promise<{ id: string; name: string }[]> | null = null
+
+function loadBrandOptions() {
+  if (!brandOptionsRequest) {
+    brandOptionsRequest = fetch('/api/brands?options=1&limit=5000')
+      .then(r => {
+        if (!r.ok) throw new Error('No se pudieron cargar las marcas')
+        return r.json()
+      })
+      .then(j => (j.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name })))
+      .catch(error => {
+        brandOptionsRequest = null
+        throw error
+      })
+  }
+  return brandOptionsRequest
+}
+
 export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   const isBrandPortal = portal === 'brand'
   const [filters, setFilters]   = useState<Partial<CampaignFiltersType>>({})
@@ -198,6 +216,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
       (sum, c) => sum + Math.max(0, (c.deliverable_count ?? 0) - (c.deliverable_done ?? 0)),
       0
     ),
+    pendingApprovalCount: rawCampaigns.filter(c => c.status === 'pending_approval').length,
   }), [rawCampaigns])
   const summary = isBrandPortal ? localSummary : (statsSummary ?? localSummary)
 
@@ -206,22 +225,13 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
     if (isBrandPortal) return
-    fetch('/api/brands?options=1&limit=5000')
-      .then(r => r.json())
-      .then(j => setBrands((j.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name }))))
+    loadBrandOptions()
+      .then(setBrands)
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Contador de "Pendientes de aprobación" para la pestaña (admin only) —
-  // reusa el mismo endpoint/filtro que ya existe, solo pide el total.
-  const { data: pendingApprovalData } = useCampaignsList({
-    status:  'pending_approval',
-    apiBase: '/api/campaigns',
-    limit:   1,
-    enabled: !isBrandPortal,
-  })
-  const pendingApprovalCount = isBrandPortal ? 0 : (pendingApprovalData?.total ?? 0)
+  const pendingApprovalCount = isBrandPortal ? 0 : summary.pendingApprovalCount
 
   function toggleSort(key: SortKey) {
     setSortOrder(prev => sortKey === key && prev === 'desc' ? 'asc' : 'desc')

@@ -245,6 +245,19 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<unknown> {
   }
 }
 
+let dashboardRequest: { expiresAt: number; promise: Promise<unknown> } | null = null
+
+function fetchDashboard() {
+  if (!dashboardRequest || dashboardRequest.expiresAt <= Date.now()) {
+    const promise = fetchJson('/api/dashboard', 30000).catch(error => {
+      dashboardRequest = null
+      throw error
+    })
+    dashboardRequest = { expiresAt: Date.now() + 30_000, promise }
+  }
+  return dashboardRequest.promise
+}
+
 function KpiCard({
   icon,
   value,
@@ -467,7 +480,7 @@ export function DashboardClient() {
 
       // /api/dashboard ya entrega KPI, actividad, conectados y entregables.
       // Evitamos repetir tres consultas completas en cada entrada al dashboard.
-      const dashboard = await fetchJson('/api/dashboard', 30000)
+      const dashboard = await fetchDashboard()
 
       if (cancelled) return
 

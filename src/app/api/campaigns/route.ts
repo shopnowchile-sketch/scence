@@ -82,11 +82,17 @@ export async function GET(request: NextRequest) {
   const campaignIds = (data ?? []).map(c => c.id)
 
   if (summary) {
-    const { data: deliverables, error: deliverablesError } = campaignIds.length
-      ? await admin.from('campaign_deliverables')
-        .select('campaign_id, status, content_url, published_url')
-        .in('campaign_id', campaignIds)
-      : { data: [], error: null }
+    const [deliverablesResult, pendingApprovalResult] = await Promise.all([
+      campaignIds.length
+        ? admin.from('campaign_deliverables')
+          .select('campaign_id, status, content_url, published_url')
+          .in('campaign_id', campaignIds)
+        : Promise.resolve({ data: [], error: null }),
+      admin.from('campaigns')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending_approval'),
+    ])
+    const { data: deliverables, error: deliverablesError } = deliverablesResult
     if (deliverablesError) {
       return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
     }
@@ -100,6 +106,7 @@ export async function GET(request: NextRequest) {
         totalBudget: (data ?? []).reduce((total, c) => total + (c.budget_total ?? 0), 0),
         totalSpent: (data ?? []).reduce((total, c) => total + (c.budget_spent ?? 0), 0),
         pendingDeliverables,
+        pendingApprovalCount: pendingApprovalResult.count ?? 0,
       },
     })
   }

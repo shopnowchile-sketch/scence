@@ -23,6 +23,7 @@ export interface CampaignSummary {
   totalBudget: number
   totalSpent: number
   pendingDeliverables: number
+  pendingApprovalCount: number
 }
 
 function toSearchParams(params: ListParams) {
@@ -54,6 +55,7 @@ export function useCampaignsList(params: ListParams = {}) {
     queryKey: ['campaigns', params],
     queryFn:  () => fetchCampaigns(params),
     enabled:  params.enabled ?? true,
+    staleTime: 30_000,
   })
 }
 

@@ -59,6 +59,7 @@ function SidebarContent({
   portal, pathname, navSections,
   orgName, orgInitial,
   userName, userEmail, userInitial,
+  plan,
   onSignOut, onNavClick,
 }: {
   portal: Portal
@@ -69,6 +70,7 @@ function SidebarContent({
   userName: string
   userEmail: string
   userInitial: string
+  plan?: string | null
   onSignOut: () => void
   onNavClick?: () => void
 }) {
@@ -104,7 +106,14 @@ function SidebarContent({
               {userInitial}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-gray-900 truncate">{userName || userEmail}</div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className="text-sm font-semibold text-gray-900 truncate">{userName || userEmail}</div>
+                {portal === 'brand' && plan && (
+                  <span className="flex-shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700">
+                    {plan}
+                  </span>
+                )}
+              </div>
               <div className="text-[10px] text-gray-400">Portal {cfg.label}</div>
             </div>
           </div>
@@ -190,9 +199,11 @@ interface AppSidebarProps {
   navSections: NavSection[]
   /** Admin only — org display name */
   orgName?: string
+  /** Brand only — effective subscription plan */
+  plan?: string | null
 }
 
-export function AppSidebar({ portal, navSections, orgName }: AppSidebarProps) {
+export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarProps) {
   const pathname      = usePathname()
   const router        = useRouter()
   const [mobileOpen,  setMobileOpen]  = useState(false)
@@ -237,6 +248,7 @@ export function AppSidebar({ portal, navSections, orgName }: AppSidebarProps) {
     portal, pathname, navSections,
     orgName: resolvedOrg, orgInitial,
     userName, userEmail, userInitial,
+    plan,
     onSignOut: handleSignOut,
   }
 

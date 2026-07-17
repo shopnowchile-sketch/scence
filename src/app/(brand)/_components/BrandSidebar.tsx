@@ -8,7 +8,6 @@ import {
   CreditCard,
   Building2,
   Bug,
-  Settings,
 } from 'lucide-react'
 import { AppSidebar, type NavSection } from '@/components/layout/AppSidebar'
 
@@ -33,11 +32,10 @@ const navSections: NavSection[] = [
     title: 'Sistema',
     items: [
       { href: '/brand-support',          label: 'Soporte',       icon: Bug },
-      { href: '/brand-settings/organization', label: 'Configuración', icon: Settings },
     ],
   },
 ]
 
-export function BrandSidebar() {
-  return <AppSidebar portal="brand" navSections={navSections} />
+export function BrandSidebar({ plan }: { plan?: string | null }) {
+  return <AppSidebar portal="brand" navSections={navSections} plan={plan} />
 }

@@ -22,6 +22,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // Estado de aprobación admin de la marca. null = aún cargando/desconocido
   // (no bloquear mientras carga, igual que instagramComplete).
   const [brandStatus, setBrandStatus] = useState<string | null>(null)
+  const [brandPlan, setBrandPlan] = useState<string | null>(null)
   const pathname = usePathname()
   // NOTA (build fix): NO usar useSearchParams() acá. Este layout envuelve
   // TODAS las rutas /brand-*, y useSearchParams() sin un boundary Suspense
@@ -57,6 +58,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
           if (!cancelled) {
             setBrandStatus('error')
+            setBrandPlan(null)
             setInstagramComplete(false)
           }
           return
@@ -67,6 +69,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         if (cancelled) return
 
         setBrandStatus(json?.data?.status ?? 'error')
+        setBrandPlan(typeof json?.data?.org_plan === 'string' ? json.data.org_plan : null)
         setInstagramComplete(
           Boolean(
             json?.data?.instagram &&
@@ -78,6 +81,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
         if (!cancelled) {
           setBrandStatus('error')
+          setBrandPlan(null)
           setInstagramComplete(false)
         }
       }
@@ -91,6 +95,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
       didRegister.current = true
       setBrandStatus(null)
+      setBrandPlan(null)
       setInstagramComplete(null)
 
       let registered = false
@@ -117,6 +122,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
       if (!registered) {
         setBrandStatus('error')
+        setBrandPlan(null)
         setInstagramComplete(false)
 
         toast.error(
@@ -159,7 +165,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <PresenceHeartbeat />
-      <BrandSidebar />
+      <BrandSidebar plan={brandPlan} />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
           {pendingApproval ? (

@@ -1,0 +1,420 @@
+From f0dc0b99e4042021cdafcafc23b78e354cdbc750 Mon Sep 17 00:00:00 2001
+From: Priscilla Perez <shopnowchile-sketch@users.noreply.github.com>
+Date: Fri, 17 Jul 2026 14:02:22 -0400
+Subject: [PATCH] =?UTF-8?q?perf:=20optimiza=20carga=20de=20dashboard=20y?=
+ =?UTF-8?q?=20campa=C3=B1as?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/(dashboard)/DashboardClient.tsx       | 24 ++----
+ .../admin-campaigns/CampaignsClient.tsx       | 45 +++++------
+ src/app/api/brands/route.ts                   | 14 ++++
+ src/app/api/campaigns/route.ts                | 35 +++++++--
+ src/app/api/dashboard/route.ts                | 74 ++++++++++---------
+ src/hooks/useCampaignsList.ts                 | 30 +++++++-
+ 6 files changed, 140 insertions(+), 82 deletions(-)
+
+diff --git a/src/app/(dashboard)/DashboardClient.tsx b/src/app/(dashboard)/DashboardClient.tsx
+index 0cc1920..e57a31f 100644
+--- a/src/app/(dashboard)/DashboardClient.tsx
++++ b/src/app/(dashboard)/DashboardClient.tsx
+@@ -465,21 +465,9 @@ export function DashboardClient() {
+     async function loadDashboard() {
+       setState((current) => ({ ...current, loading: true, error: null }))
+ 
+-      // Solo se piden los endpoints realmente usados por el dashboard.
+-      // Se eliminaron /api/analytics (revenue/payroll ya vienen en /api/dashboard)
+-      // y /api/invoices (su data no se consumía) para no bloquear la carga con
+-      // dos endpoints pesados/redundantes. Ver kpis.revenue_month/payroll_month.
+-      const [
+-        dashboard,
+-        campaignsRaw,
+-        influencersRaw,
+-        deliverablesRaw,
+-      ] = await Promise.all([
+-        fetchJson('/api/dashboard', 30000),
+-        fetchJson('/api/campaigns'),
+-        fetchJson('/api/influencers?limit=100'),
+-        fetchJson('/api/deliverables'),
+-      ])
++      // /api/dashboard ya entrega KPI, actividad, conectados y entregables.
++      // Evitamos repetir tres consultas completas en cada entrada al dashboard.
++      const dashboard = await fetchJson('/api/dashboard', 30000)
+ 
+       if (cancelled) return
+ 
+@@ -488,12 +476,12 @@ export function DashboardClient() {
+         error: null,
+         dashboard,
+         analytics: null,
+-        campaigns: pickArray(campaignsRaw, ['campaigns', 'data', 'items']),
+-        influencers: pickArray(influencersRaw, ['influencers', 'data', 'items']),
++        campaigns: pickArray(dashboard, ['recentActivity', 'recent_activity']),
++        influencers: pickArray(dashboard, ['liveInfluencers', 'live_influencers']),
+         brands: [],
+         brandsTotalRaw: 0,
+         invoices: [],
+-        deliverables: pickArray(deliverablesRaw, ['deliverables', 'data', 'items']),
++        deliverables: pickArray(dashboard, ['pendingDeliverables', 'pending_deliverables']),
+       })
+     }
+ 
+diff --git a/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx b/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx
+index 6186948..aff6e9b 100644
+--- a/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx
++++ b/src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx
+@@ -3,7 +3,7 @@
+ import { useEffect, useMemo, useState } from 'react'
+ import Link from 'next/link'
+ import { Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
+-import { useCampaignsList } from '@/hooks/useCampaignsList'
++import { useCampaignsList, useCampaignsSummary, type CampaignSummary } from '@/hooks/useCampaignsList'
+ import { AICampaignBuilder } from '@/components/campaigns/AICampaignBuilder'
+ import { CampaignFilters } from '@/components/campaigns/CampaignFilters'
+ import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
+@@ -13,19 +13,14 @@ import type { Campaign, CampaignFilters as CampaignFiltersType } from '@/types'
+ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+ 
+ // ── KPI summary ───────────────────────────────────────
+-function KPIs({ campaigns }: { campaigns: Campaign[] }) {
+-  const active      = campaigns.filter(c => c.status === 'active').length
+-  const totalBudget = campaigns.reduce((s, c) => s + (c.budget_total ?? 0), 0)
+-  const totalSpent  = campaigns.reduce((s, c) => s + (c.budget_spent ?? 0), 0)
+-  const pending     = campaigns.reduce((s, c) => s + ((c.deliverable_count ?? 0) - (c.deliverable_done ?? 0)), 0)
+-
++function KPIs({ summary }: { summary: CampaignSummary }) {
+   return (
+     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+       {[
+-        { icon: Target,     color: 'violet',  label: 'Campañas activas',   value: active },
+-        { icon: DollarSign, color: 'emerald', label: 'Budget total',       value: formatCurrency(totalBudget, 'CLP') },
+-        { icon: DollarSign, color: 'blue',    label: 'Total gastado',      value: formatCurrency(totalSpent, 'CLP') },
+-        { icon: Clock,      color: 'amber',   label: 'Deliverables pend.', value: pending },
++        { icon: Target,     color: 'violet',  label: 'Campañas activas',   value: summary.active },
++        { icon: DollarSign, color: 'emerald', label: 'Budget total',       value: formatCurrency(summary.totalBudget, 'CLP') },
++        { icon: DollarSign, color: 'blue',    label: 'Total gastado',      value: formatCurrency(summary.totalSpent, 'CLP') },
++        { icon: Clock,      color: 'amber',   label: 'Deliverables pend.', value: summary.pendingDeliverables },
+       ].map(({ icon: Icon, color, label, value }) => (
+         <div key={label} className="card p-4">
+           <div className="flex items-center gap-3">
+@@ -180,32 +175,38 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
+     limit:      100,
+   })
+ 
+-  const rawCampaigns: Campaign[] = data?.data ?? []
++  const rawCampaigns = useMemo<Campaign[]>(() => data?.data ?? [], [data?.data])
+ 
+-  // Dataset separado sin cap de 100 para las KPI cards — mismos filtros que
+-  // la lista, pero limit alto, así "Budget total"/"Total gastado"/etc no
+-  // quedan truncados cuando hay más de 100 campañas que matchean el filtro
+-  // (mismo patrón que ya se usó para billing/events/support/influencers).
+-  const { data: statsData } = useCampaignsList({
++  // Resumen liviano: mantiene los KPI exactos sin descargar miles de campañas
++  // completas ni sus relaciones solo para sumar cuatro valores.
++  const { data: statsSummary } = useCampaignsSummary({
+     status:     filters.status,
+     type:       filters.type,
+     platform:   filters.platform,
+     visibility: filters.visibility,
+     brandId:    filters.brandId,
+-    apiBase:    isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns',
+     search:     filters.search,
+     dateFrom:   filters.dateFrom,
+     dateTo:     filters.dateTo,
+-    limit:      5000,
++    enabled:    !isBrandPortal,
+   })
+-  const statsCampaigns: Campaign[] = statsData?.data ?? []
++  const localSummary = useMemo<CampaignSummary>(() => ({
++    active: rawCampaigns.filter(c => c.status === 'active').length,
++    totalBudget: rawCampaigns.reduce((sum, c) => sum + (c.budget_total ?? 0), 0),
++    totalSpent: rawCampaigns.reduce((sum, c) => sum + (c.budget_spent ?? 0), 0),
++    pendingDeliverables: rawCampaigns.reduce(
++      (sum, c) => sum + Math.max(0, (c.deliverable_count ?? 0) - (c.deliverable_done ?? 0)),
++      0
++    ),
++  }), [rawCampaigns])
++  const summary = isBrandPortal ? localSummary : (statsSummary ?? localSummary)
+ 
+   // Lista de marcas para el filtro (solo admin) — reutiliza /api/brands, ya
+   // usado por BrandSelector en el form de creación/edición.
+   const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
+   useEffect(() => {
+     if (isBrandPortal) return
+-    fetch('/api/brands')
++    fetch('/api/brands?options=1&limit=5000')
+       .then(r => r.json())
+       .then(j => setBrands((j.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name }))))
+       .catch(() => {})
+@@ -342,7 +343,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
+         </div>
+       ) : (
+         <>
+-          <KPIs campaigns={statsCampaigns} />
++          <KPIs summary={summary} />
+ 
+           {/* Filtros */}
+           <div className="card p-4">
+diff --git a/src/app/api/brands/route.ts b/src/app/api/brands/route.ts
+index 0662bb3..5b3b230 100644
+--- a/src/app/api/brands/route.ts
++++ b/src/app/api/brands/route.ts
+@@ -18,6 +18,20 @@ export async function GET(req: NextRequest) {
+   const search = sp.get('search')
+   const limit  = Number(sp.get('limit') ?? '100')
+ 
++  // Selectores solo necesitan id y nombre. Evita joins, consultas de sesión,
++  // usuarios de Auth y planes por cada marca.
++  if (sp.get('options') === '1') {
++    let optionsQuery = admin
++      .from('brands')
++      .select('id, name')
++      .order('name', { ascending: true })
++      .limit(Math.min(Math.max(limit, 1), 5000))
++    if (search) optionsQuery = optionsQuery.ilike('name', `%${search}%`)
++    const { data: options, error: optionsError } = await optionsQuery
++    if (optionsError) return NextResponse.json({ error: optionsError.message }, { status: 500 })
++    return NextResponse.json({ data: options ?? [], total: options?.length ?? 0 })
++  }
++
+   // { count: 'exact' } es necesario para que `count` (usado abajo en el
+   // `total` de la respuesta) no sea siempre null — sin esto el endpoint
+   // decía `total: 0` sin importar cuántas marcas hubiera (bug real: nadie
+diff --git a/src/app/api/campaigns/route.ts b/src/app/api/campaigns/route.ts
+index 45bf158..789fafc 100644
+--- a/src/app/api/campaigns/route.ts
++++ b/src/app/api/campaigns/route.ts
+@@ -23,16 +23,18 @@ export async function GET(request: NextRequest) {
+   const dateTo     = searchParams.get('date_to')
+   const page       = parseInt(searchParams.get('page') ?? '1', 10)
+   const limit      = parseInt(searchParams.get('limit') ?? '50', 10)
++  const summary    = searchParams.get('summary') === '1'
+ 
+   // Use admin client to bypass RLS — we apply our own filtering below
+   const admin = createAdminClient()
+   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+ 
+-  let query = admin
+-    .from('campaigns')
+-    .select('*, brand:brands!brand_id(id, name, logo_url)', { count: 'exact' })
+-    .order('created_at', { ascending: false })
+-    .range((page - 1) * limit, page * limit - 1)
++  let query = summary
++    ? admin.from('campaigns').select('id, status, budget_total, budget_spent').limit(5000)
++    : admin.from('campaigns')
++      .select('*, brand:brands!brand_id(id, name, logo_url)', { count: 'exact' })
++      .order('created_at', { ascending: false })
++      .range((page - 1) * limit, page * limit - 1)
+ 
+   // Scope: admin/super_admin/owner de Scence ve todas las campañas, sin
+   // filtrar por organization_id — necesario porque las marcas auto-registradas
+@@ -79,6 +81,29 @@ export async function GET(request: NextRequest) {
+ 
+   const campaignIds = (data ?? []).map(c => c.id)
+ 
++  if (summary) {
++    const { data: deliverables, error: deliverablesError } = campaignIds.length
++      ? await admin.from('campaign_deliverables')
++        .select('campaign_id, status, content_url, published_url')
++        .in('campaign_id', campaignIds)
++      : { data: [], error: null }
++    if (deliverablesError) {
++      return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
++    }
++    const pendingDeliverables = (deliverables ?? []).reduce(
++      (total, row) => total + (isDeliverableComplete(row) ? 0 : 1),
++      0
++    )
++    return NextResponse.json({
++      summary: {
++        active: (data ?? []).filter(c => c.status === 'active').length,
++        totalBudget: (data ?? []).reduce((total, c) => total + (c.budget_total ?? 0), 0),
++        totalSpent: (data ?? []).reduce((total, c) => total + (c.budget_spent ?? 0), 0),
++        pendingDeliverables,
++      },
++    })
++  }
++
+   // Batch-fetch influencer counts and deliverable counts for this page
+   const [{ data: ciRows }, { data: cdRows }] = await Promise.all([
+     campaignIds.length
+diff --git a/src/app/api/dashboard/route.ts b/src/app/api/dashboard/route.ts
+index 085b71a..b35879e 100644
+--- a/src/app/api/dashboard/route.ts
++++ b/src/app/api/dashboard/route.ts
+@@ -31,6 +31,7 @@ export async function GET() {
+ 
+   const monthStart = format(startOfMonth(now), 'yyyy-MM-dd')
+   const monthEnd   = format(endOfMonth(now), 'yyyy-MM-dd')
++  const chartStart = format(startOfMonth(subMonths(now, 5)), 'yyyy-MM-dd')
+ 
+   const [
+     campaignsRes,
+@@ -79,17 +80,17 @@ export async function GET() {
+       .not('user_id', 'is', null),
+ 
+     db.from('invoices')
+-      .select('total, currency')
++      .select('total, currency, issue_date')
+       .eq('organization_id', orgId)
+       .in('status', ['paid', 'sent'])
+-      .gte('issue_date', monthStart)
++      .gte('issue_date', chartStart)
+       .lte('issue_date', monthEnd),
+ 
+     db.from('payroll_runs')
+-      .select('total_amount, currency')
++      .select('total_amount, currency, created_at')
+       .eq('organization_id', orgId)
+       .in('status', ['approved', 'processing', 'paid'])
+-      .gte('created_at', monthStart)
++      .gte('created_at', chartStart)
+       .lte('created_at', monthEnd + 'T23:59:59Z'),
+ 
+     db.from('campaign_deliverables')
+@@ -115,34 +116,32 @@ export async function GET() {
+       .eq('campaign.organization_id', orgId),
+   ])
+ 
+-  // Revenue chart — last 6 months
++  // Revenue chart — las mismas dos consultas cubren los seis meses. Antes se
++  // ejecutaban 12 consultas adicionales (2 por mes).
+   const months = Array.from({ length: 6 }, (_, i) => {
+     const d = subMonths(now, 5 - i)
+-    return { start: format(startOfMonth(d), 'yyyy-MM-dd'), end: format(endOfMonth(d), 'yyyy-MM-dd'), label: format(d, 'MMM') }
++    return { key: format(d, 'yyyy-MM'), label: format(d, 'MMM') }
+   })
+ 
+-  const revenueChart = await Promise.all(
+-    months.map(async m => {
+-      const [rev, pay] = await Promise.all([
+-        db.from('invoices').select('total')
+-          .eq('organization_id', orgId)
+-          .in('status', ['paid', 'sent'])
+-          .gte('issue_date', m.start).lte('issue_date', m.end),
+-        db.from('payroll_runs').select('total_amount')
+-          .eq('organization_id', orgId)
+-          .in('status', ['approved', 'processing', 'paid'])
+-          .gte('created_at', m.start).lte('created_at', m.end + 'T23:59:59Z'),
+-      ])
+-      return {
+-        month:   m.label,
+-        revenue: (rev.data ?? []).reduce((s, r) => s + (r.total ?? 0), 0),
+-        payroll: (pay.data ?? []).reduce((s, r) => s + (r.total_amount ?? 0), 0),
+-      }
+-    })
+-  )
+-
+-  const revenueThisMonth = (invoicesMonthRes.data ?? []).reduce((s, r) => s + (r.total ?? 0), 0)
+-  const payrollThisMonth = (payrollMonthRes.data ?? []).reduce((s, r) => s + (r.total_amount ?? 0), 0)
++  const revenueByMonth = new Map<string, number>()
++  for (const row of invoicesMonthRes.data ?? []) {
++    const key = row.issue_date?.slice(0, 7)
++    if (key) revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + (row.total ?? 0))
++  }
++  const payrollByMonth = new Map<string, number>()
++  for (const row of payrollMonthRes.data ?? []) {
++    const key = row.created_at?.slice(0, 7)
++    if (key) payrollByMonth.set(key, (payrollByMonth.get(key) ?? 0) + (row.total_amount ?? 0))
++  }
++  const revenueChart = months.map(m => ({
++    month: m.label,
++    revenue: revenueByMonth.get(m.key) ?? 0,
++    payroll: payrollByMonth.get(m.key) ?? 0,
++  }))
++
++  const currentMonthKey = monthStart.slice(0, 7)
++  const revenueThisMonth = revenueByMonth.get(currentMonthKey) ?? 0
++  const payrollThisMonth = payrollByMonth.get(currentMonthKey) ?? 0
+   const margin    = revenueThisMonth - payrollThisMonth
+   const marginPct = revenueThisMonth > 0 ? Math.round((margin / revenueThisMonth) * 100) : 0
+ 
+@@ -160,17 +159,20 @@ export async function GET() {
+   const influencerUserIds = (influencersWithAccountRes.data ?? [])
+     .map(row => row.user_id as string | null)
+     .filter((id): id is string => Boolean(id))
+-  const influencerLastSeenMap = await resolveLastSeen(db, influencerUserIds)
+-  const influencersEntered = influencerUserIds.filter(uid => Boolean(influencerLastSeenMap[uid])).length
+-
+   // Consultar solamente perfiles vistos durante los últimos 10 minutos.
+   const tenMinAgoIso = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+ 
+-  const liveProfilesRes = await db.from('profiles')
+-    .select('id, last_seen_at')
+-    .gte('last_seen_at', tenMinAgoIso)
+-    .order('last_seen_at', { ascending: false })
+-    .limit(500)
++  // Ambas operaciones son independientes; ejecutarlas juntas evita sumar sus
++  // latencias en organizaciones con muchos usuarios.
++  const [influencerLastSeenMap, liveProfilesRes] = await Promise.all([
++    resolveLastSeen(db, influencerUserIds),
++    db.from('profiles')
++      .select('id, last_seen_at')
++      .gte('last_seen_at', tenMinAgoIso)
++      .order('last_seen_at', { ascending: false })
++      .limit(500),
++  ])
++  const influencersEntered = influencerUserIds.filter(uid => Boolean(influencerLastSeenMap[uid])).length
+ 
+   const liveProfileIds = (liveProfilesRes.data ?? [])
+     .map(profile => profile.id)
+diff --git a/src/hooks/useCampaignsList.ts b/src/hooks/useCampaignsList.ts
+index 6f3e663..e393216 100644
+--- a/src/hooks/useCampaignsList.ts
++++ b/src/hooks/useCampaignsList.ts
+@@ -18,7 +18,14 @@ interface ListParams {
+   enabled?: boolean
+ }
+ 
+-async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; total: number }> {
++export interface CampaignSummary {
++  active: number
++  totalBudget: number
++  totalSpent: number
++  pendingDeliverables: number
++}
++
++function toSearchParams(params: ListParams) {
+   const sp = new URLSearchParams()
+   if (params.status)     sp.set('status', params.status)
+   if (params.type)       sp.set('type', params.type)
+@@ -30,6 +37,11 @@ async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; t
+   if (params.dateTo)     sp.set('date_to', params.dateTo)
+   if (params.page)       sp.set('page', String(params.page))
+   if (params.limit)      sp.set('limit', String(params.limit))
++  return sp
++}
++
++async function fetchCampaigns(params: ListParams): Promise<{ data: Campaign[]; total: number }> {
++  const sp = toSearchParams(params)
+ 
+   const base = params.apiBase ?? '/api/campaigns'
+   const res = await fetch(`${base}?${sp.toString()}`)
+@@ -45,6 +57,22 @@ export function useCampaignsList(params: ListParams = {}) {
+   })
+ }
+ 
++export function useCampaignsSummary(params: ListParams = {}) {
++  return useQuery({
++    queryKey: ['campaigns-summary', params],
++    queryFn: async () => {
++      const sp = toSearchParams(params)
++      sp.set('summary', '1')
++      const res = await fetch(`/api/campaigns?${sp.toString()}`)
++      if (!res.ok) throw new Error('Error al cargar resumen de campañas')
++      const json = await res.json() as { summary: CampaignSummary }
++      return json.summary
++    },
++    enabled: params.enabled ?? true,
++    staleTime: 30_000,
++  })
++}
++
+ // ── Fetch single ──────────────────────────────────────────────────────────────
+ async function fetchCampaign(id: string, apiBase = '/api/campaigns') {
+   const res = await fetch(`${apiBase}/${id}`)
+-- 
+2.51.1
+

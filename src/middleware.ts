@@ -66,7 +66,7 @@ export async function middleware(request: NextRequest) {
   // Rutas exclusivas del portal influencer
   const INFLUENCER_ONLY = [
     '/inf-dash', '/inf-tasks', '/inf-profile', '/inf-campaign', '/inf-campaigns',
-    '/inf-bookings', '/inf-support',
+    '/inf-bookings', '/inf-support', '/inf-brands',
     // legacy — keep for redirect safety
     '/dashboard', '/tasks', '/profile', '/my-campaigns', '/my-bookings',
   ]

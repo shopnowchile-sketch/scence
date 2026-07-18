@@ -53,12 +53,16 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: brand, error: brandErr } = await admin
     .from('brands')
-    .select('id, name, contact_email, contact_name, user_id, organization_id')
+    .select('id, name, contact_email, contact_name, user_id, organization_id, status')
     .eq('id', params.id)
     .single()
 
   if (brandErr || !brand) {
     return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  }
+
+  if (brand.status !== 'approved') {
+    return NextResponse.json({ error: 'La marca debe ser aprobada antes de invitar a su owner.' }, { status: 409 })
   }
 
   if (!brand.contact_email) {

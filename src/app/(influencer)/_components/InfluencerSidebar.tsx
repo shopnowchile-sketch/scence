@@ -1,6 +1,6 @@
 'use client'
 
-import { LayoutDashboard, CheckSquare, Briefcase, Calendar, Bug } from 'lucide-react'
+import { LayoutDashboard, CheckSquare, Briefcase, Calendar, Bug, Building2 } from 'lucide-react'
 import { AppSidebar, type NavSection } from '@/components/layout/AppSidebar'
 
 const navSections: NavSection[] = [
@@ -10,6 +10,7 @@ const navSections: NavSection[] = [
       { href: '/inf-dash',      label: 'Dashboard',   icon: LayoutDashboard, exact: true },
       { href: '/inf-tasks',     label: 'Entregables', icon: CheckSquare },
       { href: '/inf-campaigns', label: 'Campañas',    icon: Briefcase },
+      { href: '/inf-brands',    label: 'Mis marcas',  icon: Building2 },
       { href: '/inf-bookings',  label: 'Bookings',    icon: Calendar },
       { href: '/inf-support',   label: 'Soporte',     icon: Bug },
     ],

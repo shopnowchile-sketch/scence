@@ -59,29 +59,27 @@ export async function GET() {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const enriched = (data ?? []).map(c => {
-    const accepted = (c.campaign_influencers ?? []).filter(
-      row => row.application_status === 'accepted'
-    ).length
-    const deadlinePassed = !!c.application_deadline && new Date(c.application_deadline) < new Date()
-    const noSpots = !!c.max_influencers && accepted >= c.max_influencers
-    const closeReason = c.applications_closed_at
-      ? 'manual'
-      : deadlinePassed
-        ? 'deadline'
-        : noSpots
-          ? 'full'
-          : null
-
-    return {
+  const enriched = (data ?? [])
+    .filter(c => {
+      // Quien ya postuló conserva la campaña visible con estado "En revisión",
+      // aunque la marca cierre después. Para nuevas postulantes se ocultan las
+      // campañas cerradas manualmente o sin cupos.
+      if (pendingMap.has(c.id)) return true
+      if (c.applications_closed_at) return false
+      if (c.application_deadline && new Date(c.application_deadline) < new Date()) return false
+      const accepted = (c.campaign_influencers ?? []).filter(
+        row => row.application_status === 'accepted'
+      ).length
+      return !c.max_influencers || accepted < c.max_influencers
+    })
+    .map(c => ({
       ...c,
-      accepted_count: accepted,
-      applications_closed: !!closeReason,
-      applications_close_reason: closeReason,
+      accepted_count: (c.campaign_influencers ?? []).filter(
+        row => row.application_status === 'accepted'
+      ).length,
       _applied: pendingMap.has(c.id),
       application_status: pendingMap.has(c.id) ? 'pending' : null,
-    }
-  })
+    }))
 
   return NextResponse.json({ data: enriched })
 }

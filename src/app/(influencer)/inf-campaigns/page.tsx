@@ -37,10 +37,6 @@ type OpenCampaign = {
   end_date: string | null
   brand: { id: string; name: string; logo_url: string | null } | null
   _applied?: boolean
-  applications_closed?: boolean
-  applications_close_reason?: 'manual' | 'deadline' | 'full' | null
-  max_influencers?: number | null
-  accepted_count?: number
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -431,7 +427,7 @@ export default function MyCampaignsPage() {
       {visibleOpenCampaigns.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-violet-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5" /> Campañas públicas ({visibleOpenCampaigns.length})
+            <Sparkles className="h-3.5 w-3.5" /> Disponibles para postular ({visibleOpenCampaigns.length})
           </p>
 
           {(() => {
@@ -476,8 +472,6 @@ export default function MyCampaignsPage() {
                       <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
                       {c._applied ? (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">En revisión</span>
-                      ) : c.applications_closed ? (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">Postulaciones cerradas</span>
                       ) : (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
                       )}
@@ -486,15 +480,6 @@ export default function MyCampaignsPage() {
                     {c.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{c.description}</p>}
                     {c._applied && (
                       <p className="text-[10px] text-amber-600 mt-1">Ya postulaste — el equipo te confirmará pronto.</p>
-                    )}
-                    {!c._applied && c.applications_closed && (
-                      <p className="text-[10px] text-gray-500 mt-1">
-                        {c.applications_close_reason === 'full'
-                          ? 'Cupos agotados.'
-                          : c.applications_close_reason === 'deadline'
-                            ? 'El plazo para postular finalizó.'
-                            : 'La marca cerró las postulaciones.'}
-                      </p>
                     )}
                     {(c.start_date || c.end_date) && (
                       <p className="text-[10px] text-gray-400 mt-1">
@@ -510,8 +495,6 @@ export default function MyCampaignsPage() {
                     </Link>
                     {c._applied ? (
                       <span className="text-[10px] font-bold text-amber-600">⏳ En revisión</span>
-                    ) : c.applications_closed ? (
-                      <span className="text-[10px] font-bold text-gray-500">Cerradas</span>
                     ) : (
                       <button
                         onClick={() => handleApply(c.id, c.name)}

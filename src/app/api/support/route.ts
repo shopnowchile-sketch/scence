@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { notifySupportOfNewTicket } from '@/lib/support-notifications'
+import { waitUntil } from '@vercel/functions'
 
 // ── GET /api/support — tickets del usuario autenticado (sin requerir org) ─────
 export async function GET() {
@@ -74,6 +76,23 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
+
+  // El correo no debe impedir la creación del ticket si Resend falla.
+  waitUntil((async () => {
+    const [{ data: influencer }, { data: brand }] = await Promise.all([
+      admin.from('influencers').select('display_name, email').eq('user_id', user.id).maybeSingle(),
+      admin.from('brands').select('contact_name, contact_email, name').eq('user_id', user.id).maybeSingle(),
+    ])
+    const submitterType = influencer ? 'Influencer' : brand ? 'Marca' : 'Usuario'
+    const submitterName = influencer?.display_name ?? brand?.contact_name ?? brand?.name ?? user.user_metadata?.full_name ?? user.email ?? 'Usuario'
+    const submitterEmail = influencer?.email ?? brand?.contact_email ?? user.email ?? ''
+
+    try {
+      await notifySupportOfNewTicket({ ticketId: ticket.id, title: title.trim(), description: description.trim(), submitterName, submitterEmail, submitterType })
+    } catch (emailError) {
+      console.error('[POST /api/support] support notification failed:', emailError)
+    }
+  })())
 
   // IA en background (no bloqueante)
   void analyzeWithClaude(ticket.id, title.trim(), description.trim(), admin)

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { notifyContactOfSupportReply } from '@/lib/support-notifications'
+import { waitUntil } from '@vercel/functions'
 
 type Params = { params: { id: string } }
 
@@ -17,7 +19,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
   let hasAccess = false
-  if (orgId) {
+  if (orgId && (await getUserRole(user.id, orgId, admin)).isAdmin) {
     const { data: ticket } = await admin
       .from('tickets')
       .select('id')
@@ -60,6 +62,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   try { body = await request.json() } catch { /* ok */ }
 
   if (!body.message?.trim()) return NextResponse.json({ error: 'El mensaje es requerido' }, { status: 422 })
+  const message = body.message.trim()
 
   const admin = createAdminClient()
 
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   let isAdmin = false
 
-  if (orgId) {
+  if (orgId && (await getUserRole(user.id, orgId, admin)).isAdmin) {
     const { data: ticket } = await admin
       .from('tickets')
       .select('id')
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .insert({
       ticket_id: params.id,
       user_id:   user.id,
-      message:   body.message.trim(),
+      message,
       is_admin:  isAdmin,
     })
     .select()
@@ -108,6 +111,26 @@ export async function POST(request: NextRequest, { params }: Params) {
       .update({ status: 'in_progress', updated_at: new Date().toISOString() })
       .eq('id', params.id)
       .eq('status', 'open')
+
+    waitUntil((async () => {
+      const { data: ticket } = await admin.from('tickets').select('title, created_by').eq('id', params.id).single()
+      if (!ticket?.created_by || ticket.created_by === user.id) return
+
+      const [{ data: influencer }, { data: brand }, authResult] = await Promise.all([
+        admin.from('influencers').select('display_name, email').eq('user_id', ticket.created_by).maybeSingle(),
+        admin.from('brands').select('contact_name, contact_email, name').eq('user_id', ticket.created_by).maybeSingle(),
+        admin.auth.admin.getUserById(ticket.created_by),
+      ])
+      const contactEmail = influencer?.email ?? brand?.contact_email ?? authResult.data.user?.email ?? ''
+      const contactName = influencer?.display_name ?? brand?.contact_name ?? brand?.name ?? authResult.data.user?.user_metadata?.full_name ?? contactEmail
+      if (!contactEmail) return
+
+      try {
+        await notifyContactOfSupportReply({ contactEmail, contactName, ticketTitle: ticket.title, message, portal: influencer ? 'influencer' : 'brand' })
+      } catch (emailError) {
+        console.error('[POST /api/tickets/[id]/replies] contact notification failed:', emailError)
+      }
+    })())
   }
 
   return NextResponse.json({ data }, { status: 201 })

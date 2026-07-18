@@ -101,32 +101,57 @@ export async function GET(request: NextRequest) {
   // ── Enriquecer con info del remitente ──────────────────────────────────────
   const userIds = Array.from(new Set(tickets.map(t => t.created_by).filter(Boolean))) as string[]
 
-  const submitterMap: Record<string, { name: string; email: string; type: 'influencer' | 'brand' | 'admin' }> = {}
+  const submitterMap: Record<string, { name: string; email: string; type: 'influencer' | 'brand' | 'admin'; profile_href?: string }> = {}
 
   if (userIds.length > 0) {
     // Influencers
     const { data: infs } = await admin
       .from('influencers')
-      .select('user_id, display_name, email')
+      .select('id, user_id, display_name, email')
       .in('user_id', userIds)
     for (const inf of infs ?? []) {
       if (inf.user_id) submitterMap[inf.user_id] = {
         name:  inf.display_name ?? inf.email ?? 'Influencer',
         email: inf.email ?? '',
         type:  'influencer',
+        profile_href: `/admin-influencers/${inf.id}`,
       }
     }
 
     // Brands
     const { data: brnds } = await admin
       .from('brands')
-      .select('user_id, contact_name, contact_email, name')
+      .select('id, user_id, contact_name, contact_email, name')
       .in('user_id', userIds)
     for (const b of brnds ?? []) {
       if (b.user_id && !submitterMap[b.user_id]) submitterMap[b.user_id] = {
         name:  b.contact_name ?? b.name ?? 'Marca',
         email: b.contact_email ?? '',
         type:  'brand',
+        profile_href: `/admin-brands/${b.id}`,
+      }
+    }
+
+    // Usuarios invitados de marca: enlazar al tab de usuarios de su marca.
+    const unresolved = userIds.filter(id => !submitterMap[id])
+    if (unresolved.length > 0) {
+      const { data: members } = await admin
+        .from('brand_members')
+        .select('user_id, email, brand_id, brands(name)')
+        .in('user_id', unresolved)
+        .eq('is_active', true)
+
+      for (const member of members ?? []) {
+        if (!member.user_id || submitterMap[member.user_id]) continue
+        const { data: memberAuth } = await admin.auth.admin.getUserById(member.user_id)
+        const brandRelation = member.brands as unknown as { name?: string } | null
+        submitterMap[member.user_id] = {
+          name: memberAuth?.user?.user_metadata?.full_name ?? member.email ?? 'Usuario de marca',
+          email: member.email ?? memberAuth?.user?.email ?? '',
+          type: 'brand',
+          profile_href: `/admin-brands/${member.brand_id}?tab=members&user=${member.user_id}`,
+        }
+        if (!submitterMap[member.user_id].name && brandRelation?.name) submitterMap[member.user_id].name = brandRelation.name
       }
     }
 

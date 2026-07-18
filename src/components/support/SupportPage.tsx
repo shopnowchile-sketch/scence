@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Fragment, useEffect, useState, useCallback } from 'react'
 import {
   Plus, X, AlertCircle, Clock, CheckCircle2,
   Circle, ChevronDown, ChevronUp, RefreshCw, Bot, Loader2, Send,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import Link from 'next/link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface AIReview {
@@ -29,6 +30,7 @@ interface Submitter {
   name: string
   email: string
   type: 'influencer' | 'brand' | 'admin'
+  profile_href?: string
 }
 
 interface Ticket {
@@ -91,17 +93,30 @@ function fmt(iso: string) {
 }
 
 // ── Replies sub-component ─────────────────────────────────────────────────────
+const repliesCache = new Map<string, Reply[]>()
+
 function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: boolean }) {
-  const [replies,  setReplies]  = useState<Reply[]>([])
-  const [loading,  setLoading]  = useState(true)
+  const cachedReplies = repliesCache.get(ticketId)
+  const [replies,  setReplies]  = useState<Reply[]>(cachedReplies ?? [])
+  const [loading,  setLoading]  = useState(!cachedReplies)
   const [message,  setMessage]  = useState('')
   const [sending,  setSending]  = useState(false)
 
   useEffect(() => {
+    const cached = repliesCache.get(ticketId)
+    if (cached) {
+      setReplies(cached)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     fetch(`/api/tickets/${ticketId}/replies`)
       .then(r => r.json())
-      .then(j => setReplies(j.data ?? []))
+      .then(j => {
+        const loaded = j.data ?? []
+        repliesCache.set(ticketId, loaded)
+        setReplies(loaded)
+      })
       .catch(() => toast.error('Error cargando respuestas'))
       .finally(() => setLoading(false))
   }, [ticketId])
@@ -117,7 +132,11 @@ function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: b
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setReplies(prev => [...prev, json.data])
+      setReplies(prev => {
+        const updated = [...prev, json.data]
+        repliesCache.set(ticketId, updated)
+        return updated
+      })
       setMessage('')
       toast.success('Respuesta enviada')
     } catch (e) {
@@ -168,6 +187,115 @@ function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: b
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+function AdminTicketTable({
+  tickets,
+  expanded,
+  onToggle,
+  onStatus,
+  onDelete,
+}: {
+  tickets: Ticket[]
+  expanded: string | null
+  onToggle: (id: string) => void
+  onStatus: (id: string, status: string) => void
+  onDelete: (id: string) => void
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px]">
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50/80">
+              {['Tipo', 'Contacto', 'Asunto y descripción', 'Estado', 'Prioridad', 'Fecha', ''].map(label => (
+                <th key={label} className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {tickets.map(ticket => {
+              const submitter = ticket.submitter ?? { name: 'Usuario sin identificar', email: 'Sin email', type: 'admin' as const }
+              const submitterCfg = SUBMITTER_TYPE_CONFIG[submitter.type]
+              const SubmitterIcon = submitterCfg.icon
+              const statusCfg = STATUS_CONFIG[ticket.status] ?? STATUS_CONFIG.open
+              const StatusIcon = statusCfg.icon
+              const isExpanded = expanded === ticket.id
+
+              return (
+                <Fragment key={ticket.id}>
+                  <tr onClick={() => onToggle(ticket.id)} className={cn('cursor-pointer transition-colors', isExpanded ? 'bg-violet-50/40' : 'hover:bg-gray-50/70')}>
+                    <td className="px-4 py-3">
+                      <span className={cn('inline-flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-lg', submitterCfg.color)}>
+                        <SubmitterIcon className="h-3.5 w-3.5" /> {submitterCfg.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 max-w-[220px]">
+                      {submitter.profile_href ? (
+                        <Link href={submitter.profile_href} onClick={event => event.stopPropagation()} className="group block rounded-lg -m-1 p-1 hover:bg-violet-50 transition-colors" title="Abrir ficha del contacto">
+                          <p className="text-sm font-semibold text-gray-900 group-hover:text-violet-700 truncate">{submitter.name}</p>
+                          <p className="text-xs text-gray-400 group-hover:text-violet-500 truncate mt-0.5 underline-offset-2 group-hover:underline">{submitter.email}</p>
+                        </Link>
+                      ) : (
+                        <><p className="text-sm font-semibold text-gray-900 truncate">{submitter.name}</p><p className="text-xs text-gray-400 truncate mt-0.5">{submitter.email}</p></>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 max-w-[390px]">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{ticket.title}</p>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{ticket.description}</p>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap" onClick={event => event.stopPropagation()}>
+                      <label className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1', statusCfg.color)}>
+                        <StatusIcon className="h-3 w-3" />
+                        <select value={ticket.status} onChange={event => onStatus(ticket.id, event.target.value)} className="appearance-none bg-transparent text-[11px] font-bold outline-none cursor-pointer pr-1">
+                          {(Object.keys(STATUS_CONFIG) as Array<keyof typeof STATUS_CONFIG>).map(status => <option key={status} value={status}>{STATUS_CONFIG[status].label}</option>)}
+                        </select>
+                        <ChevronDown className="h-3 w-3 pointer-events-none" />
+                      </label>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn('text-[11px] font-bold px-2 py-1 rounded-full', PRIORITY_COLOR[ticket.priority] ?? PRIORITY_COLOR.P2)}>{ticket.priority}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmt(ticket.created_at)}</td>
+                    <td className="px-4 py-3 text-right">{isExpanded ? <ChevronUp className="h-4 w-4 text-violet-500" /> : <ChevronDown className="h-4 w-4 text-gray-300" />}</td>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-5 bg-gray-50/50">
+                        <div className="max-w-4xl space-y-4">
+                          <div>
+                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Descripción completa</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
+                          </div>
+                          <div className="flex items-center justify-end gap-3">
+                            <button type="button" onClick={() => onDelete(ticket.id)} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors">
+                              <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                            </button>
+                          </div>
+                          {ticket.ai_review && (
+                            <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-2">
+                              <div className="flex items-center gap-2"><Bot className="h-4 w-4 text-violet-600" /><span className="text-xs font-bold text-violet-700">Análisis IA</span></div>
+                              <p className="text-sm text-violet-900">{ticket.ai_review.summary}</p>
+                              {ticket.ai_review.suggested_steps?.length > 0 && (
+                                <ul className="space-y-1">
+                                  {ticket.ai_review.suggested_steps.map((step, index) => <li key={index} className="text-xs text-violet-700">• {step}</li>)}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+                          <TicketReplies ticketId={ticket.id} adminMode />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -392,6 +520,14 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
             {adminMode ? 'No se han creado tickets aún.' : '¿Encontraste un problema? Crea un ticket y te ayudamos.'}
           </p>
         </div>
+      ) : adminMode ? (
+        <AdminTicketTable
+          tickets={tickets}
+          expanded={expanded}
+          onToggle={ticketId => setExpanded(expanded === ticketId ? null : ticketId)}
+          onStatus={updateStatus}
+          onDelete={deleteTicket}
+        />
       ) : (
         <div className="space-y-3">
           {tickets.map(t => {

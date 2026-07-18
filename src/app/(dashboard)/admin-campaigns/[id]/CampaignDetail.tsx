@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -23,6 +23,7 @@ import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCam
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
+import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -789,6 +790,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [addingDeliverable, setAddingDeliverable] = useState(false)
   const [addingInfluencerId, setAddingInfluencerId] = useState<string | null>(null)
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
+  const [showCampaignInvoiceModal, setShowCampaignInvoiceModal] = useState(false)
   const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
   const [brandLocations, setBrandLocations] = useState<Array<Record<string, unknown>>>([])
   const [campaignAssets, setCampaignAssets] = useState<Array<Record<string, unknown>>>([])
@@ -798,6 +800,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [assetFile, setAssetFile] = useState<File | null>(null)
   const [assetFormOpen, setAssetFormOpen] = useState(false)
   const [assetSaving, setAssetSaving] = useState(false)
+  const [briefFile, setBriefFile] = useState<File | null>(null)
+  const [briefSaving, setBriefSaving] = useState(false)
   const [locationFormOpen, setLocationFormOpen] = useState(false)
   const [locationSaving, setLocationSaving] = useState(false)
   const [locationForm, setLocationForm] = useState({
@@ -1095,11 +1099,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     ...(((c as unknown as { campaign_brands?: Array<{ brand?: Record<string, unknown> }> }).campaign_brands ?? [])
       .map(cb => cb.brand ? { ...cb.brand, _role: 'Colaboradora' } : null)),
   ].filter(Boolean) as Array<Record<string, unknown>>
+  const briefAsset = campaignAssets.find(asset => {
+    const metadata = asset.metadata as Record<string, unknown> | undefined
+    return metadata?.asset_type === 'brief'
+  })
 
   async function reloadCampaignAssets() {
     const res = await fetch(`/api/campaigns/${id}/assets`)
     const json = await res.json().catch(() => ({}))
     setCampaignAssets(Array.isArray(json.data) ? json.data : [])
+  }
+
+  async function reloadCampaignInvoices() {
+    const res = await fetch(`/api/invoices?campaign_id=${id}&limit=50`)
+    const json = await res.json().catch(() => ({}))
+    setCampaignInvoices(res.ok && Array.isArray(json.data) ? json.data : [])
   }
 
   async function handleAddCampaignAsset(e: React.FormEvent) {
@@ -1165,6 +1179,31 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
     await reloadCampaignAssets()
     toast.success('Asset eliminado')
+  }
+
+  async function handleUploadBrief() {
+    if (!briefFile) return toast.error('Selecciona el archivo del brief')
+    setBriefSaving(true)
+    try {
+      const formData = new FormData()
+      formData.append('filename', briefFile.name)
+      formData.append('asset_type', 'brief')
+      formData.append('file', briefFile)
+      const res = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body: formData })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo cargar el brief')
+
+      if (briefAsset?.id) {
+        await fetch(`/api/campaigns/${id}/assets/${String(briefAsset.id)}`, { method: 'DELETE' })
+      }
+      setBriefFile(null)
+      await reloadCampaignAssets()
+      toast.success('Brief cargado correctamente')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo cargar el brief')
+    } finally {
+      setBriefSaving(false)
+    }
   }
 
   async function reloadBrandLocations() {
@@ -1625,6 +1664,32 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="col-span-2 space-y-4">
+            <div className="card p-5 border-2 border-violet-100">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-violet-800 flex items-center gap-2">
+                    <FileText className="h-4 w-4" /> Brief de campaña
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1">PDF, Word o imagen disponible para las influencers aceptadas.</p>
+                </div>
+                {(briefAsset?.signed_url || c.brief_url) && (
+                  <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 hover:underline">
+                    <Download className="h-4 w-4" /> Descargar brief
+                  </a>
+                )}
+              </div>
+              {(!isBrandPortal || c._brand_permissions?.canEdit) && (
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                  <input type="file" accept=".pdf,.doc,.docx,image/*" onChange={e => setBriefFile(e.target.files?.[0] ?? null)}
+                    className="input-base flex-1 text-sm bg-white" />
+                  <button type="button" onClick={handleUploadBrief} disabled={!briefFile || briefSaving}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-50">
+                    <Upload className="h-4 w-4" /> {briefSaving ? 'Cargando...' : briefAsset ? 'Reemplazar' : 'Cargar brief'}
+                  </button>
+                </div>
+              )}
+            </div>
             {/* Guías de contenido — movida arriba (antes al final de la columna,
                 casi invisible después de scrollear). Pri: "necesito que al abrir
                 el overview lo entienda por completo las marcas... las guías de
@@ -1645,25 +1710,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <FileText className="h-4 w-4" /> Guías de contenido
                 </h3>
                 <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{c.content_guidelines}</p>
-              </div>
-            )}
-
-            {c.goals && Object.keys(c.goals).length > 0 && (
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-violet-500" /> Objetivos de campaña
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {Object.entries(c.goals).map(([key, val]) => (
-                    <div key={key} className="bg-gray-50 rounded-xl p-3 text-center">
-                      <div className="text-xl font-bold text-gray-900">
-                        {typeof val === 'number' && val >= 1000 ? `${(val / 1000).toFixed(0)}K` : val}
-                        {key === 'engagement_rate' ? '%' : ''}
-                      </div>
-                      <div className="text-[11px] text-gray-400 capitalize mt-0.5">{key.replace(/_/g, ' ')}</div>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
 
@@ -3046,7 +3092,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <span className="text-xs text-gray-400">{campaignAssets.length} asset(s)</span>
           </div>
 
-          <form onSubmit={handleAddCampaignAsset} className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
+          {(!isBrandPortal || c._brand_permissions?.canEdit) && <form onSubmit={handleAddCampaignAsset} className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setAssetMode('file')} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', assetMode === 'file' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 border')}>Subir archivo</button>
+              <button type="button" onClick={() => setAssetMode('link')} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', assetMode === 'link' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 border')}>Agregar enlace</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Nombre</label>
               <input
@@ -3056,15 +3107,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 placeholder="Ej: Logo, brief, foto producto"
               />
             </div>
-            <div>
+            {assetMode === 'file' ? <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Archivo</label>
+              <input type="file" multiple={false} onChange={e => setAssetFile(e.target.files?.[0] ?? null)} className="input-base w-full text-sm bg-white" />
+            </div> : <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">URL del asset</label>
-              <input
-                value={assetUrl}
-                onChange={e => setAssetUrl(e.target.value)}
-                className="input-base w-full text-sm"
-                placeholder="https://..."
-              />
-            </div>
+              <input value={assetUrl} onChange={e => setAssetUrl(e.target.value)} className="input-base w-full text-sm" placeholder="https://..." />
+            </div>}
             <button
               type="submit"
               disabled={assetSaving}
@@ -3072,7 +3121,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             >
               {assetSaving ? 'Guardando...' : 'Agregar'}
             </button>
-          </form>
+            </div>
+          </form>}
 
           {campaignAssets.length === 0 ? (
             <p className="text-sm text-gray-400">Sin assets cargados para esta campaña.</p>
@@ -3082,7 +3132,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <div key={String(asset.id)} className="flex items-center justify-between rounded-xl border border-gray-100 p-4 gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{String(asset.filename ?? 'Asset')}</p>
-                    <p className="text-xs text-gray-400 truncate">{String(asset.storage_path ?? '')}</p>
+                    <p className="text-xs text-gray-400 truncate">{String(asset.mime_type ?? 'Enlace externo')}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <a
@@ -3091,14 +3141,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       rel="noopener noreferrer"
                       className="text-xs font-semibold text-violet-600 hover:underline inline-flex items-center gap-1"
                     >
-                      Abrir <ExternalLink className="h-3 w-3" />
+                      Descargar <Download className="h-3 w-3" />
                     </a>
-                    <button
+                    {(!isBrandPortal || c._brand_permissions?.canEdit) && <button
                       onClick={() => handleDeleteCampaignAsset(String(asset.id))}
                       className="text-xs font-semibold text-red-500 hover:underline"
                     >
                       Eliminar
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}
@@ -3112,9 +3162,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Facturas de esta campaña</h3>
-            <Link href={`/admin-billing?campaign_id=${id}`} className="text-sm font-semibold text-violet-600 hover:underline">
-              Ver en billing
-            </Link>
+            <div className="flex items-center gap-3">
+              {(!isBrandPortal || c._brand_permissions?.canEdit) && (
+                <button type="button" onClick={() => setShowCampaignInvoiceModal(true)}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-lg hover:bg-violet-700">
+                  <Plus className="h-4 w-4" /> Crear factura
+                </button>
+              )}
+              <Link href={isBrandPortal ? '/brand-billing' : `/admin-billing?campaign_id=${id}`} className="text-sm font-semibold text-violet-600 hover:underline">
+                Ver en billing
+              </Link>
+            </div>
           </div>
 
           {campaignInvoices.length === 0 ? (
@@ -3133,6 +3191,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           )}
         </div>
+      )}
+
+      {showCampaignInvoiceModal && (
+        <NewInvoiceModal
+          onClose={() => setShowCampaignInvoiceModal(false)}
+          initialCampaign={{ id, name: c.name }}
+          initialClientName={String((c.brand as unknown as { name?: string } | null)?.name ?? '')}
+          initialClientEmail={String((c.brand as unknown as { contact_email?: string } | null)?.contact_email ?? '')}
+          lockCampaign
+          onCreated={() => void reloadCampaignInvoices()}
+        />
       )}
 
       {/* ── CONTRATOS ──────────────────────────────────────────────────────── */}

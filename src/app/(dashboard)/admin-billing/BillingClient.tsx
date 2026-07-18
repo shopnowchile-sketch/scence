@@ -215,18 +215,35 @@ function InvoicePanel({ invoice, onClose, onAction, onSend }: {
 // ── New Invoice Modal ─────────────────────────────────────────────────────────
 interface LineItem { description: string; quantity: number; unit_price: number }
 
-function NewInvoiceModal({ onClose }: { onClose: () => void }) {
+export function NewInvoiceModal({
+  onClose,
+  initialCampaign,
+  initialClientName = '',
+  initialClientEmail = '',
+  lockCampaign = false,
+  onCreated,
+}: {
+  onClose: () => void
+  initialCampaign?: { id: string; name: string }
+  initialClientName?: string
+  initialClientEmail?: string
+  lockCampaign?: boolean
+  onCreated?: () => void
+}) {
   const today = new Date().toISOString().slice(0, 10)
   const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
 
   const [form, setForm] = useState({
-    client_name: '', client_email: '', campaign_id: '',
+    client_name: initialClientName, client_email: initialClientEmail, campaign_id: initialCampaign?.id ?? '',
     issue_date: today, due_date: in30, tax_rate: 19, currency: 'CLP', notes: '',
   })
   const [items, setItems] = useState<LineItem[]>([{ description: '', quantity: 1, unit_price: 0 }])
   const create = useCreateInvoice()
   const { data: campaignsData } = useCampaignsList({ limit: 100 })
   const campaigns = campaignsData?.data ?? []
+  const campaignOptions = initialCampaign && !campaigns.some(c => c.id === initialCampaign.id)
+    ? [initialCampaign, ...campaigns]
+    : campaigns
 
   const f = (k: keyof typeof form, v: string | number) => setForm(p => ({ ...p, [k]: v }))
 
@@ -247,6 +264,7 @@ function NewInvoiceModal({ onClose }: { onClose: () => void }) {
       campaign_id: form.campaign_id || null,
       items: items.filter(it => it.description),
     })
+    onCreated?.()
     onClose()
   }
 
@@ -276,9 +294,9 @@ function NewInvoiceModal({ onClose }: { onClose: () => void }) {
             <div>
               <label className="label">Campaña (opcional)</label>
               <div className="relative">
-                <select className="input appearance-none pr-8" value={form.campaign_id} onChange={e => f('campaign_id', e.target.value)}>
+                <select disabled={lockCampaign} className="input appearance-none pr-8 disabled:bg-gray-100" value={form.campaign_id} onChange={e => f('campaign_id', e.target.value)}>
                   <option value="">Sin campaña</option>
-                  {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {campaignOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               </div>
@@ -531,7 +549,7 @@ function MonthFinanceCards() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export function BillingClient() {
+export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean }) {
   const [tab, setTab] = useState<'invoices' | 'payroll'>('invoices')
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [sendModal, setSendModal] = useState<Invoice | null>(null)
@@ -603,21 +621,21 @@ export function BillingClient() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Billing</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Facturación a clientes y pagos a influencers</p>
+          <p className="text-sm text-gray-500 mt-0.5">{invoicesOnly ? 'Facturas asociadas a tus campañas' : 'Facturación a clientes y pagos a influencers'}</p>
         </div>
         <button
-          onClick={() => tab === 'invoices' ? setShowNewInvoice(true) : setShowNewPayroll(true)}
+          onClick={() => invoicesOnly || tab === 'invoices' ? setShowNewInvoice(true) : setShowNewPayroll(true)}
           className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors">
           <Plus className="h-4 w-4" />
-          {tab === 'invoices' ? 'Nueva factura' : 'Nuevo payroll'}
+          {invoicesOnly || tab === 'invoices' ? 'Nueva factura' : 'Nuevo payroll'}
         </button>
       </div>
 
-      <MonthFinanceCards />
+      {!invoicesOnly && <MonthFinanceCards />}
       <BillingKPIs invoices={allInvoices} payrolls={payrolls} />
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+      {!invoicesOnly && <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
         {[
           { id: 'invoices', label: 'Facturas', icon: FileText },
           { id: 'payroll',  label: 'Payroll',  icon: CreditCard },
@@ -629,7 +647,7 @@ export function BillingClient() {
             <Icon className="h-4 w-4" />{label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── Invoices tab ── */}
       {tab === 'invoices' && (
@@ -701,7 +719,7 @@ export function BillingClient() {
       )}
 
       {/* ── Payroll tab ── */}
-      {tab === 'payroll' && (
+      {!invoicesOnly && tab === 'payroll' && (
         <div className="space-y-4">
           {loadingPayroll ? (
             <div className="card p-6 animate-pulse space-y-3">
@@ -788,7 +806,7 @@ export function BillingClient() {
 
       {/* Modals */}
       {showNewInvoice  && <NewInvoiceModal  onClose={() => setShowNewInvoice(false)}  />}
-      {showNewPayroll  && <NewPayrollModal  onClose={() => setShowNewPayroll(false)}  />}
+      {!invoicesOnly && showNewPayroll && <NewPayrollModal onClose={() => setShowNewPayroll(false)} />}
 
       {/* Invoice detail panel */}
       {selected && (

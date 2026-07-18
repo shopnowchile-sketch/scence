@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { resolveCampaignAssetAccess } from '@/lib/campaign-asset-access'
 
 type Params = { params: { id: string } }
 
@@ -13,30 +13,6 @@ function safeFilename(name: string) {
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 160) || 'asset'
-}
-
-async function assertCampaignAccess(userId: string, userMetadata: Record<string, unknown>, campaignId: string) {
-  const admin = createAdminClient()
-  const orgId = await getOrgId(userId, userMetadata, admin)
-
-  // admin/super_admin/owner de Scence puede ver/gestionar assets de
-  // cualquier campaña, sin filtrar por organization_id (las marcas quedan
-  // con organization_id propia y aislada). Mismo criterio que /api/campaigns/[id].
-  const { isAdmin } = orgId ? await getUserRole(userId, orgId, admin) : { isAdmin: false }
-
-  let query = admin
-    .from('campaigns')
-    .select('id, organization_id')
-    .eq('id', campaignId)
-
-  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
-
-  const { data: campaign, error } = await query.maybeSingle()
-
-  if (error) throw error
-  if (!campaign) return { admin, orgId, campaign: null, isAdmin }
-
-  return { admin, orgId, campaign, isAdmin }
 }
 
 async function ensureBucket(admin: ReturnType<typeof createAdminClient>) {
@@ -58,8 +34,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { admin, orgId, campaign, isAdmin } = await assertCampaignAccess(user.id, user.user_metadata, params.id)
-  if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  const { admin, campaign, canView } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
+  if (!campaign || !canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
   let query = admin
     .from('media_files')
@@ -67,8 +43,6 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .eq('campaign_id', params.id)
     .is('deliverable_id', null)
     .order('created_at', { ascending: false })
-
-  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data, error } = await query
 
@@ -101,19 +75,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { admin, orgId, campaign } = await assertCampaignAccess(user.id, user.user_metadata, params.id)
-  if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  const { admin, campaign, canManage } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
+  if (!campaign || !canManage) return NextResponse.json({ error: 'No tienes permiso para cargar archivos' }, { status: 403 })
 
   const contentType = request.headers.get('content-type') ?? ''
   // Preferir la org real de la campaña (no la del admin) para que el asset
   // quede tageado correctamente aunque un admin suba archivos a una campaña
   // de una marca con organization_id propia.
-  const finalOrgId = campaign.organization_id ?? orgId
+  const finalOrgId = campaign.organization_id
 
   if (contentType.includes('multipart/form-data')) {
     const formData = await request.formData()
     const file = formData.get('file')
     const customName = String(formData.get('filename') ?? '').trim()
+    const assetType = String(formData.get('asset_type') ?? 'asset').trim()
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'file is required' }, { status: 422 })
@@ -155,6 +130,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           kind: 'uploaded_file',
           bucket: BUCKET,
           original_name: originalName,
+          asset_type: assetType,
         },
         is_public: false,
       })
@@ -203,6 +179,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       metadata: {
         source: 'campaign_assets_tab',
         kind: 'external_url',
+        asset_type: String(body.asset_type ?? 'asset'),
       },
       is_public: false,
     })

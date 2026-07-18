@@ -67,6 +67,12 @@ type PreviewCampaign = {
   application_status: string | null
 }
 
+type CampaignAsset = {
+  id: string; filename: string; mime_type: string | null; size_bytes: number | null
+  signed_url: string | null; storage_path: string
+  metadata?: { asset_type?: string }
+}
+
 // ── Add deliverable (self-created campaigns) ──────────────────────────────────
 const PLATFORMS = ['Instagram', 'TikTok', 'YouTube', 'Twitter', 'Facebook', 'LinkedIn', 'Otro']
 const DEL_TYPES = ['Reel', 'Post', 'Story', 'Video', 'Blog', 'Live', 'UGC', 'Otro']
@@ -192,6 +198,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
   const [responding, setResponding] = useState(false)
+  const [assets, setAssets] = useState<CampaignAsset[]>([])
   // Respuestas a las preguntas de postulación (opcional, solo si la campaña
   // tiene application_questions) — pedido de Pri 2026-07-12.
   const [answers, setAnswers] = useState<string[]>([])
@@ -205,10 +212,18 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       if (found) {
         setData(found)
         setPreview(null)
+        if (found.application_status === 'accepted') {
+          const assetsRes = await fetch(`/api/campaigns/${id}/assets`)
+          const assetsJson = await assetsRes.json().catch(() => ({}))
+          setAssets(assetsRes.ok && Array.isArray(assetsJson.data) ? assetsJson.data : [])
+        } else {
+          setAssets([])
+        }
       } else {
         // No está entre mis campañas todavía — puede ser una campaña abierta
         // que aún no postula. Traer preview de solo-lectura.
         setData(null)
+        setAssets([])
         const pRes = await fetch(`/api/influencer/campaigns/${id}`)
         setPreview(pRes.ok ? (await pRes.json()).data : null)
       }
@@ -541,6 +556,27 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             de esto, solo lo de arriba (nombre, marca, fechas). */}
         {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
       </div>
+
+      {!isPending && assets.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Download className="h-4 w-4 text-violet-600" />
+            <h2 className="text-sm font-bold text-gray-900">Archivos de la campaña</h2>
+          </div>
+          <div className="space-y-2">
+            {assets.map(asset => (
+              <a key={asset.id} href={asset.signed_url ?? asset.storage_path} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:border-violet-200 hover:bg-violet-50/30 transition-colors">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{asset.filename}</p>
+                  <p className="text-[10px] text-gray-400">{asset.metadata?.asset_type === 'brief' ? 'Brief' : asset.mime_type ?? 'Archivo'}</p>
+                </div>
+                <span className="text-xs font-bold text-violet-600 flex-shrink-0">Descargar</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tags obligatorios de la campaña (plataformas + hashtags) — mismo
           bloque que ya se mostraba en el preview antes de postular; acá

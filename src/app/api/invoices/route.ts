@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 // ── GET /api/invoices ─────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
 
   let query = admin
     .from('invoices')
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
     .order('issue_date', { ascending: false })
     .range((page - 1) * limit, page * limit - 1)
 
-  if (orgId)   query = query.eq('organization_id', orgId)
+  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
   if (campaignId) query = query.eq('campaign_id', campaignId)
   if (status)  query = query.eq('status', status)
   if (dateFrom) query = query.gte('issue_date', dateFrom)
@@ -100,7 +101,31 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const orgId = (organization_id as string) ?? await getOrgId(user.id, user.user_metadata, admin)
+  const resolvedOrgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = resolvedOrgId ? await getUserRole(user.id, resolvedOrgId, admin) : { isAdmin: false }
+  let orgId = (organization_id as string) ?? resolvedOrgId
+
+  if (campaign_id) {
+    const { data: campaign } = await admin
+      .from('campaigns')
+      .select('id, organization_id, brand_id, created_by_brand_id')
+      .eq('id', String(campaign_id))
+      .maybeSingle()
+    if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+
+    if (!isAdmin) {
+      const brandAccess = user.user_metadata?.is_brand ? await resolveBrandAccess(user.id) : null
+      const ownsCampaign = !!brandAccess && (
+        campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
+      )
+      if (!ownsCampaign) return NextResponse.json({ error: 'No tienes permiso para facturar esta campaña' }, { status: 403 })
+    }
+    orgId = campaign.organization_id
+  } else if (!isAdmin) {
+    return NextResponse.json({ error: 'La marca debe asociar la factura a una campaña propia' }, { status: 422 })
+  }
+
+  if (!orgId) return NextResponse.json({ error: 'Organización no encontrada' }, { status: 422 })
 
   // Subtotal from items
   const itemsArr = items as Array<{ quantity: number; unit_price: number }>

@@ -38,19 +38,17 @@ export async function GET() {
     .map(r => r.campaign_id as string)
 
   // Campañas open de la misma org — activas o buscando influencers, sin deadline vencida
-  const today = new Date().toISOString().split('T')[0]
   let query = admin
     .from('campaigns')
     .select(`
       id, name, status, description, type, start_date, end_date, visibility,
-      application_deadline, max_influencers,
+      application_deadline, applications_closed_at, max_influencers,
       brand:brands!brand_id (id, name, logo_url),
-      campaign_influencers (id)
+      campaign_influencers (id, application_status)
     `)
     .eq('organization_id', influencer.organization_id)
     .eq('visibility', 'open')
     .eq('status', 'active')
-    .or(`application_deadline.is.null,application_deadline.gte.${today}`)
     .order('start_date', { ascending: true })
     .limit(50)
 
@@ -61,11 +59,29 @@ export async function GET() {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const enriched = (data ?? []).map(c => ({
-    ...c,
-    _applied: pendingMap.has(c.id),
-    application_status: pendingMap.has(c.id) ? 'pending' : null,
-  }))
+  const enriched = (data ?? []).map(c => {
+    const accepted = (c.campaign_influencers ?? []).filter(
+      row => row.application_status === 'accepted'
+    ).length
+    const deadlinePassed = !!c.application_deadline && new Date(c.application_deadline) < new Date()
+    const noSpots = !!c.max_influencers && accepted >= c.max_influencers
+    const closeReason = c.applications_closed_at
+      ? 'manual'
+      : deadlinePassed
+        ? 'deadline'
+        : noSpots
+          ? 'full'
+          : null
+
+    return {
+      ...c,
+      accepted_count: accepted,
+      applications_closed: !!closeReason,
+      applications_close_reason: closeReason,
+      _applied: pendingMap.has(c.id),
+      application_status: pendingMap.has(c.id) ? 'pending' : null,
+    }
+  })
 
   return NextResponse.json({ data: enriched })
 }

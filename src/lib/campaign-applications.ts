@@ -48,11 +48,24 @@ export async function acceptCampaignApplication(
 
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, organization_id, status, brand_id, deliverable_templates')
+    .select('id, name, organization_id, status, brand_id, deliverable_templates, max_influencers')
     .eq('id', campaignId)
     .single()
 
   if (!campaign) return { ok: false, error: 'Campaña no encontrada', status: 404 }
+
+  if (campaign.max_influencers && campaign.max_influencers > 0) {
+    const { count: acceptedCount, error: countError } = await admin
+      .from('campaign_influencers')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('application_status', 'accepted')
+
+    if (countError) return { ok: false, error: countError.message, status: 500 }
+    if ((acceptedCount ?? 0) >= campaign.max_influencers) {
+      return { ok: false, error: 'No puedes aceptar más influencers: los cupos de la campaña están completos', status: 422 }
+    }
+  }
 
   const { error: updateError } = await admin
     .from('campaign_influencers')

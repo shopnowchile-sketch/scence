@@ -65,6 +65,11 @@ const schema = z.object({
   visibility: z.enum(['private', 'open']).default('private'),
   address: z.string().max(300).optional(),
   application_questions: z.array(z.string().min(1)).optional(),
+  application_deadline: z.string().optional(),
+  max_influencers: z.preprocess(
+    v => (v === '' || (typeof v === 'number' && isNaN(v))) ? undefined : v,
+    z.number().int().min(1, 'Debe haber al menos 1 cupo').optional()
+  ),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -355,6 +360,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
 function Step2({ register, control, errors, portal = 'admin' }: StepProps & { portal?: 'admin' | 'brand' }) {
   const watchedType = (control as unknown as { _formValues: { type: string } })._formValues?.type
   const isCommission = watchedType === 'commission'
+  const visibility = useWatch({ control, name: 'visibility' })
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4">
@@ -367,6 +373,27 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
           <input type="date" {...register('end_date')} className="input-base w-full" />
         </div>
       </div>
+
+      {visibility === 'open' && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-violet-900">Postulaciones y cupos</p>
+            <p className="text-xs text-violet-600 mt-0.5">La campaña mostrará “Cupos limitados” y cerrará automáticamente en la fecha indicada.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-violet-800 mb-1">Fecha y hora límite</label>
+              <input type="datetime-local" {...register('application_deadline')} className="input-base w-full" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-violet-800 mb-1">Cantidad de cupos</label>
+              <input type="number" min="1" step="1" {...register('max_influencers', { valueAsNumber: true })}
+                className="input-base w-full" placeholder="Ej. 20" />
+              {errors.max_influencers && <p className="text-xs text-red-500 mt-1">{errors.max_influencers.message}</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -664,6 +691,8 @@ export function CampaignForm({
       visibility: 'private',
       address: '',
       application_questions: [],
+      application_deadline: '',
+      max_influencers: undefined,
     },
   })
 
@@ -685,6 +714,10 @@ export function CampaignForm({
       visibility: data.visibility || 'private',
       address: data.address?.trim() || null,
       application_questions: data.application_questions ?? [],
+      application_deadline: data.visibility === 'open' && data.application_deadline
+        ? new Date(data.application_deadline).toISOString()
+        : null,
+      max_influencers: data.visibility === 'open' ? (data.max_influencers ?? null) : null,
     }
   }
 
@@ -770,7 +803,7 @@ export function CampaignForm({
     name: 1, type: 1, platforms: 1, visibility: 1,
     start_date: 2, end_date: 2, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
     hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
-    application_questions: 1,
+    application_questions: 1, application_deadline: 2, max_influencers: 2,
   }
 
   function onInvalid(formErrors: FieldErrors<FormValues>) {

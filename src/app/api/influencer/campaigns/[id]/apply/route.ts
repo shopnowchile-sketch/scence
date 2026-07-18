@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que la campaña existe, es open y está activa o en pending_approval
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, status, visibility, organization_id, application_deadline, brand_id, application_questions')
+    .select('id, name, status, visibility, organization_id, application_deadline, applications_closed_at, max_influencers, brand_id, application_questions')
     .eq('id', params.id)
     .eq('organization_id', influencer.organization_id)
     .single()
@@ -35,6 +35,24 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
   if (campaign.application_deadline && new Date(campaign.application_deadline) < new Date()) {
     return NextResponse.json({ error: 'El plazo de postulación ha cerrado' }, { status: 422 })
+  }
+  if (campaign.applications_closed_at) {
+    return NextResponse.json({ error: 'La marca cerró las postulaciones de esta campaña' }, { status: 422 })
+  }
+
+  // Los cupos representan participantes aceptadas, no la cantidad de personas
+  // que puede manifestar interés. Al agotarse, no se reciben postulaciones nuevas.
+  if (campaign.max_influencers && campaign.max_influencers > 0) {
+    const { count: acceptedCount, error: countError } = await admin
+      .from('campaign_influencers')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', params.id)
+      .eq('application_status', 'accepted')
+
+    if (countError) return NextResponse.json({ error: countError.message }, { status: 500 })
+    if ((acceptedCount ?? 0) >= campaign.max_influencers) {
+      return NextResponse.json({ error: 'Los cupos de esta campaña están agotados' }, { status: 422 })
+    }
   }
 
   // Verificar que no haya postulación previa

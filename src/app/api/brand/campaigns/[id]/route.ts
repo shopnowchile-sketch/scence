@@ -132,6 +132,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'deliverable_templates',
     'approval_required',
     'visibility',
+    'application_deadline',
+    'max_influencers',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -149,6 +151,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (typeof body.action === 'string' && statusByAction[body.action]) {
     updates.status = statusByAction[body.action]
+  }
+
+  if (body.action === 'close_applications') {
+    updates.applications_closed_at = new Date().toISOString()
+  } else if (body.action === 'reopen_applications') {
+    updates.applications_closed_at = null
   }
 
   if (typeof updates.name === 'string') {

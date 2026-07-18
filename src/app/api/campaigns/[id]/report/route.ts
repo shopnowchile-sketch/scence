@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
 // ── GET /api/campaigns/[id]/report ───────────────────────────────────────────
-// Returns full campaign data for PDF report generation (no auth check —
-// accessed from report page which is behind the dashboard layout auth)
+// Returns full campaign data for PDF report generation.
 export async function GET(_req: NextRequest, { params }: Params) {
+  const supabase = createServerClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const admin = createAdminClient()
 
   const { data: campaign, error } = await admin
@@ -40,6 +44,26 @@ export async function GET(_req: NextRequest, { params }: Params) {
     console.error('[GET /api/campaigns/[id]/report]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  let authorized = false
+  if (user.user_metadata?.is_brand) {
+    const access = await resolveBrandAccess(user.id)
+    if (access) {
+      const isOwner = campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
+      const { data: coBrand } = isOwner ? { data: null } : await admin
+        .from('campaign_brands')
+        .select('campaign_id')
+        .eq('campaign_id', params.id)
+        .eq('brand_id', access.brandId)
+        .maybeSingle()
+      authorized = isOwner || !!coBrand
+    }
+  } else {
+    const orgId = await getOrgId(user.id, user.user_metadata, admin)
+    const role = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+    authorized = role.isAdmin
+  }
+  if (!authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Solo participantes ACEPTADos en el reporte — se excluyen postulantes/
   // invitados pendientes y rechazados (no son parte operativa de la campaña).

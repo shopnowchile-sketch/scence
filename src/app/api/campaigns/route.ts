@@ -188,6 +188,9 @@ export async function POST(request: NextRequest) {
     organization_id,
     address,
     application_questions,
+    visibility = 'private',
+    application_deadline,
+    max_influencers,
   } = body as Record<string, unknown>
 
   // Validate required fields
@@ -242,6 +245,9 @@ export async function POST(request: NextRequest) {
       application_questions: Array.isArray(application_questions)
         ? (application_questions as unknown[]).map(q => String(q ?? '').trim()).filter(Boolean)
         : [],
+      visibility,
+      application_deadline: visibility === 'open' ? (application_deadline || null) : null,
+      max_influencers: visibility === 'open' && max_influencers ? Number(max_influencers) : null,
       organization_id: orgId,
       created_by: user.id,
     })

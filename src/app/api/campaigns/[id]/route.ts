@@ -278,6 +278,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     fields.status = 'canceled'
   } else if (action === 'submit_for_approval') {
     fields.status = 'pending_approval'
+  } else if (action === 'close_applications') {
+    fields.applications_closed_at = new Date().toISOString()
+  } else if (action === 'reopen_applications') {
+    fields.applications_closed_at = null
   }
 
   if ('address' in body) {

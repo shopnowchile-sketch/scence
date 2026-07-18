@@ -29,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       id, name, description, content_guidelines, brief_url, type, status, visibility,
       start_date, end_date, budget_total, currency, hashtags, platforms,
-      deliverable_templates, application_deadline, max_influencers, application_questions,
+      deliverable_templates, application_deadline, applications_closed_at, max_influencers, application_questions,
       brand:brands!brand_id (id, name, logo_url, website)
     `)
     .eq('id', params.id)
@@ -88,9 +88,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     delete payload.brief_url
   }
 
+  const { count: acceptedCount } = await admin
+    .from('campaign_influencers')
+    .select('id', { count: 'exact', head: true })
+    .eq('campaign_id', params.id)
+    .eq('application_status', 'accepted')
+
   return NextResponse.json({
     data: {
       ...payload,
+      accepted_count: acceptedCount ?? 0,
       _applied: !!existing,
       application_status: existing?.application_status ?? null,
     },

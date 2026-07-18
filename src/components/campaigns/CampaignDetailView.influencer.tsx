@@ -59,6 +59,9 @@ type PreviewCampaign = {
   deliverable_templates: Array<{ type: string; quantity?: number; description?: string }> | null
   application_questions: string[] | null
   application_deadline: string | null
+  applications_closed_at: string | null
+  max_influencers: number | null
+  accepted_count: number
   brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
   _applied: boolean
   application_status: string | null
@@ -275,6 +278,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
     const p = preview
     const templates = p.deliverable_templates ?? []
     const pStatus = CAMPAIGN_STATUS[p.status] ?? { label: 'Abierta', color: 'bg-green-100 text-green-700' }
+    const deadlinePassed = !!p.application_deadline && new Date(p.application_deadline) < new Date()
+    const noSpots = !!p.max_influencers && p.accepted_count >= p.max_influencers
+    const applicationsClosed = !!p.applications_closed_at || deadlinePassed || noSpots
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-3">
@@ -310,6 +316,18 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           </div>
 
+          {p.max_influencers && (
+            <div className="mt-3 rounded-xl bg-violet-50 border border-violet-100 px-3 py-2">
+              <p className="text-xs font-bold text-violet-800">Cupos limitados</p>
+              <p className="text-xs text-violet-600 mt-0.5">
+                {Math.max(p.max_influencers - p.accepted_count, 0)} de {p.max_influencers} cupos disponibles
+                {p.application_deadline
+                  ? ` · Postula hasta ${new Date(p.application_deadline).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  : ''}
+              </p>
+            </div>
+          )}
+
           <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} briefUrl={p.brief_url} />
         </div>
 
@@ -344,6 +362,11 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               {p.application_status === 'pending'
                 ? 'Solicitud enviada — te avisaremos apenas la revisemos.'
                 : 'Ya estás vinculada a esta campaña.'}
+            </div>
+          ) : applicationsClosed ? (
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 bg-gray-50 rounded-xl px-4 py-3">
+              <Clock className="h-4 w-4" />
+              {noSpots ? 'Cupos agotados' : deadlinePassed ? 'El plazo de postulación finalizó' : 'La marca cerró las postulaciones'}
             </div>
           ) : (
             <button onClick={handleApply} disabled={applying}

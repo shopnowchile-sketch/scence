@@ -210,6 +210,9 @@ export interface Campaign {
   type: CampaignType
   status: CampaignStatus
   visibility?: 'private' | 'open'
+  application_deadline?: string | null
+  applications_closed_at?: string | null
+  max_influencers?: number | null
   start_date: string | null
   end_date: string | null
   address?: string | null          // dirección/ubicación donde se realizará la campaña

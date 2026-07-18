@@ -1402,6 +1402,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           )}
           {c.status === 'active' && (
             <>
+              {c.visibility === 'open' && (!isBrandPortal || c._brand_permissions?.canEdit) && (
+                <button
+                  onClick={() => handleStatusAction(c.applications_closed_at ? 'reopen_applications' : 'close_applications')}
+                  disabled={patchCampaign.isPending}
+                  title={c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones sin pausar la campaña'}
+                  className="flex items-center gap-1.5 px-3 py-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
+                >
+                  <span className="text-xs font-semibold">{c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones'}</span>
+                </button>
+              )}
               <button onClick={() => handleStatusAction('pause')} disabled={patchCampaign.isPending}
                 title="Pausar campaña"
                 className="flex items-center justify-center p-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors">
@@ -1588,6 +1598,31 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── OVERVIEW ───────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
         <>
+        {c.visibility === 'open' && (
+          <div className={cn(
+            'card p-4 border flex flex-wrap items-center justify-between gap-3',
+            c.applications_closed_at ? 'border-gray-200 bg-gray-50' : 'border-violet-200 bg-violet-50'
+          )}>
+            <div>
+              <p className="text-sm font-bold text-gray-900">
+                {c.applications_closed_at ? 'Postulaciones cerradas' : 'Cupos limitados'}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                {c.max_influencers
+                  ? `${confirmedInfluencers.length} de ${c.max_influencers} cupos ocupados`
+                  : `${confirmedInfluencers.length} influencers seleccionadas`}
+                {c.application_deadline
+                  ? ` · Cierre: ${new Date(c.application_deadline).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  : ''}
+              </p>
+            </div>
+            {!c.applications_closed_at && c.max_influencers && (
+              <span className="text-xs font-bold text-violet-700 bg-white px-3 py-1.5 rounded-full border border-violet-200">
+                {Math.max(c.max_influencers - confirmedInfluencers.length, 0)} disponibles
+              </span>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="col-span-2 space-y-4">
             {/* Guías de contenido — movida arriba (antes al final de la columna,
@@ -1886,6 +1921,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── INFLUENCERS ─────────────────────────────────────────────────────── */}
       {tab === 'influencers' && (
         <div className="space-y-4">
+          {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
+            <div className="flex justify-end">
+              <a
+                href={`/api/campaigns/${id}/influencers/export`}
+                className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+              >
+                <FileDown className="h-4 w-4" />
+                Descargar seleccionadas en Excel
+              </a>
+            </div>
+          )}
           {/* Pending applications (fix 2026-07-01: filtraba por ci.status === 'applied',
               un valor que el flujo real de postulación nunca setea — el campo correcto
               es application_status. Ver src/lib/campaign-applications.ts)

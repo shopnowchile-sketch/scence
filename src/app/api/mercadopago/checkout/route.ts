@@ -106,10 +106,11 @@ export async function POST(req: NextRequest) {
 
   if (!mpResponse.ok) {
     console.error('[mercadopago/checkout]', result)
-    return NextResponse.json(
-      { error: result?.message ?? 'No se pudo iniciar la suscripción en Mercado Pago.' },
-      { status: 502 },
-    )
+    const message = result?.message === 'Payer and collector cannot be the same user'
+      ? 'El comprador de prueba debe ser distinto del vendedor de Mercado Pago.'
+      : result?.message ?? 'No se pudo iniciar la suscripción en Mercado Pago.'
+
+    return NextResponse.json({ error: message }, { status: 502 })
   }
 
   const checkoutUrl = result.init_point ?? result.sandbox_init_point

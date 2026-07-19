@@ -6,6 +6,7 @@ import {
   Users,
   Trophy,
   CreditCard,
+  BadgeDollarSign,
   Building2,
   Bug,
 } from 'lucide-react'
@@ -16,6 +17,7 @@ const navSections: NavSection[] = [
     title: 'Principal',
     items: [
       { href: '/brand-dash',        label: 'Dashboard',   icon: LayoutDashboard, exact: true },
+      { href: '/brand-settings/plan', label: 'Planes y suscripción', icon: BadgeDollarSign },
       { href: '/brand-campaigns',   label: 'Campañas',    icon: Target },
       { href: '/brand-influencers', label: 'Influencers', icon: Users, exact: true },
       { href: '/brand-influencers/ranking', label: 'Ranking', icon: Trophy },

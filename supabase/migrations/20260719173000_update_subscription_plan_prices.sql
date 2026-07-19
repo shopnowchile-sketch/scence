@@ -1,8 +1,8 @@
 -- Precios mensuales vigentes de SCENCE.
--- El tier histórico "starter" corresponde al plan comercial Basic.
+-- El tier histórico "starter" corresponde al plan comercial Starter.
 
 update public.subscription_plans
-set name = 'Basic',
+set name = 'Starter',
     price_monthly = 67000,
     price_yearly = null,
     is_active = true

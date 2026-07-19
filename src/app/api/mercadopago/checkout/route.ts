@@ -3,12 +3,13 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+const PRODUCTION_APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
 const DB_TIER: Record<PlanTier, string> = { basic: 'starter', growth: 'growth', pro: 'pro' }
 
 export async function POST(req: NextRequest) {
-  const token = process.env.VERCEL_ENV === 'preview'
+  const isPreview = process.env.VERCEL_ENV === 'preview'
+  const token = isPreview
     ? process.env.MERCADOPAGO_TEST_ACCESS_TOKEN ?? process.env.MERCADOPAGO_ACCESS_TOKEN
     : process.env.MERCADOPAGO_ACCESS_TOKEN
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
   }
 
-  const payerEmail = process.env.VERCEL_ENV === 'preview'
+  const payerEmail = isPreview
     ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL
     : user.email
 
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest) {
 
   const plan = PLAN_LIMITS[tier]
   const externalReference = `${access.organizationId}:${planRow.id}:${tier}`
+  const appUrl = isPreview ? req.nextUrl.origin : PRODUCTION_APP_URL
 
   const mpResponse = await fetch('https://api.mercadopago.com/preapproval', {
     method: 'POST',
@@ -90,7 +92,7 @@ export async function POST(req: NextRequest) {
         transaction_amount: plan.price_monthly_clp,
         currency_id: 'CLP',
       },
-      back_url: `${APP_URL}/brand-settings/plan?checkout=success`,
+      back_url: `${appUrl}/brand-settings/plan?checkout=success`,
     }),
   })
 

@@ -37,7 +37,7 @@ export interface PlanLimits {
 
 export const PLAN_LIMITS = {
   basic: {
-    label:                     'Basic',
+    label:                     'Starter',
     price_monthly_clp:         67_000,
     max_active_campaigns:      1,
     max_roster_influencers:    5,

@@ -5,6 +5,7 @@ import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
+const DB_TIER: Record<PlanTier, string> = { basic: 'starter', growth: 'growth', pro: 'pro' }
 
 export async function POST(req: NextRequest) {
   const token = process.env.VERCEL_ENV === 'preview'
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   const { data: planRow, error: planError } = await admin
     .from('subscription_plans')
     .select('id, tier')
-    .eq('tier', tier)
+    .eq('tier', DB_TIER[tier])
     .eq('is_active', true)
     .maybeSingle()
 

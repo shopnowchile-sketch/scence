@@ -7,7 +7,9 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.ap
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
 
 export async function POST(req: NextRequest) {
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN
+  const token = process.env.VERCEL_ENV === 'preview'
+    ? process.env.MERCADOPAGO_TEST_ACCESS_TOKEN ?? process.env.MERCADOPAGO_ACCESS_TOKEN
+    : process.env.MERCADOPAGO_ACCESS_TOKEN
 
   if (!token) {
     return NextResponse.json(

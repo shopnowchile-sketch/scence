@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(payerEmail)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
     return NextResponse.json(
       { error: 'El email del comprador de Mercado Pago no es válido.' },
       { status: 503 },

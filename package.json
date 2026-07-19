@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "supabase:types": "supabase gen types typescript --local > src/types/database.types.ts"
+    "supabase:types": "supabase gen types typescript --local > src/types/database.types.ts",
+    "mercadopago:create-plans": "node scripts/create-mercadopago-plans.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.4.2",

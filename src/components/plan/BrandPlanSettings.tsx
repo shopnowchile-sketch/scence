@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
-import { Check, RefreshCw, Sparkles, Clock, ArrowRight, BadgeCheck } from 'lucide-react'
+import { Check, RefreshCw, Sparkles, Clock, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { PLAN_LIMITS, getPlanTier, formatPriceCLP, type PlanTier } from '@/lib/plan-limits'
@@ -63,10 +63,6 @@ const PLAN_DEFS: Array<{
     ],
   },
 ]
-
-function secondMonthPrice(amount: number) {
-  return Math.round(amount * 0.5)
-}
 
 export function BrandPlanSettings() {
   const [orgPlan, setOrgPlan] = useState<string>('free')
@@ -154,7 +150,7 @@ export function BrandPlanSettings() {
     }
 
     const subject = `Quiero activar Plan ${plan.label} en SCENCE por ${paymentMethod}`
-    const body = `Hola, quiero activar el Plan ${plan.label} (${formatPriceCLP(plan.price_monthly_clp)} CLP/mes) para mi marca. Prefiero pagar por ${paymentMethod}. Entiendo que la suscripción mínima es de 3 meses, con primer mes gratis y segundo mes con 50% de descuento.`
+    const body = `Hola, quiero activar el Plan ${plan.label} (${formatPriceCLP(plan.price_monthly_clp)} CLP/mes) para mi marca. Prefiero pagar por ${paymentMethod}.`
 
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=hola@scence.cl&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 
@@ -208,31 +204,12 @@ export function BrandPlanSettings() {
         </div>
       </div>
 
-      {/* Oferta comercial */}
-      <div className="bg-gradient-to-r from-violet-600 to-violet-500 rounded-2xl px-6 py-5 text-white">
-        <div className="flex items-center gap-2 mb-2">
-          <BadgeCheck className="h-5 w-5 text-violet-200" />
-          <span className="text-xs font-bold text-violet-100 uppercase tracking-wide">Oferta de lanzamiento</span>
-        </div>
-        <p className="text-lg font-bold mb-1">Primer mes gratis + segundo mes con 50% de descuento</p>
-        <p className="text-sm text-violet-200">
-          Activa SCENCE con compromiso mínimo de 3 meses: prueba gratis, paga menos en el segundo mes y continúa con tu plan normal desde el tercer mes.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3 text-xs font-semibold">
-          <span className="bg-white/20 rounded-full px-3 py-1">Mes 1: Gratis</span>
-          <span className="bg-white/20 rounded-full px-3 py-1">Mes 2: −50%</span>
-          <span className="bg-white/20 rounded-full px-3 py-1">Mes 3: precio regular</span>
-          <span className="bg-white/20 rounded-full px-3 py-1">Mínimo 3 meses</span>
-        </div>
-      </div>
-
       {/* Cards de planes */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {PLAN_DEFS.map(({ tier, highlight, features }) => {
           const info       = PLAN_LIMITS[tier]
           const isCurrent  = tier === currentTier
           const regular    = info.price_monthly_clp
-          const discounted = secondMonthPrice(regular)
 
           return (
             <div
@@ -271,9 +248,6 @@ export function BrandPlanSettings() {
                   </span>
                   <span className="text-xs text-gray-400 mb-0.5">CLP/mes</span>
                 </div>
-                <p className="text-xs text-violet-600 font-semibold mt-1">
-                  1° mes gratis · 2° mes {formatPriceCLP(discounted)} · mínimo 3 meses
-                </p>
               </div>
 
               {/* Features */}
@@ -329,7 +303,7 @@ export function BrandPlanSettings() {
 
       {/* Nota método de pago */}
       <p className="text-xs text-gray-400 text-center pb-4">
-        Suscripción mínima de 3 meses. Activación disponible por Mercado Pago o PayPal durante la oferta de lanzamiento.
+        Cobro mensual mediante Mercado Pago o PayPal.
       </p>
     </div>
   )

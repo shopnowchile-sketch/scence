@@ -4,7 +4,7 @@ const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app
 if (!token) throw new Error('Falta MERCADOPAGO_ACCESS_TOKEN')
 
 const plans = [
-  ['BASIC', 'SCENCE Plan Basic', 67000],
+  ['STARTER', 'SCENCE Plan Starter', 67000],
   ['GROWTH', 'SCENCE Plan Growth', 267000],
   ['PRO', 'SCENCE Plan Pro', 697000],
 ]

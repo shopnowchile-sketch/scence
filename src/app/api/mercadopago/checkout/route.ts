@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
   }
 
-  const payerEmail = isPreview
-    ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL
-    : user.email
+  const payerEmail = (
+    isPreview ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL : user.email
+  )?.trim()
 
   if (!payerEmail) {
     return NextResponse.json(
@@ -42,6 +42,12 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(payerEmail)) {
+    return NextResponse.json(
+      { error: 'El email del comprador de Mercado Pago no es válido.' },
+      { status: 503 },
+    )
+  }
   const access = await resolveBrandAccess(user.id)
   if (!access) {
     return NextResponse.json({ error: 'No organization found' }, { status: 404 })

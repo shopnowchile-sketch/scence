@@ -30,6 +30,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
   }
 
+  const payerEmail = process.env.VERCEL_ENV === 'preview'
+    ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL
+    : user.email
+
+  if (!payerEmail) {
+    return NextResponse.json(
+      { error: 'Falta configurar el comprador de prueba de Mercado Pago.' },
+      { status: 503 },
+    )
+  }
+
   const access = await resolveBrandAccess(user.id)
   if (!access) {
     return NextResponse.json({ error: 'No organization found' }, { status: 404 })
@@ -72,7 +83,7 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       reason: `Suscripción mensual SCENCE ${plan.label}`,
       external_reference: externalReference,
-      payer_email: user.email,
+      payer_email: payerEmail,
       auto_recurring: {
         frequency: 1,
         frequency_type: 'months',

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Building2, FileText, Circle, CheckCircle2,
-  Clock, Download, RefreshCw,
+  Clock, Download, RefreshCw, Gift,
   Plus, X, Loader2, AlertCircle, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -65,6 +65,26 @@ type PreviewCampaign = {
   brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
   _applied: boolean
   application_status: string | null
+  campaign_benefits: CampaignBenefitOffer[]
+}
+
+type CampaignBenefitOffer = {
+  benefit_type: string
+  description: string
+  quantity: number
+  estimated_value?: number | null
+  currency?: string
+  activation_rule: string
+  sales_target?: number | null
+}
+
+function activationText(benefit: CampaignBenefitOffer) {
+  if (benefit.activation_rule === 'deliverables_completed') return 'Pendiente: completa los entregables solicitados'
+  if (benefit.activation_rule === 'sales_target') return `Pendiente: vende ${benefit.sales_target ?? 1} entrada(s)`
+  if (benefit.activation_rule === 'attendance') return 'Pendiente: asiste al evento'
+  if (benefit.activation_rule === 'accepted') return 'Se activa al ser aceptada'
+  if (benefit.activation_rule === 'raffle') return 'Beneficio por sorteo'
+  return 'Activación informada por la marca'
 }
 
 type CampaignAsset = {
@@ -345,6 +365,24 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
           <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} briefUrl={p.brief_url} />
         </div>
+
+        {(p.campaign_benefits?.length ?? 0) > 0 && (
+          <div className="bg-white rounded-2xl border-2 border-violet-200 p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Gift className="h-5 w-5 text-violet-600" />
+              <h2 className="text-base font-bold text-gray-900">Beneficios de esta campaña</h2>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">Estas condiciones aplican por igual a todas las influencers.</p>
+            <div className="space-y-2">
+              {p.campaign_benefits.map((benefit, index) => (
+                <div key={index} className="rounded-xl bg-violet-50 px-3 py-3">
+                  <p className="text-sm font-bold text-violet-900">{benefit.quantity ?? 1}× {benefit.description}</p>
+                  <p className="text-xs text-violet-700 mt-1">{activationText(benefit)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* CTA arriba, antes del detalle de deliverables (pedido: que se vea
             de inmediato, sin scrollear todo el brief primero). */}

@@ -15,6 +15,10 @@ const SELECT = `
   influencer:influencers (id, display_name, avatar_url),
   brand:brands (id, name, logo_url),
   responsible:profiles!barters_responsible_id_fkey (id, full_name),
+  benefits:barter_benefits (
+    id, organization_id, barter_id, benefit_type, description, fixed_value,
+    currency, commission_rate, affiliate_link_id, position, created_at, updated_at
+  ),
   history:barter_status_history (
     id, barter_id, from_status, to_status, changed_by, note, created_at,
     actor:profiles!barter_status_history_changed_by_fkey (id, full_name)
@@ -72,7 +76,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const {
     influencer_id, item, brand_id, campaign_influencer_id,
-    description, estimated_value, currency, agreed_date, responsible_id, notes,
+    description, estimated_value, currency, agreed_date, responsible_id, notes, benefits,
   } = body
 
   if (!influencer_id || !item) {
@@ -114,6 +118,25 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  if (Array.isArray(benefits) && benefits.length > 0) {
+    const benefitRows = buildBenefitRows(benefits, {
+      organizationId: camp.organization_id,
+      barterId: data.id,
+      defaultCurrency: (currency as string) ?? 'CLP',
+    })
+
+    if ('error' in benefitRows) {
+      await admin.from('barters').delete().eq('id', data.id)
+      return NextResponse.json({ error: benefitRows.error }, { status: 422 })
+    }
+
+    const { error: benefitsError } = await admin.from('barter_benefits').insert(benefitRows.rows)
+    if (benefitsError) {
+      await admin.from('barters').delete().eq('id', data.id)
+      return NextResponse.json({ error: benefitsError.message }, { status: 500 })
+    }
+  }
+
   // Notificar al responsable (si hay y no es quien crea)
   await notifyResponsible(admin, {
     responsibleId: data.responsible_id,
@@ -124,7 +147,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     body:          `${data.item} · ${data.influencer?.display_name ?? 'influencer'} (${camp.name})`,
   })
 
-  return NextResponse.json({ data }, { status: 201 })
+  const { data: created } = await admin
+    .from('barters')
+    .select(SELECT)
+    .eq('id', data.id)
+    .single()
+
+  return NextResponse.json({ data: created ?? data }, { status: 201 })
 }
 
 // ── PATCH /api/campaigns/[id]/barters — avanzar estado / editar ───────────────
@@ -319,4 +348,65 @@ async function getAccessibleCampaign(
     .maybeSingle()
 
   return data
+}
+
+
+type BenefitInput = {
+  benefit_type?: unknown
+  description?: unknown
+  fixed_value?: unknown
+  currency?: unknown
+  commission_rate?: unknown
+  affiliate_link_id?: unknown
+}
+
+const BENEFIT_TYPES = new Set([
+  'product', 'experience', 'meal', 'ticket', 'gift_card',
+  'service', 'sales_commission', 'other',
+])
+
+function buildBenefitRows(
+  rawBenefits: unknown[],
+  options: { organizationId: string; barterId: string; defaultCurrency: string }
+): { rows: Record<string, unknown>[] } | { error: string } {
+  const rows: Record<string, unknown>[] = []
+
+  for (let index = 0; index < rawBenefits.length; index += 1) {
+    const benefit = rawBenefits[index] as BenefitInput
+    const type = String(benefit?.benefit_type ?? '')
+    if (!BENEFIT_TYPES.has(type)) {
+      return { error: `Tipo de beneficio inválido en la posición ${index + 1}` }
+    }
+
+    const isCommission = type === 'sales_commission'
+    const fixedValue = benefit.fixed_value == null || benefit.fixed_value === ''
+      ? null
+      : Number(benefit.fixed_value)
+    const commissionRate = benefit.commission_rate == null || benefit.commission_rate === ''
+      ? null
+      : Number(benefit.commission_rate)
+
+    if (isCommission && (!commissionRate || commissionRate <= 0 || commissionRate > 100)) {
+      return { error: 'La comisión debe ser mayor a 0% y menor o igual a 100%' }
+    }
+    if (!isCommission && (fixedValue == null || !Number.isFinite(fixedValue) || fixedValue < 0)) {
+      return { error: 'Cada beneficio fijo debe tener un valor válido' }
+    }
+
+    rows.push({
+      organization_id: options.organizationId,
+      barter_id: options.barterId,
+      benefit_type: type,
+      description: typeof benefit.description === 'string' ? benefit.description.trim() || null : null,
+      fixed_value: isCommission ? null : fixedValue,
+      currency: typeof benefit.currency === 'string' ? benefit.currency : options.defaultCurrency,
+      commission_rate: isCommission ? commissionRate : null,
+      affiliate_link_id: isCommission && typeof benefit.affiliate_link_id === 'string'
+        ? benefit.affiliate_link_id
+        : null,
+      position: index,
+    })
+  }
+
+  return { rows }
 }

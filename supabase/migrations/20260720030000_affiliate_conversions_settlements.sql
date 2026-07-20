@@ -186,3 +186,14 @@ DROP TRIGGER IF EXISTS trg_sync_affiliate_link_totals ON public.affiliate_conver
 CREATE TRIGGER trg_sync_affiliate_link_totals
 AFTER INSERT OR UPDATE OR DELETE ON public.affiliate_conversions
 FOR EACH ROW EXECUTE FUNCTION public.sync_affiliate_link_totals();
+
+CREATE OR REPLACE FUNCTION public.increment_affiliate_link_clicks(p_link_id uuid)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE public.affiliate_links
+  SET clicks = COALESCE(clicks, 0) + 1, updated_at = now()
+  WHERE id = p_link_id AND is_active = true;
+$$;

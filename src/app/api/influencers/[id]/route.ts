@@ -15,6 +15,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  if (!orgId) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+  }
 
   // Core influencer + social profiles + rate cards
   const { data: influencer, error } = await admin
@@ -25,6 +29,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       rate_cards:influencer_rate_cards (*)
     `)
     .eq('id', params.id)
+    .eq('organization_id', orgId)
     .single()
 
   if (error) {
@@ -58,11 +63,59 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: campaignDeliverables } = await delivQuery
 
+  const [bartersRes, directBookingsRes, linkedBookingsRes, conversionsRes, settlementsRes] = await Promise.all([
+    admin
+      .from('barters')
+      .select('id, item, simple_status, created_at, completed_at, cancelled_at, campaign:campaigns(id, name)')
+      .eq('organization_id', orgId)
+      .eq('influencer_id', params.id),
+    admin
+      .from('bookings')
+      .select('id, title, status, starts_at, confirmed_at, canceled_at, campaign:campaigns(id, name)')
+      .eq('organization_id', orgId)
+      .eq('influencer_id', params.id),
+    admin
+      .from('booking_influencers')
+      .select(`
+        id, status, created_at,
+        booking:bookings!inner (
+          id, title, status, starts_at, confirmed_at, canceled_at, organization_id,
+          campaign:campaigns (id, name)
+        )
+      `)
+      .eq('influencer_id', params.id)
+      .eq('booking.organization_id', orgId),
+    admin
+      .from('affiliate_conversions')
+      .select('id, status, sale_amount, commission_amount, currency, occurred_at, confirmed_at, campaign:campaigns(id, name)')
+      .eq('organization_id', orgId)
+      .eq('influencer_id', params.id),
+    admin
+      .from('commission_settlements')
+      .select('id, status, amount, currency, created_at, paid_at, campaign:campaigns(id, name)')
+      .eq('organization_id', orgId)
+      .eq('influencer_id', params.id),
+  ])
+
+  const bookings = [...(directBookingsRes.data ?? [])]
+  const seenBookingIds = new Set(bookings.map(booking => booking.id))
+  for (const row of linkedBookingsRes.data ?? []) {
+    const booking = row.booking as unknown as Record<string, unknown> | null
+    const bookingId = booking?.id as string | undefined
+    if (!bookingId || seenBookingIds.has(bookingId)) continue
+    seenBookingIds.add(bookingId)
+    bookings.push({ ...booking, participant_status: row.status } as never)
+  }
+
   return NextResponse.json({
     data: {
       ...influencer,
       campaign_influencers: campaignInfluencers ?? [],
       campaign_deliverables: campaignDeliverables ?? [],
+      barters: bartersRes.data ?? [],
+      bookings,
+      affiliate_conversions: conversionsRes.data ?? [],
+      commission_settlements: settlementsRes.data ?? [],
     }
   })
 }

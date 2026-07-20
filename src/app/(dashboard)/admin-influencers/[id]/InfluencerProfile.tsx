@@ -340,6 +340,10 @@ export function InfluencerProfile({ id }: { id: string }) {
   const rateCards: RateCard[] = (influencer.rate_cards ?? []).filter(rc => rc.is_active !== false)
   const campaignInfluencers: CampaignInfluencerJoin[] = influencer.campaign_influencers ?? []
   const deliverables: DeliverableJoin[] = influencer.campaign_deliverables ?? []
+  const barters = influencer.barters ?? []
+  const bookings = influencer.bookings ?? []
+  const conversions = influencer.affiliate_conversions ?? []
+  const settlements = influencer.commission_settlements ?? []
 
   const primaryProfile = socialProfiles.find(sp => sp.is_primary) ?? socialProfiles[0]
   const tier = primaryProfile ? getInfluencerTier(primaryProfile.followers ?? 0) : 'nano'
@@ -371,6 +375,37 @@ export function InfluencerProfile({ id }: { id: string }) {
       if (d.published_at) events.push({ id: `deliverable-published-${d.id}`, date: d.published_at, icon: '✅', title: 'Contenido publicado', detail, href })
       return events
     }),
+    ...barters.flatMap(barter => {
+      const href = barter.campaign?.id ? `/admin-campaigns/${barter.campaign.id}?tab=canjes` : null
+      const detail = `${barter.item} · ${barter.campaign?.name ?? 'Canje'}`
+      const events = [{ id: `barter-created-${barter.id}`, date: barter.created_at, icon: '🎁', title: 'Canje registrado', detail, href }]
+      if (barter.completed_at) events.push({ id: `barter-completed-${barter.id}`, date: barter.completed_at, icon: '✅', title: 'Canje completado', detail, href })
+      return events
+    }),
+    ...bookings.map(booking => ({
+      id: `booking-${booking.id}`,
+      date: booking.starts_at,
+      icon: '📅',
+      title: booking.canceled_at ? 'Reserva cancelada' : 'Acción programada',
+      detail: `${booking.title} · ${booking.campaign?.name ?? 'Sin campaña'}`,
+      href: booking.campaign?.id ? `/admin-campaigns/${booking.campaign.id}?tab=locations` : null,
+    })),
+    ...conversions.map(conversion => ({
+      id: `conversion-${conversion.id}`,
+      date: conversion.confirmed_at ?? conversion.occurred_at,
+      icon: '🛒',
+      title: conversion.status === 'confirmed' ? 'Venta afiliada confirmada' : conversion.status === 'cancelled' ? 'Venta afiliada cancelada' : 'Venta afiliada pendiente',
+      detail: `${formatCurrency(conversion.sale_amount, conversion.currency)} · Comisión ${formatCurrency(conversion.commission_amount, conversion.currency)}${conversion.campaign?.name ? ` · ${conversion.campaign.name}` : ''}`,
+      href: conversion.campaign?.id ? `/admin-campaigns/${conversion.campaign.id}` : null,
+    })),
+    ...settlements.map(settlement => ({
+      id: `settlement-${settlement.id}`,
+      date: settlement.paid_at ?? settlement.created_at,
+      icon: '💳',
+      title: settlement.status === 'paid' ? 'Comisión pagada' : settlement.status === 'problem' ? 'Comisión con problema' : 'Comisión pendiente de pago',
+      detail: `${formatCurrency(settlement.amount, settlement.currency)}${settlement.campaign?.name ? ` · ${settlement.campaign.name}` : ''}`,
+      href: settlement.campaign?.id ? `/admin-campaigns/${settlement.campaign.id}?tab=billing` : null,
+    })),
   ].sort((a, b) => b.date.localeCompare(a.date))
 
   return (
@@ -883,7 +918,7 @@ export function InfluencerProfile({ id }: { id: string }) {
         <div className="card p-6">
           <div className="mb-5">
             <h3 className="font-bold text-gray-900">Historial de acciones</h3>
-            <p className="mt-1 text-sm text-gray-400">Campañas y entregables ordenados desde lo más reciente.</p>
+            <p className="mt-1 text-sm text-gray-400">Campañas, contenido, canjes, acciones y ventas ordenados desde lo más reciente.</p>
           </div>
           {history.length === 0 ? (
             <div className="py-12 text-center">

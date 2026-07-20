@@ -154,7 +154,7 @@ const TIER_COLORS: Record<string, string> = {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function InfluencerProfile({ id }: { id: string }) {
-  const [tab, setTab] = useState<'overview' | 'campaigns' | 'deliverables' | 'notes'>('overview')
+  const [tab, setTab] = useState<'overview' | 'campaigns' | 'deliverables' | 'history' | 'notes'>('overview')
   const [removingCi, setRemovingCi] = useState<string | null>(null)
   const [deactivating, setDeactivating] = useState(false)
   const [deletingHard, setDeletingHard] = useState(false)
@@ -352,6 +352,26 @@ export function InfluencerProfile({ id }: { id: string }) {
     : 0
   const activeCampaigns = campaignInfluencers.filter(ci => ci.campaign?.status === 'active').length
   const totalEarnings = campaignInfluencers.reduce((s, ci) => s + (ci.fee ?? 0), 0)
+
+  const history = [
+    ...campaignInfluencers.flatMap(ci => ci.created_at ? [{
+      id: `campaign-${ci.id}`,
+      date: ci.created_at,
+      icon: '📣',
+      title: 'Asignada a campaña',
+      detail: ci.campaign?.name ?? 'Campaña',
+      href: ci.campaign?.id ? `/admin-campaigns/${ci.campaign.id}` : null,
+    }] : []),
+    ...deliverables.flatMap(d => {
+      const events: Array<{ id: string; date: string; icon: string; title: string; detail: string; href: string | null }> = []
+      const href = d.campaign?.id ? `/admin-campaigns/${d.campaign.id}?tab=deliverables` : null
+      const detail = `${d.title || d.type || 'Entregable'} · ${d.campaign?.name ?? 'Campaña'}`
+      if (d.created_at) events.push({ id: `deliverable-created-${d.id}`, date: d.created_at, icon: '📝', title: 'Entregable creado', detail, href })
+      if (d.submitted_at) events.push({ id: `deliverable-submitted-${d.id}`, date: d.submitted_at, icon: '📤', title: 'Entregable enviado', detail, href })
+      if (d.published_at) events.push({ id: `deliverable-published-${d.id}`, date: d.published_at, icon: '✅', title: 'Contenido publicado', detail, href })
+      return events
+    }),
+  ].sort((a, b) => b.date.localeCompare(a.date))
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -583,6 +603,7 @@ export function InfluencerProfile({ id }: { id: string }) {
           { id: 'overview',     label: 'Overview' },
           { id: 'campaigns',    label: `Campañas (${campaignInfluencers.length})` },
           { id: 'deliverables', label: `Deliverables (${deliverables.length})` },
+          { id: 'history',      label: `Historial (${history.length})` },
           { id: 'notes',        label: 'Notas' },
         ] as const).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -853,6 +874,38 @@ export function InfluencerProfile({ id }: { id: string }) {
                 })}
               </tbody>
             </table>
+          )}
+        </div>
+      )}
+
+      {/* ── Unified history ── */}
+      {tab === 'history' && (
+        <div className="card p-6">
+          <div className="mb-5">
+            <h3 className="font-bold text-gray-900">Historial de acciones</h3>
+            <p className="mt-1 text-sm text-gray-400">Campañas y entregables ordenados desde lo más reciente.</p>
+          </div>
+          {history.length === 0 ? (
+            <div className="py-12 text-center">
+              <Clock className="mx-auto mb-3 h-10 w-10 text-gray-200" />
+              <p className="text-sm text-gray-400">Todavía no hay acciones registradas.</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {history.map(item => {
+                const content = (
+                  <div className="flex gap-3 rounded-xl px-3 py-3 hover:bg-gray-50">
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-violet-50 text-base">{item.icon}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                      <p className="truncate text-sm text-gray-500">{item.detail}</p>
+                    </div>
+                    <time className="flex-shrink-0 text-xs text-gray-400">{formatDate(item.date, 'd MMM yyyy')}</time>
+                  </div>
+                )
+                return item.href ? <Link key={item.id} href={item.href}>{content}</Link> : <div key={item.id}>{content}</div>
+              })}
+            </div>
           )}
         </div>
       )}

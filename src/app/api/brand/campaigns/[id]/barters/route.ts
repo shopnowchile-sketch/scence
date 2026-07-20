@@ -26,8 +26,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data, error } = await admin
     .from('barters')
     .select(`
-      id, item, description, estimated_value, currency, status, evidence_url,
-      agreed_date, created_at, updated_at,
+      id, item, description, estimated_value, currency, status, simple_status, evidence_url,
+      agreed_date, completed_at, cancelled_at, cancellation_reason, created_at, updated_at,
+      benefits:barter_benefits (
+        id, benefit_type, description, fixed_value, currency,
+        commission_rate, affiliate_link_id, position
+      ),
       influencer:influencers (id, display_name, avatar_url),
       history:barter_status_history (id, barter_id, from_status, to_status, note, created_at)
     `)

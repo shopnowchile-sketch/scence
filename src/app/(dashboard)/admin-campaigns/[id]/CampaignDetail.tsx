@@ -57,7 +57,7 @@ const GRADIENTS = [
   'from-amber-400 to-orange-500', 'from-violet-400 to-indigo-500',
 ]
 
-type Tab = 'overview' | 'influencers' | 'deliverables' | 'assets' | 'locations' | 'billing' | 'history'
+type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'history'
 
 // ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
 // admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
@@ -1560,6 +1560,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-3.5 w-3.5" /> },
     { id: 'influencers',  label: `Influencers (${activeRelations.length})`, icon: <Users className="h-3.5 w-3.5" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+    { id: 'barters',      label: 'Canjes',        icon: <Gift className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
     { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-3.5 w-3.5" /> },
     { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-3.5 w-3.5" /> },
@@ -3427,7 +3428,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       )}
 
       {/* ── CANJES ─────────────────────────────────────────────────────────── */}
-      {false && (
+      {tab === 'barters' && (
         <BartersTab campaignId={id} campaignInfluencers={campaignInfluencers} />
       )}
 

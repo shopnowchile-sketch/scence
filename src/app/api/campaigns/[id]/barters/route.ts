@@ -234,8 +234,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // ── B) Edición de otros campos (no dispara historial) ─────────────────────────
   if (patch && Object.keys(patch).length > 0) {
+    if ('simple_status' in patch && !['pending', 'completed', 'problem'].includes(String(patch.simple_status))) {
+      return NextResponse.json({ error: 'Estado simple inválido' }, { status: 422 })
+    }
+
     const allowed = ['item', 'description', 'estimated_value', 'currency',
-      'agreed_date', 'responsible_id', 'brand_id', 'notes', 'evidence_url']
+      'agreed_date', 'responsible_id', 'brand_id', 'notes', 'evidence_url', 'simple_status']
     const clean: Record<string, unknown> = {}
     for (const k of allowed) if (k in patch) clean[k] = patch[k]
     clean.updated_at = new Date().toISOString()

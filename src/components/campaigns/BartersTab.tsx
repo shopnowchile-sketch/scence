@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
-import { Gift, Loader2, Mail, AlertTriangle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Gift, Loader2, Mail, AlertTriangle, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, formatCurrency } from '@/lib/utils'
 import {
@@ -18,14 +18,17 @@ export function BartersTab({
   campaignId,
   campaignInfluencers,
   campaignBenefits,
+  onSaveBenefits,
 }: {
   campaignId: string
   campaignInfluencers: CampaignInfluencerDetail[]
   campaignBenefits: CampaignBenefit[]
+  onSaveBenefits: (benefits: CampaignBenefit[]) => Promise<unknown>
 }) {
   const { data: barters = [], isLoading } = useCampaignBarters(campaignId)
   const initialize = useInitializeCampaignBarters(campaignId)
   const acceptedCount = campaignInfluencers.filter(item => item.application_status === 'accepted').length
+  const [editingOffer, setEditingOffer] = useState(false)
 
   useEffect(() => {
     if (!isLoading && campaignBenefits.length > 0 && acceptedCount > barters.length && !initialize.isPending && !initialize.isSuccess) {
@@ -44,15 +47,30 @@ export function BartersTab({
       <section className="card p-5 border border-violet-100 bg-violet-50/30">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-violet-100 p-2.5"><Gift className="h-5 w-5 text-violet-600" /></div>
-          <div>
+          <div className="flex-1">
             <h3 className="text-sm font-semibold text-gray-900">Beneficios de esta campaña</h3>
             <p className="text-xs text-gray-500 mt-1">
               Son iguales para todas las influencers y se muestran antes de postular.
             </p>
           </div>
+          {!editingOffer && (
+            <button type="button" onClick={() => setEditingOffer(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700">
+              <Pencil className="h-3.5 w-3.5" /> {campaignBenefits.length ? 'Editar' : 'Definir beneficios'}
+            </button>
+          )}
         </div>
 
-        {campaignBenefits.length === 0 ? (
+        {editingOffer ? (
+          <CampaignOfferEditor
+            initialBenefits={campaignBenefits}
+            onCancel={() => setEditingOffer(false)}
+            onSave={async benefits => {
+              await onSaveBenefits(benefits)
+              setEditingOffer(false)
+              toast.success('Beneficios de la campaña guardados')
+            }}
+          />
+        ) : campaignBenefits.length === 0 ? (
           <p className="mt-4 rounded-lg bg-white px-4 py-3 text-sm text-gray-500">
             Esta campaña todavía no tiene beneficios definidos.
           </p>
@@ -110,6 +128,80 @@ export function BartersTab({
           barters.map(barter => <TrackingRow key={barter.id} campaignId={campaignId} barter={barter} />)
         )}
       </section>
+    </div>
+  )
+}
+
+function CampaignOfferEditor({ initialBenefits, onCancel, onSave }: {
+  initialBenefits: CampaignBenefit[]
+  onCancel: () => void
+  onSave: (benefits: CampaignBenefit[]) => Promise<void>
+}) {
+  const [benefits, setBenefits] = useState<CampaignBenefit[]>(initialBenefits)
+  const [saving, setSaving] = useState(false)
+  const input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-400'
+
+  function addBenefit() {
+    setBenefits(current => [...current, {
+      benefit_type: 'ticket', description: '', quantity: 1, estimated_value: null,
+      commission_rate: null, currency: 'CLP', activation_rule: 'deliverables_completed', sales_target: null,
+    }])
+  }
+
+  function updateBenefit(index: number, patch: Partial<CampaignBenefit>) {
+    setBenefits(current => current.map((benefit, position) => position === index ? { ...benefit, ...patch } : benefit))
+  }
+
+  async function save() {
+    if (benefits.length === 0 || benefits.some(benefit => !benefit.description.trim())) {
+      toast.error('Agrega y describe al menos un beneficio')
+      return
+    }
+    setSaving(true)
+    try { await onSave(benefits) } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      {benefits.map((benefit, index) => (
+        <div key={index} className="rounded-xl border border-violet-100 bg-white p-3 space-y-3">
+          <div className="grid gap-2 md:grid-cols-3">
+            <select className={input} value={benefit.benefit_type} onChange={event => updateBenefit(index, { benefit_type: event.target.value as CampaignBenefit['benefit_type'] })}>
+              {Object.entries(BARTER_BENEFIT_TYPE_CONFIG).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <input className={input} value={benefit.description} maxLength={500} onChange={event => updateBenefit(index, { description: event.target.value })} placeholder="Ej. Entrada general Maturana Sunset" />
+            <input className={input} type="number" min="1" value={benefit.quantity} onChange={event => updateBenefit(index, { quantity: Math.max(1, Number(event.target.value) || 1) })} placeholder="Cantidad" />
+          </div>
+          <div className="grid gap-2 md:grid-cols-3">
+            <select className={input} value={benefit.activation_rule} onChange={event => updateBenefit(index, { activation_rule: event.target.value as CampaignBenefit['activation_rule'], sales_target: event.target.value === 'sales_target' ? benefit.sales_target : null })}>
+              <option value="deliverables_completed">Después de completar entregables</option>
+              <option value="sales_target">Después de alcanzar ventas</option>
+              <option value="attendance">Al asistir</option>
+              <option value="accepted">Al ser aceptada</option>
+              <option value="raffle">Por sorteo</option>
+              <option value="manual">Confirmación de la marca</option>
+            </select>
+            {benefit.activation_rule === 'sales_target' && (
+              <input className={input} type="number" min="1" value={benefit.sales_target ?? ''} onChange={event => updateBenefit(index, { sales_target: Math.max(1, Number(event.target.value) || 1) })} placeholder="Ventas necesarias" />
+            )}
+            {benefit.benefit_type === 'sales_commission' && (
+              <input className={input} type="number" min="0" max="100" step="0.01" value={benefit.commission_rate ?? ''} onChange={event => updateBenefit(index, { commission_rate: Number(event.target.value) })} placeholder="Comisión %" />
+            )}
+            <button type="button" onClick={() => setBenefits(current => current.filter((_, position) => position !== index))} className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50">
+              <Trash2 className="h-3.5 w-3.5" /> Eliminar
+            </button>
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={addBenefit} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700">
+        <Plus className="h-3.5 w-3.5" /> Agregar beneficio
+      </button>
+      <div className="flex justify-end gap-2 border-t border-violet-100 pt-3">
+        <button type="button" onClick={onCancel} disabled={saving} className="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500">Cancelar</button>
+        <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+          {saving ? 'Guardando…' : 'Guardar beneficios'}
+        </button>
+      </div>
     </div>
   )
 }

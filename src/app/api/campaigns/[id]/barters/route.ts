@@ -77,9 +77,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   const {
     influencer_id, item, brand_id, campaign_influencer_id,
     description, estimated_value, currency, agreed_date, responsible_id, notes, benefits,
+    initialize_tracking,
   } = body
 
-  if (!influencer_id || !item) {
+  if (initialize_tracking !== true && (!influencer_id || !item)) {
     return NextResponse.json(
       { error: 'influencer_id e item son obligatorios' },
       { status: 422 }
@@ -91,6 +92,54 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Verifica pertenencia a la organización antes de usar el service role.
   const camp = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
   if (!camp) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  if (initialize_tracking === true) {
+    const { data: participants, error: participantsError } = await admin
+      .from('campaign_influencers')
+      .select('id, influencer_id')
+      .eq('campaign_id', params.id)
+      .eq('application_status', 'accepted')
+
+    if (participantsError) {
+      return NextResponse.json({ error: participantsError.message }, { status: 500 })
+    }
+
+    const { data: existing, error: existingError } = await admin
+      .from('barters')
+      .select('influencer_id')
+      .eq('campaign_id', params.id)
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 })
+    }
+
+    const existingIds = new Set((existing ?? []).map(row => row.influencer_id))
+    const totalValue = (Array.isArray(camp.campaign_benefits) ? camp.campaign_benefits : [])
+      .reduce((sum: number, benefit: any) => sum + (Number(benefit?.estimated_value) || 0), 0)
+    const missing = (participants ?? []).filter(row => !existingIds.has(row.influencer_id))
+
+    if (missing.length > 0) {
+      const { error: insertError } = await admin.from('barters').insert(missing.map(row => ({
+        organization_id: camp.organization_id,
+        campaign_id: params.id,
+        campaign_influencer_id: row.id,
+        influencer_id: row.influencer_id,
+        brand_id: camp.brand_id ?? null,
+        item: 'Beneficios de campaña',
+        estimated_value: totalValue || null,
+        currency: camp.currency ?? 'CLP',
+        created_by: user.id,
+        status: 'pactado',
+        simple_status: 'pending',
+      })))
+
+      if (insertError) {
+        return NextResponse.json({ error: insertError.message }, { status: 500 })
+      }
+    }
+
+    return NextResponse.json({ data: { created: missing.length } }, { status: 201 })
+  }
 
   const { data, error } = await admin
     .from('barters')
@@ -346,7 +395,7 @@ async function getAccessibleCampaign(
 
   const { data } = await admin
     .from('campaigns')
-    .select('id, organization_id, brand_id, name')
+    .select('id, organization_id, brand_id, name, currency, campaign_benefits')
     .eq('id', campaignId)
     .eq('organization_id', orgId)
     .maybeSingle()

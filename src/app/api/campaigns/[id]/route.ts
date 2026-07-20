@@ -261,6 +261,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { action, address, ...fields } = body
 
+  if ('campaign_benefits' in fields) {
+    fields.campaign_benefits = normalizeCampaignBenefits(fields.campaign_benefits)
+  }
+
   // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
   // propia campaña vía PATCH, aunque el formulario ya no muestre ese campo.
   if (user.user_metadata?.is_brand) {
@@ -396,6 +400,30 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({ data })
+}
+
+function normalizeCampaignBenefits(value: unknown) {
+  if (!Array.isArray(value)) return []
+  const types = new Set(['product', 'experience', 'meal', 'ticket', 'gift_card', 'service', 'sales_commission', 'other'])
+  const rules = new Set(['deliverables_completed', 'sales_target', 'attendance', 'accepted', 'manual', 'raffle'])
+  return value.flatMap(raw => {
+    if (!raw || typeof raw !== 'object') return []
+    const benefit = raw as Record<string, unknown>
+    const benefitType = String(benefit.benefit_type ?? '')
+    const activationRule = String(benefit.activation_rule ?? '')
+    const description = String(benefit.description ?? '').trim()
+    if (!types.has(benefitType) || !rules.has(activationRule) || !description) return []
+    return [{
+      benefit_type: benefitType,
+      description,
+      quantity: Math.max(1, Math.trunc(Number(benefit.quantity) || 1)),
+      estimated_value: benefit.estimated_value == null ? null : Math.max(0, Number(benefit.estimated_value) || 0),
+      commission_rate: benefitType === 'sales_commission' ? Math.min(100, Math.max(0, Number(benefit.commission_rate) || 0)) : null,
+      currency: typeof benefit.currency === 'string' ? benefit.currency : 'CLP',
+      activation_rule: activationRule,
+      sales_target: activationRule === 'sales_target' ? Math.max(1, Math.trunc(Number(benefit.sales_target) || 1)) : null,
+    }]
+  })
 }
 
 // ── DELETE /api/campaigns/[id] ────────────────────────────────────────────────

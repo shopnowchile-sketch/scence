@@ -44,6 +44,17 @@ const deliverableSchema = z.object({
   })).optional(),
 })
 
+const campaignBenefitSchema = z.object({
+  benefit_type: z.enum(['product', 'experience', 'meal', 'ticket', 'gift_card', 'service', 'sales_commission', 'other']),
+  description: z.string().min(1, 'Describe el beneficio').max(500),
+  quantity: z.number().int().min(1).default(1),
+  estimated_value: nanToUndef,
+  commission_rate: nanToUndefClamped,
+  currency: z.string().default('CLP'),
+  activation_rule: z.enum(['deliverables_completed', 'sales_target', 'attendance', 'accepted', 'manual', 'raffle']),
+  sales_target: z.number().int().min(1).optional(),
+})
+
 const schema = z.object({
   name: z.string().min(3, 'Mínimo 3 caracteres').max(120),
   description: z.string().max(500).optional(),
@@ -67,6 +78,7 @@ const schema = z.object({
   approval_required: z.boolean(),
   tags: z.array(z.string()).optional(),
   deliverable_templates: z.array(deliverableSchema).optional(),
+  campaign_benefits: z.array(campaignBenefitSchema).optional(),
   brand_id: z.string().optional(),
   visibility: z.enum(['private', 'open']).default('private'),
   address: z.string().max(300).optional(),
@@ -79,6 +91,7 @@ const schema = z.object({
 })
 
 type FormValues = z.infer<typeof schema>
+type CampaignBenefitInput = z.infer<typeof campaignBenefitSchema>
 
 const CAMPAIGN_TYPES = [
   { value: 'sponsored_post',   label: 'Sponsored Post',   desc: 'Publicación patrocinada en redes' },
@@ -102,6 +115,21 @@ const CURRENCIES = [
   { value: 'BRL', label: 'BRL — Real brasileño' },
   { value: 'GBP', label: 'GBP — Libra esterlina' },
 ]
+
+const BENEFIT_TYPES = [
+  ['ticket', 'Entrada / ticket'], ['product', 'Producto'], ['experience', 'Experiencia'],
+  ['meal', 'Comida o degustación'], ['gift_card', 'Gift card'], ['service', 'Servicio'],
+  ['sales_commission', 'Comisión por ventas'], ['other', 'Otro'],
+] as const
+
+const ACTIVATION_RULES = [
+  ['deliverables_completed', 'Al completar los entregables'],
+  ['sales_target', 'Al alcanzar una meta de ventas'],
+  ['attendance', 'Al asistir al evento'],
+  ['accepted', 'Al ser aceptada'],
+  ['raffle', 'Por sorteo'],
+  ['manual', 'Activación manual'],
+] as const
 
 const STEPS = [
   { id: 1, label: 'Información', icon: Target },
@@ -363,6 +391,66 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
 }
 
 // ── Step 2 — Budget & Fechas ──────────────────────────────────────────────────
+function CampaignBenefitsInput({ value = [], onChange }: {
+  value?: CampaignBenefitInput[]
+  onChange: (value: CampaignBenefitInput[]) => void
+}) {
+  function add() {
+    onChange([...value, {
+      benefit_type: 'ticket', description: '', quantity: 1,
+      estimated_value: undefined, currency: 'CLP', activation_rule: 'deliverables_completed',
+      sales_target: undefined, commission_rate: undefined,
+    }])
+  }
+  function update(index: number, patch: Partial<CampaignBenefitInput>) {
+    onChange(value.map((benefit, position) => position === index ? { ...benefit, ...patch } : benefit))
+  }
+  return (
+    <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-violet-900">Beneficios para cada influencer</p>
+          <p className="text-xs text-violet-600 mt-0.5">Se mostrarán antes de postular. Todas reciben las mismas condiciones.</p>
+        </div>
+        <button type="button" onClick={add} className="text-xs font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-3 py-2">
+          + Agregar
+        </button>
+      </div>
+      {value.length === 0 && <p className="text-xs text-violet-500">Sin beneficios definidos.</p>}
+      {value.map((benefit, index) => (
+        <div key={index} className="rounded-xl border border-violet-100 bg-white p-3 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <select value={benefit.benefit_type} onChange={e => update(index, { benefit_type: e.target.value as CampaignBenefitInput['benefit_type'], estimated_value: undefined, commission_rate: undefined })} className="input-base w-full">
+              {BENEFIT_TYPES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+            <input type="number" min="1" step="1" value={benefit.quantity} onChange={e => update(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} className="input-base w-full" placeholder="Cantidad" />
+            <select value={benefit.activation_rule} onChange={e => update(index, { activation_rule: e.target.value as CampaignBenefitInput['activation_rule'], sales_target: e.target.value === 'sales_target' ? benefit.sales_target : undefined })} className="input-base w-full">
+              {ACTIVATION_RULES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
+          <input value={benefit.description} onChange={e => update(index, { description: e.target.value })} maxLength={500} className="input-base w-full" placeholder="Ej. Entrada general para Maturana Sunset" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {benefit.activation_rule === 'sales_target' && (
+              <input type="number" min="1" step="1" value={benefit.sales_target ?? ''} onChange={e => update(index, { sales_target: Number(e.target.value) || undefined })} className="input-base w-full" placeholder="Ventas necesarias" />
+            )}
+            {benefit.benefit_type === 'sales_commission' ? (
+              <input type="number" min="0" max="100" step="0.01" value={benefit.commission_rate ?? ''} onChange={e => update(index, { commission_rate: e.target.value === '' ? undefined : Number(e.target.value) })} className="input-base w-full" placeholder="Comisión %" />
+            ) : (
+              <>
+                <input type="number" min="0" step="1000" value={benefit.estimated_value ?? ''} onChange={e => update(index, { estimated_value: e.target.value === '' ? undefined : Number(e.target.value) })} className="input-base w-full" placeholder="Valor estimado" />
+                <select value={benefit.currency} onChange={e => update(index, { currency: e.target.value })} className="input-base w-full">
+                  {CURRENCIES.map(currency => <option key={currency.value} value={currency.value}>{currency.value}</option>)}
+                </select>
+              </>
+            )}
+          </div>
+          <button type="button" onClick={() => onChange(value.filter((_, position) => position !== index))} className="text-xs font-medium text-red-500">Eliminar beneficio</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Step2({ register, control, errors, portal = 'admin' }: StepProps & { portal?: 'admin' | 'brand' }) {
   const watchedType = (control as unknown as { _formValues: { type: string } })._formValues?.type
   const isCommission = watchedType === 'commission'
@@ -444,6 +532,10 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
             <p className="text-xs text-violet-600 mt-1">Porcentaje del total de ventas que recibirá cada influencer</p>
           </div>
         ) : <></>
+      )} />
+
+      <Controller control={control} name="campaign_benefits" render={({ field }) => (
+        <CampaignBenefitsInput value={field.value ?? []} onChange={field.onChange} />
       )} />
 
       <div>
@@ -693,6 +785,7 @@ export function CampaignForm({
       social_tags: ['@influencers.snc'],
       tags: [],
       deliverable_templates: [],
+      campaign_benefits: [],
       brand_id: '',
       visibility: 'private',
       address: '',
@@ -715,6 +808,7 @@ export function CampaignForm({
       goals: data.goals ?? {},
       social_tags: data.social_tags ?? [],
       deliverable_templates: data.deliverable_templates ?? [],
+      campaign_benefits: data.campaign_benefits ?? [],
       commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
       brand_id: data.brand_id || null,
       visibility: data.visibility || 'private',

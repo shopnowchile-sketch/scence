@@ -3451,7 +3451,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
       {/* ── CANJES ─────────────────────────────────────────────────────────── */}
       {tab === 'barters' && (
-        <BartersTab campaignId={id} campaignInfluencers={campaignInfluencers} />
+        <BartersTab
+          campaignId={id}
+          campaignInfluencers={campaignInfluencers}
+          campaignBenefits={c.campaign_benefits ?? []}
+          onSaveBenefits={benefits => patchCampaign.mutateAsync({ campaign_benefits: benefits })}
+        />
       )}
 
       {tab === 'history' && (

@@ -121,6 +121,44 @@ export interface DeliverableJoin {
 export interface InfluencerDetail extends Influencer {
   campaign_influencers: CampaignInfluencerJoin[]
   campaign_deliverables: DeliverableJoin[]
+  barters: Array<{
+    id: string
+    item: string
+    simple_status: BarterSimpleStatus | null
+    created_at: string
+    completed_at: string | null
+    cancelled_at: string | null
+    campaign: { id: string; name: string } | null
+  }>
+  bookings: Array<{
+    id: string
+    title: string
+    status: string
+    starts_at: string
+    confirmed_at: string | null
+    canceled_at: string | null
+    participant_status?: string | null
+    campaign: { id: string; name: string } | null
+  }>
+  affiliate_conversions: Array<{
+    id: string
+    status: AffiliateConversionStatus
+    sale_amount: number
+    commission_amount: number
+    currency: string
+    occurred_at: string
+    confirmed_at: string | null
+    campaign: { id: string; name: string } | null
+  }>
+  commission_settlements: Array<{
+    id: string
+    status: CommissionSettlementStatus
+    amount: number
+    currency: string
+    created_at: string
+    paid_at: string | null
+    campaign: { id: string; name: string } | null
+  }>
 }
 
 // ── CAMPAIGN DETAIL (respuesta de GET /api/campaigns/[id]) ────────────────────

@@ -31,6 +31,20 @@ interface AnalyticsData {
   }>
 }
 
+interface CampaignComparisonRow {
+  campaign_id: string
+  campaign_name: string
+  currency: string
+  views: number
+  likes: number
+  comments: number
+  interactions: number
+  engagement_rate: number
+  confirmed_sales: number
+  attributed_revenue: number
+  generated_commission: number
+}
+
 // ── Empty fallback (shown while loading / no Supabase data) ──────────────────
 const FALLBACK: AnalyticsData = {
   revenue_trend: [],
@@ -44,6 +58,12 @@ async function fetchAnalytics(range: string): Promise<AnalyticsData> {
   const res = await fetch(`/api/analytics?range=${range}`)
   if (!res.ok) throw new Error('Error al cargar analytics')
   return res.json()
+}
+
+async function fetchCampaignComparison(range: string): Promise<CampaignComparisonRow[]> {
+  const res = await fetch(`/api/analytics/campaign-comparison?range=${range}`)
+  if (!res.ok) throw new Error('Error al comparar campañas')
+  return (await res.json()).data ?? []
 }
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -105,6 +125,11 @@ export function AnalyticsClient() {
     queryFn:  () => fetchAnalytics(range),
     staleTime: 1000 * 60 * 10,
   })
+  const { data: comparison = [], isLoading: comparisonLoading } = useQuery({
+    queryKey: ['campaign-comparison', range],
+    queryFn: () => fetchCampaignComparison(range),
+    staleTime: 1000 * 60 * 10,
+  })
 
   const d = data ?? FALLBACK
   const cs = d.campaign_stats
@@ -160,6 +185,57 @@ export function AnalyticsClient() {
         <KPI icon={TrendingUp}   color="emerald" label="Margen promedio"     value={`${avgMarginPct}%`} sub={formatCurrency(totalRevenue - totalPayroll, 'CLP')} />
         <KPI icon={Target}       color="blue"    label="Budget utilizado"    value={`${budgetUsedPct}%`} sub={`${formatCurrency(cs.total_spent, 'CLP')} de ${formatCurrency(cs.total_budget, 'CLP')}`} />
         <KPI icon={CheckCircle2} color="amber"   label="Tasa de completion" value={`${ds.completion_rate}%`} sub={`${ds.by_status.published ?? 0} de ${ds.total} publicados`} />
+      </div>
+
+      {/* Comparación simple de KPI verificados por campaña */}
+      <div className="card p-5">
+        <div className="mb-4">
+          <h2 className="text-base font-bold text-gray-900">Comparación de campañas</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Visualizaciones, likes, engagement y ventas confirmadas del período.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px]">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['Campaña', 'Visualizaciones', 'Likes', 'Engagement', 'Ventas', 'Ingresos'].map(label => (
+                  <th key={label} className="px-3 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {comparison.map(row => (
+                <tr key={row.campaign_id}>
+                  <td className="px-3 py-3 text-sm font-semibold text-gray-900">{row.campaign_name}</td>
+                  <td className="px-3 py-3 text-sm text-gray-600">{row.views.toLocaleString('es-CL')}</td>
+                  <td className="px-3 py-3 text-sm text-gray-600">{row.likes.toLocaleString('es-CL')}</td>
+                  <td className="px-3 py-3 text-sm font-semibold text-violet-700">{row.engagement_rate.toFixed(2)}%</td>
+                  <td className="px-3 py-3 text-sm text-gray-600">{row.confirmed_sales.toLocaleString('es-CL')}</td>
+                  <td className="px-3 py-3 text-sm font-semibold text-gray-900">
+                    {formatCurrency(row.attributed_revenue, row.currency)}
+                  </td>
+                </tr>
+              ))}
+              {!comparisonLoading && comparison.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-400">
+                    Aún no hay métricas verificadas para comparar en este período.
+                  </td>
+                </tr>
+              )}
+              {comparisonLoading && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-400">
+                    Cargando comparación…
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Revenue trend */}

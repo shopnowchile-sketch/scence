@@ -154,7 +154,7 @@ const TIER_COLORS: Record<string, string> = {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function InfluencerProfile({ id }: { id: string }) {
-  const [tab, setTab] = useState<'overview' | 'campaigns' | 'deliverables' | 'notes'>('overview')
+  const [tab, setTab] = useState<'overview' | 'campaigns' | 'deliverables' | 'history' | 'notes'>('overview')
   const [removingCi, setRemovingCi] = useState<string | null>(null)
   const [deactivating, setDeactivating] = useState(false)
   const [deletingHard, setDeletingHard] = useState(false)
@@ -340,6 +340,10 @@ export function InfluencerProfile({ id }: { id: string }) {
   const rateCards: RateCard[] = (influencer.rate_cards ?? []).filter(rc => rc.is_active !== false)
   const campaignInfluencers: CampaignInfluencerJoin[] = influencer.campaign_influencers ?? []
   const deliverables: DeliverableJoin[] = influencer.campaign_deliverables ?? []
+  const barters = influencer.barters ?? []
+  const bookings = influencer.bookings ?? []
+  const conversions = influencer.affiliate_conversions ?? []
+  const settlements = influencer.commission_settlements ?? []
 
   const primaryProfile = socialProfiles.find(sp => sp.is_primary) ?? socialProfiles[0]
   const tier = primaryProfile ? getInfluencerTier(primaryProfile.followers ?? 0) : 'nano'
@@ -352,6 +356,57 @@ export function InfluencerProfile({ id }: { id: string }) {
     : 0
   const activeCampaigns = campaignInfluencers.filter(ci => ci.campaign?.status === 'active').length
   const totalEarnings = campaignInfluencers.reduce((s, ci) => s + (ci.fee ?? 0), 0)
+
+  const history = [
+    ...campaignInfluencers.flatMap(ci => ci.created_at ? [{
+      id: `campaign-${ci.id}`,
+      date: ci.created_at,
+      icon: '📣',
+      title: 'Asignada a campaña',
+      detail: ci.campaign?.name ?? 'Campaña',
+      href: ci.campaign?.id ? `/admin-campaigns/${ci.campaign.id}` : null,
+    }] : []),
+    ...deliverables.flatMap(d => {
+      const events: Array<{ id: string; date: string; icon: string; title: string; detail: string; href: string | null }> = []
+      const href = d.campaign?.id ? `/admin-campaigns/${d.campaign.id}?tab=deliverables` : null
+      const detail = `${d.title || d.type || 'Entregable'} · ${d.campaign?.name ?? 'Campaña'}`
+      if (d.created_at) events.push({ id: `deliverable-created-${d.id}`, date: d.created_at, icon: '📝', title: 'Entregable creado', detail, href })
+      if (d.submitted_at) events.push({ id: `deliverable-submitted-${d.id}`, date: d.submitted_at, icon: '📤', title: 'Entregable enviado', detail, href })
+      if (d.published_at) events.push({ id: `deliverable-published-${d.id}`, date: d.published_at, icon: '✅', title: 'Contenido publicado', detail, href })
+      return events
+    }),
+    ...barters.flatMap(barter => {
+      const href = barter.campaign?.id ? `/admin-campaigns/${barter.campaign.id}?tab=canjes` : null
+      const detail = `${barter.item} · ${barter.campaign?.name ?? 'Canje'}`
+      const events = [{ id: `barter-created-${barter.id}`, date: barter.created_at, icon: '🎁', title: 'Canje registrado', detail, href }]
+      if (barter.completed_at) events.push({ id: `barter-completed-${barter.id}`, date: barter.completed_at, icon: '✅', title: 'Canje completado', detail, href })
+      return events
+    }),
+    ...bookings.map(booking => ({
+      id: `booking-${booking.id}`,
+      date: booking.starts_at,
+      icon: '📅',
+      title: booking.canceled_at ? 'Reserva cancelada' : 'Acción programada',
+      detail: `${booking.title} · ${booking.campaign?.name ?? 'Sin campaña'}`,
+      href: booking.campaign?.id ? `/admin-campaigns/${booking.campaign.id}?tab=locations` : null,
+    })),
+    ...conversions.map(conversion => ({
+      id: `conversion-${conversion.id}`,
+      date: conversion.confirmed_at ?? conversion.occurred_at,
+      icon: '🛒',
+      title: conversion.status === 'confirmed' ? 'Venta afiliada confirmada' : conversion.status === 'cancelled' ? 'Venta afiliada cancelada' : 'Venta afiliada pendiente',
+      detail: `${formatCurrency(conversion.sale_amount, conversion.currency)} · Comisión ${formatCurrency(conversion.commission_amount, conversion.currency)}${conversion.campaign?.name ? ` · ${conversion.campaign.name}` : ''}`,
+      href: conversion.campaign?.id ? `/admin-campaigns/${conversion.campaign.id}` : null,
+    })),
+    ...settlements.map(settlement => ({
+      id: `settlement-${settlement.id}`,
+      date: settlement.paid_at ?? settlement.created_at,
+      icon: '💳',
+      title: settlement.status === 'paid' ? 'Comisión pagada' : settlement.status === 'problem' ? 'Comisión con problema' : 'Comisión pendiente de pago',
+      detail: `${formatCurrency(settlement.amount, settlement.currency)}${settlement.campaign?.name ? ` · ${settlement.campaign.name}` : ''}`,
+      href: settlement.campaign?.id ? `/admin-campaigns/${settlement.campaign.id}?tab=billing` : null,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date))
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -583,6 +638,7 @@ export function InfluencerProfile({ id }: { id: string }) {
           { id: 'overview',     label: 'Overview' },
           { id: 'campaigns',    label: `Campañas (${campaignInfluencers.length})` },
           { id: 'deliverables', label: `Deliverables (${deliverables.length})` },
+          { id: 'history',      label: `Historial (${history.length})` },
           { id: 'notes',        label: 'Notas' },
         ] as const).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -853,6 +909,38 @@ export function InfluencerProfile({ id }: { id: string }) {
                 })}
               </tbody>
             </table>
+          )}
+        </div>
+      )}
+
+      {/* ── Unified history ── */}
+      {tab === 'history' && (
+        <div className="card p-6">
+          <div className="mb-5">
+            <h3 className="font-bold text-gray-900">Historial de acciones</h3>
+            <p className="mt-1 text-sm text-gray-400">Campañas, contenido, canjes, acciones y ventas ordenados desde lo más reciente.</p>
+          </div>
+          {history.length === 0 ? (
+            <div className="py-12 text-center">
+              <Clock className="mx-auto mb-3 h-10 w-10 text-gray-200" />
+              <p className="text-sm text-gray-400">Todavía no hay acciones registradas.</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {history.map(item => {
+                const content = (
+                  <div className="flex gap-3 rounded-xl px-3 py-3 hover:bg-gray-50">
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-violet-50 text-base">{item.icon}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                      <p className="truncate text-sm text-gray-500">{item.detail}</p>
+                    </div>
+                    <time className="flex-shrink-0 text-xs text-gray-400">{formatDate(item.date, 'd MMM yyyy')}</time>
+                  </div>
+                )
+                return item.href ? <Link key={item.id} href={item.href}>{content}</Link> : <div key={item.id}>{content}</div>
+              })}
+            </div>
           )}
         </div>
       )}

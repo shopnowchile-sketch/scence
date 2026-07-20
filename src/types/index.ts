@@ -91,6 +91,7 @@ export interface CampaignInfluencerJoin {
   id: string
   fee: number | null
   status: string | null
+  created_at: string | null
   campaign: {
     id: string
     name: string
@@ -109,7 +110,10 @@ export interface DeliverableJoin {
   status: string
   due_date: string | null
   platform: string | null
+  created_at: string | null
+  submitted_at: string | null
   published_at: string | null
+  updated_at: string | null
   content_url: string | null
   campaign: { id: string; name: string } | null
 }
@@ -117,6 +121,44 @@ export interface DeliverableJoin {
 export interface InfluencerDetail extends Influencer {
   campaign_influencers: CampaignInfluencerJoin[]
   campaign_deliverables: DeliverableJoin[]
+  barters: Array<{
+    id: string
+    item: string
+    simple_status: BarterSimpleStatus | null
+    created_at: string
+    completed_at: string | null
+    cancelled_at: string | null
+    campaign: { id: string; name: string } | null
+  }>
+  bookings: Array<{
+    id: string
+    title: string
+    status: string
+    starts_at: string
+    confirmed_at: string | null
+    canceled_at: string | null
+    participant_status?: string | null
+    campaign: { id: string; name: string } | null
+  }>
+  affiliate_conversions: Array<{
+    id: string
+    status: AffiliateConversionStatus
+    sale_amount: number
+    commission_amount: number
+    currency: string
+    occurred_at: string
+    confirmed_at: string | null
+    campaign: { id: string; name: string } | null
+  }>
+  commission_settlements: Array<{
+    id: string
+    status: CommissionSettlementStatus
+    amount: number
+    currency: string
+    created_at: string
+    paid_at: string | null
+    campaign: { id: string; name: string } | null
+  }>
 }
 
 // ── CAMPAIGN DETAIL (respuesta de GET /api/campaigns/[id]) ────────────────────
@@ -380,6 +422,52 @@ export interface CreateCalendarEventInput {
 }
 
 // ── BARTERS (canjes) ───────────────────────────────────
+export type BarterSimpleStatus = 'pending' | 'completed' | 'problem'
+export type BarterBenefitType =
+  | 'product'
+  | 'experience'
+  | 'meal'
+  | 'ticket'
+  | 'gift_card'
+  | 'service'
+  | 'sales_commission'
+  | 'other'
+
+export const BARTER_SIMPLE_STATUS_CONFIG: Record<
+  BarterSimpleStatus,
+  { label: string; badge: string }
+> = {
+  pending:   { label: 'Pendiente',    badge: 'badge-orange' },
+  completed: { label: 'Completado',   badge: 'badge-green' },
+  problem:   { label: 'Con problema', badge: 'badge-red' },
+}
+
+export const BARTER_BENEFIT_TYPE_CONFIG: Record<BarterBenefitType, string> = {
+  product: 'Producto',
+  experience: 'Experiencia',
+  meal: 'Comida',
+  ticket: 'Ticket o entrada',
+  gift_card: 'Gift card o crédito',
+  service: 'Servicio',
+  sales_commission: 'Comisión por ventas',
+  other: 'Otro',
+}
+
+export interface BarterBenefit {
+  id: string
+  organization_id: string
+  barter_id: string
+  benefit_type: BarterBenefitType
+  description: string | null
+  fixed_value: number | null
+  currency: Currency
+  commission_rate: number | null
+  affiliate_link_id: string | null
+  position: number
+  created_at: string
+  updated_at: string
+}
+
 export type BarterStatus =
   | 'pactado'
   | 'pendiente_envio'
@@ -440,6 +528,11 @@ export interface Barter {
   agreed_date: string | null
   responsible_id: string | null
   status: BarterStatus
+  simple_status?: BarterSimpleStatus
+  benefits?: BarterBenefit[]
+  completed_at?: string | null
+  cancelled_at?: string | null
+  cancellation_reason?: string | null
   evidence_url: string | null
   notes: string | null
   created_by: string | null
@@ -462,4 +555,57 @@ export interface CreateBarterInput {
   agreed_date?: string | null
   responsible_id?: string | null
   notes?: string | null
+  benefits?: Array<{
+    benefit_type: BarterBenefitType
+    description?: string | null
+    fixed_value?: number | null
+    currency?: Currency
+    commission_rate?: number | null
+    affiliate_link_id?: string | null
+  }>
+}
+
+// ── AFFILIATES / COMMISSIONS ───────────────────────────
+export type AffiliateConversionStatus = 'pending' | 'confirmed' | 'cancelled'
+export type CommissionSettlementStatus = 'pending' | 'paid' | 'problem'
+
+export interface AffiliateConversion {
+  id: string
+  organization_id: string
+  affiliate_link_id: string
+  influencer_id: string
+  campaign_id: string | null
+  barter_benefit_id: string | null
+  source: 'scence' | 'webhook' | 'coupon' | 'csv' | 'manual'
+  external_sale_id: string | null
+  sale_amount: number
+  currency: Currency
+  commission_rate: number
+  commission_amount: number
+  status: AffiliateConversionStatus
+  occurred_at: string
+  confirmed_at: string | null
+  cancelled_at: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface CommissionSettlement {
+  id: string
+  organization_id: string
+  influencer_id: string
+  campaign_id: string | null
+  status: CommissionSettlementStatus
+  amount: number
+  currency: Currency
+  period_start: string | null
+  period_end: string | null
+  invoice_id: string | null
+  payroll_item_id: string | null
+  influencer_document_url: string | null
+  notes: string | null
+  paid_at: string | null
+  created_at: string
+  updated_at: string
 }

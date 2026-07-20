@@ -3,18 +3,20 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string } }
 
-async function isAdmin(user: any, admin: any) {
+async function canManageBrand(user: any, brand: any, admin: any) {
   const role = user?.user_metadata?.role ?? user?.app_metadata?.role
   if (['super_admin', 'admin'].includes(role)) return true
+  if (brand.user_id === user.id) return true
 
   const { data } = await admin
     .from('organization_members')
     .select('role, is_owner')
     .eq('user_id', user.id)
+    .eq('organization_id', brand.organization_id ?? 'none')
     .eq('is_active', true)
 
   return (data ?? []).some((m: any) =>
-    m.is_owner || ['super_admin', 'admin'].includes(m.role)
+    m.is_owner || ['super_admin', 'brand_manager'].includes(m.role)
   )
 }
 
@@ -27,13 +29,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: brand, error: brandError } = await admin
     .from('brands')
-    .select('id, user_id')
+    .select('id, user_id, organization_id')
     .eq('id', params.id)
     .single()
 
   if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const canSeePrivate = await isAdmin(user, admin) || brand.user_id === user.id
+  const canSeePrivate = await canManageBrand(user, brand, admin)
 
   let query = admin
     .from('brand_locations')
@@ -58,15 +60,23 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: brand, error: brandError } = await admin
     .from('brands')
-    .select('id, user_id')
+    .select('id, user_id, organization_id')
     .eq('id', params.id)
     .single()
 
   if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!(await isAdmin(user, admin)) && brand.user_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await canManageBrand(user, brand, admin))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => null)
   if (!body?.name) return NextResponse.json({ error: 'Nombre requerido' }, { status: 422 })
+
+  const locationType = typeof body.location_type === 'string' ? body.location_type : 'store'
+  const validTypes = ['store', 'event', 'restaurant', 'home', 'virtual', 'other']
+  if (!validTypes.includes(locationType)) {
+    return NextResponse.json({ error: 'Tipo de lugar inválido' }, { status: 422 })
+  }
 
   const { data, error } = await admin
     .from('brand_locations')
@@ -77,7 +87,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       city: body.city || null,
       region: body.region || null,
       country: body.country || 'Chile',
-      is_public: !!body.is_public,
+      location_type: locationType,
+      is_sensitive: locationType === 'home',
+      is_public: locationType === 'home' ? false : !!body.is_public,
       notes: body.notes || null,
     })
     .select()

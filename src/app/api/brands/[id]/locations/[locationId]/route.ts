@@ -3,29 +3,31 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string; locationId: string } }
 
-async function isAdmin(user: any, admin: any) {
+async function canManageBrand(user: any, brand: any, admin: any) {
   const role = user?.user_metadata?.role ?? user?.app_metadata?.role
   if (['super_admin', 'admin'].includes(role)) return true
+  if (brand.user_id === user.id) return true
 
   const { data } = await admin
     .from('organization_members')
     .select('role, is_owner')
     .eq('user_id', user.id)
+    .eq('organization_id', brand.organization_id ?? 'none')
     .eq('is_active', true)
 
   return (data ?? []).some((m: any) =>
-    m.is_owner || ['super_admin', 'admin'].includes(m.role)
+    m.is_owner || ['super_admin', 'brand_manager'].includes(m.role)
   )
 }
 
 async function canEditBrand(user: any, brandId: string, admin: any) {
   const { data: brand } = await admin
     .from('brands')
-    .select('id, user_id')
+    .select('id, user_id, organization_id')
     .eq('id', brandId)
     .single()
 
-  return !!brand && ((await isAdmin(user, admin)) || brand.user_id === user.id)
+  return !!brand && await canManageBrand(user, brand, admin)
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -47,7 +49,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     city: body.city,
     region: body.region,
     country: body.country,
-    is_public: body.is_public,
+    location_type: body.location_type,
+    is_sensitive: body.location_type === 'home' ? true : body.is_sensitive,
+    is_public: body.location_type === 'home' ? false : body.is_public,
     notes: body.notes,
   }
 

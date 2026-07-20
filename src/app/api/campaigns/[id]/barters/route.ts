@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { BARTER_STATUS_CONFIG, type BarterStatus } from '@/types'
+import { getOrgId } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -29,6 +30,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { data, error } = await admin
     .from('barters')
     .select(SELECT)
@@ -80,16 +84,9 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
-  // Heredar organization_id (y brand por defecto) desde la campaña
-  const { data: camp, error: campErr } = await admin
-    .from('campaigns')
-    .select('organization_id, brand_id, name')
-    .eq('id', params.id)
-    .single()
-
-  if (campErr || !camp) {
-    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
-  }
+  // Verifica pertenencia a la organización antes de usar el service role.
+  const camp = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  if (!camp) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await admin
     .from('barters')
@@ -158,6 +155,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Verificar que el canje pertenece a esta campaña
   const { data: existing, error: exErr } = await admin
@@ -254,6 +253,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { error } = await admin
     .from('barters')
     .delete()
@@ -297,4 +299,24 @@ async function notifyResponsible(
     // Non-fatal: no romper el flujo si falla la notificación
     console.error('[notifyResponsible]', e)
   }
+}
+
+
+async function getAccessibleCampaign(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  userMeta: Record<string, unknown> | undefined,
+  campaignId: string
+) {
+  const orgId = await getOrgId(userId, userMeta, admin)
+  if (!orgId) return null
+
+  const { data } = await admin
+    .from('campaigns')
+    .select('id, organization_id, brand_id, name')
+    .eq('id', campaignId)
+    .eq('organization_id', orgId)
+    .maybeSingle()
+
+  return data
 }

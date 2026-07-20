@@ -280,6 +280,7 @@ function normalizeCampaignBenefits(value: unknown) {
       description,
       quantity: Math.max(1, Math.trunc(Number(benefit.quantity) || 1)),
       estimated_value: benefit.estimated_value == null ? null : Math.max(0, Number(benefit.estimated_value) || 0),
+      commission_rate: benefitType === 'sales_commission' ? Math.min(100, Math.max(0, Number(benefit.commission_rate) || 0)) : null,
       currency: typeof benefit.currency === 'string' ? benefit.currency : 'CLP',
       activation_rule: activationRule,
       sales_target: activationRule === 'sales_target' ? Math.max(1, Math.trunc(Number(benefit.sales_target) || 1)) : null,

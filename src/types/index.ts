@@ -522,3 +522,48 @@ export interface CreateBarterInput {
     affiliate_link_id?: string | null
   }>
 }
+
+// ── AFFILIATES / COMMISSIONS ───────────────────────────
+export type AffiliateConversionStatus = 'pending' | 'confirmed' | 'cancelled'
+export type CommissionSettlementStatus = 'pending' | 'paid' | 'problem'
+
+export interface AffiliateConversion {
+  id: string
+  organization_id: string
+  affiliate_link_id: string
+  influencer_id: string
+  campaign_id: string | null
+  barter_benefit_id: string | null
+  source: 'scence' | 'webhook' | 'coupon' | 'csv' | 'manual'
+  external_sale_id: string | null
+  sale_amount: number
+  currency: Currency
+  commission_rate: number
+  commission_amount: number
+  status: AffiliateConversionStatus
+  occurred_at: string
+  confirmed_at: string | null
+  cancelled_at: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface CommissionSettlement {
+  id: string
+  organization_id: string
+  influencer_id: string
+  campaign_id: string | null
+  status: CommissionSettlementStatus
+  amount: number
+  currency: Currency
+  period_start: string | null
+  period_end: string | null
+  invoice_id: string | null
+  payroll_item_id: string | null
+  influencer_document_url: string | null
+  notes: string | null
+  paid_at: string | null
+  created_at: string
+  updated_at: string
+}

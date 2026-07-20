@@ -30,6 +30,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       id, name, description, content_guidelines, brief_url, type, status, visibility,
       start_date, end_date, budget_total, currency, hashtags, platforms,
       deliverable_templates, application_deadline, applications_closed_at, max_influencers, application_questions,
+      campaign_benefits,
       brand:brands!brand_id (id, name, logo_url, website)
     `)
     .eq('id', params.id)

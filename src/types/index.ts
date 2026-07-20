@@ -275,8 +275,28 @@ export interface Campaign {
   brand?: { id: string; name: string; logo_url: string | null } | null
   social_tags?: string[] | null
   deliverable_templates?: Array<{ type: string; quantity: number; description?: string; due_date?: string }> | null
+  campaign_benefits?: CampaignBenefit[] | null
   created_at: string
   updated_at: string
+}
+
+export type CampaignBenefitActivationRule =
+  | 'deliverables_completed'
+  | 'sales_target'
+  | 'attendance'
+  | 'accepted'
+  | 'manual'
+  | 'raffle'
+
+export interface CampaignBenefit {
+  benefit_type: BarterBenefitType
+  description: string
+  quantity: number
+  estimated_value: number | null
+  commission_rate?: number | null
+  currency: Currency
+  activation_rule: CampaignBenefitActivationRule
+  sales_target: number | null
 }
 
 // ── BOOKING ────────────────────────────────────────────
@@ -438,7 +458,7 @@ export const BARTER_SIMPLE_STATUS_CONFIG: Record<
   { label: string; badge: string }
 > = {
   pending:   { label: 'Pendiente',    badge: 'badge-orange' },
-  completed: { label: 'Completado',   badge: 'badge-green' },
+  completed: { label: 'Canje enviado', badge: 'badge-green' },
   problem:   { label: 'Con problema', badge: 'badge-red' },
 }
 

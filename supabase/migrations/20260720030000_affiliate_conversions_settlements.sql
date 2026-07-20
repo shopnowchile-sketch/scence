@@ -12,7 +12,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 CREATE TABLE IF NOT EXISTS public.affiliate_conversions (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   affiliate_link_id uuid NOT NULL REFERENCES public.affiliate_links(id) ON DELETE CASCADE,
   influencer_id uuid NOT NULL REFERENCES public.influencers(id) ON DELETE CASCADE,
@@ -47,7 +47,7 @@ CREATE INDEX IF NOT EXISTS affiliate_conversions_influencer
   ON public.affiliate_conversions (influencer_id, occurred_at DESC);
 
 CREATE TABLE IF NOT EXISTS public.commission_settlements (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   influencer_id uuid NOT NULL REFERENCES public.influencers(id) ON DELETE CASCADE,
   campaign_id uuid REFERENCES public.campaigns(id) ON DELETE SET NULL,

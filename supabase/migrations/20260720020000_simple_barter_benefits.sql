@@ -36,7 +36,7 @@ END
 WHERE simple_status = 'pending';
 
 CREATE TABLE IF NOT EXISTS public.barter_benefits (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   barter_id uuid NOT NULL REFERENCES public.barters(id) ON DELETE CASCADE,
   benefit_type public.barter_benefit_type NOT NULL,

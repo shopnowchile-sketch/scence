@@ -513,4 +513,12 @@ export interface CreateBarterInput {
   agreed_date?: string | null
   responsible_id?: string | null
   notes?: string | null
+  benefits?: Array<{
+    benefit_type: BarterBenefitType
+    description?: string | null
+    fixed_value?: number | null
+    currency?: Currency
+    commission_rate?: number | null
+    affiliate_link_id?: string | null
+  }>
 }

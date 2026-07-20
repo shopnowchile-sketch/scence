@@ -966,6 +966,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [locationFormOpen, setLocationFormOpen] = useState(false)
   const [locationSaving, setLocationSaving] = useState(false)
   const [locationForm, setLocationForm] = useState({
+    location_type: 'store',
     name: '',
     address: '',
     city: '',
@@ -1424,12 +1425,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          location_type: locationForm.location_type,
           name: locationForm.name.trim(),
           address: locationForm.address.trim() || null,
           city: locationForm.city.trim() || null,
           region: locationForm.region.trim() || null,
           country: locationForm.country.trim() || 'Chile',
-          is_public: locationForm.is_public,
+          is_public: locationForm.location_type === 'home' ? false : locationForm.is_public,
           notes: locationForm.notes.trim() || null,
         }),
       })
@@ -1438,6 +1440,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       if (!res.ok) throw new Error(json.error ?? 'Error al crear lugar')
 
       setLocationForm({
+        location_type: 'store',
         name: '',
         address: '',
         city: '',
@@ -3195,6 +3198,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {locationFormOpen && (
             <form onSubmit={handleAddBrandLocation} className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <select
+                  value={locationForm.location_type}
+                  onChange={e => setLocationForm(prev => ({
+                    ...prev,
+                    location_type: e.target.value,
+                    is_public: e.target.value === 'home' ? false : prev.is_public,
+                  }))}
+                  className="input-base w-full text-sm bg-white"
+                >
+                  <option value="store">Local o tienda</option>
+                  <option value="event">Evento</option>
+                  <option value="restaurant">Restaurante</option>
+                  <option value="home">Casa de influencer</option>
+                  <option value="virtual">Virtual</option>
+                  <option value="other">Otro</option>
+                </select>
                 <input
                   value={locationForm.name}
                   onChange={e => setLocationForm(prev => ({ ...prev, name: e.target.value }))}
@@ -3229,9 +3248,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <input
                     type="checkbox"
                     checked={locationForm.is_public}
+                    disabled={locationForm.location_type === 'home'}
                     onChange={e => setLocationForm(prev => ({ ...prev, is_public: e.target.checked }))}
                   />
-                  Visible para marca/influencer
+                  {locationForm.location_type === 'home'
+                    ? 'Domicilio protegido (privado)'
+                    : 'Visible para marca/influencer'}
                 </label>
               </div>
 

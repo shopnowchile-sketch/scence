@@ -42,7 +42,7 @@ export async function GET() {
     .from('campaigns')
     .select(`
       id, name, status, description, type, start_date, end_date, visibility,
-      application_deadline, applications_closed_at, max_influencers,
+      application_deadline, applications_closed_at, max_influencers, campaign_benefits,
       brand:brands!brand_id (id, name, logo_url),
       campaign_influencers (id, application_status)
     `)

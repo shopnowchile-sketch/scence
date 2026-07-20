@@ -76,13 +76,14 @@ type CampaignBenefitOffer = {
   currency?: string
   activation_rule: string
   sales_target?: number | null
+  commission_rate?: number | null
 }
 
 function activationText(benefit: CampaignBenefitOffer) {
   if (benefit.activation_rule === 'deliverables_completed') return 'Pendiente: completa los entregables solicitados'
   if (benefit.activation_rule === 'sales_target') return `Pendiente: vende ${benefit.sales_target ?? 1} entrada(s)`
   if (benefit.activation_rule === 'attendance') return 'Pendiente: asiste al evento'
-  if (benefit.activation_rule === 'accepted') return 'Se activa al ser aceptada'
+  if (benefit.activation_rule === 'accepted') return 'Incluido al ser aceptada'
   if (benefit.activation_rule === 'raffle') return 'Beneficio por sorteo'
   return 'Activación informada por la marca'
 }
@@ -378,6 +379,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
                 <div key={index} className="rounded-xl bg-violet-50 px-3 py-3">
                   <p className="text-sm font-bold text-violet-900">{benefit.quantity ?? 1}× {benefit.description}</p>
                   <p className="text-xs text-violet-700 mt-1">{activationText(benefit)}</p>
+                  {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && (
+                    <p className="text-xs font-bold text-violet-900 mt-1">{benefit.commission_rate}% de comisión sobre ventas</p>
+                  )}
                 </div>
               ))}
             </div>

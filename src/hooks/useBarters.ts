@@ -42,6 +42,28 @@ export function useCreateBarter(campaignId: string) {
   })
 }
 
+// Crea únicamente los registros de seguimiento para participantes aceptadas.
+// Las condiciones del beneficio siempre viven en la campaña.
+export function useInitializeCampaignBarters(campaignId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/barters`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialize_tracking: true }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? 'Error al preparar seguimiento')
+      }
+      return res.json()
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: key(campaignId) }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+}
+
 // ── Avanzar estado / editar ───────────────────────────────────────────────────
 interface BarterActionInput {
   barter_id: string

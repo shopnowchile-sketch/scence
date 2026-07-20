@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { syncDeliverableTask } from '@/lib/influencer-tasks'
+import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { getResend, FROM_EMAIL, campaignApplicationApprovedEmail } from '@/lib/resend'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -105,35 +105,18 @@ export async function acceptCampaignApplication(
         const { data: insertedDelivs, error: insertDelErr } = await admin
           .from('campaign_deliverables')
           .insert(
-            (templates as Array<{ type: string; quantity?: number; description?: string; due_date?: string; platform?: string }>).map(t => ({
+            expandDeliverableTemplates(templates as DeliverableTemplateInput[]).map(t => ({
               campaign_id:            campaignId,
               influencer_id:          app.influencer_id,
               campaign_influencer_id: applicationId,
-              type:                   t.type,
-              title:                  t.description || t.type,
-              quantity:               t.quantity ?? 1,
-              platform:               t.platform ?? null,
-              due_date:               t.due_date ?? null,
+              ...t,
               status:                 'pending',
             }))
           )
-          .select('id, type, title, due_date')
+          .select('id')
 
         if (insertDelErr) {
           console.error('[acceptCampaignApplication] insert deliverables failed:', insertDelErr.message)
-        } else if (insertedDelivs?.length) {
-          for (const del of insertedDelivs) {
-            await syncDeliverableTask(admin, {
-              organizationId:    campaign.organization_id,
-              influencerId:      app.influencer_id,
-              deliverableId:     del.id,
-              campaignId:        campaignId,
-              deliverableType:   del.type,
-              deliverableTitle:  del.title,
-              deliverableStatus: 'pending',
-              dueDate:           del.due_date ?? null,
-            })
-          }
         }
       }
     }

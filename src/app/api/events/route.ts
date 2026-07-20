@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
-import { createInfluencerTasks } from '@/lib/influencer-tasks'
 
 // ── GET /api/events ───────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -109,30 +108,6 @@ export async function POST(request: NextRequest) {
   if (error) {
     console.error('[POST /api/events]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // ── Auto-generate tasks for all influencers on the linked campaign ─────────
-  if (data && campaign_id) {
-    try {
-      const { data: campaignInfluencers } = await admin
-        .from('campaign_influencers')
-        .select('influencer_id')
-        .eq('campaign_id', campaign_id as string)
-        // Solo participantes aceptados reciben tareas de evento (no pendientes).
-        .eq('application_status', 'accepted')
-
-      for (const ci of campaignInfluencers ?? []) {
-        await createInfluencerTasks(admin, {
-          organizationId: orgId,
-          influencerId:   ci.influencer_id,
-          sourceType:     'event',
-          sourceId:       data.id,
-          sourceDate:     event_date as string,
-        })
-      }
-    } catch (e) {
-      console.error('[event auto-tasks] failed:', e)
-    }
   }
 
   return NextResponse.json({ data }, { status: 201 })

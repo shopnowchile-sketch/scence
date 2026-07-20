@@ -441,7 +441,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
     : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
   // Nota: campaign_deliverables ya no se lista acá — el detalle de campaña
   // muestra el brief/guías/tags; el progreso y la subida de entregables
-  // vive en la tab Entregables (inf-tasks), pedido explícito de Pri para
+  // vive en la sección Entregables, pedido explícito de Pri para
   // no duplicar la misma información en dos lugares.
 
   return (

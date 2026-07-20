@@ -68,7 +68,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       influencerName: influencer.display_name,
       campaignName:   campaign.name,
       pendingTitles:  pending.map(d => d.title || d.type || 'Entregable'),
-      appUrl:         `${APP_URL}/inf-tasks?campaign=${params.id}`,
+      appUrl:         `${APP_URL}/inf-deliverables?campaign=${params.id}`,
     }),
   })
 

@@ -79,24 +79,40 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const status   = searchParams.get('status')
   const priority = searchParams.get('priority')
+  const page     = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
+  const limit    = Math.min(100, Math.max(10, Number(searchParams.get('limit') ?? '50') || 50))
+
+  if (searchParams.get('counts') === '1') {
+    const countStatus = (ticketStatus?: string) => {
+      let countQuery = admin.from('tickets').select('id', { count: 'exact', head: true }).eq('organization_id', orgId)
+      if (ticketStatus) countQuery = countQuery.eq('status', ticketStatus)
+      return countQuery
+    }
+    const [all, open, inProgress, closed] = await Promise.all([
+      countStatus(), countStatus('open'), countStatus('in_progress'), countStatus('closed'),
+    ])
+    return NextResponse.json({ counts: { all: all.count ?? 0, open: open.count ?? 0, in_progress: inProgress.count ?? 0, closed: closed.count ?? 0 } })
+  }
 
   let query = admin
     .from('tickets')
-    .select('id, title, description, status, priority, category, ai_review, created_by, created_at', { count: 'exact' })
+    .select('id, title, description, status, priority, category, ai_review, created_by, created_at')
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
   if (status)   query = query.eq('status', status)
   if (priority) query = query.eq('priority', priority)
 
-  const { data, error, count } = await query
+  const from = (page - 1) * limit
+  const { data, error } = await query.range(from, from + limit)
 
   if (error) {
     console.error('[GET /api/tickets]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const tickets = data ?? []
+  const hasMore = (data?.length ?? 0) > limit
+  const tickets = (data ?? []).slice(0, limit)
 
   // ── Enriquecer con info del remitente ──────────────────────────────────────
   const userIds = Array.from(new Set(tickets.map(t => t.created_by).filter(Boolean))) as string[]
@@ -174,7 +190,7 @@ export async function GET(request: NextRequest) {
     submitter: t.created_by ? (submitterMap[t.created_by] ?? null) : null,
   }))
 
-  return NextResponse.json({ data: enriched, total: count ?? 0 })
+  return NextResponse.json({ data: enriched, page, limit, has_more: hasMore })
 }
 
 // ── POST /api/tickets ─────────────────────────────────────────────────────────

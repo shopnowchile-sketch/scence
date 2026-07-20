@@ -8,7 +8,7 @@ const navSections: NavSection[] = [
     title: 'Mi Portal',
     items: [
       { href: '/inf-dash',      label: 'Dashboard',   icon: LayoutDashboard, exact: true },
-      { href: '/inf-tasks',     label: 'Entregables', icon: CheckSquare },
+      { href: '/inf-deliverables', label: 'Entregables', icon: CheckSquare },
       { href: '/inf-campaigns', label: 'Campañas',    icon: Briefcase },
       { href: '/inf-brands',    label: 'Mis marcas',  icon: Building2 },
       { href: '/inf-bookings',  label: 'Bookings',    icon: Calendar },

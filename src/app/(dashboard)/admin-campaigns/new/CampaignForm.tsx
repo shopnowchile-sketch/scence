@@ -34,8 +34,14 @@ type DeliverableTypeValue = typeof DELIVERABLE_TYPES[number]['value']
 const deliverableSchema = z.object({
   type:        z.string(),
   quantity:    z.number().min(1).default(1),
-  description: z.string().max(500).optional(),
+  description: z.string().max(3000).optional(),
   due_date:    z.string().optional(),
+  scheduled_at: z.string().optional(),
+  items: z.array(z.object({
+    description: z.string().max(3000).optional(),
+    due_date: z.string().optional(),
+    scheduled_at: z.string().optional(),
+  })).optional(),
 })
 
 const schema = z.object({

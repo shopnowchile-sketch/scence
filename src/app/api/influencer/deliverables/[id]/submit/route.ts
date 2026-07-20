@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
-import { syncDeliverableTask } from '@/lib/influencer-tasks'
 
 type Params = { params: { id: string } }
 
@@ -67,23 +66,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     console.error('[POST /api/influencer/deliverables/[id]/submit]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
-  // Sincronizar influencer_task → in_progress (non-fatal)
-  try {
-    const campData = deliverable.campaign as { organization_id?: string } | null
-    if (campData?.organization_id && deliverable.campaign_id) {
-      await syncDeliverableTask(admin, {
-        organizationId:    campData.organization_id,
-        influencerId:      influencer.id,
-        deliverableId:     params.id,
-        campaignId:        deliverable.campaign_id,
-        deliverableType:   deliverable.type ?? '',
-        deliverableTitle:  deliverable.title ?? null,
-        deliverableStatus: 'in_review',
-        dueDate:           deliverable.due_date ?? null,
-      })
-    }
-  } catch { /* non-fatal */ }
 
   // Non-fatal: notify org admin via email
   try {

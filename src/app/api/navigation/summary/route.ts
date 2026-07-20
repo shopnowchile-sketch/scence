@@ -9,7 +9,7 @@ export async function GET() {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  if (!orgId) return NextResponse.json({ role: null, isAdmin: false, pendingCampaigns: 0, bookings: 0 })
+  if (!orgId) return NextResponse.json({ role: null, isAdmin: false, pendingCampaigns: 0, pendingBrands: 0, openTickets: 0, bookings: 0 })
 
   const access = await getUserRole(user.id, orgId, admin)
 
@@ -20,8 +20,25 @@ export async function GET() {
 
   if (!access.isAdmin) pendingQuery = pendingQuery.eq('organization_id', orgId)
 
-  const [pendingResult, bookingsResult] = await Promise.all([
+  let brandsQuery = admin
+    .from('brands')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending_approval')
+
+  let ticketsQuery = admin
+    .from('tickets')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'open')
+
+  if (!access.isAdmin) {
+    brandsQuery = brandsQuery.eq('organization_id', orgId)
+    ticketsQuery = ticketsQuery.eq('organization_id', orgId)
+  }
+
+  const [pendingResult, brandsResult, ticketsResult, bookingsResult] = await Promise.all([
     pendingQuery,
+    brandsQuery,
+    ticketsQuery,
     admin.from('bookings')
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId),
@@ -31,6 +48,8 @@ export async function GET() {
     role: access.role,
     isAdmin: access.isAdmin,
     pendingCampaigns: pendingResult.count ?? 0,
+    pendingBrands: brandsResult.count ?? 0,
+    openTickets: ticketsResult.count ?? 0,
     bookings: bookingsResult.count ?? 0,
   })
 }

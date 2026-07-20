@@ -263,6 +263,9 @@ export async function PATCH(req: NextRequest) {
           type: d.type ?? 'instagram_post',
           platform: d.platform ? d.platform.toLowerCase() : null,
           due_date: d.due_date ?? null,
+          scheduled_at: d.scheduled_at ?? null,
+          sequence_number: d.sequence_number ?? null,
+          description: d.description ?? null,
           status: d.status ?? 'pending',
           content_url: d.content_url ?? null,
         })
@@ -274,6 +277,9 @@ export async function PATCH(req: NextRequest) {
         if ('status' in d) delUpdate.status = d.status
         if ('content_url' in d) delUpdate.content_url = d.content_url
         if ('due_date' in d) delUpdate.due_date = d.due_date
+        if ('scheduled_at' in d) delUpdate.scheduled_at = d.scheduled_at
+        if ('sequence_number' in d) delUpdate.sequence_number = d.sequence_number
+        if ('description' in d) delUpdate.description = d.description
         if (Object.keys(delUpdate).length > 0) {
           await admin.from('campaign_deliverables').update(delUpdate).eq('id', d.id).eq('campaign_id', id)
         }
@@ -287,7 +293,7 @@ export async function PATCH(req: NextRequest) {
     .select(`
       id, name, status, description, start_date, end_date, currency, created_by,
       brand:brands!brand_id(id, name, logo_url, website, contact_name, contact_email),
-      campaign_deliverables(id, title, type, status, due_date, platform, content_url, description, hashtags)
+      campaign_deliverables(id, title, type, status, due_date, scheduled_at, sequence_number, platform, content_url, description, hashtags)
     `)
     .eq('id', id)
     .single()

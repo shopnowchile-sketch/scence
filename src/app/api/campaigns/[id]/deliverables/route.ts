@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { syncDeliverableTask } from '@/lib/influencer-tasks'
+import { DELIVERABLE_DESCRIPTION_MAX, expandDeliverableTemplates } from '@/lib/deliverable-templates'
 
 type Params = { params: { id: string } }
 
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     due_date,
     description,
     quantity,
+    scheduled_at,
   } = body
 
   if (!influencer_id || !title || !type) {
@@ -62,48 +63,42 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   }
 
+  if (typeof description === 'string' && description.length > DELIVERABLE_DESCRIPTION_MAX) {
+    return NextResponse.json({ error: `La descripción no puede superar ${DELIVERABLE_DESCRIPTION_MAX} caracteres` }, { status: 422 })
+  }
+
   const admin = createAdminClient()
+  const { data: assignment } = await admin
+    .from('campaign_influencers')
+    .select('id')
+    .eq('campaign_id', params.id)
+    .eq('influencer_id', influencer_id as string)
+    .maybeSingle()
+
+  const rows = expandDeliverableTemplates([{
+    type: type as string,
+    title: title as string,
+    description: description as string | undefined,
+    due_date: due_date as string | undefined,
+    scheduled_at: scheduled_at as string | undefined,
+    platform: platform as string | undefined,
+    quantity: Number(quantity) || 1,
+  }]).map(template => ({
+    campaign_id: params.id,
+    influencer_id,
+    campaign_influencer_id: assignment?.id ?? null,
+    ...template,
+    status: 'pending',
+  }))
+
   const { data, error } = await admin
     .from('campaign_deliverables')
-    .insert({
-      campaign_id: params.id,
-      influencer_id,
-      title,
-      type,
-      platform: platform ?? null,
-      due_date: due_date ?? null,
-      description: description ?? null,
-      quantity: quantity ? Number(quantity) : 1,
-      status: 'pending',
-    })
+    .insert(rows)
     .select(`*, influencer:influencers (id, display_name, avatar_url)`)
-    .single()
 
   if (error) {
     console.error('[POST /api/campaigns/[id]/deliverables]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // Auto-sync: crear influencer_task vinculada a este deliverable
-  if (data && influencer_id) {
-    const { data: camp } = await admin
-      .from('campaigns')
-      .select('organization_id')
-      .eq('id', params.id)
-      .single()
-
-    if (camp) {
-      await syncDeliverableTask(admin, {
-        organizationId:    camp.organization_id,
-        influencerId:      influencer_id as string,
-        deliverableId:     data.id,
-        campaignId:        params.id,
-        deliverableType:   data.type,
-        deliverableTitle:  data.title,
-        deliverableStatus: 'pending',
-        dueDate:           data.due_date ?? null,
-      })
-    }
   }
 
   return NextResponse.json({ data }, { status: 201 })
@@ -210,28 +205,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (error) {
     console.error('[PATCH /api/campaigns/[id]/deliverables]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // Sincronizar el status de la influencer_task vinculada (non-fatal)
-  if (data && existing.influencer_id && updatePayload.status) {
-    const { data: camp } = await admin
-      .from('campaigns')
-      .select('organization_id')
-      .eq('id', params.id)
-      .single()
-
-    if (camp) {
-      await syncDeliverableTask(admin, {
-        organizationId:    camp.organization_id,
-        influencerId:      existing.influencer_id,
-        deliverableId:     deliverable_id,
-        campaignId:        params.id,
-        deliverableType:   existing.type,
-        deliverableTitle:  existing.title,
-        deliverableStatus: updatePayload.status as string,
-        dueDate:           existing.due_date ?? null,
-      })
-    }
   }
 
   // Recalcular influencers.rating tras calificar un entregable — promedio de

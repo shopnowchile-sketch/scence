@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
 import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 
 type Params = { params: { id: string } }
 
@@ -48,12 +49,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     influencer_id: string
     proposed_fee?: number
     message?: string
-    deliverables_spec?: Array<{
-      type: string
-      quantity: number
-      platform?: string
-      due_date?: string
-    }>
+    deliverables_spec?: DeliverableTemplateInput[]
   }
 
   try { body = await req.json() } catch {

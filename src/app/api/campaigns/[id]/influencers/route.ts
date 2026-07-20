@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { syncDeliverableTask } from '@/lib/influencer-tasks'
 import { getResend, FROM_EMAIL, campaignAssignedEmail } from '@/lib/resend'
+import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -113,16 +113,6 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single()
 
     if (campaign) {
-      // NOTA (fix 2026-07-01): antes se llamaba createInfluencerTasks() acá,
-      // que insertaba 4 tareas genéricas hardcodeadas ("Aprobar brief",
-      // "Grabar contenido", "Entregar contenido", "Publicar en redes") sin
-      // vincular a ningún deliverable real (deliverable_id null). Quedaban
-      // mezcladas en "Tareas pendientes" del influencer junto a las tareas
-      // reales sincronizadas 1:1 desde campaign_deliverables (syncDeliverableTask
-      // más abajo), sin corresponder a nada que la marca haya pedido de verdad.
-      // Se quita: las únicas influencer_tasks que debe generar este flujo son
-      // las vinculadas a un deliverable real.
-
       // Auto-deliverables from templates
       const templates = Array.isArray(campaign.deliverable_templates)
         ? (campaign.deliverable_templates as Array<{
@@ -139,46 +129,27 @@ export async function POST(request: NextRequest, { params }: Params) {
           .eq('influencer_id', influencer_id as string)
 
         if (!existing?.length) {
-          const deliverablesToInsert = templates.map(t => ({
+          const deliverablesToInsert = expandDeliverableTemplates(templates as DeliverableTemplateInput[]).map(t => ({
             campaign_id:           params.id,
             influencer_id:         influencer_id as string,
             campaign_influencer_id: data.id,
-            type:                  t.type,
-            title:                 t.description || t.type,
-            description:           t.description ?? null,
-            quantity:              t.quantity ?? 1,
-            due_date:              t.due_date || null,
+            ...t,
             status:                'pending',
           }))
 
-          const { data: insertedDelivs, error: insertDelErr } = await admin
+          const { error: insertDelErr } = await admin
             .from('campaign_deliverables')
             .insert(deliverablesToInsert)
-            .select('id, type, title, due_date')
 
           if (insertDelErr) {
             console.error('[auto-deliverables] failed:', insertDelErr.message)
-          } else if (insertedDelivs?.length) {
-            // Sincronizar cada deliverable con una influencer_task vinculada
-            for (const del of insertedDelivs) {
-              await syncDeliverableTask(admin, {
-                organizationId:    campaign.organization_id,
-                influencerId:      influencer_id as string,
-                deliverableId:     del.id,
-                campaignId:        params.id,
-                deliverableType:   del.type,
-                deliverableTitle:  del.title,
-                deliverableStatus: 'pending',
-                dueDate:           del.due_date ?? null,
-              })
-            }
           }
         }
       }
     }
   } catch (e) {
     // Non-fatal
-    console.error('[auto-tasks/deliverables] failed:', e)
+    console.error('[auto-deliverables] failed:', e)
   }
 
   // ── Notificar por email a la influencer de la asignación directa (no bloqueante) ──
@@ -304,14 +275,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
         if (templates.length > 0) {
           await admin.from('campaign_deliverables').insert(
-            templates.map(t => ({
+            expandDeliverableTemplates(templates as DeliverableTemplateInput[]).map(t => ({
               campaign_id: params.id,
               influencer_id: influencer_id as string,
               organization_id: camp!.organization_id,
-              title: t.title ?? null,
-              type: t.type ?? 'instagram_post',
-              platform: t.platform ?? null,
-              due_date: t.due_date ?? null,
+              ...t,
               status: 'pending',
               progress: 0,
             }))

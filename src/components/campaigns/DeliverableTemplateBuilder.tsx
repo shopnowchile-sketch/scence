@@ -10,6 +10,7 @@
  */
 
 import { cn } from '@/lib/utils'
+import { DELIVERABLE_DESCRIPTION_MAX, type DeliverableTemplateItem } from '@/lib/deliverable-templates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,9 @@ export interface DeliverableTemplate {
   type: string
   quantity: number
   description?: string
-  due_date?: string   // fecha ISO completa con hora, ej: "2026-06-15T18:00"
+  due_date?: string
+  scheduled_at?: string
+  items?: DeliverableTemplateItem[]
 }
 
 // ── Deliverable types ─────────────────────────────────────────────────────────
@@ -36,6 +39,14 @@ export const DELIVERABLE_TYPES = [
 ] as const
 
 export type DeliverableTypeValue = typeof DELIVERABLE_TYPES[number]['value']
+
+function toLocalDateTimeInput(value?: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value.slice(0, 16)
+  const offsetMs = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+}
 
 // ── Default templates by campaign type ────────────────────────────────────────
 
@@ -93,7 +104,31 @@ export function DeliverableTemplateBuilder({
   }
 
   function update(type: string, field: string, val: unknown) {
-    onChange(value.map(d => d.type === type ? { ...d, [field]: val } : d))
+    onChange(value.map(d => {
+      if (d.type !== type) return d
+      if (field !== 'quantity') return { ...d, [field]: val }
+
+      const quantity = Math.max(1, Math.min(50, Number(val) || 1))
+      const currentItems = d.items ?? Array.from({ length: d.quantity }, () => ({
+        description: d.description ?? '',
+        due_date: d.due_date ?? '',
+        scheduled_at: d.scheduled_at ?? '',
+      }))
+      const items = Array.from({ length: quantity }, (_, index) => currentItems[index] ?? {
+        description: d.description ?? '', due_date: '', scheduled_at: '',
+      })
+      return { ...d, quantity, items }
+    }))
+  }
+
+  function updateItem(type: string, index: number, field: keyof DeliverableTemplateItem, val: string) {
+    onChange(value.map(d => {
+      if (d.type !== type) return d
+      const items = d.items ?? Array.from({ length: d.quantity }, () => ({
+        description: d.description ?? '', due_date: d.due_date ?? '', scheduled_at: d.scheduled_at ?? '',
+      }))
+      return { ...d, items: items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: val } : item) }
+    }))
   }
 
   function applySuggested() {
@@ -141,6 +176,9 @@ export function DeliverableTemplateBuilder({
         <div className="space-y-2">
           {value.map(d => {
             const dt = DELIVERABLE_TYPES.find(t => t.value === d.type)
+            const items = d.items ?? Array.from({ length: d.quantity }, () => ({
+              description: d.description ?? '', due_date: d.due_date ?? '', scheduled_at: d.scheduled_at ?? '',
+            }))
             return (
               <div key={d.type} className="p-3 rounded-xl border border-violet-100 bg-violet-50/50 space-y-2">
                 <div className="flex items-center justify-between">
@@ -152,43 +190,49 @@ export function DeliverableTemplateBuilder({
                     ✕ Quitar
                   </button>
                 </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Descripción / brief</label>
-                  <textarea value={d.description ?? ''}
-                    onChange={e => update(d.type, 'description', e.target.value)}
-                    rows={3}
-                    placeholder="Ej. Reel de 30 segundos mostrando el producto, mencionar código SCENCE10, tono alegre y dinámico..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-violet-400 bg-white resize-none" />
+                <div className="max-w-32">
+                  <label className="text-xs text-gray-500 mb-1 block">Cantidad</label>
+                  <input type="number" min="1" max="50" value={d.quantity}
+                    onChange={e => update(d.type, 'quantity', parseInt(e.target.value) || 1)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Cantidad</label>
-                    <input type="number" min="1" max="50" value={d.quantity}
-                      onChange={e => update(d.type, 'quantity', parseInt(e.target.value) || 1)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Fecha entrega</label>
-                    <input
-                      type="date"
-                      value={d.due_date ? d.due_date.split('T')[0] : ''}
-                      onChange={e => {
-                        const time = d.due_date?.split('T')[1] ?? '23:59'
-                        update(d.type, 'due_date', e.target.value ? `${e.target.value}T${time}` : '')
-                      }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Hora</label>
-                    <input
-                      type="time"
-                      value={d.due_date?.split('T')[1]?.slice(0, 5) ?? ''}
-                      onChange={e => {
-                        const date = d.due_date ? d.due_date.split('T')[0] : ''
-                        if (date) update(d.type, 'due_date', `${date}T${e.target.value}`)
-                      }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />
-                  </div>
+
+                <div className="space-y-3">
+                  {items.map((item, index) => (
+                    <div key={`${d.type}-${index}`} className="rounded-xl border border-violet-200 bg-white p-3 space-y-3">
+                      <p className="text-sm font-bold text-violet-700">
+                        {dt?.label ?? d.type} {index + 1} de {d.quantity}
+                      </p>
+                      <div>
+                        <div className="flex justify-between gap-3 mb-1">
+                          <label className="text-xs text-gray-500">Descripción / brief</label>
+                          <span className="text-[11px] text-gray-400">{(item.description ?? '').length} / {DELIVERABLE_DESCRIPTION_MAX}</span>
+                        </div>
+                        <textarea
+                          value={item.description ?? ''}
+                          maxLength={DELIVERABLE_DESCRIPTION_MAX}
+                          onChange={e => updateItem(d.type, index, 'description', e.target.value)}
+                          rows={4}
+                          placeholder="Instrucciones específicas para esta pieza..."
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-violet-400 bg-white resize-y"
+                        />
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Fecha límite de entrega</label>
+                          <input type="date" value={item.due_date?.split('T')[0] ?? ''}
+                            onChange={e => updateItem(d.type, index, 'due_date', e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Publicar el día y hora</label>
+                          <input type="datetime-local" value={toLocalDateTimeInput(item.scheduled_at)}
+                            onChange={e => updateItem(d.type, index, 'scheduled_at', e.target.value ? new Date(e.target.value).toISOString() : '')}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )

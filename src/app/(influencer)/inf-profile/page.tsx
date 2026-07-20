@@ -51,8 +51,12 @@ function isProfileComplete(p: InfluencerProfile) {
   return hasAddress && hasCommune && hasInstagram
 }
 
-type Task     = { id: string; status: string }
-type Campaign = { id: string; campaign: { status: string } | null }
+type Deliverable = { id: string; status: string }
+type Campaign = {
+  id: string
+  campaign: { status: string } | null
+  campaign_deliverables?: Deliverable[] | null
+}
 type Payment  = { id: string; net_amount: number; currency: string }
 
 const PLATFORMS = [
@@ -104,7 +108,6 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', textar
 
 export default function ProfilePage() {
   const [profile,   setProfile]   = useState<InfluencerProfile | null>(null)
-  const [tasks,     setTasks]     = useState<Task[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [payments,  setPayments]  = useState<{ pending: Payment[]; completed: Payment[] }>({ pending: [], completed: [] })
   const [loading,   setLoading]   = useState(true)
@@ -116,16 +119,14 @@ export default function ProfilePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [meRes, tasksRes, campRes, payRes] = await Promise.all([
+      const [meRes, campRes, payRes] = await Promise.all([
         fetch('/api/influencer/me'),
-        fetch('/api/influencer/tasks'),
         fetch('/api/influencer/campaigns'),
         fetch('/api/influencer/payments'),
       ])
       if (!meRes.ok) { toast.error('Error cargando perfil'); setLoading(false); return }
-      const [meData, tasksData, campData, payData] = await Promise.all([meRes.json(), tasksRes.json(), campRes.json(), payRes.json()])
+      const [meData, campData, payData] = await Promise.all([meRes.json(), campRes.json(), payRes.json()])
       setProfile(meData.data)
-      setTasks(tasksData.data ?? [])
       setCampaigns(campData.data ?? [])
       setPayments({ pending: payData.pending ?? [], completed: payData.completed ?? [] })
     } catch { toast.error('Error cargando perfil') }
@@ -218,7 +219,12 @@ export default function ProfilePage() {
   }
 
   const activeCampaigns = campaigns.filter(c => c.campaign?.status === 'active').length
-  const pendingTasks    = tasks.filter(t => t.status !== 'done' && t.status !== 'skipped').length
+  const pendingDeliverables = campaigns.reduce(
+    (total, campaign) => total + (campaign.campaign_deliverables ?? []).filter(
+      deliverable => !['approved', 'published'].includes(deliverable.status)
+    ).length,
+    0
+  )
   const totalEarned     = payments.completed.reduce((s, p) => s + p.net_amount, 0)
   const currency        = payments.completed[0]?.currency ?? payments.pending[0]?.currency ?? 'CLP'
   const socialProfiles  = profile.influencer_social_profiles ?? []
@@ -294,7 +300,7 @@ export default function ProfilePage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Campañas activas',  value: activeCampaigns,                icon: Target,   color: 'text-violet-600', bg: 'bg-violet-50' },
-              { label: 'Tareas pendientes', value: pendingTasks,                   icon: Zap,      color: 'text-amber-600',  bg: 'bg-amber-50' },
+              { label: 'Entregables pendientes', value: pendingDeliverables,       icon: Zap,      color: 'text-amber-600',  bg: 'bg-amber-50' },
               { label: 'Total cobrado',     value: fmtMoney(totalEarned, currency), icon: Banknote, color: 'text-green-600',  bg: 'bg-green-50' },
               { label: 'Marcas referidas',  value: profile.referred_brands_count ?? 0, icon: Share2, color: 'text-blue-600',   bg: 'bg-blue-50' },
             ].map(({ label, value, icon: Icon, color, bg }) => (

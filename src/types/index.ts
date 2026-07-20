@@ -1,7 +1,7 @@
 // ── ENUMS ────────────────────────────────────────────────
 export type UserRole = 'super_admin' | 'brand_manager' | 'influencer' | 'finance'
 export type CampaignStatus = 'draft' | 'pending_approval' | 'active' | 'paused' | 'completed' | 'canceled'
-export type CampaignType = 'sponsored_post' | 'event_appearance' | 'ambassador' | 'product_seeding' | 'ugc' | 'live'
+export type CampaignType = 'sponsored_post' | 'event_appearance' | 'ambassador' | 'product_seeding' | 'ugc' | 'live' | 'commission'
 export type BookingStatus = 'proposed' | 'confirmed' | 'completed' | 'canceled' | 'no_show'
 export type DeliverableType = 'instagram_post' | 'instagram_story' | 'instagram_reel' | 'tiktok' | 'youtube' | 'youtube_short' | 'blog' | 'podcast' | 'event_appearance' | 'live_stream' | 'ugc_video' | 'ugc_photo'
 export type DeliverableStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'published'

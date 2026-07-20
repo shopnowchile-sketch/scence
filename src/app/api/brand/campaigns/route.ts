@@ -8,6 +8,7 @@ import {
 } from '@/lib/plan-limits'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 
 // GET /api/brand-campaigns — campañas de la marca autenticada
 // Acepta los mismos filtros que /api/campaigns (status/type/platform/visibility/search)
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
         )
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform,
+        id, title, description, type, status, due_date, scheduled_at, sequence_number, platform,
         content_url, submitted_at, published_url, review_notes,
         influencer:influencers (id, display_name, avatar_url)
       )
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
     hashtags?: string[]
     platforms?: string[]
     address?: string
-    deliverable_templates?: Array<{ type: string; quantity: number; description?: string; due_date?: string }>
+    deliverable_templates?: DeliverableTemplateInput[]
     application_questions?: string[]
   }
 
@@ -241,22 +242,6 @@ export async function POST(req: NextRequest) {
   if (error) {
     console.error('[POST /api/brand-campaigns]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // Crear deliverables si se especificaron templates
-  if (deliverable_templates && deliverable_templates.length > 0) {
-    const deliverables = deliverable_templates.flatMap(t =>
-      Array.from({ length: t.quantity }).map(() => ({
-        campaign_id:  data.id,
-        type:         t.type,
-        title:        t.description || t.type,
-        platform:     null,
-        due_date:     t.due_date || null,
-        status:       'pending',
-      }))
-    )
-    const { error: delError } = await admin.from('campaign_deliverables').insert(deliverables)
-    if (delError) console.error('[POST /api/brand-campaigns] deliverables insert:', delError.message)
   }
 
   return NextResponse.json({ data }, { status: 201 })

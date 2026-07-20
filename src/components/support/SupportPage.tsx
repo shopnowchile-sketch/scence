@@ -303,45 +303,54 @@ function AdminTicketTable({
 // ── Main Component ────────────────────────────────────────────────────────────
 export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
   const [tickets,      setTickets]      = useState<Ticket[]>([])
-  // Sin filtro de estado, solo para los contadores de cada tab — antes se
-  // contaba sobre `tickets` (ya filtrado por el tab activo), así que todos
-  // los badges menos el del tab seleccionado quedaban mal (mismo fix que en
-  // BillingClient.tsx y admin-events/page.tsx).
-  const [allTickets,   setAllTickets]   = useState<Ticket[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({ all: 0, open: 0, in_progress: 0, closed: 0 })
   const [loading,      setLoading]      = useState(true)
+  const [loadingMore,  setLoadingMore]  = useState(false)
+  const [page,         setPage]         = useState(1)
+  const [hasMore,      setHasMore]      = useState(false)
   const [showForm,     setShowForm]     = useState(false)
   const [submitting,   setSubmitting]   = useState(false)
   const [expanded,     setExpanded]     = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState(adminMode ? 'open' : 'all')
   const [form, setForm] = useState({ title: '', description: '', category: 'other' })
 
   const apiUrl = adminMode ? '/api/tickets' : '/api/support'
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (requestedPage = 1) => {
+    if (requestedPage === 1) setLoading(true)
+    else setLoadingMore(true)
     try {
-      const url  = adminMode && statusFilter !== 'all' ? `${apiUrl}?status=${statusFilter}` : apiUrl
+      const params = new URLSearchParams()
+      if (adminMode) {
+        if (statusFilter !== 'all') params.set('status', statusFilter)
+        params.set('page', String(requestedPage))
+        params.set('limit', '50')
+      }
+      const url = params.size ? `${apiUrl}?${params}` : apiUrl
       const res  = await fetch(url)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setTickets(json.data ?? [])
+      setTickets(previous => requestedPage === 1 ? (json.data ?? []) : [...previous, ...(json.data ?? [])])
+      setPage(requestedPage)
+      setHasMore(adminMode && json.has_more === true)
     } catch (e) {
       toast.error((e as Error).message ?? 'Error cargando tickets')
     }
     setLoading(false)
+    setLoadingMore(false)
   }, [apiUrl, adminMode, statusFilter])
 
-  const loadAllCounts = useCallback(async () => {
+  const loadCounts = useCallback(async () => {
     if (!adminMode) return
     try {
-      const res  = await fetch(apiUrl)
+      const res  = await fetch(`${apiUrl}?counts=1`)
       const json = await res.json()
-      if (res.ok) setAllTickets(json.data ?? [])
+      if (res.ok) setCounts(json.counts ?? {})
     } catch { /* los badges se quedan con el valor anterior, no es crítico */ }
   }, [adminMode, apiUrl])
 
-  useEffect(() => { load() }, [load])
-  useEffect(() => { loadAllCounts() }, [loadAllCounts])
+  useEffect(() => { void load(1) }, [load])
+  useEffect(() => { void loadCounts() }, [loadCounts])
 
   async function submit() {
     if (!form.title.trim())       { toast.error('El título es requerido');     return }
@@ -357,7 +366,6 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setTickets(prev => [json.data, ...prev])
-      setAllTickets(prev => [json.data, ...prev])
       setForm({ title: '', description: '', category: 'other' })
       setShowForm(false)
       toast.success('Ticket enviado — recibirás respuesta pronto')
@@ -373,7 +381,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       const res = await fetch(`/api/tickets/${ticketId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
       setTickets(prev => prev.filter(t => t.id !== ticketId))
-      setAllTickets(prev => prev.filter(t => t.id !== ticketId))
+      void loadCounts()
       if (expanded === ticketId) setExpanded(null)
       toast.success('Ticket eliminado')
     } catch {
@@ -391,7 +399,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: json.data.status } : t))
-      setAllTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: json.data.status } : t))
+      void loadCounts()
       toast.success('Estado actualizado')
     } catch (e) {
       toast.error((e as Error).message ?? 'Error actualizando estado')
@@ -410,7 +418,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
+          <button onClick={() => { void load(1); void loadCounts() }} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
             <RefreshCw className="h-4 w-4" />
           </button>
           {!adminMode && (
@@ -429,7 +437,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
       {adminMode && (
         <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
           {FILTER_TABS.map(tab => {
-            const count = tab.key === 'all' ? allTickets.length : allTickets.filter(t => t.status === tab.key).length
+            const count = counts[tab.key] ?? 0
             return (
               <button
                 key={tab.key}
@@ -521,13 +529,16 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
           </p>
         </div>
       ) : adminMode ? (
-        <AdminTicketTable
-          tickets={tickets}
-          expanded={expanded}
-          onToggle={ticketId => setExpanded(expanded === ticketId ? null : ticketId)}
-          onStatus={updateStatus}
-          onDelete={deleteTicket}
-        />
+        <div className="space-y-4">
+          <AdminTicketTable
+            tickets={tickets}
+            expanded={expanded}
+            onToggle={ticketId => setExpanded(expanded === ticketId ? null : ticketId)}
+            onStatus={updateStatus}
+            onDelete={deleteTicket}
+          />
+          {hasMore && <div className="flex justify-center"><button onClick={() => void load(page + 1)} disabled={loadingMore} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:border-violet-200 hover:text-violet-700 disabled:opacity-50">{loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}Cargar más tickets</button></div>}
+        </div>
       ) : (
         <div className="space-y-3">
           {tickets.map(t => {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
@@ -24,6 +24,8 @@ import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
+import { DeliverableTemplateBuilder, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
+import { BrandSelector } from '@/components/campaigns/BrandSelector'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -492,6 +494,7 @@ function AddDeliverableForm({
     title: '',
     description: '',
     due_date: '',
+    scheduled_at: '',
     quantity: 1,
   })
 
@@ -511,6 +514,7 @@ function AddDeliverableForm({
           title:         form.title || DELIVERABLE_TYPE_OPTIONS.find(o => o.value === form.type)?.label.replace(/^.+ /, '') || form.type,
           description:   form.description || null,
           due_date:      form.due_date || null,
+          scheduled_at:  form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
           quantity:      form.quantity,
         }),
       })
@@ -560,10 +564,16 @@ function AddDeliverableForm({
             className="input-base w-full text-sm py-1.5" />
         </div>
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Descripción / instrucciones</label>
-          <input type="text" value={form.description} onChange={e => f('description', e.target.value)}
-            placeholder="Instrucciones para el influencer"
+          <label className="text-xs text-gray-500 mb-1 block">Publicar el día y hora</label>
+          <input type="datetime-local" value={form.scheduled_at} onChange={e => f('scheduled_at', e.target.value)}
             className="input-base w-full text-sm py-1.5" />
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs text-gray-500 mb-1 block">Descripción / instrucciones</label>
+          <textarea value={form.description} maxLength={3000} rows={3} onChange={e => f('description', e.target.value)}
+            placeholder="Instrucciones para el influencer"
+            className="input-base w-full text-sm py-1.5 resize-y" />
+          <p className="text-[11px] text-gray-400 text-right mt-1">{form.description.length} / 3000</p>
         </div>
       </div>
       <div className="flex gap-2 justify-end pt-1">
@@ -717,12 +727,163 @@ function CoBrandManager({
   )
 }
 
+function OverviewEditPanel({ campaign, saving, isBrandPortal, onCancel, onSave }: {
+  campaign: CampaignDetail
+  saving: boolean
+  isBrandPortal: boolean
+  onCancel: () => void
+  onSave: (values: Record<string, unknown>) => Promise<void>
+}) {
+  const [form, setForm] = useState({
+    name: campaign.name ?? '',
+    description: campaign.description ?? '',
+    type: campaign.type ?? 'sponsored_post',
+    visibility: campaign.visibility ?? 'private',
+    start_date: campaign.start_date ?? '',
+    end_date: campaign.end_date ?? '',
+    application_deadline: campaign.application_deadline ?? '',
+    max_influencers: campaign.max_influencers?.toString() ?? '',
+    budget_total: campaign.budget_total?.toString() ?? '',
+    currency: campaign.currency ?? 'CLP',
+    commission_rate: campaign.commission_rate?.toString() ?? '',
+    approval_required: campaign.approval_required ?? true,
+    brand_id: campaign.brand_id ?? '',
+    address: campaign.address ?? '',
+    content_guidelines: campaign.content_guidelines ?? '',
+    platforms: [...(campaign.platforms ?? [])] as string[],
+    hashtags: (campaign.hashtags ?? []).join(', '),
+    social_tags: (campaign.social_tags ?? []).join(', '),
+    goals: { ...(campaign.goals ?? {}) } as Record<string, number>,
+    deliverable_templates: (campaign.deliverable_templates ?? []) as DeliverableTemplate[],
+  })
+
+  function field<K extends keyof typeof form>(key: K, value: typeof form[K]) {
+    setForm(previous => ({ ...previous, [key]: value }))
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    await onSave({
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      type: form.type,
+      visibility: form.visibility,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+      application_deadline: form.visibility === 'open' && form.application_deadline ? form.application_deadline : null,
+      max_influencers: form.visibility === 'open' && form.max_influencers !== '' ? Number(form.max_influencers) : null,
+      budget_total: form.budget_total === '' ? null : Number(form.budget_total),
+      currency: form.currency,
+      commission_rate: form.type === 'commission' && form.commission_rate !== '' ? Number(form.commission_rate) : null,
+      approval_required: form.approval_required,
+      ...(!isBrandPortal ? { brand_id: form.brand_id || null } : {}),
+      address: form.address.trim() || null,
+      content_guidelines: form.content_guidelines.trim() || null,
+      platforms: form.platforms,
+      hashtags: form.hashtags.split(',').map(item => item.trim()).filter(Boolean),
+      social_tags: form.social_tags.split(',').map(item => item.trim()).filter(Boolean),
+      goals: form.goals,
+      deliverable_templates: form.deliverable_templates,
+    })
+  }
+
+  const inputClass = 'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
+  const goalFields = [
+    ['reach', 'Reach'], ['impressions', 'Impresiones'], ['clicks', 'Clicks'],
+    ['conversions', 'Conversiones'], ['engagement_rate', 'Engagement rate (%)'],
+  ] as const
+  const campaignTypes = [
+    ['sponsored_post', 'Sponsored Post'], ['ambassador', 'Embajador'], ['ugc', 'UGC'],
+    ['event_appearance', 'Evento'], ['product_seeding', 'Product Seeding'],
+    ['live', 'Live / Streaming'], ['commission', 'Por comisión'],
+  ] as const
+  const currencies = ['CLP', 'USD', 'EUR', 'MXN', 'COP', 'ARS', 'BRL', 'GBP'] as const
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="card p-5 border-2 border-violet-200 bg-violet-50/20">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div><h2 className="font-bold text-gray-900">Editar Overview</h2><p className="text-xs text-gray-500 mt-0.5">Edita la campaña sin salir de su detalle.</p></div>
+          <div className="flex gap-2">
+            <button type="button" onClick={onCancel} disabled={saving} className="px-3 py-2 text-sm font-medium border border-gray-200 bg-white rounded-xl hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+            <button type="submit" disabled={saving || form.name.trim().length < 3} className="px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <label className="sm:col-span-2 text-xs font-semibold text-gray-600">Nombre<input value={form.name} maxLength={120} onChange={e => field('name', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          <label className="sm:col-span-2 text-xs font-semibold text-gray-600">Descripción<textarea value={form.description} maxLength={3000} rows={4} onChange={e => field('description', e.target.value)} className={`${inputClass} mt-1 resize-y`} /><span className="block text-right text-[11px] font-normal text-gray-400 mt-1">{form.description.length} / 3000</span></label>
+          <div className="sm:col-span-2">
+            <p className="text-xs font-semibold text-gray-600 mb-2">Tipo de campaña</p>
+            <div className="grid sm:grid-cols-3 gap-2">{campaignTypes.map(([value, label]) => (
+              <button key={value} type="button" onClick={() => field('type', value)}
+                className={cn('px-3 py-2 rounded-xl border text-xs font-semibold text-left', form.type === value ? 'bg-violet-50 border-violet-500 text-violet-700' : 'bg-white border-gray-200 text-gray-600')}>{label}</button>
+            ))}</div>
+          </div>
+          <div className="sm:col-span-2 grid sm:grid-cols-2 gap-3">
+            {([['private', 'Privada', 'Solo influencers invitadas o asignadas.'], ['open', 'Pública', 'Las influencers pueden postular desde su portal.']] as const).map(([value, label, help]) => (
+              <button key={value} type="button" onClick={() => field('visibility', value)}
+                className={cn('p-3 rounded-xl border text-left', form.visibility === value ? 'bg-violet-50 border-violet-500' : 'bg-white border-gray-200')}>
+                <span className="block text-sm font-semibold text-gray-800">{label}</span><span className="block text-[11px] text-gray-500 mt-1">{help}</span>
+              </button>
+            ))}
+          </div>
+          <label className="text-xs font-semibold text-gray-600">Inicio<input type="date" value={form.start_date?.split('T')[0] ?? ''} onChange={e => field('start_date', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          <label className="text-xs font-semibold text-gray-600">Término<input type="date" value={form.end_date?.split('T')[0] ?? ''} onChange={e => field('end_date', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          {form.visibility === 'open' && <>
+            <label className="text-xs font-semibold text-gray-600">Cierre de postulaciones<input type="datetime-local" value={form.application_deadline?.slice(0, 16) ?? ''} onChange={e => field('application_deadline', e.target.value)} className={`${inputClass} mt-1`} /></label>
+            <label className="text-xs font-semibold text-gray-600">Cupos máximos<input type="number" min="1" value={form.max_influencers} onChange={e => field('max_influencers', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          </>}
+          <label className="text-xs font-semibold text-gray-600">Presupuesto<input type="number" min="0" value={form.budget_total} onChange={e => field('budget_total', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          <label className="text-xs font-semibold text-gray-600">Moneda<select value={form.currency} onChange={e => field('currency', e.target.value as typeof form.currency)} className={`${inputClass} mt-1`}>{currencies.map(currency => <option key={currency} value={currency}>{currency}</option>)}</select></label>
+          {form.type === 'commission' && <label className="text-xs font-semibold text-gray-600">Comisión (%)<input type="number" min="0" max="100" step="0.5" value={form.commission_rate} onChange={e => field('commission_rate', e.target.value)} className={`${inputClass} mt-1`} /></label>}
+          <label className="text-xs font-semibold text-gray-600">Ubicación<input value={form.address} onChange={e => field('address', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          {!isBrandPortal && <div className="sm:col-span-2"><BrandSelector value={form.brand_id} onChange={value => field('brand_id', value)} /></div>}
+          <label className="sm:col-span-2 flex items-center justify-between gap-4 border border-gray-200 bg-white rounded-xl p-3">
+            <span><span className="block text-sm font-semibold text-gray-800">Aprobación de contenido obligatoria</span><span className="block text-[11px] text-gray-500 mt-0.5">La marca o administración revisará el contenido antes de publicarlo.</span></span>
+            <input type="checkbox" checked={form.approval_required} onChange={e => field('approval_required', e.target.checked)} className="h-4 w-4 accent-violet-600" />
+          </label>
+        </div>
+      </div>
+
+      <div className="card p-5 space-y-4">
+        <h3 className="font-semibold text-gray-800">Contenido y objetivos</h3>
+        <label className="text-xs font-semibold text-gray-600">Guías de contenido<textarea value={form.content_guidelines} maxLength={3000} rows={5} onChange={e => field('content_guidelines', e.target.value)} className={`${inputClass} mt-1 resize-y`} /></label>
+        <div><p className="text-xs font-semibold text-gray-600 mb-2">Plataformas</p><div className="flex flex-wrap gap-2">
+          {['instagram', 'tiktok', 'youtube', 'facebook', 'twitter', 'linkedin'].map(platform => {
+            const active = form.platforms.includes(platform)
+            return <button key={platform} type="button" onClick={() => field('platforms', active ? form.platforms.filter(item => item !== platform) : [...form.platforms, platform])}
+              className={cn('px-3 py-1.5 rounded-full border text-xs font-semibold capitalize', active ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-gray-200 text-gray-600')}>{PLATFORM_ICONS[platform]} {platform}</button>
+          })}
+        </div></div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <label className="text-xs font-semibold text-gray-600">Hashtags, separados por coma<input value={form.hashtags} onChange={e => field('hashtags', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          <label className="text-xs font-semibold text-gray-600">Tags, separados por coma<input value={form.social_tags} onChange={e => field('social_tags', e.target.value)} className={`${inputClass} mt-1`} /></label>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3">{goalFields.map(([key, label]) => (
+          <label key={key} className="text-xs font-semibold text-gray-600">{label}<input type="number" min="0" step={key === 'engagement_rate' ? '0.1' : '1'} value={form.goals[key] ?? ''}
+            onChange={e => setForm(previous => ({ ...previous, goals: { ...previous.goals, [key]: Number(e.target.value) || 0 } }))} className={`${inputClass} mt-1`} /></label>
+        ))}</div>
+      </div>
+
+      <div className="card p-5">
+        <h3 className="font-semibold text-gray-800 mb-1">Deliverables requeridos</h3>
+        <p className="text-xs text-gray-500 mb-4">Cada Reel o Story puede tener su propio brief, fecha límite y horario.</p>
+        <DeliverableTemplateBuilder value={form.deliverable_templates} onChange={value => field('deliverable_templates', value)} showSuggestions={false} />
+      </div>
+    </form>
+  )
+}
+
 export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: string; defaultTab?: Tab; portal?: 'admin' | 'brand' }) {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const isBrandPortal = portal === 'brand' || pathname.startsWith('/brand')
   const apiBase = isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns'
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
+  const [editingOverview, setEditingOverview] = useState(searchParams.get('mode') === 'edit')
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [brandRoster, setBrandRoster] = useState<Array<{
@@ -828,6 +989,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
   const patchCampaign = usePatchCampaign(id, apiBase)
   const removeInfluencer = useRemoveCampaignInfluencer(id)
+
+  function setOverviewEditMode(editing: boolean) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('tab', 'overview')
+    if (editing) params.set('mode', 'edit')
+    else params.delete('mode')
+    setTab('overview')
+    setEditingOverview(editing)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  useEffect(() => {
+    const requested = searchParams.get('mode') === 'edit'
+    setEditingOverview(requested)
+    if (requested) setTab('overview')
+  }, [searchParams])
 
   useEffect(() => {
     if (!isBrandPortal) return
@@ -937,6 +1114,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   const c = res.data as CampaignDetail
+
+  async function saveOverview(values: Record<string, unknown>) {
+    try {
+      await patchCampaign.mutateAsync(values)
+      await refetch()
+      setOverviewEditMode(false)
+      toast.success('Overview actualizado')
+    } catch {
+      // usePatchCampaign muestra el mensaje del backend.
+    }
+  }
   const campaignInfluencers     = c.campaign_influencers ?? []
   // Participantes reales = solo ACEPTadas. Se excluyen pending (postulantes/
   // invitadas sin aceptar) y rejected (no forman parte de la campaña).
@@ -1404,11 +1592,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               (_brand_permissions.canEdit). Antes se mostraba siempre, aunque
               el backend igual lo rechazaba con 403 al guardar. */}
           {(!isBrandPortal || c._brand_permissions?.canEdit) && (
-            <Link href={isBrandPortal ? `/brand-campaigns/${id}/edit` : `/admin-campaigns/${id}/edit`}
+            <button type="button" onClick={() => setOverviewEditMode(true)}
               title="Editar campaña"
               className="flex items-center justify-center p-2 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
               <Pencil className="h-3.5 w-3.5" />
-            </Link>
+            </button>
           )}
           {c.status === 'draft' && (
             isBrandPortal ? (
@@ -1636,7 +1824,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
       {/* ── OVERVIEW ───────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
-        <>
+        editingOverview ? (
+          <OverviewEditPanel
+            key={c.updated_at}
+            campaign={c}
+            saving={patchCampaign.isPending}
+            isBrandPortal={isBrandPortal}
+            onCancel={() => setOverviewEditMode(false)}
+            onSave={saveOverview}
+          />
+        ) : <>
         {c.visibility === 'open' && (
           <div className={cn(
             'card p-4 border flex flex-wrap items-center justify-between gap-3',
@@ -2223,8 +2420,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 <span>{PLATFORM_ICONS[primarySP.platform] ?? ''} @{primarySP.username}</span>
                               )}
                               {' · '}{((primarySP.followers ?? 0)/1000).toFixed(0)}K
-                            </>
-                          )}
+        </>
+      )}
                         </p>
                       </div>
                       <span className="text-xs font-semibold text-violet-700 bg-violet-100 px-2.5 py-1 rounded-full flex-shrink-0">
@@ -2948,7 +3145,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Marcas de la campaña</h3>
-            <Link href={`/admin-campaigns/${id}/edit`} className="text-sm font-semibold text-violet-600 hover:underline">
+            <Link href={`/admin-campaigns/${id}?tab=overview&mode=edit`} className="text-sm font-semibold text-violet-600 hover:underline">
               Editar campaña
             </Link>
           </div>

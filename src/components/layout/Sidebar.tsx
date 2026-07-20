@@ -8,40 +8,40 @@ import {
   Building2, Link2, Bug, CalendarCheck, Trophy, Contact } from 'lucide-react'
 import { AppSidebar, type NavSection } from './AppSidebar'
 
-type NavigationSummary = { role: UserRole; bookings: number; pendingCampaigns: number }
-let navigationSummaryRequest: Promise<NavigationSummary> | null = null
+type NavigationSummary = { role: UserRole; bookings: number; pendingCampaigns: number; pendingBrands: number; openTickets: number }
 
 function loadNavigationSummary() {
-  if (!navigationSummaryRequest) {
-    navigationSummaryRequest = fetch('/api/navigation/summary')
-      .then(r => {
-        if (!r.ok) throw new Error('No se pudo cargar la navegación')
-        return r.json() as Promise<NavigationSummary>
-      })
-      .catch(error => {
-        navigationSummaryRequest = null
-        throw error
-      })
-  }
-  return navigationSummaryRequest
+  return fetch('/api/navigation/summary', { cache: 'no-store' }).then(r => {
+    if (!r.ok) throw new Error('No se pudo cargar la navegación')
+    return r.json() as Promise<NavigationSummary>
+  })
 }
 
 export function Sidebar() {
   const [role, setRole] = useState<UserRole>(null)
   const [bookingCount,  setBookingCount]  = useState<number | null>(null)
   const [reviewCount,   setReviewCount]   = useState<number | null>(null)
+  const [brandCount,    setBrandCount]    = useState<number | null>(null)
+  const [ticketCount,   setTicketCount]   = useState<number | null>(null)
 
   useEffect(() => {
     let active = true
-    loadNavigationSummary()
-      .then(d => {
+    const refresh = () => loadNavigationSummary().then(d => {
         if (!active) return
         setRole(d.role ?? null)
         setBookingCount(typeof d.bookings === 'number' ? d.bookings : null)
         setReviewCount(typeof d.pendingCampaigns === 'number' && d.pendingCampaigns > 0 ? d.pendingCampaigns : null)
-      })
-      .catch(() => {})
-    return () => { active = false }
+        setBrandCount(typeof d.pendingBrands === 'number' && d.pendingBrands > 0 ? d.pendingBrands : null)
+        setTicketCount(typeof d.openTickets === 'number' && d.openTickets > 0 ? d.openTickets : null)
+      }).catch(() => {})
+    void refresh()
+    const interval = window.setInterval(refresh, 30_000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+    }
   }, [])
 
   const isAdmin = role && (['super_admin', 'brand_manager'] as UserRole[]).includes(role as UserRole)
@@ -65,7 +65,7 @@ export function Sidebar() {
         { href: '/admin-billing',   label: 'Billing',   icon: CreditCard },
         { href: '/admin-payroll',   label: 'Payroll',   icon: Banknote },
         { href: '/admin-contracts', label: 'Contratos', icon: FileText },
-        { href: '/admin-brands',    label: 'Marcas',    icon: Building2 },
+        { href: '/admin-brands',    label: 'Marcas',    icon: Building2, badge: brandCount, badgeColor: 'bg-amber-500' },
       ],
     },
     {
@@ -74,7 +74,7 @@ export function Sidebar() {
         ...(isAdmin ? [{ href: '/admin-crm', label: 'CRM', icon: Contact }] : []),
         { href: '/admin-affiliates', label: 'Afiliados', icon: Link2 },
         { href: '/admin-events',     label: 'Eventos',   icon: CalendarCheck },
-        { href: '/admin-support',    label: 'Soporte',   icon: Bug },
+        { href: '/admin-support',    label: 'Soporte',   icon: Bug, badge: ticketCount, badgeColor: 'bg-red-500' },
       ],
     },
     {

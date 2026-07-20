@@ -275,7 +275,7 @@ export default function InfluencerDashboard() {
   // Campañas activas con su % de entregables completados — pedido: verlas
   // en el dashboard (no solo el conteo agregado del gauge). Al 100% no pasa
   // nada al hacer clic (ya no hay nada pendiente que subir); con menos de
-  // 100% lleva directo a los entregables de ESA campaña en /inf-tasks.
+  // 100% lleva directo a los entregables de esa campaña.
   const activeCampaigns = withStatus
     .filter(x => x.status === 'activa' && x.ci.campaign?.id)
     .map(x => {
@@ -336,7 +336,7 @@ export default function InfluencerDashboard() {
         </button>
         {totalDeliverables > 0 ? (
           <button
-            onClick={() => router.push('/inf-tasks')}
+            onClick={() => router.push('/inf-deliverables')}
             title="Entregables pendientes"
             className="bg-white rounded-2xl border border-gray-100 p-2 flex flex-col items-center justify-center gap-0.5 hover:border-violet-200 transition-colors overflow-hidden"
           >
@@ -355,7 +355,7 @@ export default function InfluencerDashboard() {
           </button>
         ) : (
           <button
-            onClick={() => router.push('/inf-tasks')}
+            onClick={() => router.push('/inf-deliverables')}
             className="bg-white rounded-2xl border border-gray-100 p-4 text-center hover:border-violet-200 transition-colors"
           >
             <div className="text-xl font-bold text-gray-900">{completadasCount}</div>
@@ -443,7 +443,7 @@ export default function InfluencerDashboard() {
               const c = ci.campaign!
               const done = pct === 100
               const Wrapper = done ? 'div' : 'button'
-              const extraProps = done ? {} : { onClick: () => router.push(`/inf-tasks?campaign=${c.id}`) }
+              const extraProps = done ? {} : { onClick: () => router.push(`/inf-deliverables?campaign=${c.id}`) }
               return (
                 <Wrapper
                   key={c.id}
@@ -513,7 +513,7 @@ export default function InfluencerDashboard() {
 
       {/* Accesos rápidos al resto del portal */}
       <div className="flex items-center justify-around bg-white rounded-2xl border border-gray-100 py-3 px-4 text-xs">
-        <Link href="/inf-tasks" className="flex items-center gap-1.5 text-gray-500 hover:text-violet-600 transition-colors">
+        <Link href="/inf-deliverables" className="flex items-center gap-1.5 text-gray-500 hover:text-violet-600 transition-colors">
           <CheckSquare className="h-3.5 w-3.5" /> Entregables
         </Link>
         <Link href="/inf-campaigns" className="flex items-center gap-1.5 text-gray-500 hover:text-violet-600 transition-colors">

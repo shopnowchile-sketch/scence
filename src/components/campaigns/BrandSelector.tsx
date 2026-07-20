@@ -10,7 +10,7 @@ type Brand = { id: string; name: string }
 /**
  * BrandSelector — combobox con filtro por texto + creación de marca nueva inline.
  * Reemplaza el <select> plano (sin filtro, ~30 marcas en una sola lista) usado
- * antes en CampaignForm.tsx y CampaignEditForm.tsx (duplicado en ambos).
+ * Compartido por la creación de campañas y la edición inline del Overview.
  */
 export function BrandSelector({
   value,

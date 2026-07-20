@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 const NAV_LINKS = [
   { href: '/inf-dash',      label: 'Dashboard',    icon: LayoutDashboard },
-  { href: '/inf-tasks',     label: 'Tareas',       icon: CheckSquare },
+  { href: '/inf-deliverables', label: 'Entregables', icon: CheckSquare },
   { href: '/inf-campaigns', label: 'Mis Campañas', icon: Briefcase },
   { href: '/inf-profile',   label: 'Perfil',       icon: User },
 ]

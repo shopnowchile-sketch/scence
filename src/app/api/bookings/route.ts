@@ -13,7 +13,6 @@ import {
   updateCalendarEvent,
   deleteCalendarEvent,
 } from '@/lib/google-calendar'
-import { createInfluencerTasks } from '@/lib/influencer-tasks'
 
 // ── GET /api/bookings ─────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -168,21 +167,6 @@ export async function POST(req: NextRequest) {
       )
     } catch (e) {
       console.error('[booking_influencers insert] non-fatal:', e)
-    }
-  }
-
-  // ── Auto-generate influencer tasks ────────────────────────────────────────
-  for (const infId of allInfluencerIds) {
-    try {
-      await createInfluencerTasks(admin, {
-        organizationId: orgId,
-        influencerId:   infId,
-        sourceType:     'booking',
-        sourceId:       data.id,
-        sourceDate:     starts_at,
-      })
-    } catch (e) {
-      console.error('[booking auto-tasks] failed for', infId, e)
     }
   }
 

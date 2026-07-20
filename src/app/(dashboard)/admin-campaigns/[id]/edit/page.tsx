@@ -1,8 +1,5 @@
-import type { Metadata } from 'next'
-import { CampaignEditForm } from './CampaignEditForm'
-
-export const metadata: Metadata = { title: 'Editar campaña' }
+import { redirect } from 'next/navigation'
 
 export default function EditCampaignPage({ params }: { params: { id: string } }) {
-  return <CampaignEditForm id={params.id} />
+  redirect(`/admin-campaigns/${params.id}?tab=overview&mode=edit`)
 }

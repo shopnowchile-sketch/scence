@@ -1,5 +1,5 @@
 // Criterio único de "deliverable completado" — antes había 3-4 versiones
-// distintas repartidas entre inf-dash, inf-tasks, inf-campaigns y
+// distintas repartidas entre inf-dash, inf-deliverables, inf-campaigns y
 // CampaignDetail (admin/marca), cada una con su propia combinación de
 // status/content_url/published_url. Esta es la fuente de verdad única.
 //

@@ -3,26 +3,15 @@
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  CheckCircle2, Circle, Clock, AlertCircle,
+  CheckCircle2,
   RefreshCw, Filter, Link2, ExternalLink, Upload, ChevronRight,
-  Film, Layers, Video, Radio, FileText, Sparkles, CalendarCheck, MapPin, Send, Image as ImageIcon,
+  Film, Layers, Video, Radio, FileText, Sparkles, CalendarCheck, MapPin, Send, Image as ImageIcon, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type Task = {
-  id: string
-  title: string
-  description: string | null
-  due_date: string | null
-  status: 'pending' | 'in_progress' | 'done' | 'skipped'
-  source_type: 'campaign' | 'booking' | 'event' | 'manual'
-  source_id: string | null
-  deliverable_id: string | null  // vinculado a campaign_deliverable
-}
 
 type Deliverable = {
   id: string
@@ -31,6 +20,8 @@ type Deliverable = {
   type: string
   platform: string | null
   due_date: string | null
+  scheduled_at: string | null
+  sequence_number: number | null
   status: string
   content_url: string | null
   published_url: string | null
@@ -48,16 +39,7 @@ type CampaignGroup = {
 // Criterio único de "completado" — ver src/lib/deliverable-status.ts.
 const isCompleteDeliverable = isDeliverableComplete
 
-type StatusFilter = 'all' | Task['status']
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const TASK_STATUS_CONFIG = {
-  pending:     { label: 'Pendiente',   color: 'bg-amber-100 text-amber-700',  icon: Circle },
-  in_progress: { label: 'En proceso',  color: 'bg-blue-100 text-blue-700',    icon: Clock },
-  done:        { label: 'Completada',  color: 'bg-green-100 text-green-700',  icon: CheckCircle2 },
-  skipped:     { label: 'Omitida',     color: 'bg-gray-100 text-gray-500',    icon: AlertCircle },
-}
 
 const DELIVERABLE_STATUS: Record<string, { label: string; color: string }> = {
   pending:    { label: 'Pendiente',    color: 'bg-amber-100 text-amber-700' },
@@ -70,6 +52,13 @@ const DELIVERABLE_STATUS: Record<string, { label: string; color: string }> = {
 function formatDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatDateTime(iso: string | null) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('es-CL', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
 }
 
 function daysUntil(iso: string | null): string {
@@ -183,8 +172,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
 
         <div className="flex-1 min-w-0">
           {/* Campaign badge — solo en vistas donde no hay un header de
-              campaña ya visible arriba (ej. tab "Todas mis tareas", que
-              lista sin agrupar). En el tab Entregables el link a la
+              campaña ya visible arriba. En la vista de Entregables el link a la
               campaña ya vive en el header del grupo, así que no se repite. */}
           {showCampaignLink && (
             <button
@@ -197,7 +185,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
 
           <div className="flex items-center gap-2 flex-wrap">
             <span className={cn('text-sm font-semibold truncate', isDone ? 'text-gray-400 line-through' : 'text-gray-900')}>
-              {typeLabel(d.type)}
+              {typeLabel(d.type)}{d.sequence_number ? ` ${d.sequence_number}` : ''}
             </span>
             <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', cfg.color)}>{cfg.label}</span>
             {d.platform && <span className="text-[10px] text-gray-400 capitalize">{d.platform}</span>}
@@ -214,6 +202,12 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
                 {daysUntil(d.due_date)} · {formatDate(d.due_date)}
               </span>
             </div>
+          )}
+
+          {d.scheduled_at && !isDone && (
+            <p className="text-[10px] font-medium text-violet-600 mt-1">
+              Publicar: {formatDateTime(d.scheduled_at)}
+            </p>
           )}
 
           {/* Existing content url */}
@@ -294,28 +288,25 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
 // (mismo problema ya visto antes en el layout de marca — sin Suspense, el
 // build de Next rompía). El deep-link "?campaign=id" (usado desde
 // /inf-campaigns e inf-dash para ir directo a los entregables de una
-// campaña) se lee adentro de TasksPageInner.
-export default function TasksPage() {
+// campaña) se lee dentro de la página.
+export default function DeliverablesPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
       </div>
     }>
-      <TasksPageInner />
+      <DeliverablesPageInner />
     </Suspense>
   )
 }
 
-function TasksPageInner() {
+function DeliverablesPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const focusCampaignId = searchParams.get('campaign')
-  const [tasks,        setTasks]        = useState<Task[]>([])
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [loading,      setLoading]      = useState(true)
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [activeTab,    setActiveTab]    = useState<'deliverables' | 'tasks'>('deliverables')
   const [delivFilter,  setDelivFilter]  = useState<'all' | 'pending' | 'done'>('all')
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(
     () => new Set(focusCampaignId ? [focusCampaignId] : [])
@@ -324,19 +315,8 @@ function TasksPageInner() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [tasksRes, campRes] = await Promise.all([
-        fetch('/api/influencer/tasks'),
-        fetch('/api/influencer/campaigns'),
-      ])
-      const [tasksData, campData] = await Promise.all([tasksRes.json(), campRes.json()])
-      const tasksList: Task[] = tasksData.data ?? []
-      setTasks(tasksList)
-
-      // Descripción por deliverable — viene de la task vinculada (ya
-      // cargada), no de un fetch nuevo ni cambio de API.
-      const descByDeliverable = new Map(
-        tasksList.filter(t => t.deliverable_id).map(t => [t.deliverable_id as string, t.description])
-      )
+      const campRes = await fetch('/api/influencer/campaigns')
+      const campData = await campRes.json()
 
       // Build deliverables from campaign_influencers
       // Postulación pendiente de aprobación → no debe mostrar entregables
@@ -350,10 +330,12 @@ function TasksPageInner() {
           delivs.push({
             id: d.id,
             title: d.title,
-            description: descByDeliverable.get(d.id) ?? null,
+            description: d.description ?? null,
             type: d.type,
             platform: d.platform,
             due_date: d.due_date,
+            scheduled_at: d.scheduled_at ?? null,
+            sequence_number: d.sequence_number ?? null,
             status: d.status,
             content_url: d.content_url ?? null,
             published_url: d.published_url ?? null,
@@ -375,7 +357,7 @@ function TasksPageInner() {
       })
       setDeliverables(delivs)
     } catch {
-      toast.error('Error cargando tareas')
+      toast.error('Error cargando entregables')
     }
     setLoading(false)
   }, [])
@@ -390,25 +372,7 @@ function TasksPageInner() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [focusCampaignId, loading])
 
-  async function updateTaskStatus(taskId: string, newStatus: Task['status']) {
-    const prev = tasks
-    setTasks(t => t.map(x => x.id === taskId ? { ...x, status: newStatus } : x))
-    const res = await fetch(`/api/influencer/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    })
-    if (!res.ok) {
-      setTasks(prev)
-      toast.error('No se pudo actualizar la tarea')
-    } else {
-      toast.success(newStatus === 'done' ? '¡Tarea completada!' : 'Tarea actualizada')
-    }
-  }
-
-  const filtered = tasks.filter(t => statusFilter === 'all' || t.status === statusFilter)
   const pendingDeliverables = deliverables.filter(d => !isCompleteDeliverable(d))
-  const doneDeliverables    = deliverables.filter(isCompleteDeliverable)
 
   // Agrupar por campaña — `deliverables` ya viene ordenado (pendientes
   // primero), así que el orden de aparición de los grupos respeta esa
@@ -423,9 +387,7 @@ function TasksPageInner() {
     campaignGroups[groupIndex.get(d.campaign_id)!].deliverables.push(d)
   }
 
-  // Filtro pendientes/completados para la tab Entregables — antes esta tab
-  // no tenía forma de acotar la vista, solo la tab secundaria "Todas mis
-  // tareas" tenía filtro por status. El % / conteo del header de cada
+  // Filtro pendientes/completados para Entregables. El % / conteo del header de cada
   // campaña sigue reflejando el total real del grupo (sin filtrar); el
   // filtro solo decide qué filas de entregable se listan al expandir, y
   // oculta grupos que se quedan sin filas tras filtrar.
@@ -443,20 +405,12 @@ function TasksPageInner() {
     })
   }
 
-  const counts = {
-    all:         tasks.length,
-    pending:     tasks.filter(t => t.status === 'pending').length,
-    in_progress: tasks.filter(t => t.status === 'in_progress').length,
-    done:        tasks.filter(t => t.status === 'done').length,
-    skipped:     tasks.filter(t => t.status === 'skipped').length,
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm text-gray-400">Cargando tareas…</p>
+          <p className="text-sm text-gray-400">Cargando entregables…</p>
         </div>
       </div>
     )
@@ -468,7 +422,7 @@ function TasksPageInner() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Mis Tareas</h1>
+          <h1 className="text-xl font-bold text-gray-900">Mis entregables</h1>
           <p className="text-sm text-gray-400 mt-0.5">{pendingDeliverables.length} entregables pendientes</p>
         </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -476,28 +430,8 @@ function TasksPageInner() {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-        {([
-          { key: 'deliverables', label: `Entregables (${pendingDeliverables.length})` },
-          { key: 'tasks',        label: `Todas mis tareas (${counts.all})` },
-        ] as { key: typeof activeTab; label: string }[]).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              'flex-1 text-sm font-semibold py-2 rounded-lg transition-colors',
-              activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       {/* ── DELIVERABLES TAB — agrupado por campaña ── */}
-      {activeTab === 'deliverables' && (
-        <div className="space-y-3">
+      <div className="space-y-3">
           {/* Filtro pendientes/completados */}
           {campaignGroups.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -537,7 +471,7 @@ function TasksPageInner() {
             const nextDue  = pending.map(d => d.due_date).filter(Boolean).sort()[0] ?? null
             const typeCounts = new Map<string, number>()
             for (const d of g.deliverables) typeCounts.set(d.type, (typeCounts.get(d.type) ?? 0) + 1)
-            const summary = Array.from(typeCounts.entries()).map(([t, n]) => `${n} ${t}`).join(' · ')
+            const summary = Array.from(typeCounts.entries()).map(([t, n]) => `${n} ${typeLabel(t)}`).join(' · ')
             const expanded = expandedCampaigns.has(g.campaign_id)
 
             return (
@@ -560,7 +494,13 @@ function TasksPageInner() {
                     </span>
                   </div>
 
-                  <button onClick={() => toggleCampaign(g.campaign_id)} className="w-full text-left">
+                  <button
+                    type="button"
+                    onClick={() => toggleCampaign(g.campaign_id)}
+                    aria-expanded={expanded}
+                    aria-controls={`campaign-deliverables-${g.campaign_id}`}
+                    className="w-full text-left mt-2 rounded-xl p-2 -m-2 hover:bg-violet-50/60 transition-colors"
+                  >
                     {summary && <p className="text-xs text-gray-400 mt-0.5 truncate">{summary}</p>}
 
                     <div className="flex items-center gap-4 mt-2 flex-wrap">
@@ -576,117 +516,25 @@ function TasksPageInner() {
                       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div className={cn('h-full rounded-full', pct === 100 ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
                       </div>
-                      <ChevronRight className={cn('h-4 w-4 text-gray-300 flex-shrink-0 transition-transform', expanded && 'rotate-90')} />
+                      <span className="text-xs font-semibold text-violet-600 whitespace-nowrap">
+                        {expanded ? 'Ocultar entregables' : `Ver ${total} entregable${total !== 1 ? 's' : ''}`}
+                      </span>
+                      <span className="w-9 h-9 rounded-full bg-violet-600 shadow-sm flex items-center justify-center flex-shrink-0">
+                        <ChevronDown className={cn('h-5 w-5 text-white transition-transform duration-200', expanded && 'rotate-180')} />
+                      </span>
                     </div>
                   </button>
                 </div>
 
                 {expanded && (
-                  <div className="px-4 pb-4 space-y-2 border-t border-gray-50 pt-3">
+                  <div id={`campaign-deliverables-${g.campaign_id}`} className="px-4 pb-4 space-y-2 border-t border-gray-50 pt-3">
                     {g.deliverables.filter(matchesDelivFilter).map(d => <DeliverableRow key={d.id} d={d} onUpdate={load} />)}
                   </div>
                 )}
               </div>
             )
           })}
-        </div>
-      )}
-
-      {/* ── TASKS TAB ── */}
-      {activeTab === 'tasks' && (
-        <div className="space-y-4">
-          {/* Status filters */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="h-4 w-4 text-gray-300 flex-shrink-0" />
-            {([
-              { key: 'all',         label: 'Todas',      count: counts.all },
-              { key: 'pending',     label: 'Pendiente',  count: counts.pending },
-              { key: 'in_progress', label: 'En proceso', count: counts.in_progress },
-              { key: 'done',        label: 'Completadas', count: counts.done },
-            ] as { key: StatusFilter; label: string; count: number }[]).map(({ key, label, count }) => (
-              <button
-                key={key}
-                onClick={() => setStatusFilter(key)}
-                className={cn(
-                  'text-xs font-medium px-3 py-1.5 rounded-full border transition-colors',
-                  statusFilter === key
-                    ? 'bg-violet-600 text-white border-violet-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'
-                )}
-              >
-                {label} {count > 0 && <span className="ml-1 opacity-70">{count}</span>}
-              </button>
-            ))}
-          </div>
-
-          {filtered.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-100 flex flex-col items-center py-16">
-              <CheckCircle2 className="h-10 w-10 text-gray-200 mb-3" />
-              <p className="text-sm text-gray-400">No hay tareas para este filtro.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map(task => {
-                const cfg = TASK_STATUS_CONFIG[task.status]
-                const StatusIcon = cfg.icon
-
-                // Si la task tiene deliverable vinculado, buscar el deliverable y renderizarlo
-                if (task.deliverable_id) {
-                  const linked = deliverables.find(d => d.id === task.deliverable_id)
-                  if (linked) {
-                    return <DeliverableRow key={task.id} d={linked} onUpdate={load} showCampaignLink />
-                  }
-                }
-
-                // Task genérica (sin deliverable vinculado)
-                return (
-                  <div key={task.id} className="flex items-start gap-3 py-3.5 px-4 bg-white rounded-xl border border-gray-100 group">
-                    <button
-                      onClick={() => updateTaskStatus(task.id, task.status === 'done' ? 'pending' : 'done')}
-                      className={cn(
-                        'mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 transition-colors flex items-center justify-center',
-                        task.status === 'done' ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-violet-400 hover:bg-violet-50'
-                      )}
-                    >
-                      <StatusIcon className={cn('h-3 w-3', task.status === 'done' ? 'text-green-500' : 'text-transparent group-hover:text-violet-400')} />
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      {task.source_type === 'campaign' && task.source_id && (
-                        <span className="text-[10px] font-semibold text-violet-500 block mb-0.5">Campaña</span>
-                      )}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={cn('text-sm font-medium', task.status === 'done' ? 'text-gray-400 line-through' : 'text-gray-900')}>
-                          {task.title}
-                        </span>
-                        <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full', cfg.color)}>{cfg.label}</span>
-                      </div>
-                      {task.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{task.description}</p>}
-                      {task.due_date && (
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className="text-[10px] text-gray-300">Vence:</span>
-                          <span className={cn('text-[10px] font-medium', urgencyColor(task.due_date))}>
-                            {daysUntil(task.due_date)} · {formatDate(task.due_date)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <select
-                      value={task.status}
-                      onChange={e => updateTaskStatus(task.id, e.target.value as Task['status'])}
-                      className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 focus:outline-none flex-shrink-0"
-                    >
-                      <option value="pending">Pendiente</option>
-                      <option value="in_progress">En proceso</option>
-                      <option value="done">Completada</option>
-                      <option value="skipped">Omitir</option>
-                    </select>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -172,6 +172,7 @@ export async function POST(req: NextRequest) {
     address?: string
     deliverable_templates?: DeliverableTemplateInput[]
     application_questions?: string[]
+    campaign_benefits?: unknown[]
   }
 
   try { body = await req.json() } catch {
@@ -182,6 +183,7 @@ export async function POST(req: NextRequest) {
           budget_total, application_deadline, max_influencers,
           content_guidelines, hashtags, platforms, address, deliverable_templates,
           application_questions } = body
+  const campaignBenefits = normalizeCampaignBenefits(body.campaign_benefits)
 
   if (!name?.trim()) return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
   if (!type) return NextResponse.json({ error: 'El tipo es requerido' }, { status: 422 })
@@ -235,6 +237,7 @@ export async function POST(req: NextRequest) {
         address: (address && String(address).trim()) ? String(address).trim() : null,
       },
       currency:             'CLP',
+      campaign_benefits:    campaignBenefits,
     })
     .select('id, name, status, visibility')
     .single()
@@ -245,4 +248,27 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ data }, { status: 201 })
+}
+
+function normalizeCampaignBenefits(value: unknown) {
+  if (!Array.isArray(value)) return []
+  const types = new Set(['product', 'experience', 'meal', 'ticket', 'gift_card', 'service', 'sales_commission', 'other'])
+  const rules = new Set(['deliverables_completed', 'sales_target', 'attendance', 'accepted', 'manual', 'raffle'])
+  return value.flatMap(raw => {
+    if (!raw || typeof raw !== 'object') return []
+    const benefit = raw as Record<string, unknown>
+    const benefitType = String(benefit.benefit_type ?? '')
+    const activationRule = String(benefit.activation_rule ?? '')
+    const description = String(benefit.description ?? '').trim()
+    if (!types.has(benefitType) || !rules.has(activationRule) || !description) return []
+    return [{
+      benefit_type: benefitType,
+      description,
+      quantity: Math.max(1, Math.trunc(Number(benefit.quantity) || 1)),
+      estimated_value: benefit.estimated_value == null ? null : Math.max(0, Number(benefit.estimated_value) || 0),
+      currency: typeof benefit.currency === 'string' ? benefit.currency : 'CLP',
+      activation_rule: activationRule,
+      sales_target: activationRule === 'sales_target' ? Math.max(1, Math.trunc(Number(benefit.sales_target) || 1)) : null,
+    }]
+  })
 }

@@ -52,8 +52,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const allowed: Record<string, unknown> = {}
   if ('name'         in body) allowed.name         = body.name
   if ('redirect_url' in body) allowed.redirect_url = body.redirect_url
-  if ('conversions'  in body) allowed.conversions  = body.conversions
-  if ('revenue'      in body) allowed.revenue      = body.revenue
+  if ('commission_rate' in body) {
+    const rate = Number(body.commission_rate)
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 100) {
+      return NextResponse.json(
+        { error: 'commission_rate debe estar entre 0 y 100' },
+        { status: 422 }
+      )
+    }
+    allowed.commission_rate = rate
+  }
   allowed.updated_at = new Date().toISOString()
 
   const { data, error } = await admin

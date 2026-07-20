@@ -91,6 +91,7 @@ export interface CampaignInfluencerJoin {
   id: string
   fee: number | null
   status: string | null
+  created_at: string | null
   campaign: {
     id: string
     name: string
@@ -109,7 +110,10 @@ export interface DeliverableJoin {
   status: string
   due_date: string | null
   platform: string | null
+  created_at: string | null
+  submitted_at: string | null
   published_at: string | null
+  updated_at: string | null
   content_url: string | null
   campaign: { id: string; name: string } | null
 }

@@ -37,6 +37,7 @@ type OpenCampaign = {
   end_date: string | null
   brand: { id: string; name: string; logo_url: string | null } | null
   _applied?: boolean
+  campaign_benefits?: Array<{ description: string; quantity?: number }>
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -478,6 +479,11 @@ export default function MyCampaignsPage() {
                     </div>
                     {c.brand && <p className="text-xs font-medium text-violet-600 mt-0.5">{c.brand.name}</p>}
                     {c.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{c.description}</p>}
+                    {(c.campaign_benefits?.length ?? 0) > 0 && (
+                      <p className="text-xs font-semibold text-violet-700 mt-1.5 line-clamp-2">
+                        🎁 {c.campaign_benefits!.map(benefit => `${benefit.quantity ?? 1}× ${benefit.description}`).join(' · ')}
+                      </p>
+                    )}
                     {c._applied && (
                       <p className="text-[10px] text-amber-600 mt-1">Ya postulaste — el equipo te confirmará pronto.</p>
                     )}

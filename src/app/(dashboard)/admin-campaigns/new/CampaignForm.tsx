@@ -49,6 +49,7 @@ const campaignBenefitSchema = z.object({
   description: z.string().min(1, 'Describe el beneficio').max(500),
   quantity: z.number().int().min(1).default(1),
   estimated_value: nanToUndef,
+  commission_rate: nanToUndefClamped,
   currency: z.string().default('CLP'),
   activation_rule: z.enum(['deliverables_completed', 'sales_target', 'attendance', 'accepted', 'manual', 'raffle']),
   sales_target: z.number().int().min(1).optional(),
@@ -398,7 +399,7 @@ function CampaignBenefitsInput({ value = [], onChange }: {
     onChange([...value, {
       benefit_type: 'ticket', description: '', quantity: 1,
       estimated_value: undefined, currency: 'CLP', activation_rule: 'deliverables_completed',
-      sales_target: undefined,
+      sales_target: undefined, commission_rate: undefined,
     }])
   }
   function update(index: number, patch: Partial<CampaignBenefitInput>) {
@@ -419,7 +420,7 @@ function CampaignBenefitsInput({ value = [], onChange }: {
       {value.map((benefit, index) => (
         <div key={index} className="rounded-xl border border-violet-100 bg-white p-3 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <select value={benefit.benefit_type} onChange={e => update(index, { benefit_type: e.target.value as CampaignBenefitInput['benefit_type'] })} className="input-base w-full">
+            <select value={benefit.benefit_type} onChange={e => update(index, { benefit_type: e.target.value as CampaignBenefitInput['benefit_type'], estimated_value: undefined, commission_rate: undefined })} className="input-base w-full">
               {BENEFIT_TYPES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
             <input type="number" min="1" step="1" value={benefit.quantity} onChange={e => update(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} className="input-base w-full" placeholder="Cantidad" />
@@ -432,10 +433,16 @@ function CampaignBenefitsInput({ value = [], onChange }: {
             {benefit.activation_rule === 'sales_target' && (
               <input type="number" min="1" step="1" value={benefit.sales_target ?? ''} onChange={e => update(index, { sales_target: Number(e.target.value) || undefined })} className="input-base w-full" placeholder="Ventas necesarias" />
             )}
-            <input type="number" min="0" step="1000" value={benefit.estimated_value ?? ''} onChange={e => update(index, { estimated_value: e.target.value === '' ? undefined : Number(e.target.value) })} className="input-base w-full" placeholder="Valor estimado" />
-            <select value={benefit.currency} onChange={e => update(index, { currency: e.target.value })} className="input-base w-full">
-              {CURRENCIES.map(currency => <option key={currency.value} value={currency.value}>{currency.value}</option>)}
-            </select>
+            {benefit.benefit_type === 'sales_commission' ? (
+              <input type="number" min="0" max="100" step="0.01" value={benefit.commission_rate ?? ''} onChange={e => update(index, { commission_rate: e.target.value === '' ? undefined : Number(e.target.value) })} className="input-base w-full" placeholder="Comisión %" />
+            ) : (
+              <>
+                <input type="number" min="0" step="1000" value={benefit.estimated_value ?? ''} onChange={e => update(index, { estimated_value: e.target.value === '' ? undefined : Number(e.target.value) })} className="input-base w-full" placeholder="Valor estimado" />
+                <select value={benefit.currency} onChange={e => update(index, { currency: e.target.value })} className="input-base w-full">
+                  {CURRENCIES.map(currency => <option key={currency.value} value={currency.value}>{currency.value}</option>)}
+                </select>
+              </>
+            )}
           </div>
           <button type="button" onClick={() => onChange(value.filter((_, position) => position !== index))} className="text-xs font-medium text-red-500">Eliminar beneficio</button>
         </div>

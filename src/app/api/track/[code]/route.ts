@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Look up the affiliate link
   const { data: link, error } = await admin
     .from('affiliate_links')
-    .select('id, redirect_url, clicks')
+    .select('id, redirect_url')
     .eq('code', code)
     .maybeSingle()
 
@@ -23,14 +23,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.redirect(appUrl, { status: 302 })
   }
 
-  // Increment click counter (fire and forget — don't await to keep latency low)
-  admin
-    .from('affiliate_links')
-    .update({ clicks: (link.clicks ?? 0) + 1 })
-    .eq('id', link.id)
-    .then(({ error: updateErr }) => {
-      if (updateErr) console.error('[track/[code]] click increment failed:', updateErr.message)
-    })
+  // Incremento atómico: evita perder clics cuando llegan varias visitas juntas.
+  const { error: incrementError } = await admin.rpc('increment_affiliate_link_clicks', {
+    p_link_id: link.id,
+  })
+  if (incrementError) {
+    console.error('[track/[code]] click increment failed:', incrementError.message)
+  }
 
   return NextResponse.redirect(link.redirect_url, { status: 302 })
 }

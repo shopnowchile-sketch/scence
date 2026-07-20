@@ -380,6 +380,52 @@ export interface CreateCalendarEventInput {
 }
 
 // ── BARTERS (canjes) ───────────────────────────────────
+export type BarterSimpleStatus = 'pending' | 'completed' | 'problem'
+export type BarterBenefitType =
+  | 'product'
+  | 'experience'
+  | 'meal'
+  | 'ticket'
+  | 'gift_card'
+  | 'service'
+  | 'sales_commission'
+  | 'other'
+
+export const BARTER_SIMPLE_STATUS_CONFIG: Record<
+  BarterSimpleStatus,
+  { label: string; badge: string }
+> = {
+  pending:   { label: 'Pendiente',    badge: 'badge-orange' },
+  completed: { label: 'Completado',   badge: 'badge-green' },
+  problem:   { label: 'Con problema', badge: 'badge-red' },
+}
+
+export const BARTER_BENEFIT_TYPE_CONFIG: Record<BarterBenefitType, string> = {
+  product: 'Producto',
+  experience: 'Experiencia',
+  meal: 'Comida',
+  ticket: 'Ticket o entrada',
+  gift_card: 'Gift card o crédito',
+  service: 'Servicio',
+  sales_commission: 'Comisión por ventas',
+  other: 'Otro',
+}
+
+export interface BarterBenefit {
+  id: string
+  organization_id: string
+  barter_id: string
+  benefit_type: BarterBenefitType
+  description: string | null
+  fixed_value: number | null
+  currency: Currency
+  commission_rate: number | null
+  affiliate_link_id: string | null
+  position: number
+  created_at: string
+  updated_at: string
+}
+
 export type BarterStatus =
   | 'pactado'
   | 'pendiente_envio'
@@ -440,6 +486,11 @@ export interface Barter {
   agreed_date: string | null
   responsible_id: string | null
   status: BarterStatus
+  simple_status?: BarterSimpleStatus
+  benefits?: BarterBenefit[]
+  completed_at?: string | null
+  cancelled_at?: string | null
+  cancellation_reason?: string | null
   evidence_url: string | null
   notes: string | null
   created_by: string | null

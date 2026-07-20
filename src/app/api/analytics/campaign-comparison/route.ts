@@ -22,11 +22,19 @@ export async function GET(request: NextRequest) {
   }
 
   const params = request.nextUrl.searchParams
-  const dateFrom = params.get('date_from')
+  let dateFrom = params.get('date_from')
   const dateTo = params.get('date_to')
   const brandId = params.get('brand_id')
   const campaignId = params.get('campaign_id')
   const platform = params.get('platform')
+  const range = params.get('range')
+
+  if (!dateFrom && range) {
+    const months = range === '12m' ? 12 : range === '6m' ? 6 : range === '3m' ? 3 : 1
+    const from = new Date()
+    from.setMonth(from.getMonth() - months)
+    dateFrom = from.toISOString().slice(0, 10)
+  }
 
   let campaignQuery = admin
     .from('campaigns')

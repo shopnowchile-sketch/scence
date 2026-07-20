@@ -3455,6 +3455,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           campaignId={id}
           campaignInfluencers={campaignInfluencers}
           campaignBenefits={c.campaign_benefits ?? []}
+          onSaveBenefits={benefits => patchCampaign.mutateAsync({ campaign_benefits: benefits })}
         />
       )}
 

@@ -17,4 +17,4 @@ alter table campaign_influencer_notifications enable row level security;
 
 -- Solo el service role (admin client, usado en todas las rutas API) necesita
 -- acceso — mismo patrón que otras tablas operativas internas. Sin policies
--- para authenticated/anon: nadie debe leer/escribir esto desde el browser.
+-- para authenticated/anon: nadie debe leer/escribir esto desde el browser.;

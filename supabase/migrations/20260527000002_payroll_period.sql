@@ -2,7 +2,6 @@
 ALTER TABLE public.payroll_runs
   ADD COLUMN IF NOT EXISTS period_start DATE,
   ADD COLUMN IF NOT EXISTS period_end   DATE;
-
 -- Add address/geo columns to influencers (used by frontend maps)
 ALTER TABLE public.influencers
   ADD COLUMN IF NOT EXISTS address      TEXT,

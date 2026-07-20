@@ -45,13 +45,11 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- Trigger on new auth user
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
 -- ============================================================
 -- RLS: influencers visible to org members (missing from schema)
 -- ============================================================
@@ -64,7 +62,6 @@ CREATE POLICY "influencers_org_read" ON influencers
     )
     OR organization_id IS NULL  -- global influencer roster
   );
-
 -- Campaign deliverables visible to org members
 CREATE POLICY "deliverables_org_read" ON campaign_deliverables
   USING (
@@ -74,7 +71,6 @@ CREATE POLICY "deliverables_org_read" ON campaign_deliverables
       WHERE om.user_id = auth.uid() AND om.is_active = TRUE
     )
   );
-
 -- Invoices visible to org members
 CREATE POLICY "invoices_org_read" ON invoices
   USING (
@@ -83,7 +79,6 @@ CREATE POLICY "invoices_org_read" ON invoices
       WHERE user_id = auth.uid() AND is_active = TRUE
     )
   );
-
 -- Invoice line items via invoice
 CREATE POLICY "invoice_items_org_read" ON invoice_line_items
   USING (
@@ -95,7 +90,6 @@ CREATE POLICY "invoice_items_org_read" ON invoice_line_items
       )
     )
   );
-
 -- Payroll runs visible to org members
 CREATE POLICY "payroll_runs_org_read" ON payroll_runs
   USING (
@@ -104,7 +98,6 @@ CREATE POLICY "payroll_runs_org_read" ON payroll_runs
       WHERE user_id = auth.uid() AND is_active = TRUE
     )
   );
-
 -- Payroll items via run
 CREATE POLICY "payroll_items_org_read" ON payroll_items
   USING (
@@ -116,7 +109,6 @@ CREATE POLICY "payroll_items_org_read" ON payroll_items
       )
     )
   );
-
 -- Bookings visible to org members
 CREATE POLICY "bookings_org_read" ON bookings
   USING (
@@ -125,7 +117,6 @@ CREATE POLICY "bookings_org_read" ON bookings
       WHERE user_id = auth.uid() AND is_active = TRUE
     )
   );
-
 -- Contracts visible to org members
 CREATE POLICY "contracts_org_read" ON contracts
   USING (

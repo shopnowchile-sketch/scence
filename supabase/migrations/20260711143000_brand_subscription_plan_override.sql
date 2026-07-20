@@ -4,7 +4,6 @@
 
 ALTER TABLE public.brands
   ADD COLUMN IF NOT EXISTS subscription_plan_override TEXT;
-
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -22,6 +21,5 @@ BEGIN
   END IF;
 END
 $$;
-
 COMMENT ON COLUMN public.brands.subscription_plan_override IS
   'Override manual del plan interno de la marca: basic, growth, pro o NULL para heredar.';

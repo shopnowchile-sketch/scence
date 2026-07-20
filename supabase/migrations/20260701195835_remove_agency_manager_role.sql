@@ -1,11 +1,9 @@
 -- Quitar agency_manager del modelo de roles activo.
 -- Modelo real: super_admin (Admin, ve todo) | brand_manager (Brand, owner) | influencer (sin sub-roles).
 -- No se dropea el valor del enum (innecesariamente riesgoso); solo deja de usarse.
--- Aplicado en producción (xzzbishzfyovrladcaeb) el 2026-07-01. Este archivo documenta el cambio
--- en el repo para que las migraciones no diverjan del schema real (ver gap G-15).
 
 -- 1. Trigger de signup: dejaba 'agency_manager' hardcodeado en cada registro nuevo,
---    pero ensureOrg() ya lo sobreescribía a 'brand_manager' en el primer login real.
+--    pero ensureOrg() ya lo sobreescribe a 'brand_manager' en el primer login real.
 --    Se alinea el default para no dejar más filas nuevas en agency_manager.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
@@ -82,6 +80,4 @@ CREATE POLICY "Admins can manage brand influencers" ON brand_influencers
     SELECT 1 FROM profiles p
     WHERE p.id = auth.uid() AND p.role = 'super_admin'::user_role
   ));
-
--- 3. Reasignar los 2 perfiles reales que tenían agency_manager (ambos de prueba) a super_admin.
-UPDATE profiles SET role = 'super_admin' WHERE role = 'agency_manager';
+;

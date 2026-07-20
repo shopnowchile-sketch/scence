@@ -6,7 +6,6 @@
 -- Enable extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 -- ============================================================
 -- ENUMS
 -- ============================================================
@@ -27,7 +26,6 @@ CREATE TYPE payroll_status AS ENUM ('pending', 'approved', 'processing', 'paid',
 CREATE TYPE social_platform AS ENUM ('instagram', 'tiktok', 'youtube', 'twitter', 'facebook', 'linkedin', 'pinterest', 'twitch', 'snapchat');
 CREATE TYPE currency_code AS ENUM ('USD', 'EUR', 'MXN', 'CLP', 'COP', 'ARS', 'BRL', 'GBP');
 CREATE TYPE notification_type AS ENUM ('campaign_update', 'deliverable_review', 'payment', 'contract', 'booking', 'system');
-
 -- ============================================================
 -- CORE: USERS & PROFILES
 -- ============================================================
@@ -49,7 +47,6 @@ CREATE TABLE public.profiles (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- ORGANIZATIONS (Brands & Agencies)
 -- ============================================================
@@ -72,7 +69,6 @@ CREATE TABLE public.organizations (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.organization_members (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id   UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -86,7 +82,6 @@ CREATE TABLE public.organization_members (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(organization_id, user_id)
 );
-
 -- ============================================================
 -- SUBSCRIPTIONS (SaaS B2B)
 -- ============================================================
@@ -105,7 +100,6 @@ CREATE TABLE public.subscription_plans (
   is_active         BOOLEAN NOT NULL DEFAULT TRUE,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.subscriptions (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id   UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -121,7 +115,6 @@ CREATE TABLE public.subscriptions (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- INFLUENCERS
 -- ============================================================
@@ -156,7 +149,6 @@ CREATE TABLE public.influencers (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.influencer_social_profiles (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   influencer_id     UUID NOT NULL REFERENCES influencers(id) ON DELETE CASCADE,
@@ -177,7 +169,6 @@ CREATE TABLE public.influencer_social_profiles (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(influencer_id, platform)
 );
-
 CREATE TABLE public.influencer_rate_cards (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   influencer_id     UUID NOT NULL REFERENCES influencers(id) ON DELETE CASCADE,
@@ -192,7 +183,6 @@ CREATE TABLE public.influencer_rate_cards (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(influencer_id, deliverable_type)
 );
-
 -- ============================================================
 -- CAMPAIGNS
 -- ============================================================
@@ -224,7 +214,6 @@ CREATE TABLE public.campaigns (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.campaign_influencers (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   campaign_id       UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -245,7 +234,6 @@ CREATE TABLE public.campaign_influencers (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(campaign_id, influencer_id)
 );
-
 CREATE TABLE public.campaign_deliverables (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   campaign_id       UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -269,7 +257,6 @@ CREATE TABLE public.campaign_deliverables (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.campaign_status_history (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   campaign_id       UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -279,7 +266,6 @@ CREATE TABLE public.campaign_status_history (
   reason            TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- BOOKINGS / EVENTS
 -- ============================================================
@@ -315,7 +301,6 @@ CREATE TABLE public.bookings (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.booking_checkins (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   booking_id        UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
@@ -325,7 +310,6 @@ CREATE TABLE public.booking_checkins (
   location_lat      NUMERIC(10,7),
   location_lng      NUMERIC(10,7)
 );
-
 -- ============================================================
 -- CONTRACTS
 -- ============================================================
@@ -356,7 +340,6 @@ CREATE TABLE public.contracts (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.contract_signatures (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   contract_id       UUID NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
@@ -368,7 +351,6 @@ CREATE TABLE public.contract_signatures (
   signature_data    TEXT,  -- base64 or reference
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- BILLING (Invoices to Brands)
 -- ============================================================
@@ -398,7 +380,6 @@ CREATE TABLE public.invoices (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.invoice_line_items (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   invoice_id        UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -413,7 +394,6 @@ CREATE TABLE public.invoice_line_items (
   sort_order        INTEGER DEFAULT 0,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.payments (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   invoice_id        UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -431,7 +411,6 @@ CREATE TABLE public.payments (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- PAYROLL (Payments to Influencers)
 -- ============================================================
@@ -453,7 +432,6 @@ CREATE TABLE public.payroll_runs (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.payroll_items (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   payroll_run_id    UUID NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
@@ -475,7 +453,6 @@ CREATE TABLE public.payroll_items (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE public.influencer_payment_methods (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   influencer_id     UUID NOT NULL REFERENCES influencers(id) ON DELETE CASCADE,
@@ -488,7 +465,6 @@ CREATE TABLE public.influencer_payment_methods (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- MEDIA & FILES
 -- ============================================================
@@ -512,7 +488,6 @@ CREATE TABLE public.media_files (
   metadata          JSONB DEFAULT '{}',
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- NOTIFICATIONS
 -- ============================================================
@@ -532,7 +507,6 @@ CREATE TABLE public.notifications (
   metadata          JSONB DEFAULT '{}',
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- AUDIT LOG
 -- ============================================================
@@ -549,7 +523,6 @@ CREATE TABLE public.audit_logs (
   user_agent        TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 -- ============================================================
 -- INDEXES
 -- ============================================================
@@ -557,14 +530,12 @@ CREATE TABLE public.audit_logs (
 -- Organizations
 CREATE INDEX idx_org_members_org ON organization_members(organization_id);
 CREATE INDEX idx_org_members_user ON organization_members(user_id);
-
 -- Influencers
 CREATE INDEX idx_influencers_org ON influencers(organization_id);
 CREATE INDEX idx_influencers_categories ON influencers USING gin(categories);
 CREATE INDEX idx_influencers_tags ON influencers USING gin(tags);
 CREATE INDEX idx_social_profiles_influencer ON influencer_social_profiles(influencer_id);
 CREATE INDEX idx_social_profiles_platform ON influencer_social_profiles(platform);
-
 -- Campaigns
 CREATE INDEX idx_campaigns_org ON campaigns(organization_id);
 CREATE INDEX idx_campaigns_status ON campaigns(status);
@@ -573,34 +544,28 @@ CREATE INDEX idx_campaign_influencers_campaign ON campaign_influencers(campaign_
 CREATE INDEX idx_campaign_influencers_influencer ON campaign_influencers(influencer_id);
 CREATE INDEX idx_deliverables_campaign ON campaign_deliverables(campaign_id);
 CREATE INDEX idx_deliverables_status ON campaign_deliverables(status);
-
 -- Bookings
 CREATE INDEX idx_bookings_influencer ON bookings(influencer_id);
 CREATE INDEX idx_bookings_campaign ON bookings(campaign_id);
 CREATE INDEX idx_bookings_dates ON bookings(starts_at, ends_at);
 CREATE INDEX idx_bookings_status ON bookings(status);
-
 -- Billing
 CREATE INDEX idx_invoices_org ON invoices(organization_id);
 CREATE INDEX idx_invoices_status ON invoices(status);
 CREATE INDEX idx_invoices_campaign ON invoices(campaign_id);
 CREATE INDEX idx_payments_invoice ON payments(invoice_id);
-
 -- Payroll
 CREATE INDEX idx_payroll_runs_org ON payroll_runs(organization_id);
 CREATE INDEX idx_payroll_items_run ON payroll_items(payroll_run_id);
 CREATE INDEX idx_payroll_items_influencer ON payroll_items(influencer_id);
-
 -- Notifications
 CREATE INDEX idx_notifications_recipient ON notifications(recipient_id, is_read);
 CREATE INDEX idx_notifications_entity ON notifications(entity_type, entity_id);
-
 -- Audit
 CREATE INDEX idx_audit_actor ON audit_logs(actor_id);
 CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_org ON audit_logs(organization_id);
 CREATE INDEX idx_audit_created ON audit_logs(created_at DESC);
-
 -- ============================================================
 -- ROW-LEVEL SECURITY (RLS)
 -- ============================================================
@@ -619,11 +584,9 @@ ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE influencers ENABLE ROW LEVEL SECURITY;
-
 -- Users can read/update their own profile
 CREATE POLICY "profiles_own" ON profiles
   USING (id = auth.uid());
-
 -- Org members can see their org
 CREATE POLICY "orgs_member_read" ON organizations
   USING (
@@ -632,7 +595,6 @@ CREATE POLICY "orgs_member_read" ON organizations
       WHERE user_id = auth.uid() AND is_active = TRUE
     )
   );
-
 -- Campaigns visible to org members
 CREATE POLICY "campaigns_org_read" ON campaigns
   USING (
@@ -641,7 +603,6 @@ CREATE POLICY "campaigns_org_read" ON campaigns
       WHERE user_id = auth.uid() AND is_active = TRUE
     )
   );
-
 -- Influencers see their own campaign assignments
 CREATE POLICY "campaign_influencers_self_read" ON campaign_influencers
   USING (
@@ -655,11 +616,9 @@ CREATE POLICY "campaign_influencers_self_read" ON campaign_influencers
       WHERE om.user_id = auth.uid() AND om.is_active = TRUE
     )
   );
-
 -- Notifications: only recipient can read
 CREATE POLICY "notifications_own" ON notifications
   USING (recipient_id = auth.uid());
-
 -- ============================================================
 -- FUNCTIONS & TRIGGERS
 -- ============================================================
@@ -672,7 +631,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 -- Apply to all tables with updated_at
 DO $$
 DECLARE
@@ -692,7 +650,6 @@ BEGIN
     );
   END LOOP;
 END $$;
-
 -- Auto-generate invoice numbers
 CREATE OR REPLACE FUNCTION generate_invoice_number()
 RETURNS TRIGGER AS $$
@@ -707,13 +664,11 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trg_invoice_number
   BEFORE INSERT ON invoices
   FOR EACH ROW
   WHEN (NEW.invoice_number IS NULL OR NEW.invoice_number = '')
   EXECUTE FUNCTION generate_invoice_number();
-
 -- Update budget_spent on campaign when payroll item is paid
 CREATE OR REPLACE FUNCTION update_campaign_budget_spent()
 RETURNS TRIGGER AS $$
@@ -728,12 +683,10 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE TRIGGER trg_budget_spent
   AFTER UPDATE ON payroll_items
   FOR EACH ROW
   EXECUTE FUNCTION update_campaign_budget_spent();
-
 -- ============================================================
 -- SEED: Subscription Plans
 -- ============================================================

@@ -14,3 +14,4 @@ create index crm_lead_activities_created_at_idx on public.crm_lead_activities (c
 
 alter table public.crm_lead_activities enable row level security;
 -- Sin policies para anon/authenticated a propósito — solo service role (mismo criterio que crm_leads).
+;

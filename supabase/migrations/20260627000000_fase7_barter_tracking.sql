@@ -15,13 +15,10 @@ CREATE TABLE IF NOT EXISTS public.barter_status_history (
   note            text,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_barter_status_history_barter
   ON public.barter_status_history (barter_id, created_at DESC);
-
 COMMENT ON TABLE public.barter_status_history IS
   'Historial de la máquina de estados de canjes. Poblado automáticamente por trigger trg_log_barter_status.';
-
 -- ── Función de log (SECURITY DEFINER para escribir el historial sin fricción RLS) ─
 CREATE OR REPLACE FUNCTION public.log_barter_status_change()
 RETURNS trigger
@@ -59,16 +56,13 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trg_log_barter_status ON public.barters;
 CREATE TRIGGER trg_log_barter_status
   AFTER INSERT OR UPDATE OF status ON public.barters
   FOR EACH ROW
   EXECUTE FUNCTION public.log_barter_status_change();
-
 -- ── RLS: mismo aislamiento que barters (el API usa service_role / bypass) ──────
 ALTER TABLE public.barter_status_history ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS bsh_admin_all ON public.barter_status_history;
 CREATE POLICY bsh_admin_all ON public.barter_status_history
   FOR ALL USING (
@@ -76,14 +70,12 @@ CREATE POLICY bsh_admin_all ON public.barter_status_history
             WHERE p.id = auth.uid()
               AND p.role = ANY (ARRAY['super_admin'::user_role, 'agency_manager'::user_role]))
   );
-
 DROP POLICY IF EXISTS bsh_finance_read ON public.barter_status_history;
 CREATE POLICY bsh_finance_read ON public.barter_status_history
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM profiles p
             WHERE p.id = auth.uid() AND p.role = 'finance'::user_role)
   );
-
 DROP POLICY IF EXISTS bsh_brand_read_own ON public.barter_status_history;
 CREATE POLICY bsh_brand_read_own ON public.barter_status_history
   FOR SELECT USING (
@@ -97,7 +89,6 @@ CREATE POLICY bsh_brand_read_own ON public.barter_status_history
         )
     )
   );
-
 DROP POLICY IF EXISTS bsh_influencer_read_own ON public.barter_status_history;
 CREATE POLICY bsh_influencer_read_own ON public.barter_status_history
   FOR SELECT USING (
@@ -108,7 +99,6 @@ CREATE POLICY bsh_influencer_read_own ON public.barter_status_history
         AND inf.user_id = auth.uid()
     )
   );
-
 -- ── Backfill: registrar el estado actual de canjes preexistentes ──────────────
 INSERT INTO public.barter_status_history
   (barter_id, organization_id, from_status, to_status, changed_by, note)
@@ -117,7 +107,6 @@ FROM public.barters b
 WHERE NOT EXISTS (
   SELECT 1 FROM public.barter_status_history h WHERE h.barter_id = b.id
 );
-
 -- ── RPC atómico para avanzar estado con atribución de actor + nota ────────────
 -- El API llama a este RPC: setea las GUC en scope de transacción y hace el UPDATE,
 -- de modo que el trigger registre quién hizo el cambio y por qué.
@@ -148,6 +137,5 @@ BEGIN
   RETURN r;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.advance_barter_status(uuid, barter_status, uuid, text, text)
   FROM PUBLIC, anon, authenticated;

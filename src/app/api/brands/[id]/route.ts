@@ -98,6 +98,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id: _id, organization_id: _oi, created_by: _cb, created_at: _ca, ...rest } = body
 
+  if ('instagram' in rest) {
+    rest.instagram = typeof rest.instagram === 'string'
+      ? rest.instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') || null
+      : null
+  }
+
   // FIX (bug Limitless, 2026-07-13): editar contact_email acá solo tocaba la
   // columna brands.contact_email — auth.users nunca se enteraba, el owner
   // seguía logueado (o intentando loguear) con el email viejo. Ahora, si el

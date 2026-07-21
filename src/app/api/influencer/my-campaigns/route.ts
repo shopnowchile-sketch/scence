@@ -38,7 +38,11 @@ export async function GET() {
       campaign:campaigns (
         id, name, status, description, content_guidelines, hashtags, platforms,
         start_date, end_date, currency, created_by, visibility, application_questions,
-        brand:brands!brand_id (id, name, logo_url, website, instagram, contact_name, contact_email)
+        brand:brands!brand_id (id, name, logo_url, website, instagram, contact_name, contact_email),
+        campaign_brands (
+          id, role,
+          brand:brands (id, name, logo_url, website, instagram)
+        )
       ),
       campaign_deliverables (
         id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags
@@ -55,6 +59,10 @@ export async function GET() {
       id, name, status, description, content_guidelines, hashtags, platforms,
       start_date, end_date, currency, budget_total, created_by,
       brand:brands!brand_id (id, name, logo_url, website, instagram, contact_name, contact_email),
+      campaign_brands (
+        id, role,
+        brand:brands (id, name, logo_url, website, instagram)
+      ),
       campaign_deliverables (
         id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags
       )

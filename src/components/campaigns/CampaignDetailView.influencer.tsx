@@ -48,6 +48,7 @@ type CampaignRow = {
     currency: string
     application_questions?: string[] | null
     brand: { id: string; name: string; logo_url: string | null; website: string | null; instagram?: string | null } | null
+    campaign_brands?: Array<{ id: string; role?: string | null; brand: { id: string; name: string; logo_url: string | null; website?: string | null; instagram?: string | null } | null }>
   } | null
 }
 
@@ -574,6 +575,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const campStatus   = isPending
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
+  const participantBrands = [c.brand, ...(c.campaign_brands ?? []).map(row => row.brand)]
+    .filter((brand): brand is NonNullable<typeof c.brand> => !!brand)
+    .filter((brand, index, all) => all.findIndex(item => item.id === brand.id) === index)
   // Los entregables se muestran también aquí: esta es la ruta natural al
   // abrir una campaña desde "Campañas" y permite subir/corregir sin cambiar
   // de sección. "Mis entregables" conserva la vista consolidada.
@@ -695,12 +699,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         {!isPending && (
           <div className="mt-4 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              {c.brand && (c.brand.instagram ? (
-                <a href={`https://instagram.com/${c.brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-3 py-3 text-white hover:opacity-95 transition-opacity">
-                  {c.brand.logo_url ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg bg-white object-contain" /> : <span className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center"><Instagram className="h-5 w-5" /></span>}
-                  <span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-wide text-white/75">Marca participante · menciona</span><span className="block text-base font-bold truncate">@{c.brand.instagram.replace(/^@/, '')}</span></span>
-                </a>
-              ) : <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">{c.brand.logo_url ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg bg-white object-contain" /> : <Building2 className="h-5 w-5 text-violet-500" />}<span><span className="block text-[10px] font-bold uppercase tracking-wide text-gray-400">Marca participante</span><span className="block text-sm font-bold text-gray-800">{c.brand.name}</span></span></div>)}
+              {participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas que debes mencionar</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
               <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
                 <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>

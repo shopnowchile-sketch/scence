@@ -6,11 +6,13 @@ import {
   ArrowLeft, Building2, FileText, Circle, CheckCircle2,
   Clock, Download, RefreshCw, Gift,
   Plus, X, Loader2, AlertCircle, ChevronDown,
+  Instagram,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
@@ -45,7 +47,8 @@ type CampaignRow = {
     start_date: string | null; end_date: string | null
     currency: string
     application_questions?: string[] | null
-    brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
+    brand: { id: string; name: string; logo_url: string | null; website: string | null; instagram?: string | null } | null
+    campaign_brands?: Array<{ id: string; role?: string | null; brand: { id: string; name: string; logo_url: string | null; website?: string | null; instagram?: string | null } | null }>
   } | null
 }
 
@@ -92,6 +95,97 @@ type CampaignAsset = {
   id: string; filename: string; mime_type: string | null; size_bytes: number | null
   signed_url: string | null; storage_path: string
   metadata?: { asset_type?: string }
+}
+
+// Entregables dentro del detalle: la influencer no tiene que volver al menú
+// "Mis entregables" para subir o corregir un link. Los rechazados conservan
+// su link anterior, pero se presentan como una corrección pendiente.
+function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUpdated: () => void }) {
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [url, setUrl] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const total = items.length
+  const submitted = items.filter(d => isDeliverableComplete(d)).length
+  const awaitingReview = items.filter(d => d.status === 'in_review').length
+  const rejected = items.filter(d => d.status === 'rejected').length
+  const approved = items.filter(d => ['approved', 'published', 'completed'].includes(d.status)).length
+  const pending = total - submitted
+  const pct = total ? Math.round((submitted / total) * 100) : 0
+  const reviewState = awaitingReview > 0
+    ? { label: `${submitted} de ${total} entregado${submitted === 1 ? '' : 's'} · En revisión`, color: 'text-blue-600', bar: 'bg-blue-500' }
+    : rejected > 0
+    ? { label: `${rejected} corrección pendiente${rejected === 1 ? '' : 's'}`, color: 'text-amber-600', bar: 'bg-amber-400' }
+    : approved === total
+    ? { label: `${total} de ${total} completado${total === 1 ? '' : 's'}`, color: 'text-green-600', bar: 'bg-green-500' }
+    : { label: `${pending} pendiente${pending === 1 ? '' : 's'}`, color: 'text-violet-600', bar: 'bg-violet-500' }
+
+  async function submit(d: Deliverable) {
+    if (!url.trim()) return toast.error('Agrega el link del contenido')
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/influencer/deliverables/${d.id}/submit`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_url: url.trim(), notes: notes.trim() || null }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo enviar el entregable')
+      toast.success(d.status === 'rejected' ? 'Corrección enviada para revisión' : 'Entregable enviado para revisión')
+      setOpenId(null); setUrl(''); setNotes(''); onUpdated()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al enviar el entregable')
+    } finally { setSaving(false) }
+  }
+
+  if (!total) return null
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-sm font-bold text-gray-900">Entregables</h2>
+          <p className={cn('text-xs font-medium mt-0.5', reviewState.color)}>{reviewState.label}</p>
+        </div>
+        <span className={cn('text-xs font-bold', reviewState.color)}>{submitted}/{total}</span>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
+        <div className={cn('h-full rounded-full transition-all', reviewState.bar)} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="space-y-3">
+        {items.map(d => {
+          const canSubmit = d.status === 'pending' || d.status === 'rejected'
+          const isReview = d.status === 'in_review'
+          const complete = isDeliverableComplete(d) && !isReview
+          const isRejected = d.status === 'rejected'
+          const opened = openId === d.id
+          return <div key={d.id} className={cn('rounded-xl border p-3', isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
+            <div className="flex items-start gap-3">
+              <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
+                {complete ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
+                <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
+                  <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                    {isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
+                  </span>
+                  {d.due_date && <span className="text-gray-400">Vence: {fmtDate(d.due_date)}</span>}
+                </div>
+                {d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
+              </div>
+              {canSubmit && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700">
+                {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
+              </button>}
+            </div>
+            {opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
+              <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+              <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div>
+            </div>}
+          </div>
+        })}
+      </div>
+    </section>
+  )
 }
 
 // ── Add deliverable (self-created campaigns) ──────────────────────────────────
@@ -481,10 +575,12 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const campStatus   = isPending
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
-  // Nota: campaign_deliverables ya no se lista acá — el detalle de campaña
-  // muestra el brief/guías/tags; el progreso y la subida de entregables
-  // vive en la sección Entregables, pedido explícito de Pri para
-  // no duplicar la misma información en dos lugares.
+  const participantBrands = [c.brand, ...(c.campaign_brands ?? []).map(row => row.brand)]
+    .filter((brand): brand is NonNullable<typeof c.brand> => !!brand)
+    .filter((brand, index, all) => all.findIndex(item => item.id === brand.id) === index)
+  // Los entregables se muestran también aquí: esta es la ruta natural al
+  // abrir una campaña desde "Campañas" y permite subir/corregir sin cambiar
+  // de sección. "Mis entregables" conserva la vista consolidada.
 
   return (
     <div className="space-y-5">
@@ -553,7 +649,10 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <h1 className="text-lg font-bold text-gray-900 flex-1">Detalle de campaña</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-bold text-gray-900">Detalle de campaña</h1>
+          <p className="text-xs text-gray-400 mt-0.5 capitalize">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+        </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw className="h-4 w-4" />
         </button>
@@ -576,6 +675,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           </span>
         </div>
 
+        {/* El brief es la primera acción: antes de fechas, métricas o tareas. */}
+        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
+
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
           <div>
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
@@ -593,11 +695,22 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           )}
         </div>
 
-        {/* Brief/guías solo visibles una vez aceptada — mientras esté
-            pending (postulación o invitación privada) no se muestra nada
-            de esto, solo lo de arriba (nombre, marca, fechas). */}
-        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
+        {/* KPIs y marca participante, antes de cualquier detalle operativo. */}
+        {!isPending && (
+          <div className="mt-4 space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas que debes mencionar</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
+              <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
+                <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
+              </a>
+            </div>
+            <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} variant="kpi" />
+          </div>
+        )}
       </div>
+
+      {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}
+      {!isPending && <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />}
 
       {!isPending && assets.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -639,25 +752,6 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       {/* Add deliverable — self-created only */}
       {!isPending && isSelfCreated && <AddDeliverableForm campaignId={c.id} onAdded={load} />}
 
-      {/* Canjes (solo lectura) — entregables/resultados, ocultos hasta aceptar */}
-      {!isPending && <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} />}
-
-      {/* Report PDF — resume entregables/resultados, oculto hasta aceptar */}
-      {!isPending && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
-            <Download className="h-5 w-5 text-violet-600" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-gray-900">Reporte de Campaña</p>
-            <p className="text-xs text-gray-400">Resumen de entregables y resultados</p>
-          </div>
-          <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer"
-            className="text-sm font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 flex-shrink-0">
-            <Download className="h-4 w-4" /> Ver PDF
-          </a>
-        </div>
-      )}
     </div>
   )
 }

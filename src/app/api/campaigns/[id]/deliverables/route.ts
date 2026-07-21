@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { DELIVERABLE_DESCRIPTION_MAX, expandDeliverableTemplates } from '@/lib/deliverable-templates'
+import { deliverableStatusEmail, FROM_EMAIL, getResend } from '@/lib/resend'
 
 type Params = { params: { id: string } }
 
@@ -186,7 +187,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Verify deliverable belongs to this campaign
   const { data: existing, error: fetchErr } = await admin
     .from('campaign_deliverables')
-    .select('id, campaign_id, influencer_id, type, title, due_date')
+    .select(`
+      id, campaign_id, influencer_id, type, title, due_date,
+      campaign:campaigns (id, name),
+      influencer:influencers (display_name, email)
+    `)
     .eq('id', deliverable_id)
     .eq('campaign_id', params.id)
     .single()
@@ -237,6 +242,36 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       }
     } catch (e) {
       console.error('[PATCH deliverables] recalculo de rating falló (non-fatal):', e)
+    }
+  }
+
+  // Al rechazar, la influencer debe saber qué corregir y poder reenviar el
+  // link de inmediato. El email es no fatal: el estado rechazado se conserva
+  // aunque Resend tenga una interrupción temporal.
+  if (action === 'reject') {
+    const influencer = existing.influencer as unknown as { display_name: string | null; email: string | null } | null
+    const campaign = existing.campaign as unknown as { id: string; name: string | null } | null
+    if (influencer?.email) {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+        const deliverableUrl = `${appUrl}/inf-deliverables?campaign=${encodeURIComponent(params.id)}`
+        const { error: emailError } = await getResend().emails.send({
+          from: FROM_EMAIL,
+          to: influencer.email,
+          subject: `❌ Tu contenido necesita ajustes — ${campaign?.name ?? 'SCENCE'}`,
+          html: deliverableStatusEmail({
+            influencerName: influencer.display_name ?? 'hola',
+            deliverableTitle: existing.title,
+            campaignName: campaign?.name ?? 'Campaña SCENCE',
+            status: 'rejected',
+            reviewNotes: review_notes,
+            deliverableUrl,
+          }),
+        })
+        if (emailError) console.error('[deliverable rejection email]', emailError)
+      } catch (emailError) {
+        console.error('[deliverable rejection email]', emailError)
+      }
     }
   }
 

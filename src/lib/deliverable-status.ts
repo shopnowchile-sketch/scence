@@ -4,6 +4,7 @@
 // status/content_url/published_url. Esta es la fuente de verdad única.
 //
 // Un deliverable se considera completado si:
+//   - NO fue rechazado (un rechazo siempre exige una nueva entrega), y
 //   - tiene contenido subido (content_url) o publicado (published_url), o
 //   - su status ya pasó revisión (approved/published) o quedó marcado
 //     "completed" (usado en algunos flujos legacy).
@@ -16,6 +17,10 @@ export interface DeliverableStatusFields {
 }
 
 export function isDeliverableComplete(d: DeliverableStatusFields): boolean {
+  // Un link rechazado sigue guardado para que la influencer y el equipo
+  // puedan revisarlo, pero ya no cuenta como avance. Debe volver a pendiente
+  // hasta que se suba una corrección y se apruebe.
+  if (d.status === 'rejected') return false
   return !!d.content_url || !!d.published_url || DELIVERABLE_COMPLETE_STATUSES.includes(
     (d.status ?? '') as (typeof DELIVERABLE_COMPLETE_STATUSES)[number]
   )

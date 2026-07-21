@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Building2, Calendar,
   LogOut, RefreshCw,
-  CheckSquare, Sparkles, Instagram, AlertCircle,
+  CheckSquare, Sparkles, Instagram, AlertCircle, Lightbulb,
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import Link from 'next/link'
@@ -362,6 +362,25 @@ export default function InfluencerDashboard() {
             <div className="text-xs text-gray-400 mt-0.5">Completadas</div>
           </button>
         )}
+      </div>
+
+      {/* Orientación de uso: explica el criterio de asignación sin prometer
+          una aceptación automática ni convertirlo en una advertencia. */}
+      <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
+        <div className="flex gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white text-violet-600 flex items-center justify-center flex-shrink-0">
+            <Lightbulb className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-violet-950">Tu participación abre nuevas oportunidades</h2>
+            <p className="text-xs text-violet-800 leading-relaxed mt-1.5">
+              En SCENCE existe un ranking interno que considera tu participación, el cumplimiento de plazos y la calidad de tus entregas. Antes de postular, revisa el brief y confirma que puedes cumplir con la campaña.
+            </p>
+            <p className="text-xs text-violet-800 leading-relaxed mt-2">
+              Cumplir tus compromisos y entregar a tiempo fortalece tu perfil y aumenta tus posibilidades de ser considerada para nuevas campañas y colaboraciones exclusivas.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Invitaciones pendientes — la marca te invitó. "Revisar invitación"

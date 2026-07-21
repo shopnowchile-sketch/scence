@@ -367,6 +367,21 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
     ? rawReferral.trim().replace(/^@/, '').toLowerCase()
     : null
 
+  // El dato que escribe la marca es un @usuario, pero el vínculo debe quedar
+  // contra la influencer (no solo como texto) para poder atribuir su referido
+  // y una futura comisión. El match se hace una vez al crear la marca.
+  let referredByInfluencerId: string | null = null
+  if (referredByInstagram) {
+    const { data: socialProfile } = await admin
+      .from('influencer_social_profiles')
+      .select('influencer_id')
+      .eq('platform', 'instagram')
+      .ilike('username', referredByInstagram)
+      .limit(1)
+      .maybeSingle()
+    referredByInfluencerId = socialProfile?.influencer_id ?? null
+  }
+
   const { data: brand, error } = await admin
     .from('brands')
     .insert({
@@ -377,6 +392,7 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
       contact_email:   contactEmail,
       created_by:      user.id,
       status:          'pending_approval',
+      referred_by_influencer_id: referredByInfluencerId,
       metadata:        referredByInstagram ? { referred_by_instagram: referredByInstagram } : null,
     })
     .select('id, name, status')

@@ -1,28 +1,32 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Gift, ChevronDown, ChevronRight, Clock, AlertTriangle, Check, ExternalLink, Loader2 } from 'lucide-react'
-import { cn, formatCurrency, formatDatetime } from '@/lib/utils'
-import { BARTER_FLOW, BARTER_STATUS_CONFIG, type Barter, type BarterStatus } from '@/types'
+import { useEffect, useState } from 'react'
+import { Gift, AlertTriangle, Check, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { type Barter, type BarterSimpleStatus } from '@/types'
 
 /**
  * Vista de solo lectura de canjes. Reutilizable en portal marca e influencer.
  * Carga desde un endpoint scoped por ownership (no expone canjes de terceros).
  */
-export function BartersReadonly({ endpoint }: { endpoint: string }) {
+export function BartersReadonly({ endpoint, variant = 'default' }: { endpoint: string; variant?: 'default' | 'kpi' }) {
   const [barters, setBarters] = useState<Barter[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
     ;(async () => {
       try {
         const res = await fetch(endpoint)
-        if (!res.ok) throw new Error()
-        const json = await res.json()
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json.error ?? 'No se pudieron cargar tus canjes')
         if (active) setBarters(json.data ?? [])
-      } catch {
-        if (active) setBarters([])
+      } catch (err) {
+        if (active) {
+          setBarters([])
+          setError(err instanceof Error ? err.message : 'No se pudieron cargar tus canjes')
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -30,13 +34,8 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
     return () => { active = false }
   }, [endpoint])
 
-  const kpis = useMemo(() => {
-    let value = 0, closed = 0
-    for (const b of barters) { value += b.estimated_value ?? 0; if (b.status === 'cerrado') closed += 1 }
-    return { value, closed, pct: barters.length ? Math.round((closed / barters.length) * 100) : 0 }
-  }, [barters])
-
   if (loading) {
+    if (variant === 'kpi') return <div className="h-20 rounded-xl bg-gray-50 animate-pulse" />
     return (
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <div className="flex items-center gap-2 text-gray-400">
@@ -46,18 +45,44 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
     )
   }
 
-  if (barters.length === 0) return null // no mostrar la sección si no hay canjes
+  if (error) return (
+    <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+      No pudimos cargar tu canje: {error}
+    </div>
+  )
+
+  if (barters.length === 0) return variant === 'kpi' ? null : (
+    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+      Tu beneficio aún está siendo preparado. Si ya fuiste aceptada, actualiza la página en unos minutos.
+    </div>
+  )
+
+  const isReferralMission = barters.some(b => (b.campaign_benefits ?? []).some(x => x.benefit_type === 'sales_commission'))
+
+  if (variant === 'kpi') return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {barters.flatMap(b => {
+        const benefits = b.campaign_benefits?.length ? b.campaign_benefits : (b.benefits ?? []).map(x => ({ benefit_type: x.benefit_type, description: x.description ?? b.item, quantity: 1, commission_rate: x.commission_rate }))
+        return benefits.map((benefit, index) => {
+          const tracking = b.benefit_tracking?.find(row => row.benefit_index === index)
+          const status = tracking?.status ?? b.simple_status ?? 'pending'
+          const commission = benefit.benefit_type === 'sales_commission'
+          return <div key={`${b.id}-${index}`} className={cn('rounded-xl border p-3', commission ? 'border-amber-100 bg-amber-50/70' : 'border-violet-100 bg-violet-50/60')}>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{commission ? 'Comisión por venta' : 'Canje'}</p>
+            <p className={cn('text-xl font-bold mt-0.5', commission ? 'text-amber-700' : 'text-violet-700')}>{commission && benefit.commission_rate ? `${benefit.commission_rate}%` : benefit.description}</p>
+            <p className="text-[11px] text-gray-500 mt-1">{status === 'completed' ? (commission ? 'Marca vinculada' : 'Canje listo') : status === 'problem' ? 'Requiere revisión' : commission ? 'Esperando registro de marca' : 'Pendiente'}</p>
+          </div>
+        })
+      })}
+    </div>
+  )
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-          <Gift className="h-4 w-4 text-violet-500" /> Canjes ({barters.length})
+          <Gift className="h-4 w-4 text-violet-500" /> {isReferralMission ? 'Tu misión y comisión' : `Canjes (${barters.length})`}
         </h2>
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span>{formatCurrency(kpis.value, 'CLP')} en valor</span>
-          <span className="text-emerald-600 font-semibold">{kpis.pct}% cerrados</span>
-        </div>
       </div>
 
       <div className="space-y-3">
@@ -68,76 +93,42 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
 }
 
 function ReadonlyBarterCard({ barter: b }: { barter: Barter }) {
-  const [showHistory, setShowHistory] = useState(false)
-  const cfg = BARTER_STATUS_CONFIG[b.status]
-  const flowIdx = BARTER_FLOW.indexOf(b.status)
-  const isProblem = b.status === 'con_problema'
+  const benefits = b.campaign_benefits?.length ? b.campaign_benefits : (b.benefits ?? []).map(benefit => ({
+    benefit_type: benefit.benefit_type,
+    description: benefit.description ?? b.item,
+    quantity: 1,
+    commission_rate: benefit.commission_rate,
+  }))
 
   return (
-    <div className={cn('rounded-xl border border-gray-100 p-4 border-l-4',
-      isProblem ? 'border-l-red-400' : b.status === 'cerrado' ? 'border-l-emerald-400' : 'border-l-violet-300')}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">{b.item}</p>
-          <p className="text-xs text-gray-500">
-            {b.influencer?.display_name ?? ''}
-            {b.estimated_value ? ` · ${formatCurrency(b.estimated_value, b.currency)}` : ''}
-          </p>
-        </div>
-        <span className={cn('px-2.5 py-1 rounded-md text-xs font-semibold shrink-0', cfg.badge)}>{cfg.label}</span>
-      </div>
-
-      {/* Timeline */}
-      <div className="mt-3 flex items-center">
-        {BARTER_FLOW.map((s, i) => {
-          const done = !isProblem && flowIdx >= i
-          return (
-            <div key={s} className="flex items-center flex-1 last:flex-none">
-              <div className={cn('h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0',
-                done ? 'bg-violet-600 text-white' : 'bg-gray-200 text-gray-400')}>
-                {done ? <Check className="h-2.5 w-2.5" /> : i + 1}
-              </div>
-              {i < BARTER_FLOW.length - 1 && (
-                <div className={cn('h-0.5 flex-1', done && flowIdx > i ? 'bg-violet-600' : 'bg-gray-200')} />
-              )}
+    <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 px-3">
+      {benefits.map((benefit, index) => {
+        const tracking = b.benefit_tracking?.find(row => row.benefit_index === index)
+        const status: BarterSimpleStatus = tracking?.status ?? b.simple_status ?? 'pending'
+        const isCommission = benefit.benefit_type === 'sales_commission'
+        return (
+          <div key={`${benefit.benefit_type}-${index}`} className="flex items-start gap-3 py-3">
+            <StatusIcon status={status} />
+            <div className="min-w-0 flex-1">
+              {isCommission ? <>
+                <p className="text-sm font-bold text-gray-900">Comisión por venta{benefit.commission_rate ? ` · ${benefit.commission_rate}%` : ''}</p>
+                <p className="text-xs text-gray-500 mt-1">Invita a una marca a registrarse en SCENCE usando tu usuario. Cuando se registre, verás aquí la marca vinculada y el estado de tu comisión.</p>
+                {status === 'pending' && <div className="grid grid-cols-3 gap-1 mt-3 text-[10px] font-medium text-gray-500"><span>1. Comparte</span><span>2. Se registra</span><span>3. Comisión</span></div>}
+              </> : <p className="text-sm font-semibold text-gray-900">{benefit.quantity}× {benefit.description}</p>}
+              <p className={cn('mt-2 text-xs font-semibold', status === 'completed' ? 'text-emerald-600' : status === 'problem' ? 'text-red-600' : 'text-amber-600')}>
+                {status === 'completed' ? (isCommission ? 'Marca vinculada' : 'Canje enviado') : status === 'problem' ? 'Con problema' : isCommission ? 'Esperando registro de marca' : 'Pendiente'}
+              </p>
+              {tracking?.note && <p className="mt-1 text-xs text-gray-500">{tracking.note}</p>}
             </div>
-          )
-        })}
-      </div>
-      {isProblem && (
-        <div className="mt-2 flex items-center gap-1.5 text-xs text-red-600 font-medium">
-          <AlertTriangle className="h-3.5 w-3.5" /> Canje con problema.
-        </div>
-      )}
-
-      {b.evidence_url && (
-        <a href={b.evidence_url} target="_blank" rel="noopener noreferrer"
-          className="mt-3 inline-flex items-center gap-1.5 text-xs text-violet-600 hover:text-violet-700">
-          <ExternalLink className="h-3.5 w-3.5" /> Ver evidencia
-        </a>
-      )}
-
-      <button onClick={() => setShowHistory(v => !v)}
-        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-600">
-        {showHistory ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        Historial ({b.history?.length ?? 0})
-      </button>
-
-      {showHistory && (
-        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
-          {(b.history ?? []).map(h => (
-            <div key={h.id} className="flex items-start gap-2 text-xs">
-              <Clock className="h-3 w-3 text-gray-300 mt-0.5 shrink-0" />
-              <span className="text-gray-600">
-                {h.from_status ? `${BARTER_STATUS_CONFIG[h.from_status].label} → ` : ''}
-                <span className="font-medium text-gray-700">{BARTER_STATUS_CONFIG[h.to_status].label}</span>
-                <span className="text-gray-400"> · {formatDatetime(h.created_at)}</span>
-                {h.note && <span className="block text-gray-500">“{h.note}”</span>}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )
+      })}
     </div>
   )
+}
+
+function StatusIcon({ status }: { status: BarterSimpleStatus }) {
+  if (status === 'completed') return <span className="mt-0.5 rounded-full bg-emerald-50 p-1"><Check className="h-3.5 w-3.5 text-emerald-600" /></span>
+  if (status === 'problem') return <span className="mt-0.5 rounded-full bg-red-50 p-1"><AlertTriangle className="h-3.5 w-3.5 text-red-600" /></span>
+  return <span className="mt-0.5 h-5 w-5 rounded-full border-2 border-amber-300" />
 }

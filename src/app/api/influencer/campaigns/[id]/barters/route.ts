@@ -13,11 +13,57 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id')
+    .select('id, organization_id')
     .eq('user_id', user.id)
     .single()
 
   if (!influencer) return NextResponse.json({ error: 'Not an influencer' }, { status: 403 })
+
+  // Autoreparación: cada influencer aceptada debe tener su fila de canje.
+  // Si una carga masiva anterior quedó incompleta, la creamos al abrir la
+  // campaña. No depende de que exista una marca asignada.
+  const { data: membership } = await admin
+    .from('campaign_influencers')
+    .select('id')
+    .eq('campaign_id', params.id)
+    .eq('influencer_id', influencer.id)
+    .eq('application_status', 'accepted')
+    .maybeSingle()
+
+  if (membership) {
+    const { data: current } = await admin
+      .from('barters')
+      .select('id')
+      .eq('campaign_id', params.id)
+      .eq('influencer_id', influencer.id)
+      .maybeSingle()
+
+    if (!current) {
+      const { data: campaign } = await admin
+        .from('campaigns')
+        .select('organization_id, brand_id, currency, campaign_benefits')
+        .eq('id', params.id)
+        .maybeSingle()
+      const totalValue = (Array.isArray(campaign?.campaign_benefits) ? campaign.campaign_benefits : [])
+        .reduce((sum: number, benefit: any) => sum + (Number(benefit?.estimated_value) || 0), 0)
+
+      if (campaign) {
+        const { error: createError } = await admin.from('barters').insert({
+          organization_id: campaign.organization_id,
+          campaign_id: params.id,
+          campaign_influencer_id: membership.id,
+          influencer_id: influencer.id,
+          brand_id: campaign.brand_id ?? null,
+          item: 'Beneficios de campaña',
+          estimated_value: totalValue || null,
+          currency: campaign.currency ?? 'CLP',
+          status: 'pactado',
+          simple_status: 'pending',
+        })
+        if (createError) console.error('[influencer barters] auto-create failed', createError)
+      }
+    }
+  }
 
   const { data, error } = await admin
     .from('barters')

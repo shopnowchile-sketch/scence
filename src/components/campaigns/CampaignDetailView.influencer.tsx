@@ -645,7 +645,10 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <h1 className="text-lg font-bold text-gray-900 flex-1">Detalle de campaña</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-bold text-gray-900">Detalle de campaña</h1>
+          <p className="text-xs text-gray-400 mt-0.5 capitalize">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+        </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw className="h-4 w-4" />
         </button>

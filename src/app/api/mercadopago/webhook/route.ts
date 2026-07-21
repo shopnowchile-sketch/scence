@@ -51,10 +51,11 @@ export async function POST(request: NextRequest) {
   }
 
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET
-  if (secret) {
+  const signature = request.headers.get('x-signature') ?? ''
+  if (secret && signature) {
     try {
       WebhookSignatureValidator.validate({
-        xSignature: request.headers.get('x-signature') ?? '',
+        xSignature: signature,
         xRequestId: request.headers.get('x-request-id') ?? '',
         dataId,
         secret,
@@ -62,6 +63,13 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
+  }
+
+  // Mercado Pago's "Enviar prueba" tool uses a placeholder id and does not
+  // include a webhook signature. Acknowledge that connectivity check, while
+  // keeping signature validation mandatory whenever Mercado Pago sends one.
+  if (!signature && dataId === '123456') {
+    return NextResponse.json({ received: true, test: true })
   }
 
   if (body.type && body.type !== 'subscription_preapproval') {

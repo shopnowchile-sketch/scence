@@ -27,6 +27,8 @@ type Deliverable = {
   published_url: string | null
   campaign_id: string
   campaign_name: string
+  campaign_status: string
+  campaign_end_date: string | null
   campaign_influencer_id: string
 }
 
@@ -341,6 +343,8 @@ function DeliverablesPageInner() {
             published_url: d.published_url ?? null,
             campaign_id: c.id,
             campaign_name: c.name,
+            campaign_status: c.status ?? '',
+            campaign_end_date: c.end_date ?? null,
             campaign_influencer_id: ci.id,
           })
         }
@@ -473,9 +477,16 @@ function DeliverablesPageInner() {
             for (const d of g.deliverables) typeCounts.set(d.type, (typeCounts.get(d.type) ?? 0) + 1)
             const summary = Array.from(typeCounts.entries()).map(([t, n]) => `${n} ${typeLabel(t)}`).join(' · ')
             const expanded = expandedCampaigns.has(g.campaign_id)
+            // Una campaña cerrada y ya terminada se mantiene disponible como
+            // historial, pero visualmente no debe competir con tareas activas.
+            const campaignInfo = g.deliverables[0]
+            const isArchived = doneCt === total
+              && campaignInfo.campaign_status === 'completed'
+              && !!campaignInfo.campaign_end_date
+              && new Date(campaignInfo.campaign_end_date) < new Date()
 
             return (
-              <div key={g.campaign_id} id={`campaign-group-${g.campaign_id}`} className="bg-white rounded-2xl border border-gray-100 overflow-hidden scroll-mt-4">
+              <div key={g.campaign_id} id={`campaign-group-${g.campaign_id}`} className={cn('rounded-2xl border overflow-hidden scroll-mt-4 transition-opacity', isArchived ? 'bg-gray-50 border-gray-100 opacity-60 grayscale-[0.35]' : 'bg-white border-gray-100')}>
                 <div className="w-full text-left p-4">
                   <div className="flex items-center justify-between gap-3">
                     {/* Único link a la campaña de todo el grupo — lleva al
@@ -483,13 +494,13 @@ function DeliverablesPageInner() {
                         "ver campaña" con "expandir/colapsar". */}
                     <button
                       onClick={() => router.push(`/inf-campaign/${g.campaign_id}`)}
-                      className="text-base font-bold text-violet-600 truncate text-left hover:text-violet-700 hover:underline min-w-0"
+                      className={cn('text-base font-bold truncate text-left hover:underline min-w-0', isArchived ? 'text-gray-500 hover:text-gray-600' : 'text-violet-600 hover:text-violet-700')}
                     >
                       {g.campaign_name}
                     </button>
                     {/* % completado, grande y a la derecha — sube apenas la
                         influencer manda el link del entregable. */}
-                    <span className={cn('text-2xl font-bold flex-shrink-0', pct === 100 ? 'text-green-500' : 'text-gray-900')}>
+                    <span className={cn('text-2xl font-bold flex-shrink-0', isArchived ? 'text-gray-400' : pct === 100 ? 'text-green-500' : 'text-gray-900')}>
                       {pct}%
                     </span>
                   </div>
@@ -510,16 +521,17 @@ function DeliverablesPageInner() {
                         </span>
                       )}
                       <span className="text-[11px] text-gray-400">{pending.length} pendiente{pending.length !== 1 ? 's' : ''}</span>
+                      {isArchived && <span className="text-[11px] font-semibold text-gray-500">Campaña finalizada</span>}
                     </div>
 
                     <div className="flex items-center gap-2 mt-2">
                       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={cn('h-full rounded-full', pct === 100 ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
+                        <div className={cn('h-full rounded-full', isArchived ? 'bg-gray-400' : pct === 100 ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="text-xs font-semibold text-violet-600 whitespace-nowrap">
+                      <span className={cn('text-xs font-semibold whitespace-nowrap', isArchived ? 'text-gray-500' : 'text-violet-600')}>
                         {expanded ? 'Ocultar entregables' : `Ver ${total} entregable${total !== 1 ? 's' : ''}`}
                       </span>
-                      <span className="w-9 h-9 rounded-full bg-violet-600 shadow-sm flex items-center justify-center flex-shrink-0">
+                      <span className={cn('w-9 h-9 rounded-full shadow-sm flex items-center justify-center flex-shrink-0', isArchived ? 'bg-gray-400' : 'bg-violet-600')}>
                         <ChevronDown className={cn('h-5 w-5 text-white transition-transform duration-200', expanded && 'rotate-180')} />
                       </span>
                     </div>

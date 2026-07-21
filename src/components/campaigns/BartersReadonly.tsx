@@ -56,11 +56,13 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
     </div>
   )
 
+  const isReferralMission = barters.some(b => (b.campaign_benefits ?? []).some(x => x.benefit_type === 'sales_commission'))
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-          <Gift className="h-4 w-4 text-violet-500" /> Canjes ({barters.length})
+          <Gift className="h-4 w-4 text-violet-500" /> {isReferralMission ? 'Tu misión y comisión' : `Canjes (${barters.length})`}
         </h2>
       </div>
 
@@ -76,6 +78,7 @@ function ReadonlyBarterCard({ barter: b }: { barter: Barter }) {
     benefit_type: benefit.benefit_type,
     description: benefit.description ?? b.item,
     quantity: 1,
+    commission_rate: benefit.commission_rate,
   }))
 
   return (
@@ -83,13 +86,18 @@ function ReadonlyBarterCard({ barter: b }: { barter: Barter }) {
       {benefits.map((benefit, index) => {
         const tracking = b.benefit_tracking?.find(row => row.benefit_index === index)
         const status: BarterSimpleStatus = tracking?.status ?? b.simple_status ?? 'pending'
+        const isCommission = benefit.benefit_type === 'sales_commission'
         return (
           <div key={`${benefit.benefit_type}-${index}`} className="flex items-start gap-3 py-3">
             <StatusIcon status={status} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-gray-900">{benefit.quantity}× {benefit.description}</p>
-              <p className={cn('mt-0.5 text-xs font-medium', status === 'completed' ? 'text-emerald-600' : status === 'problem' ? 'text-red-600' : 'text-amber-600')}>
-                {status === 'completed' ? 'Canje enviado' : status === 'problem' ? 'Con problema' : 'Pendiente'}
+              {isCommission ? <>
+                <p className="text-sm font-bold text-gray-900">Comisión por venta{benefit.commission_rate ? ` · ${benefit.commission_rate}%` : ''}</p>
+                <p className="text-xs text-gray-500 mt-1">Invita a una marca a registrarse en SCENCE usando tu usuario. Cuando se registre, verás aquí la marca vinculada y el estado de tu comisión.</p>
+                {status === 'pending' && <div className="grid grid-cols-3 gap-1 mt-3 text-[10px] font-medium text-gray-500"><span>1. Comparte</span><span>2. Se registra</span><span>3. Comisión</span></div>}
+              </> : <p className="text-sm font-semibold text-gray-900">{benefit.quantity}× {benefit.description}</p>}
+              <p className={cn('mt-2 text-xs font-semibold', status === 'completed' ? 'text-emerald-600' : status === 'problem' ? 'text-red-600' : 'text-amber-600')}>
+                {status === 'completed' ? (isCommission ? 'Marca vinculada' : 'Canje enviado') : status === 'problem' ? 'Con problema' : isCommission ? 'Esperando registro de marca' : 'Pendiente'}
               </p>
               {tracking?.note && <p className="mt-1 text-xs text-gray-500">{tracking.note}</p>}
             </div>

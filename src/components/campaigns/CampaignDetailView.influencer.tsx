@@ -6,6 +6,7 @@ import {
   ArrowLeft, Building2, FileText, Circle, CheckCircle2,
   Clock, Download, RefreshCw, Gift,
   Plus, X, Loader2, AlertCircle, ChevronDown,
+  Instagram,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -46,7 +47,7 @@ type CampaignRow = {
     start_date: string | null; end_date: string | null
     currency: string
     application_questions?: string[] | null
-    brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
+    brand: { id: string; name: string; logo_url: string | null; website: string | null; instagram?: string | null } | null
   } | null
 }
 
@@ -104,9 +105,19 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const total = items.length
-  const done = items.filter(isDeliverableComplete).length
-  const pending = total - done
-  const pct = total ? Math.round((done / total) * 100) : 0
+  const submitted = items.filter(d => isDeliverableComplete(d)).length
+  const awaitingReview = items.filter(d => d.status === 'in_review').length
+  const rejected = items.filter(d => d.status === 'rejected').length
+  const approved = items.filter(d => ['approved', 'published', 'completed'].includes(d.status)).length
+  const pending = total - submitted
+  const pct = total ? Math.round((submitted / total) * 100) : 0
+  const reviewState = awaitingReview > 0
+    ? { label: `${submitted} de ${total} entregado${submitted === 1 ? '' : 's'} · En revisión`, color: 'text-blue-600', bar: 'bg-blue-500' }
+    : rejected > 0
+    ? { label: `${rejected} corrección pendiente${rejected === 1 ? '' : 's'}`, color: 'text-amber-600', bar: 'bg-amber-400' }
+    : approved === total
+    ? { label: `${total} de ${total} completado${total === 1 ? '' : 's'}`, color: 'text-green-600', bar: 'bg-green-500' }
+    : { label: `${pending} pendiente${pending === 1 ? '' : 's'}`, color: 'text-violet-600', bar: 'bg-violet-500' }
 
   async function submit(d: Deliverable) {
     if (!url.trim()) return toast.error('Agrega el link del contenido')
@@ -131,29 +142,30 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
           <h2 className="text-sm font-bold text-gray-900">Entregables</h2>
-          <p className="text-xs text-gray-400 mt-0.5">{pending} pendiente{pending === 1 ? '' : 's'} · {pct}% completado</p>
+          <p className={cn('text-xs font-medium mt-0.5', reviewState.color)}>{reviewState.label}</p>
         </div>
-        <span className={cn('text-xs font-bold', pending ? 'text-amber-600' : 'text-green-600')}>{done}/{total}</span>
+        <span className={cn('text-xs font-bold', reviewState.color)}>{submitted}/{total}</span>
       </div>
       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
-        <div className={cn('h-full rounded-full transition-all', pending ? 'bg-amber-400' : 'bg-green-500')} style={{ width: `${pct}%` }} />
+        <div className={cn('h-full rounded-full transition-all', reviewState.bar)} style={{ width: `${pct}%` }} />
       </div>
       <div className="space-y-3">
         {items.map(d => {
           const canSubmit = d.status === 'pending' || d.status === 'rejected'
-          const complete = isDeliverableComplete(d)
+          const isReview = d.status === 'in_review'
+          const complete = isDeliverableComplete(d) && !isReview
           const isRejected = d.status === 'rejected'
           const opened = openId === d.id
-          return <div key={d.id} className={cn('rounded-xl border p-3', isRejected ? 'border-amber-200 bg-amber-50/50' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
+          return <div key={d.id} className={cn('rounded-xl border p-3', isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
             <div className="flex items-start gap-3">
-              <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
+              <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
                 {complete ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
                 <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
                   <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                    {isRejected ? 'Corrección pendiente' : d.status === 'in_review' ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
+                    {isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
                   </span>
                   {d.due_date && <span className="text-gray-400">Vence: {fmtDate(d.due_date)}</span>}
                 </div>
@@ -553,6 +565,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const c            = data.campaign
   const isSelfCreated = data._self_created === true
   const isPending    = data.application_status === 'pending'
+  const showReport = c.status === 'completed'
   // FIX (2026-07-04): mientras la postulación sigue pendiente, el badge del
   // header mostraba el estado de LA CAMPAÑA ("Activa") en vez de reflejar
   // que SU postulación todavía no fue aprobada — inconsistente con
@@ -673,13 +686,27 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           )}
         </div>
 
+        {/* Resumen operativo arriba: qué falta entregar y cuál es el
+            beneficio de la campaña se entienden antes de abrir el brief. */}
+        {!isPending && (
+          <div className="mt-4 space-y-3">
+            {c.brand?.instagram && (
+              <a href={`https://instagram.com/${c.brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-white hover:opacity-95 transition-opacity">
+                <span className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center"><Instagram className="h-5 w-5" /></span>
+                <span className="flex-1 min-w-0"><span className="block text-[10px] font-bold uppercase tracking-wide text-white/75">Menciona a la marca en tu colaboración</span><span className="block text-lg font-bold truncate">@{c.brand.instagram.replace(/^@/, '')}</span></span>
+                <span className="text-xs font-semibold whitespace-nowrap">Abrir Instagram</span>
+              </a>
+            )}
+            <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />
+            <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} />
+          </div>
+        )}
+
         {/* Brief/guías solo visibles una vez aceptada — mientras esté
             pending (postulación o invitación privada) no se muestra nada
             de esto, solo lo de arriba (nombre, marca, fechas). */}
         {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
       </div>
-
-      {!isPending && <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />}
 
       {!isPending && assets.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -721,11 +748,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       {/* Add deliverable — self-created only */}
       {!isPending && isSelfCreated && <AddDeliverableForm campaignId={c.id} onAdded={load} />}
 
-      {/* Canjes (solo lectura) — entregables/resultados, ocultos hasta aceptar */}
-      {!isPending && <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} />}
-
       {/* Report PDF — resume entregables/resultados, oculto hasta aceptar */}
-      {!isPending && (
+      {!isPending && showReport && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
             <Download className="h-5 w-5 text-violet-600" />

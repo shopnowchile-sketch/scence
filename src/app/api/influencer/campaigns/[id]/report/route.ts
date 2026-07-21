@@ -39,13 +39,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('campaigns')
     .select(`
       id, name, description, type, status, start_date, end_date,
-      currency, hashtags, platforms, content_guidelines, brief,
+      currency, hashtags, platforms, content_guidelines,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
     `)
     .eq('id', params.id)
     .single()
 
-  if (error || !campaign) return new NextResponse('Campaña no encontrada', { status: 404 })
+  if (error || !campaign) {
+    console.error('[influencer campaign report] campaign lookup failed', error)
+    return new NextResponse(error?.message ?? 'Campaña no encontrada', { status: 404 })
+  }
   // Gate por estado: una campaña en borrador/revisión no es visible para la
   // influencer aunque tenga membership (preasignación aún no activada).
   if (campaign.status === 'draft' || campaign.status === 'pending_approval') {

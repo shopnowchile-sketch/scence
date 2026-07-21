@@ -650,11 +650,11 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           </div>
           <div className="flex-1">
             <p className="text-sm font-semibold text-gray-900">Reporte de Campaña</p>
-            <p className="text-xs text-gray-400">Resumen de entregables y resultados</p>
+            <p className="text-xs text-gray-400">Abre el reporte y guárdalo como PDF desde el navegador.</p>
           </div>
           <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer"
             className="text-sm font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 flex-shrink-0">
-            <Download className="h-4 w-4" /> Ver PDF
+            <Download className="h-4 w-4" /> Abrir reporte
           </a>
         </div>
       )}

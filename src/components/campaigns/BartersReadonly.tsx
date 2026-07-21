@@ -12,17 +12,21 @@ import { type Barter, type BarterSimpleStatus } from '@/types'
 export function BartersReadonly({ endpoint }: { endpoint: string }) {
   const [barters, setBarters] = useState<Barter[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
     ;(async () => {
       try {
         const res = await fetch(endpoint)
-        if (!res.ok) throw new Error()
-        const json = await res.json()
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json.error ?? 'No se pudieron cargar tus canjes')
         if (active) setBarters(json.data ?? [])
-      } catch {
-        if (active) setBarters([])
+      } catch (err) {
+        if (active) {
+          setBarters([])
+          setError(err instanceof Error ? err.message : 'No se pudieron cargar tus canjes')
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -40,7 +44,17 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
     )
   }
 
-  if (barters.length === 0) return null // no mostrar la sección si no hay canjes
+  if (error) return (
+    <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+      No pudimos cargar tu canje: {error}
+    </div>
+  )
+
+  if (barters.length === 0) return (
+    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+      Tu beneficio aún está siendo preparado. Si ya fuiste aceptada, actualiza la página en unos minutos.
+    </div>
+  )
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
@@ -58,7 +72,11 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
 }
 
 function ReadonlyBarterCard({ barter: b }: { barter: Barter }) {
-  const benefits = b.campaign_benefits ?? []
+  const benefits = b.campaign_benefits?.length ? b.campaign_benefits : (b.benefits ?? []).map(benefit => ({
+    benefit_type: benefit.benefit_type,
+    description: benefit.description ?? b.item,
+    quantity: 1,
+  }))
 
   return (
     <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 px-3">

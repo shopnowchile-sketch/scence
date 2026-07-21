@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { BrandBadge, CampaignCover } from '@/components/influencer/CampaignVisual'
 import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -17,6 +18,7 @@ type Campaign = {
   name: string
   brand_name: string | null
   brand_logo: string | null
+  brand_instagram: string | null
   start_date: string | null
   end_date: string | null
   status: string
@@ -35,7 +37,7 @@ type OpenCampaign = {
   description: string | null
   start_date: string | null
   end_date: string | null
-  brand: { id: string; name: string; logo_url: string | null } | null
+  brand: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   _applied?: boolean
   campaign_benefits?: Array<{ description: string; quantity?: number }>
 }
@@ -66,7 +68,7 @@ type ApiRow = {
     start_date: string | null
     end_date: string | null
     visibility?: string | null
-    brand?: { id: string; name: string; logo_url: string | null } | null
+    brand?: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   } | null
   campaign_deliverables: Array<{ id: string; status: string; due_date: string | null; content_url?: string | null; published_url?: string | null }>
 }
@@ -107,6 +109,7 @@ function toRow(row: ApiRow): Campaign | null {
     name:               c.name,
     brand_name:         c.brand?.name ?? null,
     brand_logo:         c.brand?.logo_url ?? null,
+    brand_instagram:    c.brand?.instagram ?? null,
     start_date:         c.start_date,
     end_date:           c.end_date,
     status:             c.status ?? row.status,
@@ -373,7 +376,7 @@ export default function MyCampaignsPage() {
           <p className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> Invitaciones pendientes ({pendingInvitations.length})
           </p>
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {pendingInvitations.map(c => (
               <div key={c.id} className="rounded-xl p-4 border border-violet-200 bg-violet-50/50">
                 <div className="flex items-start gap-3">
@@ -452,15 +455,16 @@ export default function MyCampaignsPage() {
             ) : null
           })()}
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {visibleOpenCampaigns
               .filter(c => !brandFilter || c.brand?.name === brandFilter)
               .map(c => (
               <div key={c.id} className={cn(
-                'rounded-xl p-4 border',
+                'rounded-2xl overflow-hidden border',
                 c._applied ? 'bg-amber-50/50 border-amber-100' : 'bg-white border-gray-100'
               )}>
-                <div className="flex items-start gap-3">
+                <CampaignCover name={c.name} className="h-28" />
+                <div className="flex items-start gap-3 p-4">
                   {c.brand?.logo_url ? (
                     <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
                   ) : (
@@ -563,7 +567,7 @@ export default function MyCampaignsPage() {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Asignadas por agencia ({assigned.length})
           </p>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {assigned.map(c => <CampaignRow key={c.id} campaign={c} />)}
           </div>
         </div>
@@ -575,7 +579,7 @@ export default function MyCampaignsPage() {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Mis campañas ({selfCreated.length})
           </p>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {selfCreated.map(c => <CampaignRow key={c.id} campaign={c} />)}
           </div>
         </div>
@@ -621,67 +625,16 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   return (
     <button
       onClick={() => router.push(`/inf-campaign/${c.id}`)}
-      className="w-full bg-white rounded-2xl border border-gray-100 p-4 hover:border-violet-200 hover:shadow-sm transition-all text-left"
+      className={cn('w-full overflow-hidden rounded-2xl border text-left transition-all hover:shadow-md', c.status === 'completed' ? 'border-gray-100 bg-gray-50 opacity-65 grayscale-[0.35]' : 'border-gray-100 bg-white hover:border-violet-200')}
     >
-      <div className="flex items-center gap-3">
-
-        {/* Brand logo */}
-        <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
-          {c.brand_logo
-            ? <img src={c.brand_logo} alt={c.brand_name ?? ''} className="w-10 h-10 object-contain" />
-            : <Building2 className="h-5 w-5 text-violet-300" />}
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold text-gray-900 truncate">{c.name}</p>
-            <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', stCfg.color)}>
-              {stCfg.label}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            {c.brand_name && (
-              <span className="text-xs text-violet-600 font-medium">{c.brand_name}</span>
-            )}
-            {c.start_date && (
-              <span className="text-xs text-gray-400 flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                {fmt(c.start_date)}{c.end_date ? ` → ${fmt(c.end_date)}` : ''}
-              </span>
-            )}
-          </div>
-
-          {c.application_status === 'rejected' && (
-            <p className="text-xs text-gray-400 mt-1.5">
-              Gracias por postular. Seguiremos compartiendo nuevas oportunidades contigo.
-            </p>
-          )}
-
-          {/* Próxima entrega, en grande — solo campañas activas con
-              entregables pendientes. Pedido: que se note de inmediato,
-              sin tener que abrir la campaña para saberlo. */}
-          {isActive && c.next_due && (
-            <p className="text-sm font-bold text-violet-700 mt-1.5">
-              Próxima entrega: {fmt(c.next_due)}
-            </p>
-          )}
-
-          {c.deliverables_total > 0 && (
-            <div className="mt-2 flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden max-w-[100px]">
-                <div
-                  className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-green-500' : 'bg-violet-500')}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <span className="text-[10px] text-gray-400">{c.deliverables_done}/{c.deliverables_total}</span>
-            </div>
-          )}
-        </div>
-
-        <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
+      <CampaignCover name={c.name} className="h-32" />
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2"><BrandBadge name={c.brand_name} logoUrl={c.brand_logo} instagram={c.brand_instagram} compact /><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', stCfg.color)}>{stCfg.label}</span></div>
+        <p className="text-base font-bold text-gray-900 mt-3 truncate">{c.name}</p>
+        <div className="flex items-center gap-2 mt-1 text-xs text-gray-400"><Calendar className="h-3 w-3" />{fmt(c.start_date) ?? 'Sin fecha'}{c.end_date ? ` → ${fmt(c.end_date)}` : ''}</div>
+        {isActive && c.next_due && <p className="text-sm font-semibold text-violet-700 mt-3">Próxima entrega: {fmt(c.next_due)}</p>}
+        {c.application_status === 'rejected' && <p className="text-xs text-gray-400 mt-3">Gracias por postular. Tendrás nuevas oportunidades pronto.</p>}
+        {c.deliverables_total > 0 && <div className="mt-4"><div className="flex justify-between text-[11px] text-gray-400 mb-1"><span>{c.deliverables_done}/{c.deliverables_total} entregables</span><span>{pct}%</span></div><div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={cn('h-full rounded-full', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} /></div></div>}
       </div>
     </button>
   )

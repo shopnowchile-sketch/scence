@@ -81,8 +81,9 @@ export function BrandPlanSettings() {
       const nextPrices: Partial<Record<PlanTier, number>> = {}
       for (const plan of json.plans ?? []) {
         if (plan.tier === 'basic' || plan.tier === 'growth' || plan.tier === 'pro') {
+          const tier = plan.tier as PlanTier
           const amount = Number(plan.price_monthly)
-          if (Number.isFinite(amount) && amount > 0) nextPrices[plan.tier] = amount
+          if (Number.isFinite(amount) && amount > 0) nextPrices[tier] = amount
         }
       }
       setPrices(nextPrices)

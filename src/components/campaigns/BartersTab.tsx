@@ -29,6 +29,7 @@ export function BartersTab({
   const acceptedCount = campaignInfluencers.filter(item => item.application_status === 'accepted').length
   const [editingOffer, setEditingOffer] = useState(false)
   const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | BarterSimpleStatus>('all')
 
   useEffect(() => {
     if (!isLoading && campaignBenefits.length > 0 && acceptedCount > barters.length && !initialize.isPending && !initialize.isSuccess) {
@@ -48,12 +49,17 @@ export function BartersTab({
   const filteredBarters = useMemo(() => {
     const term = normalizeSearch(query)
     if (!term) return barters
-    return barters.filter(barter => normalizeSearch([
+    return barters.filter(barter => {
+      const matchesSearch = normalizeSearch([
       barter.influencer?.display_name,
       barter.influencer?.email,
       barter.influencer?.instagram_username,
-    ].filter(Boolean).join(' ')).includes(term))
-  }, [barters, query])
+      ].filter(Boolean).join(' ')).includes(term)
+      const matchesStatus = statusFilter === 'all' || effectiveBenefits(barter, campaignBenefits)
+        .some((_, index) => getBenefitTracking(barter, index).status === statusFilter)
+      return matchesSearch && matchesStatus
+    })
+  }, [barters, campaignBenefits, query, statusFilter])
 
   return (
     <div className="space-y-5">
@@ -129,11 +135,20 @@ export function BartersTab({
             <h3 className="text-sm font-semibold text-gray-800">Seguimiento por influencer</h3>
             <p className="text-xs text-gray-500 mt-0.5">Actualiza cada beneficio y agrega una observación breve.</p>
           </div>
-          <label className="relative block w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
-            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Nombre, email o Instagram"
-              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-3 text-xs outline-none focus:border-violet-400" />
-          </label>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <label className="relative block min-w-0 flex-1 sm:w-56">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+              <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Nombre, email o Instagram"
+                className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-3 text-xs outline-none focus:border-violet-400" />
+            </label>
+            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'all' | BarterSimpleStatus)}
+              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs outline-none focus:border-violet-400">
+              <option value="all">Todos</option>
+              <option value="pending">Pendiente</option>
+              <option value="completed">Canje enviado</option>
+              <option value="problem">Con problema</option>
+            </select>
+          </div>
         </div>
 
         {isLoading || initialize.isPending ? (
@@ -232,6 +247,7 @@ function CampaignOfferEditor({ initialBenefits, onCancel, onSave }: {
 
 function TrackingRow({ campaignId, barter, campaignBenefits }: { campaignId: string; barter: Barter; campaignBenefits: CampaignBenefit[] }) {
   const action = useBarterAction(campaignId)
+  const benefits = effectiveBenefits(barter, campaignBenefits)
 
   return (
     <div className="card overflow-hidden">
@@ -248,7 +264,7 @@ function TrackingRow({ campaignId, barter, campaignBenefits }: { campaignId: str
         </div>
       </div>
       <div className="divide-y divide-gray-50 px-3">
-        {campaignBenefits.map((benefit, index) => (
+        {benefits.map((benefit, index) => (
           <BenefitTrackingLine key={`${benefit.benefit_type}-${index}`} benefit={benefit} benefitIndex={index} barter={barter} action={action} />
         ))}
       </div>
@@ -268,9 +284,9 @@ function BenefitTrackingLine({ benefit, benefitIndex, barter, action }: {
 
   useEffect(() => { setStatus(current.status); setNote(current.note) }, [current.note, current.status])
 
-  async function save() {
+  async function save(nextStatus = status, nextNote = note) {
     const tracking = [...(barter.benefit_tracking ?? []).filter(row => row.benefit_index !== benefitIndex), {
-      benefit_index: benefitIndex, status, note: note.trim(),
+      benefit_index: benefitIndex, status: nextStatus, note: nextNote.trim(),
     }].sort((a, b) => a.benefit_index - b.benefit_index)
     try {
       await action.mutateAsync({ barter_id: barter.id, patch: { benefit_tracking: tracking } })
@@ -284,15 +300,20 @@ function BenefitTrackingLine({ benefit, benefitIndex, barter, action }: {
         <p className="truncate text-xs font-medium text-gray-800">{benefit.quantity}× {benefit.description}</p>
         <p className="truncate text-[10px] text-gray-400">{activationText(benefit)}</p>
       </div>
-      <select value={status} onChange={event => setStatus(event.target.value as BarterSimpleStatus)}
+      <select value={status} onChange={event => {
+        const next = event.target.value as BarterSimpleStatus
+        setStatus(next)
+        void save(next, note)
+      }}
         className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] outline-none focus:border-violet-400">
         <option value="pending">Pendiente</option>
         <option value="completed">Canje enviado</option>
         <option value="problem">Con problema</option>
       </select>
-      <input value={note} maxLength={300} onChange={event => setNote(event.target.value)} placeholder="Observación breve (opcional)"
+      <input value={note} maxLength={300} onChange={event => setNote(event.target.value)} onBlur={() => void save()}
+        placeholder="Observación breve (opcional)"
         className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] outline-none focus:border-violet-400" />
-      <button type="button" onClick={save} disabled={action.isPending}
+      <button type="button" onClick={() => void save()} disabled={action.isPending}
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-violet-600 hover:bg-violet-50 disabled:opacity-50" title="Guardar">
         {action.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
       </button>
@@ -315,6 +336,27 @@ function getSimpleStatus(barter: Barter): BarterSimpleStatus {
 function getBenefitTracking(barter: Barter, benefitIndex: number) {
   const existing = barter.benefit_tracking?.find(row => row.benefit_index === benefitIndex)
   return existing ?? { benefit_index: benefitIndex, status: getSimpleStatus(barter), note: barter.notes ?? '' }
+}
+
+// Las campañas antiguas tenían el beneficio dentro de cada canje. No se deben
+// ocultar solo porque aún no tengan campaign_benefits configurado.
+function effectiveBenefits(barter: Barter, campaignBenefits: CampaignBenefit[]): CampaignBenefit[] {
+  if (campaignBenefits.length > 0) return campaignBenefits
+  if (barter.benefits?.length) return barter.benefits.map(benefit => ({
+    benefit_type: benefit.benefit_type,
+    description: benefit.description ?? barter.item,
+    quantity: 1,
+    estimated_value: benefit.fixed_value,
+    commission_rate: benefit.commission_rate,
+    currency: benefit.currency,
+    activation_rule: 'manual',
+    sales_target: null,
+  }))
+  return [{
+    benefit_type: 'other', description: barter.item || 'Canje', quantity: 1,
+    estimated_value: barter.estimated_value, commission_rate: null,
+    currency: barter.currency, activation_rule: 'manual', sales_target: null,
+  }]
 }
 
 function normalizeSearch(value: string) {

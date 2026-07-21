@@ -565,7 +565,6 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const c            = data.campaign
   const isSelfCreated = data._self_created === true
   const isPending    = data.application_status === 'pending'
-  const showReport = c.status === 'completed'
   // FIX (2026-07-04): mientras la postulación sigue pendiente, el badge del
   // header mostraba el estado de LA CAMPAÑA ("Activa") en vez de reflejar
   // que SU postulación todavía no fue aprobada — inconsistente con
@@ -669,6 +668,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           </span>
         </div>
 
+        {/* El brief es la primera acción: antes de fechas, métricas o tareas. */}
+        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
+
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
           <div>
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
@@ -686,27 +688,27 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           )}
         </div>
 
-        {/* Resumen operativo arriba: qué falta entregar y cuál es el
-            beneficio de la campaña se entienden antes de abrir el brief. */}
+        {/* KPIs y marca participante, antes de cualquier detalle operativo. */}
         {!isPending && (
           <div className="mt-4 space-y-3">
-            {c.brand?.instagram && (
-              <a href={`https://instagram.com/${c.brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-white hover:opacity-95 transition-opacity">
-                <span className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center"><Instagram className="h-5 w-5" /></span>
-                <span className="flex-1 min-w-0"><span className="block text-[10px] font-bold uppercase tracking-wide text-white/75">Menciona a la marca en tu colaboración</span><span className="block text-lg font-bold truncate">@{c.brand.instagram.replace(/^@/, '')}</span></span>
-                <span className="text-xs font-semibold whitespace-nowrap">Abrir Instagram</span>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {c.brand && (c.brand.instagram ? (
+                <a href={`https://instagram.com/${c.brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-3 py-3 text-white hover:opacity-95 transition-opacity">
+                  {c.brand.logo_url ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg bg-white object-contain" /> : <span className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center"><Instagram className="h-5 w-5" /></span>}
+                  <span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-wide text-white/75">Marca participante · menciona</span><span className="block text-base font-bold truncate">@{c.brand.instagram.replace(/^@/, '')}</span></span>
+                </a>
+              ) : <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">{c.brand.logo_url ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg bg-white object-contain" /> : <Building2 className="h-5 w-5 text-violet-500" />}<span><span className="block text-[10px] font-bold uppercase tracking-wide text-gray-400">Marca participante</span><span className="block text-sm font-bold text-gray-800">{c.brand.name}</span></span></div>)}
+              <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
+                <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>
-            )}
-            <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />
-            <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} />
+            </div>
+            <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} variant="kpi" />
           </div>
         )}
-
-        {/* Brief/guías solo visibles una vez aceptada — mientras esté
-            pending (postulación o invitación privada) no se muestra nada
-            de esto, solo lo de arriba (nombre, marca, fechas). */}
-        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
       </div>
+
+      {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}
+      {!isPending && <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />}
 
       {!isPending && assets.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -748,22 +750,6 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       {/* Add deliverable — self-created only */}
       {!isPending && isSelfCreated && <AddDeliverableForm campaignId={c.id} onAdded={load} />}
 
-      {/* Report PDF — resume entregables/resultados, oculto hasta aceptar */}
-      {!isPending && showReport && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
-            <Download className="h-5 w-5 text-violet-600" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-gray-900">Reporte de Campaña</p>
-            <p className="text-xs text-gray-400">Abre el reporte y guárdalo como PDF desde el navegador.</p>
-          </div>
-          <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer"
-            className="text-sm font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 flex-shrink-0">
-            <Download className="h-4 w-4" /> Abrir reporte
-          </a>
-        </div>
-      )}
     </div>
   )
 }

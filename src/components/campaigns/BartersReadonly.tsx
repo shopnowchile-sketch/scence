@@ -9,7 +9,7 @@ import { type Barter, type BarterSimpleStatus } from '@/types'
  * Vista de solo lectura de canjes. Reutilizable en portal marca e influencer.
  * Carga desde un endpoint scoped por ownership (no expone canjes de terceros).
  */
-export function BartersReadonly({ endpoint }: { endpoint: string }) {
+export function BartersReadonly({ endpoint, variant = 'default' }: { endpoint: string; variant?: 'default' | 'kpi' }) {
   const [barters, setBarters] = useState<Barter[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -35,6 +35,7 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
   }, [endpoint])
 
   if (loading) {
+    if (variant === 'kpi') return <div className="h-20 rounded-xl bg-gray-50 animate-pulse" />
     return (
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <div className="flex items-center gap-2 text-gray-400">
@@ -50,13 +51,31 @@ export function BartersReadonly({ endpoint }: { endpoint: string }) {
     </div>
   )
 
-  if (barters.length === 0) return (
+  if (barters.length === 0) return variant === 'kpi' ? null : (
     <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
       Tu beneficio aún está siendo preparado. Si ya fuiste aceptada, actualiza la página en unos minutos.
     </div>
   )
 
   const isReferralMission = barters.some(b => (b.campaign_benefits ?? []).some(x => x.benefit_type === 'sales_commission'))
+
+  if (variant === 'kpi') return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {barters.flatMap(b => {
+        const benefits = b.campaign_benefits?.length ? b.campaign_benefits : (b.benefits ?? []).map(x => ({ benefit_type: x.benefit_type, description: x.description ?? b.item, quantity: 1, commission_rate: x.commission_rate }))
+        return benefits.map((benefit, index) => {
+          const tracking = b.benefit_tracking?.find(row => row.benefit_index === index)
+          const status = tracking?.status ?? b.simple_status ?? 'pending'
+          const commission = benefit.benefit_type === 'sales_commission'
+          return <div key={`${b.id}-${index}`} className={cn('rounded-xl border p-3', commission ? 'border-amber-100 bg-amber-50/70' : 'border-violet-100 bg-violet-50/60')}>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{commission ? 'Comisión por venta' : 'Canje'}</p>
+            <p className={cn('text-xl font-bold mt-0.5', commission ? 'text-amber-700' : 'text-violet-700')}>{commission && benefit.commission_rate ? `${benefit.commission_rate}%` : benefit.description}</p>
+            <p className="text-[11px] text-gray-500 mt-1">{status === 'completed' ? (commission ? 'Marca vinculada' : 'Canje listo') : status === 'problem' ? 'Requiere revisión' : commission ? 'Esperando registro de marca' : 'Pendiente'}</p>
+          </div>
+        })
+      })}
+    </div>
+  )
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">

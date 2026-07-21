@@ -29,11 +29,28 @@ export async function POST(request: Request) {
   const extension = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp'
   const path = `${influencer.id}/profile-${crypto.randomUUID()}.${extension}`
   const bytes = await file.arrayBuffer()
-  const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, {
+  const uploadOptions = {
     contentType: file.type,
     cacheControl: '3600',
     upsert: false,
-  })
+  }
+  let { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, uploadOptions)
+
+  // El bucket también se declara en la migración, pero esta recuperación hace
+  // que el primer upload siga funcionando si una instalación aún no aplicó las
+  // migraciones de Storage. Se ejecuta con la service role y solo después de
+  // verificar que la solicitud pertenece a la propia influencer.
+  if (uploadError?.message.toLowerCase().includes('bucket not found')) {
+    const { error: createBucketError } = await admin.storage.createBucket(BUCKET, {
+      public: true,
+      fileSizeLimit: MAX_BYTES,
+      allowedMimeTypes: Array.from(ALLOWED_TYPES),
+    })
+    if (createBucketError && !createBucketError.message.toLowerCase().includes('already exists')) {
+      return NextResponse.json({ error: `No se pudo preparar el espacio de fotos: ${createBucketError.message}` }, { status: 500 })
+    }
+    ;({ error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, uploadOptions))
+  }
   if (uploadError) return NextResponse.json({ error: `No se pudo subir la imagen: ${uploadError.message}` }, { status: 500 })
 
   const { data: publicData } = admin.storage.from(BUCKET).getPublicUrl(path)

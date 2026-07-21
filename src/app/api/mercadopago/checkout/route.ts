@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
-import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits'
+import { type PlanTier } from '@/lib/plan-limits'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
   if (!token) {
     return NextResponse.json(
-      { error: 'Mercado Pago no está configurado todavía.', manual: true },
+      { error: 'Los pagos con Mercado Pago todavía no están habilitados. Inténtalo nuevamente más tarde.' },
       { status: 503 },
     )
   }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient()
   const { data: planRow, error: planError } = await admin
     .from('subscription_plans')
-    .select('id, tier')
+    .select('id, tier, name, price_monthly')
     .eq('tier', tier)
     .eq('is_active', true)
     .maybeSingle()
@@ -56,8 +56,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El plan seleccionado no está configurado en SCENCE.' }, { status: 500 })
   }
 
-  const plan = PLAN_LIMITS[tier]
+  const monthlyAmount = Number(planRow.price_monthly)
+  if (!Number.isFinite(monthlyAmount) || monthlyAmount <= 0) {
+    return NextResponse.json({ error: 'El precio del plan seleccionado no está configurado correctamente.' }, { status: 500 })
+  }
+
   const externalReference = `${access.organizationId}:${planRow.id}:${tier}`
+  const notificationUrl = `${APP_URL}/api/mercadopago/webhook`
 
   const mpResponse = await fetch('https://api.mercadopago.com/preapproval', {
     method: 'POST',
@@ -67,16 +72,17 @@ export async function POST(req: NextRequest) {
       'X-Idempotency-Key': `${access.organizationId}-${tier}-${Date.now()}`,
     },
     body: JSON.stringify({
-      reason: `Suscripción mensual SCENCE ${plan.label}`,
+      reason: `Suscripción mensual SCENCE ${planRow.name}`,
       external_reference: externalReference,
       payer_email: user.email,
       auto_recurring: {
         frequency: 1,
         frequency_type: 'months',
-        transaction_amount: plan.price_monthly_clp,
+        transaction_amount: monthlyAmount,
         currency_id: 'CLP',
       },
-      back_url: `${APP_URL}/brand-settings/plan?checkout=success`,
+      back_url: `${APP_URL}/brand-settings/plan?checkout=processing`,
+      notification_url: notificationUrl,
     }),
   })
 

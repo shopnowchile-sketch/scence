@@ -12,7 +12,7 @@ const VALID_STATUSES: BarterStatus[] = [
 
 const SELECT = `
   *,
-  influencer:influencers (id, display_name, avatar_url, email, instagram_username),
+  influencer:influencers (id, display_name, avatar_url, email),
   brand:brands (id, name, logo_url),
   responsible:profiles!barters_responsible_id_fkey (id, full_name),
   benefits:barter_benefits (

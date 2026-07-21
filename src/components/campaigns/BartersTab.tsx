@@ -48,12 +48,11 @@ export function BartersTab({
 
   const filteredBarters = useMemo(() => {
     const term = normalizeSearch(query)
-    if (!term) return barters
     return barters.filter(barter => {
       const matchesSearch = normalizeSearch([
-      barter.influencer?.display_name,
-      barter.influencer?.email,
-      barter.influencer?.instagram_username,
+        barter.influencer?.display_name,
+        barter.influencer?.email,
+        barter.influencer?.instagram_username,
       ].filter(Boolean).join(' ')).includes(term)
       const matchesStatus = statusFilter === 'all' || effectiveBenefits(barter, campaignBenefits)
         .some((_, index) => getBenefitTracking(barter, index).status === statusFilter)

@@ -428,6 +428,7 @@ function DeliverablesPageInner() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Mis entregables</h1>
           <p className="text-sm text-gray-400 mt-0.5">{pendingDeliverables.length} entregables pendientes</p>
+          <p className="text-xs text-violet-600 mt-1">Entregar a tiempo fortalece tu perfil para próximas campañas.</p>
         </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw className="h-4 w-4" />

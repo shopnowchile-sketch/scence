@@ -3,11 +3,15 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+const PRODUCTION_APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
+const DB_TIER: Record<PlanTier, string> = { basic: 'starter', growth: 'growth', pro: 'pro' }
 
 export async function POST(req: NextRequest) {
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN
+  const isPreview = process.env.VERCEL_ENV === 'preview'
+  const token = isPreview
+    ? process.env.MERCADOPAGO_TEST_ACCESS_TOKEN ?? process.env.MERCADOPAGO_ACCESS_TOKEN
+    : process.env.MERCADOPAGO_ACCESS_TOKEN
 
   if (!token) {
     return NextResponse.json(
@@ -27,6 +31,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
   }
 
+  const payerEmail = (
+    isPreview ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL : user.email
+  )?.trim()
+
+  if (!payerEmail) {
+    return NextResponse.json(
+      { error: 'Falta configurar el comprador de prueba de Mercado Pago.' },
+      { status: 503 },
+    )
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
+    return NextResponse.json(
+      { error: 'El email del comprador de Mercado Pago no es válido.' },
+      { status: 503 },
+    )
+  }
   const access = await resolveBrandAccess(user.id)
   if (!access) {
     return NextResponse.json({ error: 'No organization found' }, { status: 404 })
@@ -48,7 +69,7 @@ export async function POST(req: NextRequest) {
   const { data: planRow, error: planError } = await admin
     .from('subscription_plans')
     .select('id, tier')
-    .eq('tier', tier)
+    .eq('tier', DB_TIER[tier])
     .eq('is_active', true)
     .maybeSingle()
 
@@ -58,6 +79,7 @@ export async function POST(req: NextRequest) {
 
   const plan = PLAN_LIMITS[tier]
   const externalReference = `${access.organizationId}:${planRow.id}:${tier}`
+  const appUrl = isPreview ? req.nextUrl.origin : PRODUCTION_APP_URL
 
   const mpResponse = await fetch('https://api.mercadopago.com/preapproval', {
     method: 'POST',
@@ -69,14 +91,14 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       reason: `Suscripción mensual SCENCE ${plan.label}`,
       external_reference: externalReference,
-      payer_email: user.email,
+      payer_email: payerEmail,
       auto_recurring: {
         frequency: 1,
         frequency_type: 'months',
         transaction_amount: plan.price_monthly_clp,
         currency_id: 'CLP',
       },
-      back_url: `${APP_URL}/brand-settings/plan?checkout=success`,
+      back_url: `${appUrl}/brand-settings/plan?checkout=success`,
     }),
   })
 
@@ -84,10 +106,11 @@ export async function POST(req: NextRequest) {
 
   if (!mpResponse.ok) {
     console.error('[mercadopago/checkout]', result)
-    return NextResponse.json(
-      { error: result?.message ?? 'No se pudo iniciar la suscripción en Mercado Pago.' },
-      { status: 502 },
-    )
+    const message = result?.message === 'Payer and collector cannot be the same user'
+      ? 'El comprador de prueba debe ser distinto del vendedor de Mercado Pago.'
+      : result?.message ?? 'No se pudo iniciar la suscripción en Mercado Pago.'
+
+    return NextResponse.json({ error: message }, { status: 502 })
   }
 
   const checkoutUrl = result.init_point ?? result.sandbox_init_point

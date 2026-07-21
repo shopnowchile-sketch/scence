@@ -68,7 +68,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true })
   }
 
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN
+  const token = process.env.VERCEL_ENV === 'preview'
+    ? process.env.MERCADOPAGO_TEST_ACCESS_TOKEN ?? process.env.MERCADOPAGO_ACCESS_TOKEN
+    : process.env.MERCADOPAGO_ACCESS_TOKEN
   if (!token) {
     return NextResponse.json({ error: 'Mercado Pago is not configured' }, { status: 503 })
   }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Gift, Loader2, Pencil, Plus, Trash2, Search, Save } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn, formatCurrency } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import {
   BARTER_BENEFIT_TYPE_CONFIG,
   type Barter,
@@ -61,15 +61,15 @@ export function BartersTab({
   }, [barters, campaignBenefits, query, statusFilter])
 
   return (
-    <div className="space-y-5">
-      <section className="card p-5 border border-violet-100 bg-violet-50/30">
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-violet-100 p-2.5"><Gift className="h-5 w-5 text-violet-600" /></div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900">Beneficios de esta campaña</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              Son iguales para todas las influencers y se muestran antes de postular.
-            </p>
+    <div className="space-y-3">
+      <section className="card border border-violet-100 bg-violet-50/30 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-violet-100 p-2"><Gift className="h-4 w-4 text-violet-600" /></div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-semibold text-gray-900">Beneficio de la campaña</h3>
+            {!editingOffer && campaignBenefits.length > 0 && (
+              <p className="truncate text-xs text-gray-600">{campaignBenefits.map(benefit => benefit.description).join(' · ')}</p>
+            )}
           </div>
           {!editingOffer && (
             <button type="button" onClick={() => setEditingOffer(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700">
@@ -93,46 +93,26 @@ export function BartersTab({
             Esta campaña todavía no tiene beneficios definidos.
           </p>
         ) : (
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {campaignBenefits.map((benefit, index) => (
-              <div key={`${benefit.benefit_type}-${index}`} className="rounded-xl border border-violet-100 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold text-violet-700">
-                      {BARTER_BENEFIT_TYPE_CONFIG[benefit.benefit_type]}
-                    </p>
-                    <p className="text-sm font-medium text-gray-900 mt-1">{benefit.description}</p>
-                  </div>
-                  {benefit.quantity > 1 && (
-                    <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">×{benefit.quantity}</span>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-2">{activationText(benefit)}</p>
-                {benefit.estimated_value != null && benefit.estimated_value > 0 && (
-                  <p className="text-xs font-semibold text-gray-700 mt-2">
-                    Valor estimado: {formatCurrency(benefit.estimated_value, benefit.currency)}
-                  </p>
-                )}
-                {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && (
-                  <p className="text-xs font-semibold text-gray-700 mt-2">Comisión: {benefit.commission_rate}% de las ventas</p>
-                )}
+              <div key={`${benefit.benefit_type}-${index}`} className="rounded-md border border-violet-100 bg-white px-2.5 py-1.5 text-xs text-gray-700">
+                <span className="font-semibold text-violet-700">{BARTER_BENEFIT_TYPE_CONFIG[benefit.benefit_type]}:</span> {benefit.description}
+                {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && ` · ${benefit.commission_rate}%`}
               </div>
             ))}
           </div>
         )}
       </section>
 
-      <div className="grid grid-cols-3 gap-3">
-        <StatusCount label="Pendientes" value={counts.pending} tone="amber" />
-        <StatusCount label="Canjes enviados" value={counts.completed} tone="green" />
-        <StatusCount label="Con problema" value={counts.problem} tone="red" />
-      </div>
-
       <section className="space-y-2">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-800">Seguimiento por influencer</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Actualiza cada beneficio y agrega una observación breve.</p>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-gray-800">Canjes por influencer</h3>
+              <div className="flex items-center gap-2 text-[11px] font-medium">
+                <span className="text-amber-600">{counts.pending} pendientes</span><span className="text-emerald-600">{counts.completed} enviados</span><span className="text-red-600">{counts.problem} problemas</span>
+              </div>
+            </div>
           </div>
           <div className="flex w-full gap-2 sm:w-auto">
             <label className="relative block min-w-0 flex-1 sm:w-56">
@@ -153,10 +133,11 @@ export function BartersTab({
         {isLoading || initialize.isPending ? (
           <div className="flex items-center justify-center py-10 text-gray-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : barters.length === 0 ? (
-          <div className="card p-7 text-center text-sm text-gray-500">
+          <div className="card flex flex-col items-center gap-3 p-5 text-center text-sm text-gray-500">
             {acceptedCount === 0
               ? 'El seguimiento aparecerá cuando haya influencers aceptadas.'
-              : 'No hay beneficios para seguir en esta campaña.'}
+              : 'Aún no se crearon los canjes para las influencers aceptadas.'}
+            {acceptedCount > 0 && <button type="button" onClick={() => initialize.mutate()} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white">Crear canjes para {acceptedCount} influencers</button>}
           </div>
         ) : (
           filteredBarters.length === 0 ? (
@@ -318,11 +299,6 @@ function BenefitTrackingLine({ benefit, benefitIndex, barter, action }: {
       </button>
     </div>
   )
-}
-
-function StatusCount({ label, value, tone }: { label: string; value: number; tone: 'amber' | 'green' | 'red' }) {
-  const colors = { amber: 'text-amber-600', green: 'text-emerald-600', red: 'text-red-600' }
-  return <div className="card p-4"><p className="text-[11px] text-gray-500">{label}</p><p className={cn('text-xl font-bold mt-1', colors[tone])}>{value}</p></div>
 }
 
 function getSimpleStatus(barter: Barter): BarterSimpleStatus {

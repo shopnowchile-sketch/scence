@@ -7,7 +7,10 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.ap
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
 
 export async function POST(req: NextRequest) {
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN
+  const isPreview = process.env.VERCEL_ENV === 'preview'
+  const token = isPreview && process.env.MERCADOPAGO_TEST_ACCESS_TOKEN
+    ? process.env.MERCADOPAGO_TEST_ACCESS_TOKEN
+    : process.env.MERCADOPAGO_ACCESS_TOKEN
 
   if (!token) {
     return NextResponse.json(
@@ -30,7 +33,6 @@ export async function POST(req: NextRequest) {
   // En Preview, Mercado Pago exige que el pagador sea una cuenta de prueba
   // distinta de la vendedora. Así no dependemos del email real del usuario
   // que inició sesión en SCENCE durante una prueba sandbox.
-  const isPreview = process.env.VERCEL_ENV === 'preview'
   const payerEmail = isPreview && process.env.MERCADOPAGO_TEST_PAYER_EMAIL
     ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL
     : user.email

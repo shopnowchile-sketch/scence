@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, Target, Users,
-  FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2,
+  FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2, Instagram,
   Search, X, Loader2, UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,6 +26,7 @@ type Brand = {
   name: string
   logo_url: string | null
   website: string | null
+  instagram?: string | null
   industry: string | null
   contact_name: string | null
   contact_email: string | null
@@ -867,6 +868,14 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                     {brand.website.replace(/^https?:\/\//, '')} <ExternalLink className="h-3 w-3" />
                   </a>
                 ) : '—'}
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Instagram para etiquetar</p>
+                {brand.instagram ? (
+                  <a className="inline-flex items-center gap-1.5 font-medium text-fuchsia-600 hover:underline" href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">
+                    <Instagram className="h-3.5 w-3.5" /> @{brand.instagram.replace(/^@/, '')} <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : <span className="text-gray-300">—</span>}
               </div>
               <div>
                 <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Última conexión</p>

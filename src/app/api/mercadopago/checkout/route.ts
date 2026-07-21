@@ -27,6 +27,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
   }
 
+  // En Preview, Mercado Pago exige que el pagador sea una cuenta de prueba
+  // distinta de la vendedora. Así no dependemos del email real del usuario
+  // que inició sesión en SCENCE durante una prueba sandbox.
+  const isPreview = process.env.VERCEL_ENV === 'preview'
+  const payerEmail = isPreview && process.env.MERCADOPAGO_TEST_PAYER_EMAIL
+    ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL
+    : user.email
+
   const access = await resolveBrandAccess(user.id)
   if (!access) {
     return NextResponse.json({ error: 'No organization found' }, { status: 404 })
@@ -74,7 +82,7 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       reason: `Suscripción mensual SCENCE ${planRow.name}`,
       external_reference: externalReference,
-      payer_email: user.email,
+      payer_email: payerEmail,
       auto_recurring: {
         frequency: 1,
         frequency_type: 'months',

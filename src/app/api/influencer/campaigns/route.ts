@@ -25,7 +25,7 @@ export async function GET() {
       campaign:campaigns (
         id, name, status, type, description, start_date, end_date,
         budget_total, currency, deliverable_templates,
-        brand:brands!brand_id (id, name, logo_url)
+        brand:brands!brand_id (id, name, logo_url, instagram)
       ),
       campaign_deliverables (
         id, title, description, type, status, due_date, scheduled_at, sequence_number,

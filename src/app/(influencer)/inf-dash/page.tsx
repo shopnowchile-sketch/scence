@@ -5,13 +5,13 @@ import { useRouter } from 'next/navigation'
 import {
   Building2, Calendar,
   LogOut, RefreshCw,
-  CheckSquare, Sparkles, Instagram, AlertCircle, Lightbulb,
+  CheckSquare, Sparkles, Instagram, AlertCircle, Lightbulb, Film, ArrowRight, CalendarClock, CheckCircle2,
 } from 'lucide-react'
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { BrandBadge, CampaignCover } from '@/components/influencer/CampaignVisual'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ type Campaign = {
     start_date: string | null
     end_date: string | null
     deliverable_templates?: Array<{ type: string; quantity?: number }> | null
-    brand: { name: string; logo_url: string | null } | null
+    brand: { name: string; logo_url: string | null; instagram?: string | null } | null
   } | null
   campaign_deliverables: Array<{ id: string; status: string; content_url: string | null; published_url: string | null }>
 }
@@ -42,7 +42,7 @@ type OpenCampaign = {
   name: string
   start_date: string | null
   end_date: string | null
-  brand: { id: string; name: string; logo_url: string | null } | null
+  brand: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   _applied?: boolean
 }
 
@@ -239,7 +239,6 @@ export default function InfluencerDashboard() {
   const withStatus = campaigns.map(ci => ({ ci, status: resolveStatus(ci) }))
   const activasCount    = withStatus.filter(x => x.status === 'activa').length
   const postuladasCount = withStatus.filter(x => x.status === 'postulada').length
-  const completadasCount = withStatus.filter(x => x.status === 'completada').length
 
   // % de entregables pendientes sobre el total, sumando TODAS las campañas
   // asignadas (no por campaña) — mismo dato ya cargado (campaign_deliverables
@@ -251,12 +250,6 @@ export default function InfluencerDashboard() {
   // completado/publicado. Antes solo miraba status, así que un entregable ya
   // entregado pero todavía 'pending'/'in_review' contaba como pendiente.
   const pendingDeliverablesCount = allDeliverables.filter(d => !isDeliverableComplete(d)).length
-  const pendingPct = totalDeliverables > 0 ? Math.round((pendingDeliverablesCount / totalDeliverables) * 100) : 0
-
-  const gaugeData = [
-    { name: 'Pendiente',  value: pendingDeliverablesCount,               color: '#7c3aed' },
-    { name: 'Completado', value: totalDeliverables - pendingDeliverablesCount, color: '#e5e7eb' },
-  ]
 
   // Disponibles para postular, sin las que ya postuló (esas se ven en
   // /inf-campaigns como "En revisión" — mismo criterio que ya usa esa
@@ -296,15 +289,16 @@ export default function InfluencerDashboard() {
   return (
     <div className="space-y-6">
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Cabecera: el estado de hoy queda claro antes de mostrar campañas. */}
+      <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-            {profile?.display_name?.charAt(0).toUpperCase() ?? '?'}
+          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
+            {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} className="w-full h-full object-cover" /> : profile?.display_name?.charAt(0).toUpperCase() ?? '?'}
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Hola, {profile?.display_name} 👋</h1>
-            <p className="text-sm text-gray-400">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-500">Mi portal</p>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-950">Hola, {profile?.display_name} 👋</h1>
+            <p className="text-sm capitalize text-gray-400">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -317,52 +311,47 @@ export default function InfluencerDashboard() {
         </div>
       </div>
 
-      {/* Fila 1: Activas / Postuladas / gauge — KPI + gráfico siempre juntos
-          arriba, todos clickeables a su listado correspondiente. */}
-      <div className="grid grid-cols-3 gap-3">
+      <section className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
         <button
-          onClick={() => router.push('/inf-campaigns')}
-          className="bg-white rounded-2xl border border-gray-100 p-4 text-center hover:border-violet-200 transition-colors"
+          onClick={() => router.push('/inf-deliverables')}
+          className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-violet-600 to-fuchsia-500 p-6 text-left text-white shadow-sm transition-transform hover:-translate-y-0.5"
         >
-          <div className="text-xl font-bold text-gray-900">{activasCount}</div>
-          <div className="text-xs text-gray-400 mt-0.5">Activas</div>
-        </button>
-        <button
-          onClick={() => router.push('/inf-campaigns')}
-          className="bg-white rounded-2xl border border-gray-100 p-4 text-center hover:border-violet-200 transition-colors"
-        >
-          <div className="text-xl font-bold text-gray-900">{postuladasCount}</div>
-          <div className="text-xs text-gray-400 mt-0.5">Postuladas</div>
-        </button>
-        {totalDeliverables > 0 ? (
-          <button
-            onClick={() => router.push('/inf-deliverables')}
-            title="Entregables pendientes"
-            className="bg-white rounded-2xl border border-gray-100 p-2 flex flex-col items-center justify-center gap-0.5 hover:border-violet-200 transition-colors overflow-hidden"
-          >
-            <ResponsiveContainer width={64} height={36} className="flex-shrink-0">
-              <PieChart>
-                <Pie data={gaugeData} startAngle={180} endAngle={0} cx="50%" cy="100%"
-                  innerRadius={18} outerRadius={30} cornerRadius={4} paddingAngle={2} dataKey="value" stroke="none">
-                  {gaugeData.map((s, i) => <Cell key={i} fill={s.color} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="text-center">
-              <div className="text-xl font-bold text-gray-900 leading-none">{pendingPct}%</div>
-              <div className="text-xs text-gray-400 mt-0.5">Pendientes</div>
+          <div className="absolute -right-10 -top-14 h-44 w-44 rounded-full bg-white/15" />
+          <div className="absolute bottom-0 right-20 h-24 w-24 rounded-full border-[18px] border-white/10" />
+          <div className="relative flex h-full flex-col justify-between gap-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-white/75">Tu prioridad de hoy</p>
+                <h2 className="mt-1 max-w-md text-2xl font-bold tracking-tight">
+                  {pendingDeliverablesCount ? `Tienes ${pendingDeliverablesCount} entrega${pendingDeliverablesCount > 1 ? 's' : ''} por resolver` : 'Vas al día con tus entregas'}
+                </h2>
+              </div>
+              <span className="rounded-2xl bg-white/15 p-3"><Film className="h-6 w-6" /></span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">{pendingDeliverablesCount ? 'Ir a mis entregables' : 'Ver mis campañas'}</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-violet-700 transition-transform group-hover:translate-x-1"><ArrowRight className="h-4 w-4" /></span>
+            </div>
+          </div>
+        </button>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => router.push('/inf-campaigns')} className="rounded-3xl border border-gray-100 bg-white p-5 text-left transition-all hover:border-violet-200 hover:shadow-sm">
+            <CalendarClock className="h-5 w-5 text-violet-500" />
+            <p className="mt-5 text-3xl font-bold tracking-tight text-gray-950">{activasCount}</p>
+            <p className="mt-1 text-xs font-medium text-gray-500">Campañas activas</p>
           </button>
-        ) : (
-          <button
-            onClick={() => router.push('/inf-deliverables')}
-            className="bg-white rounded-2xl border border-gray-100 p-4 text-center hover:border-violet-200 transition-colors"
-          >
-            <div className="text-xl font-bold text-gray-900">{completadasCount}</div>
-            <div className="text-xs text-gray-400 mt-0.5">Completadas</div>
+          <button onClick={() => router.push('/inf-campaigns')} className="rounded-3xl border border-gray-100 bg-white p-5 text-left transition-all hover:border-amber-200 hover:shadow-sm">
+            <Sparkles className="h-5 w-5 text-amber-500" />
+            <p className="mt-5 text-3xl font-bold tracking-tight text-gray-950">{postuladasCount}</p>
+            <p className="mt-1 text-xs font-medium text-gray-500">En revisión</p>
           </button>
-        )}
-      </div>
+          <button onClick={() => router.push('/inf-deliverables')} className="col-span-2 flex items-center gap-3 rounded-3xl border border-emerald-100 bg-emerald-50/60 p-4 text-left transition-all hover:border-emerald-200">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-500"><CheckCircle2 className="h-5 w-5" /></span>
+            <span><span className="block text-sm font-bold text-gray-900">{totalDeliverables - pendingDeliverablesCount} de {totalDeliverables} entregables al día</span><span className="text-xs text-gray-500">Revisa avances y próximos plazos</span></span>
+          </button>
+        </div>
+      </section>
 
       {/* Orientación de uso: explica el criterio de asignación sin prometer
           una aceptación automática ni convertirlo en una advertencia. */}
@@ -452,47 +441,28 @@ export default function InfluencerDashboard() {
       {/* Campañas activas + % completado — al 100% no navega (nada
           pendiente); con menos, lleva directo a sus entregables. */}
       {activeCampaigns.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-50">
-            <CheckSquare className="h-4 w-4 text-violet-400" />
-            <h2 className="text-sm font-bold text-gray-900 flex-1">Campañas activas ({activeCampaigns.length})</h2>
-          </div>
-          <div className="px-5 py-4 space-y-2">
+        <section>
+          <div className="flex items-center justify-between mb-3"><h2 className="text-base font-bold text-gray-900">Campañas activas</h2><Link href="/inf-campaigns" className="text-xs font-semibold text-violet-600">Ver todas</Link></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {activeCampaigns.map(({ ci, pct, total }) => {
               const c = ci.campaign!
               const done = pct === 100
-              const Wrapper = done ? 'div' : 'button'
-              const extraProps = done ? {} : { onClick: () => router.push(`/inf-deliverables?campaign=${c.id}`) }
               return (
-                <Wrapper
-                  key={c.id}
-                  {...extraProps}
-                  className={cn(
-                    'w-full flex items-center gap-3 bg-gray-50 rounded-xl border border-gray-100 p-3 text-left transition-all',
-                    !done && 'hover:border-violet-200 hover:shadow-sm'
-                  )}
-                >
-                  <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                    {c.brand?.logo_url
-                      ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-8 h-8 object-contain" />
-                      : <Building2 className="h-4 w-4 text-violet-300" />}
+                <button key={c.id} onClick={() => router.push(`/inf-campaign/${c.id}`)} className="group overflow-hidden rounded-3xl border border-gray-100 bg-white text-left hover:border-violet-200 hover:shadow-lg transition-all">
+                  <CampaignCover name={c.name} className="h-40 transition-transform duration-300 group-hover:scale-[1.02]" />
+                  <div className="p-5">
+                    <BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} />
+                    <div className="flex items-end justify-between gap-3 mt-5">
+                      <div className="min-w-0"><p className="text-sm font-bold text-gray-900">{done ? 'Todo enviado' : 'Acción pendiente'}</p><p className="text-xs text-gray-400 mt-1">{total ? `${total} entregable${total !== 1 ? 's' : ''} en esta campaña` : 'Revisa el brief de la campaña'}</p></div>
+                      <span className={cn('text-2xl font-bold tracking-tight', done ? 'text-emerald-500' : 'text-violet-600')}>{pct}%</span>
+                    </div>
+                    {total > 0 && <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mt-4"><div className={cn('h-full rounded-full', done ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} /></div>}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{c.name}</p>
-                    {total > 0 && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden max-w-[100px]">
-                          <div className={cn('h-full rounded-full', done ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <span className={cn('text-xl font-bold flex-shrink-0', done ? 'text-green-500' : 'text-gray-900')}>{pct}%</span>
-                </Wrapper>
+                </button>
               )
             })}
           </div>
-        </div>
+        </section>
       )}
 
       {/* Campañas disponibles para postular — ya postuladas NO aparecen acá,

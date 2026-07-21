@@ -43,7 +43,7 @@ export async function GET() {
     .select(`
       id, name, status, description, type, start_date, end_date, visibility,
       application_deadline, applications_closed_at, max_influencers, campaign_benefits,
-      brand:brands!brand_id (id, name, logo_url),
+      brand:brands!brand_id (id, name, logo_url, instagram),
       campaign_influencers (id, application_status)
     `)
     .eq('organization_id', influencer.organization_id)

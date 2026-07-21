@@ -59,7 +59,7 @@ export default async function InfluencerLayout({ children }: { children: React.R
       <PresenceHeartbeat />
       <InfluencerSidebar />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
-        <div className="p-4 lg:p-6 max-w-[1200px] mx-auto">
+        <div className="w-full p-4 lg:p-8 max-w-[1440px] mx-auto">
           <ProfileCompletionGate complete={profileComplete}>
             {children}
           </ProfileCompletionGate>

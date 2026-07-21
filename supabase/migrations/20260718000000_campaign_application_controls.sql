@@ -5,21 +5,17 @@ alter table public.campaigns
   add column if not exists application_deadline timestamptz,
   add column if not exists max_influencers integer,
   add column if not exists applications_closed_at timestamptz;
-
 alter table public.campaign_influencers
   add column if not exists application_status text not null default 'pending';
-
 -- application_deadline ya existe en producción. Se normaliza a timestamptz
 -- para permitir una hora exacta de cierre; los valores DATE existentes quedan
 -- representados a medianoche UTC, sin pérdida del día almacenado.
 alter table public.campaigns
   alter column application_deadline type timestamptz
   using application_deadline::timestamptz;
-
 create index if not exists idx_campaigns_open_application_controls
   on public.campaigns (visibility, status, application_deadline, applications_closed_at)
   where visibility = 'open';
-
 -- Última barrera contra dos aprobaciones simultáneas: serializa por campaña y
 -- evita superar max_influencers incluso si dos solicitudes llegan a la vez.
 create or replace function public.enforce_campaign_influencer_capacity()
@@ -59,7 +55,6 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists trg_enforce_campaign_influencer_capacity
   on public.campaign_influencers;
 create trigger trg_enforce_campaign_influencer_capacity

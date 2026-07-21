@@ -40,14 +40,11 @@ CREATE TABLE IF NOT EXISTS public.brands (
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
-
 CREATE UNIQUE INDEX IF NOT EXISTS brands_user_id_unique ON public.brands (user_id) WHERE (user_id IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_brands_org    ON public.brands (organization_id);
 CREATE INDEX IF NOT EXISTS idx_brands_user_id ON public.brands (user_id) WHERE (user_id IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_brands_status  ON public.brands (status);
-
 ALTER TABLE public.brands ENABLE ROW LEVEL SECURITY;
-
 -- ⚠️ ADVERTENCIA (encontrada al escribir esta baseline, 2026-07-01): estas 4 policies,
 -- copiadas EXACTAS de producción vía pg_get_constraintdef/pg_policies, comparan
 -- `brands.organization_id` contra una subquery que también selecciona `brands.organization_id`
@@ -63,16 +60,13 @@ ALTER TABLE public.brands ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "brands_select_own_org" ON public.brands;
 CREATE POLICY "brands_select_own_org" ON public.brands
   FOR SELECT USING (organization_id = (SELECT brands.organization_id FROM public.profiles WHERE profiles.id = auth.uid()));
-
 DROP POLICY IF EXISTS "brands_insert_own_org" ON public.brands;
 CREATE POLICY "brands_insert_own_org" ON public.brands
   FOR INSERT WITH CHECK (organization_id = (SELECT brands.organization_id FROM public.profiles WHERE profiles.id = auth.uid()));
-
 DROP POLICY IF EXISTS "brands_update_own_org" ON public.brands;
 CREATE POLICY "brands_update_own_org" ON public.brands
   FOR UPDATE USING (organization_id = (SELECT brands.organization_id FROM public.profiles WHERE profiles.id = auth.uid()))
   WITH CHECK (organization_id = (SELECT brands.organization_id FROM public.profiles WHERE profiles.id = auth.uid()));
-
 DROP POLICY IF EXISTS "brands_delete_own_org" ON public.brands;
 CREATE POLICY "brands_delete_own_org" ON public.brands
   FOR DELETE USING (organization_id = (SELECT brands.organization_id FROM public.profiles WHERE profiles.id = auth.uid()));

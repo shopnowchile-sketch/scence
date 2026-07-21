@@ -5,12 +5,10 @@ DO $$ BEGIN
   CREATE TYPE public.affiliate_conversion_status AS ENUM ('pending', 'confirmed', 'cancelled');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 DO $$ BEGIN
   CREATE TYPE public.commission_settlement_status AS ENUM ('pending', 'paid', 'problem');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 CREATE TABLE IF NOT EXISTS public.affiliate_conversions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -35,7 +33,6 @@ CREATE TABLE IF NOT EXISTS public.affiliate_conversions (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE UNIQUE INDEX IF NOT EXISTS affiliate_conversions_external_sale_unique
   ON public.affiliate_conversions (organization_id, source, external_sale_id)
   WHERE external_sale_id IS NOT NULL;
@@ -45,7 +42,6 @@ CREATE INDEX IF NOT EXISTS affiliate_conversions_org_status
   ON public.affiliate_conversions (organization_id, status, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS affiliate_conversions_influencer
   ON public.affiliate_conversions (influencer_id, occurred_at DESC);
-
 CREATE TABLE IF NOT EXISTS public.commission_settlements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -65,23 +61,19 @@ CREATE TABLE IF NOT EXISTS public.commission_settlements (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE TABLE IF NOT EXISTS public.commission_settlement_conversions (
   settlement_id uuid NOT NULL REFERENCES public.commission_settlements(id) ON DELETE CASCADE,
   conversion_id uuid NOT NULL UNIQUE REFERENCES public.affiliate_conversions(id) ON DELETE RESTRICT,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (settlement_id, conversion_id)
 );
-
 CREATE INDEX IF NOT EXISTS commission_settlements_org_status
   ON public.commission_settlements (organization_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS commission_settlements_influencer
   ON public.commission_settlements (influencer_id, created_at DESC);
-
 ALTER TABLE public.affiliate_conversions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commission_settlements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commission_settlement_conversions ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS affiliate_conversions_org_members ON public.affiliate_conversions;
 CREATE POLICY affiliate_conversions_org_members ON public.affiliate_conversions
 FOR ALL TO authenticated
@@ -95,7 +87,6 @@ WITH CHECK (EXISTS (
   WHERE om.organization_id = affiliate_conversions.organization_id
     AND om.user_id = auth.uid() AND om.is_active = true
 ));
-
 DROP POLICY IF EXISTS affiliate_conversions_influencer_read ON public.affiliate_conversions;
 CREATE POLICY affiliate_conversions_influencer_read ON public.affiliate_conversions
 FOR SELECT TO authenticated
@@ -103,7 +94,6 @@ USING (EXISTS (
   SELECT 1 FROM public.influencers i
   WHERE i.id = affiliate_conversions.influencer_id AND i.user_id = auth.uid()
 ));
-
 DROP POLICY IF EXISTS commission_settlements_org_members ON public.commission_settlements;
 CREATE POLICY commission_settlements_org_members ON public.commission_settlements
 FOR ALL TO authenticated
@@ -117,7 +107,6 @@ WITH CHECK (EXISTS (
   WHERE om.organization_id = commission_settlements.organization_id
     AND om.user_id = auth.uid() AND om.is_active = true
 ));
-
 DROP POLICY IF EXISTS commission_settlements_influencer_read ON public.commission_settlements;
 CREATE POLICY commission_settlements_influencer_read ON public.commission_settlements
 FOR SELECT TO authenticated
@@ -125,7 +114,6 @@ USING (EXISTS (
   SELECT 1 FROM public.influencers i
   WHERE i.id = commission_settlements.influencer_id AND i.user_id = auth.uid()
 ));
-
 DROP POLICY IF EXISTS commission_settlement_conversions_org_members
   ON public.commission_settlement_conversions;
 CREATE POLICY commission_settlement_conversions_org_members
@@ -145,7 +133,6 @@ WITH CHECK (EXISTS (
   WHERE s.id = commission_settlement_conversions.settlement_id
     AND om.user_id = auth.uid() AND om.is_active = true
 ));
-
 CREATE OR REPLACE FUNCTION public.refresh_affiliate_link_totals(p_link_id uuid)
 RETURNS void
 LANGUAGE sql
@@ -166,7 +153,6 @@ AS $$
   ) totals
   WHERE link.id = p_link_id;
 $$;
-
 CREATE OR REPLACE FUNCTION public.sync_affiliate_link_totals()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -181,12 +167,10 @@ BEGIN
   RETURN COALESCE(NEW, OLD);
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trg_sync_affiliate_link_totals ON public.affiliate_conversions;
 CREATE TRIGGER trg_sync_affiliate_link_totals
 AFTER INSERT OR UPDATE OR DELETE ON public.affiliate_conversions
 FOR EACH ROW EXECUTE FUNCTION public.sync_affiliate_link_totals();
-
 CREATE OR REPLACE FUNCTION public.increment_affiliate_link_clicks(p_link_id uuid)
 RETURNS void
 LANGUAGE sql

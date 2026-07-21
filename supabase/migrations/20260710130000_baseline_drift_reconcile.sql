@@ -30,13 +30,10 @@ CREATE TABLE IF NOT EXISTS public.campaign_brands (
   CONSTRAINT campaign_brands_assigned_by_fkey FOREIGN KEY (assigned_by)
     REFERENCES public.profiles(id)
 );
-
 CREATE INDEX IF NOT EXISTS idx_campaign_brands_campaign ON public.campaign_brands (campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_brands_brand    ON public.campaign_brands (brand_id);
-
 -- RLS (ya habilitada en prod; ENABLE es idempotente)
 ALTER TABLE public.campaign_brands ENABLE ROW LEVEL SECURITY;
-
 -- Policy existente en prod: crear SOLO si falta (no toca la existente)
 DO $$
 BEGIN
@@ -53,10 +50,8 @@ BEGIN
       WITH CHECK (auth.uid() IS NOT NULL);
   END IF;
 END $$;
-
 -- ── 2. invoices.brand_id (marca receptora) ──────────────────────────────────
 ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS brand_id uuid;
-
 DO $$
 BEGIN
   IF NOT EXISTS (

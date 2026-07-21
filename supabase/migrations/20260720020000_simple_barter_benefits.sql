@@ -5,7 +5,6 @@ DO $$ BEGIN
   CREATE TYPE public.barter_simple_status AS ENUM ('pending', 'completed', 'problem');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 DO $$ BEGIN
   CREATE TYPE public.barter_benefit_type AS ENUM (
     'product',
@@ -19,14 +18,12 @@ DO $$ BEGIN
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 ALTER TABLE public.barters
   ADD COLUMN IF NOT EXISTS simple_status public.barter_simple_status NOT NULL DEFAULT 'pending',
   ADD COLUMN IF NOT EXISTS completed_at timestamptz,
   ADD COLUMN IF NOT EXISTS cancelled_at timestamptz,
   ADD COLUMN IF NOT EXISTS cancelled_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS cancellation_reason text;
-
 UPDATE public.barters
 SET simple_status = CASE
   WHEN status = 'cerrado' THEN 'completed'::public.barter_simple_status
@@ -34,7 +31,6 @@ SET simple_status = CASE
   ELSE 'pending'::public.barter_simple_status
 END
 WHERE simple_status = 'pending';
-
 CREATE TABLE IF NOT EXISTS public.barter_benefits (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -65,14 +61,11 @@ CREATE TABLE IF NOT EXISTS public.barter_benefits (
     )
   )
 );
-
 CREATE INDEX IF NOT EXISTS idx_barter_benefits_barter
   ON public.barter_benefits (barter_id, position, created_at);
 CREATE INDEX IF NOT EXISTS idx_barter_benefits_type
   ON public.barter_benefits (organization_id, benefit_type);
-
 ALTER TABLE public.barter_benefits ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS barter_benefits_org_members ON public.barter_benefits;
 CREATE POLICY barter_benefits_org_members ON public.barter_benefits
 FOR ALL TO authenticated
@@ -92,7 +85,6 @@ WITH CHECK (
       AND om.is_active = true
   )
 );
-
 DROP POLICY IF EXISTS barter_benefits_influencer_read ON public.barter_benefits;
 CREATE POLICY barter_benefits_influencer_read ON public.barter_benefits
 FOR SELECT TO authenticated
@@ -105,7 +97,6 @@ USING (
       AND i.user_id = auth.uid()
   )
 );
-
 -- Convierte los canjes históricos en un beneficio fijo para conservar su valor.
 INSERT INTO public.barter_benefits (
   organization_id, barter_id, benefit_type, description, fixed_value, currency, position

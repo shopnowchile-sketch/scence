@@ -299,6 +299,13 @@ export interface CampaignBenefit {
   sales_target: number | null
 }
 
+export interface CampaignBenefitTracking {
+  benefit_index: number
+  status: BarterSimpleStatus
+  note: string
+  updated_at?: string | null
+}
+
 // ── BOOKING ────────────────────────────────────────────
 export interface Booking {
   id: string
@@ -549,6 +556,8 @@ export interface Barter {
   responsible_id: string | null
   status: BarterStatus
   simple_status?: BarterSimpleStatus
+  benefit_tracking?: CampaignBenefitTracking[]
+  campaign_benefits?: CampaignBenefit[]
   benefits?: BarterBenefit[]
   completed_at?: string | null
   cancelled_at?: string | null
@@ -558,7 +567,13 @@ export interface Barter {
   created_by: string | null
   created_at: string
   updated_at: string
-  influencer?: { id: string; display_name: string; avatar_url: string | null } | null
+  influencer?: {
+    id: string
+    display_name: string
+    avatar_url: string | null
+    email?: string | null
+    instagram_username?: string | null
+  } | null
   brand?: { id: string; name: string; logo_url: string | null } | null
   responsible?: { id: string; full_name: string | null } | null
   history?: BarterStatusHistoryEntry[]

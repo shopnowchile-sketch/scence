@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Gift, Loader2, Mail, AlertTriangle, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Gift, Loader2, Pencil, Plus, Trash2, Search, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, formatCurrency } from '@/lib/utils'
 import {
   BARTER_BENEFIT_TYPE_CONFIG,
-  BARTER_SIMPLE_STATUS_CONFIG,
   type Barter,
   type BarterSimpleStatus,
   type CampaignBenefit,
@@ -29,6 +28,7 @@ export function BartersTab({
   const initialize = useInitializeCampaignBarters(campaignId)
   const acceptedCount = campaignInfluencers.filter(item => item.application_status === 'accepted').length
   const [editingOffer, setEditingOffer] = useState(false)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     if (!isLoading && campaignBenefits.length > 0 && acceptedCount > barters.length && !initialize.isPending && !initialize.isSuccess) {
@@ -38,9 +38,22 @@ export function BartersTab({
 
   const counts = useMemo(() => {
     const result: Record<BarterSimpleStatus, number> = { pending: 0, completed: 0, problem: 0 }
-    for (const barter of barters) result[getSimpleStatus(barter)] += 1
+    for (const barter of barters) {
+      if (campaignBenefits.length === 0) result[getSimpleStatus(barter)] += 1
+      else campaignBenefits.forEach((_, index) => result[getBenefitTracking(barter, index).status] += 1)
+    }
     return result
-  }, [barters])
+  }, [barters, campaignBenefits])
+
+  const filteredBarters = useMemo(() => {
+    const term = normalizeSearch(query)
+    if (!term) return barters
+    return barters.filter(barter => normalizeSearch([
+      barter.influencer?.display_name,
+      barter.influencer?.email,
+      barter.influencer?.instagram_username,
+    ].filter(Boolean).join(' ')).includes(term))
+  }, [barters, query])
 
   return (
     <div className="space-y-5">
@@ -110,10 +123,17 @@ export function BartersTab({
         <StatusCount label="Con problema" value={counts.problem} tone="red" />
       </div>
 
-      <section className="space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-800">Seguimiento por influencer</h3>
-          <p className="text-xs text-gray-500 mt-1">Aquí solo se registra si el canje sigue pendiente, fue enviado o tuvo un problema.</p>
+      <section className="space-y-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">Seguimiento por influencer</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Actualiza cada beneficio y agrega una observación breve.</p>
+          </div>
+          <label className="relative block w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Nombre, email o Instagram"
+              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-3 text-xs outline-none focus:border-violet-400" />
+          </label>
         </div>
 
         {isLoading || initialize.isPending ? (
@@ -125,7 +145,11 @@ export function BartersTab({
               : 'No hay beneficios para seguir en esta campaña.'}
           </div>
         ) : (
-          barters.map(barter => <TrackingRow key={barter.id} campaignId={campaignId} barter={barter} />)
+          filteredBarters.length === 0 ? (
+            <div className="card p-5 text-center text-xs text-gray-500">No encontramos influencers con esa búsqueda.</div>
+          ) : filteredBarters.map(barter => (
+            <TrackingRow key={barter.id} campaignId={campaignId} barter={barter} campaignBenefits={campaignBenefits} />
+          ))
         )}
       </section>
     </div>
@@ -206,59 +230,73 @@ function CampaignOfferEditor({ initialBenefits, onCancel, onSave }: {
   )
 }
 
-function TrackingRow({ campaignId, barter }: { campaignId: string; barter: Barter }) {
+function TrackingRow({ campaignId, barter, campaignBenefits }: { campaignId: string; barter: Barter; campaignBenefits: CampaignBenefit[] }) {
   const action = useBarterAction(campaignId)
-  const status = getSimpleStatus(barter)
-
-  async function setStatus(next: BarterSimpleStatus) {
-    try {
-      await action.mutateAsync({ barter_id: barter.id, patch: { simple_status: next } })
-      toast.success(BARTER_SIMPLE_STATUS_CONFIG[next].label)
-    } catch { /* el hook muestra el error */ }
-  }
 
   return (
-    <div className="card p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white text-xs font-bold">
+    <div className="card overflow-hidden">
+      <div className="flex items-center gap-2.5 border-b border-gray-100 px-3 py-2.5">
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white text-[10px] font-bold">
           {(barter.influencer?.display_name ?? '?').slice(0, 2).toUpperCase()}
         </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-900">{barter.influencer?.display_name ?? 'Influencer'}</p>
-          <p className="text-xs text-gray-500">
-            {status === 'pending' ? 'Debe cumplir primero las condiciones indicadas.' : status === 'completed' ? 'Canje enviado por correo o entregado.' : 'Requiere revisión.'}
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-gray-900">{barter.influencer?.display_name ?? 'Influencer'}</p>
+          <p className="truncate text-[11px] text-gray-400">
+            {barter.influencer?.email ?? 'Sin email'}
+            {barter.influencer?.instagram_username ? ` · @${barter.influencer.instagram_username.replace(/^@/, '')}` : ''}
           </p>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <SimpleStatusButton active={status === 'pending'} disabled={action.isPending} onClick={() => setStatus('pending')}>
-          Pendiente
-        </SimpleStatusButton>
-        <SimpleStatusButton active={status === 'completed'} disabled={action.isPending} onClick={() => setStatus('completed')} icon={<Mail className="h-3.5 w-3.5" />}>
-          Canje enviado
-        </SimpleStatusButton>
-        <SimpleStatusButton active={status === 'problem'} disabled={action.isPending} onClick={() => setStatus('problem')} icon={<AlertTriangle className="h-3.5 w-3.5" />}>
-          Con problema
-        </SimpleStatusButton>
+      <div className="divide-y divide-gray-50 px-3">
+        {campaignBenefits.map((benefit, index) => (
+          <BenefitTrackingLine key={`${benefit.benefit_type}-${index}`} benefit={benefit} benefitIndex={index} barter={barter} action={action} />
+        ))}
       </div>
     </div>
   )
 }
 
-function SimpleStatusButton({ active, disabled, onClick, icon, children }: {
-  active: boolean
-  disabled: boolean
-  onClick: () => void
-  icon?: React.ReactNode
-  children: React.ReactNode
+function BenefitTrackingLine({ benefit, benefitIndex, barter, action }: {
+  benefit: CampaignBenefit
+  benefitIndex: number
+  barter: Barter
+  action: ReturnType<typeof useBarterAction>
 }) {
+  const current = getBenefitTracking(barter, benefitIndex)
+  const [status, setStatus] = useState<BarterSimpleStatus>(current.status)
+  const [note, setNote] = useState(current.note)
+
+  useEffect(() => { setStatus(current.status); setNote(current.note) }, [current.note, current.status])
+
+  async function save() {
+    const tracking = [...(barter.benefit_tracking ?? []).filter(row => row.benefit_index !== benefitIndex), {
+      benefit_index: benefitIndex, status, note: note.trim(),
+    }].sort((a, b) => a.benefit_index - b.benefit_index)
+    try {
+      await action.mutateAsync({ barter_id: barter.id, patch: { benefit_tracking: tracking } })
+      toast.success('Seguimiento guardado')
+    } catch { /* el hook muestra el error */ }
+  }
+
   return (
-    <button type="button" disabled={disabled || active} onClick={onClick}
-      className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
-        active ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
-        disabled && 'opacity-50')}>
-      {icon}{children}
-    </button>
+    <div className="grid gap-2 py-2 md:grid-cols-[minmax(150px,1fr)_140px_minmax(180px,1.4fr)_32px] md:items-center">
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-gray-800">{benefit.quantity}× {benefit.description}</p>
+        <p className="truncate text-[10px] text-gray-400">{activationText(benefit)}</p>
+      </div>
+      <select value={status} onChange={event => setStatus(event.target.value as BarterSimpleStatus)}
+        className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] outline-none focus:border-violet-400">
+        <option value="pending">Pendiente</option>
+        <option value="completed">Canje enviado</option>
+        <option value="problem">Con problema</option>
+      </select>
+      <input value={note} maxLength={300} onChange={event => setNote(event.target.value)} placeholder="Observación breve (opcional)"
+        className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] outline-none focus:border-violet-400" />
+      <button type="button" onClick={save} disabled={action.isPending}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-violet-600 hover:bg-violet-50 disabled:opacity-50" title="Guardar">
+        {action.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+      </button>
+    </div>
   )
 }
 
@@ -272,6 +310,15 @@ function getSimpleStatus(barter: Barter): BarterSimpleStatus {
   if (barter.status === 'cerrado' || barter.status === 'enviado') return 'completed'
   if (barter.status === 'con_problema') return 'problem'
   return 'pending'
+}
+
+function getBenefitTracking(barter: Barter, benefitIndex: number) {
+  const existing = barter.benefit_tracking?.find(row => row.benefit_index === benefitIndex)
+  return existing ?? { benefit_index: benefitIndex, status: getSimpleStatus(barter), note: barter.notes ?? '' }
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 }
 
 function activationText(benefit: CampaignBenefit) {

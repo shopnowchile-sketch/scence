@@ -12,7 +12,7 @@ const VALID_STATUSES: BarterStatus[] = [
 
 const SELECT = `
   *,
-  influencer:influencers (id, display_name, avatar_url),
+  influencer:influencers (id, display_name, avatar_url, email, instagram_username),
   brand:brands (id, name, logo_url),
   responsible:profiles!barters_responsible_id_fkey (id, full_name),
   benefits:barter_benefits (
@@ -51,6 +51,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Ordenar el historial de cada canje cronológicamente (asc)
   const normalized = (data ?? []).map((b: any) => ({
     ...b,
+    campaign_benefits: campaign.campaign_benefits ?? [],
     history: [...(b.history ?? [])].sort(
       (a: any, z: any) => (a.created_at < z.created_at ? -1 : 1)
     ),
@@ -287,8 +288,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Estado simple inválido' }, { status: 422 })
     }
 
+    if ('benefit_tracking' in patch) {
+      const validated = normalizeBenefitTracking(patch.benefit_tracking)
+      if (!validated) return NextResponse.json({ error: 'Seguimiento de beneficios inválido' }, { status: 422 })
+      patch.benefit_tracking = validated
+    }
+
     const allowed = ['item', 'description', 'estimated_value', 'currency',
-      'agreed_date', 'responsible_id', 'brand_id', 'notes', 'evidence_url', 'simple_status']
+      'agreed_date', 'responsible_id', 'brand_id', 'notes', 'evidence_url', 'simple_status', 'benefit_tracking']
     const clean: Record<string, unknown> = {}
     for (const k of allowed) if (k in patch) clean[k] = patch[k]
     clean.updated_at = new Date().toISOString()
@@ -313,12 +320,33 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const normalized = {
     ...data,
+    campaign_benefits: campaign.campaign_benefits ?? [],
     history: [...((data as any).history ?? [])].sort(
       (a: any, z: any) => (a.created_at < z.created_at ? -1 : 1)
     ),
   }
 
   return NextResponse.json({ data: normalized })
+}
+
+function normalizeBenefitTracking(value: unknown) {
+  if (!Array.isArray(value) || value.length > 100) return null
+  const statuses = new Set(['pending', 'completed', 'problem'])
+  const rows = []
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') return null
+    const row = raw as Record<string, unknown>
+    const benefitIndex = Number(row.benefit_index)
+    const status = String(row.status ?? '')
+    if (!Number.isInteger(benefitIndex) || benefitIndex < 0 || !statuses.has(status)) return null
+    rows.push({
+      benefit_index: benefitIndex,
+      status,
+      note: String(row.note ?? '').trim().slice(0, 300),
+      updated_at: new Date().toISOString(),
+    })
+  }
+  return rows
 }
 
 // ── DELETE /api/campaigns/[id]/barters?barter_id=... ──────────────────────────

@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data, error } = await admin
     .from('barters')
     .select(`
-      id, item, description, estimated_value, currency, status, simple_status, evidence_url,
+      id, item, description, estimated_value, currency, status, simple_status, benefit_tracking, evidence_url,
       agreed_date, completed_at, cancelled_at, cancellation_reason, created_at, updated_at,
       benefits:barter_benefits (
         id, benefit_type, description, fixed_value, currency,
@@ -40,8 +40,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .select('campaign_benefits')
+    .eq('id', params.id)
+    .maybeSingle()
+
   const normalized = (data ?? []).map((b: any) => ({
     ...b,
+    campaign_benefits: campaign?.campaign_benefits ?? [],
     history: [...(b.history ?? [])].sort((a: any, z: any) => (a.created_at < z.created_at ? -1 : 1)),
   }))
 

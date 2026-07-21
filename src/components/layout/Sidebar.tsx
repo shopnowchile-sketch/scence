@@ -35,7 +35,9 @@ export function Sidebar() {
         setTicketCount(typeof d.openTickets === 'number' && d.openTickets > 0 ? d.openTickets : null)
       }).catch(() => {})
     void refresh()
-    const interval = window.setInterval(refresh, 30_000)
+    // Los contadores de navegación no requieren tiempo real. Cinco minutos
+    // reducen drásticamente invocaciones sin afectar el uso del portal.
+    const interval = window.setInterval(refresh, 5 * 60_000)
     window.addEventListener('focus', refresh)
     return () => {
       active = false

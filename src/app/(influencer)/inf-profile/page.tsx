@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   AlertCircle, RefreshCw, Edit2, Save, X, Plus, Trash2,
   Target, Zap, Banknote, MapPin, Tag, Share2, Mail, User,
-  Phone, Globe, Calendar,
+  Phone, Globe, Calendar, Camera, ImagePlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -115,6 +115,9 @@ export default function ProfilePage() {
   const [saving,    setSaving]    = useState(false)
   const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', city: '', country: '', address: '', commune: '', birth_date: '', categories: '' })
   const [socials,   setSocials]   = useState<SocialProfile[]>([])
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -206,6 +209,37 @@ export default function ProfilePage() {
     setSocials(prev => prev.map((s, i) => i === idx ? { ...s, [key]: val } : s))
   }
 
+  async function uploadAvatar(file: File) {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Elige una imagen JPG, PNG o WebP.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La foto debe pesar menos de 5 MB.')
+      return
+    }
+
+    const preview = URL.createObjectURL(file)
+    setAvatarPreview(preview)
+    setUploadingAvatar(true)
+    try {
+      const data = new FormData()
+      data.append('file', file)
+      const res = await fetch('/api/influencer/avatar', { method: 'POST', body: data })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setProfile(prev => prev ? { ...prev, avatar_url: json.avatar_url } : prev)
+      setAvatarPreview(null)
+      URL.revokeObjectURL(preview)
+      toast.success('Foto de perfil actualizada')
+    } catch (error) {
+      setAvatarPreview(null)
+      URL.revokeObjectURL(preview)
+      toast.error(error instanceof Error ? error.message : 'No se pudo subir la foto')
+    }
+    setUploadingAvatar(false)
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" /></div>
   }
@@ -265,7 +299,7 @@ export default function ProfilePage() {
             <div className="flex items-start gap-5">
               <div className="flex-shrink-0">
                 {profile.avatar_url ? (
-                  <img src={profile.avatar_url} alt={profile.display_name} className="w-20 h-20 rounded-2xl object-cover" />
+                  <img src={profile.avatar_url} alt={profile.display_name} onError={() => setProfile(prev => prev ? { ...prev, avatar_url: null } : prev)} className="w-20 h-20 rounded-2xl object-cover" />
                 ) : (
                   <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-3xl">
                     {profile.display_name.charAt(0).toUpperCase()}
@@ -361,6 +395,27 @@ export default function ProfilePage() {
               Para guardar cambios ahora necesitas completar tu fecha de nacimiento.
             </div>
           )}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Camera className="h-4 w-4 text-gray-400" /> Foto de perfil</h2>
+            <div className="mt-4 flex items-center gap-4">
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 text-white flex items-center justify-center text-2xl font-bold">
+                {(avatarPreview || profile.avatar_url) ? (
+                  <img src={avatarPreview ?? profile.avatar_url ?? ''} alt="Vista previa" className="h-full w-full object-cover" onError={() => setAvatarPreview(null)} />
+                ) : profile.display_name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => {
+                  const file = event.target.files?.[0]
+                  if (file) void uploadAvatar(file)
+                  event.currentTarget.value = ''
+                }} />
+                <button type="button" disabled={uploadingAvatar} onClick={() => avatarInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-60">
+                  <ImagePlus className="h-4 w-4" /> {uploadingAvatar ? 'Subiendo foto…' : profile.avatar_url ? 'Cambiar foto' : 'Subir foto'}
+                </button>
+                <p className="mt-2 text-xs text-gray-400">JPG, PNG o WebP. Máximo 5 MB.</p>
+              </div>
+            </div>
+          </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /> Información personal</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

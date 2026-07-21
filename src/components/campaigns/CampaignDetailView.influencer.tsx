@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
@@ -92,6 +93,86 @@ type CampaignAsset = {
   id: string; filename: string; mime_type: string | null; size_bytes: number | null
   signed_url: string | null; storage_path: string
   metadata?: { asset_type?: string }
+}
+
+// Entregables dentro del detalle: la influencer no tiene que volver al menú
+// "Mis entregables" para subir o corregir un link. Los rechazados conservan
+// su link anterior, pero se presentan como una corrección pendiente.
+function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUpdated: () => void }) {
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [url, setUrl] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const total = items.length
+  const done = items.filter(isDeliverableComplete).length
+  const pending = total - done
+  const pct = total ? Math.round((done / total) * 100) : 0
+
+  async function submit(d: Deliverable) {
+    if (!url.trim()) return toast.error('Agrega el link del contenido')
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/influencer/deliverables/${d.id}/submit`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_url: url.trim(), notes: notes.trim() || null }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo enviar el entregable')
+      toast.success(d.status === 'rejected' ? 'Corrección enviada para revisión' : 'Entregable enviado para revisión')
+      setOpenId(null); setUrl(''); setNotes(''); onUpdated()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al enviar el entregable')
+    } finally { setSaving(false) }
+  }
+
+  if (!total) return null
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-sm font-bold text-gray-900">Entregables</h2>
+          <p className="text-xs text-gray-400 mt-0.5">{pending} pendiente{pending === 1 ? '' : 's'} · {pct}% completado</p>
+        </div>
+        <span className={cn('text-xs font-bold', pending ? 'text-amber-600' : 'text-green-600')}>{done}/{total}</span>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
+        <div className={cn('h-full rounded-full transition-all', pending ? 'bg-amber-400' : 'bg-green-500')} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="space-y-3">
+        {items.map(d => {
+          const canSubmit = d.status === 'pending' || d.status === 'rejected'
+          const complete = isDeliverableComplete(d)
+          const isRejected = d.status === 'rejected'
+          const opened = openId === d.id
+          return <div key={d.id} className={cn('rounded-xl border p-3', isRejected ? 'border-amber-200 bg-amber-50/50' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
+            <div className="flex items-start gap-3">
+              <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
+                {complete ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
+                <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
+                  <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                    {isRejected ? 'Corrección pendiente' : d.status === 'in_review' ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
+                  </span>
+                  {d.due_date && <span className="text-gray-400">Vence: {fmtDate(d.due_date)}</span>}
+                </div>
+                {d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
+              </div>
+              {canSubmit && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700">
+                {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
+              </button>}
+            </div>
+            {opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
+              <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+              <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div>
+            </div>}
+          </div>
+        })}
+      </div>
+    </section>
+  )
 }
 
 // ── Add deliverable (self-created campaigns) ──────────────────────────────────
@@ -481,10 +562,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const campStatus   = isPending
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
-  // Nota: campaign_deliverables ya no se lista acá — el detalle de campaña
-  // muestra el brief/guías/tags; el progreso y la subida de entregables
-  // vive en la sección Entregables, pedido explícito de Pri para
-  // no duplicar la misma información en dos lugares.
+  // Los entregables se muestran también aquí: esta es la ruta natural al
+  // abrir una campaña desde "Campañas" y permite subir/corregir sin cambiar
+  // de sección. "Mis entregables" conserva la vista consolidada.
 
   return (
     <div className="space-y-5">
@@ -598,6 +678,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             de esto, solo lo de arriba (nombre, marca, fechas). */}
         {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
       </div>
+
+      {!isPending && <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />}
 
       {!isPending && assets.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">

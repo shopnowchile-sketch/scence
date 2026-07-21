@@ -45,7 +45,7 @@ const DELIVERABLE_STATUS: Record<string, { label: string; color: string }> = {
   pending:    { label: 'Pendiente',    color: 'bg-amber-100 text-amber-700' },
   in_review:  { label: 'En revisión', color: 'bg-blue-100 text-blue-700' },
   approved:   { label: 'Aprobado',    color: 'bg-green-100 text-green-700' },
-  rejected:   { label: 'Rechazado',   color: 'bg-red-100 text-red-700' },
+  rejected:   { label: 'Corrección pendiente', color: 'bg-amber-100 text-amber-700' },
   published:  { label: 'Publicado',   color: 'bg-violet-100 text-violet-700' },
 }
 
@@ -159,7 +159,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
     : d.status === 'in_review'
     ? 'bg-blue-50 text-blue-500'
     : d.status === 'rejected'
-    ? 'bg-red-50 text-red-500'
+    ? 'bg-amber-50 text-amber-500'
     : 'bg-amber-50 text-amber-500'
 
   return (

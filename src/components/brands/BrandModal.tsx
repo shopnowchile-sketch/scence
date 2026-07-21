@@ -14,6 +14,7 @@ export type BrandModalEditing = {
   name: string
   logo_url: string | null
   website: string | null
+  instagram?: string | null
   industry: string | null
   contact_name: string | null
   contact_email: string | null
@@ -22,7 +23,7 @@ export type BrandModalEditing = {
 }
 
 type FormData = {
-  name: string; logo_url: string; website: string; industry: string
+  name: string; logo_url: string; website: string; instagram: string; industry: string
   contact_name: string; contact_email: string; contact_phone: string; notes: string
 }
 
@@ -33,7 +34,7 @@ export const BRAND_INDUSTRIES = [
 ]
 
 const EMPTY_FORM: FormData = {
-  name: '', logo_url: '', website: '', industry: '',
+  name: '', logo_url: '', website: '', instagram: '', industry: '',
   contact_name: '', contact_email: '', contact_phone: '', notes: '',
 }
 
@@ -54,6 +55,7 @@ export function BrandModal({
           name: editing.name,
           logo_url: editing.logo_url ?? '',
           website: editing.website ?? '',
+          instagram: editing.instagram ?? '',
           industry: editing.industry ?? '',
           contact_name: editing.contact_name ?? '',
           contact_email: editing.contact_email ?? '',
@@ -80,6 +82,7 @@ export function BrandModal({
           ...form,
           logo_url:      form.logo_url || null,
           website:       form.website || null,
+          instagram:     form.instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') || null,
           industry:      form.industry || null,
           contact_name:  form.contact_name || null,
           contact_email: form.contact_email || null,
@@ -142,6 +145,11 @@ export function BrandModal({
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Logo URL</label>
             <input className="input-base w-full" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} placeholder="https://..." />
+          </div>
+          <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-3">
+            <label className="block text-xs font-semibold text-violet-900 mb-1">Instagram para etiquetar</label>
+            <input className="input-base w-full bg-white" value={form.instagram} onChange={e => set('instagram', e.target.value)} placeholder="@marca o https://instagram.com/marca" />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-violet-700">Las influencers verán este usuario en las campañas donde participe esta marca, para saber a quién etiquetar.</p>
           </div>
           <div className="border-t border-gray-100 pt-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Contacto</p>

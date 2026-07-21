@@ -144,6 +144,9 @@ export async function POST(req: NextRequest) {
 
   const name = String(body.name ?? '').trim()
   const email = String(body.contact_email ?? '').trim().toLowerCase()
+  const instagram = typeof body.instagram === 'string'
+    ? body.instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') || null
+    : null
 
   if (!name) {
     return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 422 })
@@ -192,6 +195,7 @@ export async function POST(req: NextRequest) {
       name,
       logo_url: body.logo_url || null,
       website: body.website || null,
+      instagram,
       industry: body.industry || null,
       contact_name: body.contact_name || null,
       contact_email: email,

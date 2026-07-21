@@ -175,6 +175,9 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { name, logo_url, website, industry, contact_name, contact_email, contact_phone, notes } = body
+  const instagram = typeof body.instagram === 'string'
+    ? body.instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') || null
+    : null
 
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 422 })
 
@@ -191,6 +194,7 @@ export async function POST(req: NextRequest) {
       name,
       logo_url:      logo_url ?? null,
       website:       website ?? null,
+      instagram,
       industry:      industry ?? null,
       contact_name:  contact_name ?? null,
       contact_email: contact_email ?? null,

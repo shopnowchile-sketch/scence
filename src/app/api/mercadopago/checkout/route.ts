@@ -8,6 +8,8 @@ const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
 
 export async function POST(req: NextRequest) {
   const isPreview = process.env.VERCEL_ENV === 'preview'
+  // Suscripciones se prueba entre usuarios test con el APP_USR de pruebas de
+  // la aplicación. No corresponde usar una credencial TEST- ni X-scope: stage.
   const token = isPreview && process.env.MERCADOPAGO_TEST_ACCESS_TOKEN
     ? process.env.MERCADOPAGO_TEST_ACCESS_TOKEN
     : process.env.MERCADOPAGO_ACCESS_TOKEN
@@ -24,8 +26,8 @@ export async function POST(req: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.email) return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
 
-  // En Sandbox el pagador debe ser el email REAL del usuario de prueba
-  // "Comprador" generado en Mercado Pago; nunca el email de la marca real.
+  // El pagador es el email REAL del usuario test Comprador generado en Mercado
+  // Pago; nunca el email de la marca real que inició sesión.
   const configuredTestPayer = process.env.MERCADOPAGO_TEST_PAYER_EMAIL
   if (isPreview && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configuredTestPayer ?? '')) {
     return NextResponse.json(
@@ -53,7 +55,7 @@ export async function POST(req: NextRequest) {
 
   const externalReference = `${access.organizationId}:${planRow.id}:${tier}`
   // En Preview usamos su propio dominio para que el webhook también use las
-  // credenciales Sandbox. En Production conserva el dominio público de SCENCE.
+  // credenciales de pruebas. En Production conserva el dominio público de SCENCE.
   const appUrl = isPreview ? req.nextUrl.origin : APP_URL
   const notificationUrl = `${appUrl}/api/mercadopago/webhook`
 
@@ -63,7 +65,6 @@ export async function POST(req: NextRequest) {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       'X-Idempotency-Key': `${access.organizationId}-${tier}-${Date.now()}`,
-      ...(isPreview ? { 'X-scope': 'stage' } : {}),
     },
     body: JSON.stringify({
       reason: `Suscripción mensual SCENCE ${planRow.name}`,
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
       const identityResponse = await fetch('https://api.mercadopago.com/users/me', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
       const error = identityResponse.ok
         ? 'El token es válido, pero esta aplicación no tiene autorización para crear Suscripciones. Revisa que sea la misma aplicación de Mercado Pago que tiene habilitado el producto Suscripciones.'
-        : 'El Access Token de este entorno no es válido. En Preview usa el Access Token de pruebas que comienza con TEST-; en Producción usa el de producción que comienza con APP_USR-.'
+        : 'El Access Token de este entorno no es válido. En Preview usa el APP_USR de pruebas de la aplicación y en Producción el APP_USR de producción.'
       return NextResponse.json({ error }, { status: 502 })
     }
     return NextResponse.json({ error: result?.message ?? 'No se pudo iniciar la suscripción en Mercado Pago.' }, { status: 502 })

@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Check, RefreshCw, Sparkles, Clock, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -71,6 +72,7 @@ const PAYPAL_USD_PRICES: Record<PlanTier, { launch: number; regular: number }> =
 }
 
 export function BrandPlanSettings() {
+  const router = useRouter()
   const [orgPlan, setOrgPlan] = useState<string>('free')
   const [loading, setLoading] = useState(true)
   const [checkoutLoading, setCheckoutLoading] = useState<{ tier: PlanTier; provider: 'paypal' } | null>(null)
@@ -110,13 +112,14 @@ export function BrandPlanSettings() {
       .then(async (res) => {
         const json = await res.json()
         if (!res.ok) throw new Error(json.error)
-        toast.success('Tu plan fue actualizado correctamente.')
+        toast.success('Tu pago fue confirmado. Ahora crea tu primera campaña.')
         window.history.replaceState({}, '', window.location.pathname)
-        return load()
+        await load()
+        router.replace('/brand-campaigns/new')
       })
       .catch((error) => toast.error(error.message ?? 'Estamos confirmando tu pago.'))
       .finally(() => setPaymentProcessing(false))
-  }, [load])
+  }, [load, router])
 
   const currentTier = getPlanTier(orgPlan)
   const currentInfo = PLAN_LIMITS[currentTier]

@@ -43,9 +43,24 @@ export async function GET() {
   if (error || !data) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
   // Plan efectivo individual de esta marca.
-  const orgPlan = await resolveBrandPlan(admin, data.organization_id, data.id)
+  const [orgPlan, activeSubscription] = await Promise.all([
+    resolveBrandPlan(admin, data.organization_id, data.id),
+    admin
+      .from('subscriptions')
+      .select('id')
+      .eq('organization_id', data.organization_id)
+      .in('status', ['active', 'trialing'])
+      .limit(1)
+      .maybeSingle(),
+  ])
   return NextResponse.json({
-    data: { ...data, org_plan: orgPlan, member_role: access.role, is_owner: access.isOwner },
+    data: {
+      ...data,
+      org_plan: orgPlan,
+      has_active_subscription: Boolean(activeSubscription.data),
+      member_role: access.role,
+      is_owner: access.isOwner,
+    },
   })
 }
 

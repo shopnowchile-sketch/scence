@@ -21,11 +21,12 @@ export async function POST(request: NextRequest) {
   if (!tokenResponse.ok || !token.access_token) return NextResponse.json({ error: 'No se pudo validar PayPal.' }, { status: 502 })
   const detailsResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: { Authorization: `Bearer ${token.access_token}` }, cache: 'no-store' })
   const subscription = await detailsResponse.json()
-  const [organizationId, , tier] = String(subscription.custom_id ?? '').split(':')
+  const [organizationId, planId, tier] = String(subscription.custom_id ?? '').split(':')
   if (!detailsResponse.ok || organizationId !== access.organizationId || !['basic', 'growth', 'pro'].includes(tier) || subscription.status !== 'ACTIVE') return NextResponse.json({ error: 'La suscripciÃ³n aÃºn no estÃ¡ activa.' }, { status: 409 })
   const admin = createAdminClient()
   const { error } = await admin.from('organizations').update({ subscription_plan: tier }).eq('id', access.organizationId)
   if (error) return NextResponse.json({ error: 'No se pudo actualizar el plan.' }, { status: 500 })
+  await admin.from('subscriptions').update({ plan_id: planId }).eq('organization_id', access.organizationId).in('status', ['active', 'trialing'])
   const pricing = { basic: ['Basic', '79.00', '106.65'], growth: ['Growth', '279.00', '376.65'], pro: ['Pro', '749.00', '1011.15'] } as const
   const [name, launch, regular] = pricing[tier as 'basic' | 'growth' | 'pro']
   if (user.email) {

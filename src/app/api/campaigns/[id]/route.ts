@@ -98,6 +98,32 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+
+  // Reparación idempotente de datos legacy: antes algunas relaciones quedaban
+  // como "pending" aun cuando ya tenían entregables/contenido. Un entregable
+  // demuestra participación real, por lo que la relación debe aparecer como
+  // aceptada y activa. Solo cambia filas pendientes; no toca invitaciones sin
+  // trabajo ni estados que ya fueron resueltos.
+  const { data: legacyDeliverables } = await admin
+    .from('campaign_deliverables')
+    .select('campaign_influencer_id')
+    .eq('campaign_id', params.id)
+    .not('campaign_influencer_id', 'is', null)
+
+  const legacyRelationIds = Array.from(new Set(
+    (legacyDeliverables ?? [])
+      .map(row => row.campaign_influencer_id)
+      .filter((value): value is string => Boolean(value)),
+  ))
+
+  if (legacyRelationIds.length > 0) {
+    await admin
+      .from('campaign_influencers')
+      .update({ application_status: 'accepted', status: 'active', accepted_at: new Date().toISOString() })
+      .in('id', legacyRelationIds)
+      .eq('application_status', 'pending')
+  }
+
   const { data, error } = await admin
     .from('campaigns')
     .select(`

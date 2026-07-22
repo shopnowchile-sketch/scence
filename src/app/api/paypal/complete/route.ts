@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
   const { error } = await admin.from('organizations').update({ subscription_plan: tier }).eq('id', access.organizationId)
   if (error) return NextResponse.json({ error: 'No se pudo actualizar el plan.' }, { status: 500 })
   await admin.from('subscriptions').update({ plan_id: planId }).eq('organization_id', access.organizationId).in('status', ['active', 'trialing'])
+  await admin.from('brands').update({ subscription_plan_override: tier }).eq('id', access.brandId)
   const pricing = { basic: ['Basic', '79.00', '106.65'], growth: ['Growth', '279.00', '376.65'], pro: ['Pro', '749.00', '1011.15'] } as const
   const [name, launch, regular] = pricing[tier as 'basic' | 'growth' | 'pro']
   if (user.email) {

@@ -29,15 +29,17 @@ export async function POST(request: NextRequest) {
     .select('id, paypal_subscription_id')
     .eq('organization_id', access.organizationId)
     .in('status', ['active', 'trialing'])
-  const previous = activeSubscriptions?.find((row) => row.paypal_subscription_id && row.paypal_subscription_id !== subscriptionId) ?? null
+  const activeRows = activeSubscriptions ?? []
+  const current = activeRows.find((row) => row.paypal_subscription_id === subscriptionId) ?? null
+  const previous = activeRows.find((row) => row.paypal_subscription_id && row.paypal_subscription_id !== subscriptionId) ?? null
   const { error } = await admin.from('organizations').update({ subscription_plan: tier }).eq('id', access.organizationId)
   if (error) return NextResponse.json({ error: 'No se pudo actualizar el plan.' }, { status: 500 })
   const subscriptionRow = { organization_id: access.organizationId, plan_id: planId, status: 'active', current_period_start: subscription.start_time ?? subscription.create_time, current_period_end: subscription.billing_info?.next_billing_time ?? subscription.start_time ?? subscription.create_time, paypal_subscription_id: subscriptionId, paypal_payer_id: subscription.subscriber?.payer_id ?? null, updated_at: new Date().toISOString() }
-  if (previous) {
-    const { error: insertError } = await admin.from('subscriptions').insert(subscriptionRow)
-    if (insertError) return NextResponse.json({ error: 'No se pudo guardar la nueva suscripción.' }, { status: 500 })
-  } else {
-    await admin.from('subscriptions').update(subscriptionRow).eq('organization_id', access.organizationId).in('status', ['active', 'trialing'])
+  if (!current) {
+    const result = previous || activeRows.length === 0
+      ? await admin.from('subscriptions').insert(subscriptionRow)
+      : await admin.from('subscriptions').update(subscriptionRow).eq('organization_id', access.organizationId).in('status', ['active', 'trialing'])
+    if (result.error) return NextResponse.json({ error: 'No se pudo guardar la nueva suscripción.' }, { status: 500 })
   }
   await admin.from('brands').update({ subscription_plan_override: tier }).eq('id', access.brandId)
   if (previous?.paypal_subscription_id) {

@@ -202,6 +202,36 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+
+  // No borrar una relación si ya tiene entregables: campaign_deliverables
+  // referencia campaign_influencers con ON DELETE CASCADE, por lo que una
+  // eliminación directa borraría también contenido entregado. Esto cubre
+  // invitaciones antiguas que aún aparecen como "pending" aunque la creadora
+  // sí haya trabajado en la campaña.
+  const { data: relation } = await admin
+    .from('campaign_influencers')
+    .select('id')
+    .eq('campaign_id', params.id)
+    .eq('influencer_id', influencerId)
+    .maybeSingle()
+
+  if (relation) {
+    const { count, error: deliverablesError } = await admin
+      .from('campaign_deliverables')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_influencer_id', relation.id)
+
+    if (deliverablesError) {
+      return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
+    }
+    if ((count ?? 0) > 0) {
+      return NextResponse.json({
+        error: 'No se puede quitar esta influencer porque tiene entregables asociados. Su contenido se conserva en la campaña.',
+        code: 'CAMPAIGN_INFLUENCER_HAS_DELIVERABLES',
+      }, { status: 409 })
+    }
+  }
+
   const { error } = await admin
     .from('campaign_influencers')
     .delete()

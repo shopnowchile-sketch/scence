@@ -73,7 +73,7 @@ const PAYPAL_USD_PRICES: Record<PlanTier, { launch: number; regular: number }> =
 export function BrandPlanSettings() {
   const [orgPlan, setOrgPlan] = useState<string>('free')
   const [loading, setLoading] = useState(true)
-  const [checkoutLoading, setCheckoutLoading] = useState<{ tier: PlanTier; provider: 'mercadopago' | 'paypal' } | null>(null)
+  const [checkoutLoading, setCheckoutLoading] = useState<{ tier: PlanTier; provider: 'paypal' } | null>(null)
   const [prices, setPrices] = useState<Partial<Record<PlanTier, number>>>({})
   const [paymentProcessing, setPaymentProcessing] = useState(false)
 
@@ -121,7 +121,7 @@ export function BrandPlanSettings() {
   const currentTier = getPlanTier(orgPlan)
   const currentInfo = PLAN_LIMITS[currentTier]
 
-  async function activatePlan(tier: PlanTier, provider: 'mercadopago' | 'paypal') {
+  async function activatePlan(tier: PlanTier, provider: 'paypal') {
     setCheckoutLoading({ tier, provider })
     try {
       const res = await fetch(`/api/${provider}/checkout`, {
@@ -137,7 +137,7 @@ export function BrandPlanSettings() {
         return
       }
 
-      toast.error(json.error ?? `No se pudo iniciar ${provider === 'paypal' ? 'PayPal' : 'Mercado Pago'}`)
+      toast.error(json.error ?? 'No se pudo iniciar PayPal')
     } catch (e) {
       toast.error((e as Error).message ?? 'No se pudo conectar con el medio de pago')
     } finally {
@@ -237,7 +237,7 @@ export function BrandPlanSettings() {
                   </span>
                   <span className="text-xs text-gray-400 mb-0.5">CLP/mes</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Cobro mensual automático con Mercado Pago o PayPal</p>
+                <p className="text-xs text-gray-500 mt-1">Cobro mensual automático con PayPal</p>
               </div>
 
               {/* Features */}
@@ -262,20 +262,6 @@ export function BrandPlanSettings() {
                 <div className="space-y-2">
                   <button
                     type="button"
-                    onClick={() => activatePlan(tier, 'mercadopago')}
-                    disabled={checkoutLoading?.tier === tier}
-                    className={cn(
-                      'w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl transition-colors disabled:opacity-60',
-                      highlight
-                        ? 'bg-violet-600 text-white hover:bg-violet-700'
-                        : 'border border-gray-200 text-gray-700 hover:bg-gray-50',
-                    )}
-                  >
-                    Pagar con Mercado Pago
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => activatePlan(tier, 'paypal')}
                     disabled={checkoutLoading?.tier === tier}
                     className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl border border-[#0070ba]/25 text-[#003087] hover:bg-[#f5f9ff] transition-colors disabled:opacity-60"
@@ -295,7 +281,7 @@ export function BrandPlanSettings() {
 
       {/* Nota método de pago */}
       <p className="text-xs text-gray-400 text-center pb-4">
-        Elige Mercado Pago en CLP o PayPal en USD. Tu acceso se actualiza cuando la suscripción sea aprobada.
+        Paga con PayPal en USD. Tu acceso se actualiza cuando la suscripción sea aprobada.
       </p>
     </div>
   )

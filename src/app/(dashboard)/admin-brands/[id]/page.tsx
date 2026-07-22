@@ -145,7 +145,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     notes: '',
   })
 
-  const campaigns = brand?.campaigns ?? []
+  const campaigns = useMemo(() => brand?.campaigns ?? [], [brand?.campaigns])
   const activeCampaigns = useMemo(() => campaigns.filter(c => c.status === 'active'), [campaigns])
 
   const load = useCallback(async () => {

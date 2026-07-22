@@ -43,6 +43,10 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // "no me aparece la pestaña de los lugares"). Ahora se exime toda la
   // sección de Configuración, no solo esa sub-ruta.
   const isProfilePage = pathname.startsWith('/brand-settings')
+  // Una marca nueva puede revisar y contratar un plan aun antes de estar
+  // aprobada. Las demás secciones operativas siguen bloqueadas hasta que el
+  // pago confirme la activación de su cuenta.
+  const isPlanPage = pathname.startsWith('/brand-settings/plan')
 
   useEffect(() => {
     let cancelled = false
@@ -168,7 +172,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
       <BrandSidebar plan={brandPlan} />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
-          {pendingApproval ? (
+          {pendingApproval && !isPlanPage ? (
             <div className="flex items-center justify-center min-h-[60vh]">
               <div className="max-w-sm text-center">
                 <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">

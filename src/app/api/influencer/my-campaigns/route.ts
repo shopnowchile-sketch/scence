@@ -157,6 +157,49 @@ export async function GET() {
     }))
 
   const merged = [...visibleAssignedFiltered, ...selfWrapped]
+
+  // La fecha, hora y dirección de un evento viven en `bookings`, que es
+  // también la fuente usada por el calendario. Se agregan al detalle de la
+  // campaña para que la influencer vea exactamente la misma información que
+  // se sincroniza con Google Calendar, sin duplicar campos en campaigns.
+  const campaignIds = merged
+    .map((row: Record<string, unknown>) => (row.campaign as Record<string, unknown> | null)?.id)
+    .filter(Boolean) as string[]
+
+  if (campaignIds.length > 0) {
+    const [directBookings, linkedBookings] = await Promise.all([
+      admin
+        .from('bookings')
+        .select('id, campaign_id, title, starts_at, ends_at, location, status')
+        .eq('influencer_id', influencer.id)
+        .in('campaign_id', campaignIds)
+        .order('starts_at', { ascending: true }),
+      admin
+        .from('booking_influencers')
+        .select('booking:bookings (id, campaign_id, title, starts_at, ends_at, location, status)')
+        .eq('influencer_id', influencer.id),
+    ])
+
+    const byCampaign = new Map<string, Record<string, unknown>>()
+    for (const booking of directBookings.data ?? []) {
+      if (booking.campaign_id && !byCampaign.has(booking.campaign_id)) {
+        byCampaign.set(booking.campaign_id, booking as Record<string, unknown>)
+      }
+    }
+    for (const row of linkedBookings.data ?? []) {
+      const booking = row.booking as unknown as Record<string, unknown> | null
+      const campaignId = booking?.campaign_id as string | null | undefined
+      if (campaignId && campaignIds.includes(campaignId) && !byCampaign.has(campaignId)) {
+        byCampaign.set(campaignId, booking)
+      }
+    }
+
+    for (const row of merged as Array<Record<string, unknown>>) {
+      const campaign = row.campaign as Record<string, unknown> | null
+      if (campaign?.id) row.event_booking = byCampaign.get(campaign.id as string) ?? null
+    }
+  }
+
   return NextResponse.json({ data: merged })
 }
 

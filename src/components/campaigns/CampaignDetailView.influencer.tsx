@@ -6,7 +6,7 @@ import {
   ArrowLeft, Building2, FileText, Circle, CheckCircle2,
   Clock, Download, RefreshCw, Gift,
   Plus, X, Loader2, AlertCircle, ChevronDown,
-  Instagram,
+  Instagram, CalendarClock, MapPin,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -38,6 +38,10 @@ type CampaignRow = {
   // `c.campaign_deliverables.filter(...)` tiraba "Cannot read properties of
   // undefined" en TODA campaña asignada (bug real, encontrado por Pri en UAT).
   campaign_deliverables: Deliverable[]
+  event_booking?: {
+    id: string; title: string | null; starts_at: string | null; ends_at: string | null
+    location: string | null; status: string | null
+  } | null
   campaign: {
     id: string; name: string; status: string
     description: string | null
@@ -89,6 +93,31 @@ function activationText(benefit: CampaignBenefitOffer) {
   if (benefit.activation_rule === 'accepted') return 'Incluido al ser aceptada'
   if (benefit.activation_rule === 'raffle') return 'Beneficio por sorteo'
   return 'Activación informada por la marca'
+}
+
+function EventBookingCard({ booking }: { booking: NonNullable<CampaignRow['event_booking']> }) {
+  const startsAt = booking.starts_at ? new Date(booking.starts_at) : null
+  const endsAt = booking.ends_at ? new Date(booking.ends_at) : null
+  const when = startsAt && !Number.isNaN(startsAt.getTime())
+    ? startsAt.toLocaleString('es-CL', { dateStyle: 'full', timeStyle: 'short', timeZone: 'America/Santiago' })
+    : 'Fecha y hora por confirmar'
+  const endTime = endsAt && !Number.isNaN(endsAt.getTime())
+    ? endsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })
+    : null
+
+  return (
+    <section className="mt-4 rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
+      <div className="flex items-center gap-2">
+        <CalendarClock className="h-5 w-5 text-violet-700" />
+        <h3 className="text-sm font-extrabold text-violet-950">Información del evento</h3>
+      </div>
+      <div className="mt-3 space-y-2 text-sm">
+        <div className="flex gap-2.5 text-violet-950"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {when}{endTime ? ` · hasta las ${endTime}` : ''}</span></div>
+        <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Dirección:</b> {booking.location || 'La marca confirmará la dirección pronto.'}</span></div>
+      </div>
+      <p className="mt-3 border-t border-violet-200 pt-3 text-xs font-medium leading-relaxed text-violet-800">Tu entrada o confirmación llegará por correo cuando la marca la envíe y, como máximo, el día anterior al evento.</p>
+    </section>
+  )
 }
 
 type CampaignAsset = {
@@ -677,6 +706,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
         {/* El brief es la primera acción: antes de fechas, métricas o tareas. */}
         {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
+
+        {data.event_booking && <EventBookingCard booking={data.event_booking} />}
 
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
           <div>

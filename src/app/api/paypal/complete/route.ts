@@ -42,7 +42,9 @@ export async function POST(request: NextRequest) {
       : await admin.from('subscriptions').update(subscriptionRow).eq('organization_id', access.organizationId).in('status', ['active', 'trialing'])
     if (result.error) return NextResponse.json({ error: 'No se pudo guardar la nueva suscripción.' }, { status: 500 })
   }
-  await admin.from('brands').update({ subscription_plan_override: tier }).eq('id', access.brandId)
+  // El pago confirmado activa la cuenta de una marca autorregistrada. Desde
+  // este punto puede entrar al flujo de creación de su primera campaña.
+  await admin.from('brands').update({ subscription_plan_override: tier, status: 'approved' }).eq('id', access.brandId)
   if (previous?.paypal_subscription_id) {
     const cancelResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(previous.paypal_subscription_id)}/cancel`, {
       method: 'POST',

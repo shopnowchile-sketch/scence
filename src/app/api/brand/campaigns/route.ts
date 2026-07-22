@@ -151,6 +151,27 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Crear campañas es una funcionalidad disponible solo después del pago.
+  // Los límites del plan se evalúan más abajo; este chequeo evita que una
+  // marca recién registrada pueda usar incluso la campaña Basic antes de que
+  // PayPal confirme su suscripción. Una PYME puede pagar Basic y luego recibir
+  // permisos Pro mediante el override administrativo, pero el pago activo
+  // sigue siendo requisito para ambas modalidades.
+  const { data: activeSubscription } = await admin
+    .from('subscriptions')
+    .select('id')
+    .eq('organization_id', brand.organization_id)
+    .in('status', ['active', 'trialing'])
+    .limit(1)
+    .maybeSingle()
+
+  if (!activeSubscription) {
+    return NextResponse.json({
+      error: 'Para crear tu primera campaña, primero debes activar un plan de SCENCE.',
+      code: 'SUBSCRIPTION_REQUIRED',
+    }, { status: 402 })
+  }
+
   // ── Plan gating ───────────────────────────────────────────────────────────
   // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
   const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)

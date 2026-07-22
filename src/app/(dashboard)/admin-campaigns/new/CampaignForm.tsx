@@ -879,9 +879,9 @@ export function CampaignForm({
       if (!res.ok) {
         const err = await res.json()
         // Límite de plan (portal marca): ofrecer acción de subir de plan.
-        if (planGating && err.code && String(err.code).startsWith('PLAN_LIMIT_')) {
+        if (planGating && (err.code === 'SUBSCRIPTION_REQUIRED' || (err.code && String(err.code).startsWith('PLAN_LIMIT_')))) {
           toast.error(err.error, {
-            action: { label: 'Subir de plan', onClick: () => router.push('/brand-settings/plan') },
+            action: { label: err.code === 'SUBSCRIPTION_REQUIRED' ? 'Ver planes' : 'Subir de plan', onClick: () => router.push('/brand-settings/plan') },
           })
           return
         }

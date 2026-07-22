@@ -100,6 +100,19 @@ export async function POST(req: NextRequest) {
 
   if (!mpResponse.ok) {
     console.error('[mercadopago/checkout]', result)
+    if (mpResponse.status === 401) {
+      const identityResponse = await fetch('https://api.mercadopago.com/users/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
+
+      const error = identityResponse.ok
+        ? 'El token es válido, pero esta aplicación no tiene autorización para crear Suscripciones. Revisa que sea la misma aplicación de Mercado Pago que tiene habilitado el producto Suscripciones.'
+        : 'El Access Token de este entorno no es válido. En Preview usa el Access Token de pruebas que comienza con TEST-; en Producción usa el de producción que comienza con APP_USR-.'
+
+      return NextResponse.json({ error }, { status: 502 })
+    }
+
     return NextResponse.json(
       { error: result?.message ?? 'No se pudo iniciar la suscripción en Mercado Pago.' },
       { status: 502 },

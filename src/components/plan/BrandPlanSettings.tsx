@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * BrandPlanSettings — UI de suscripción SaaS de marca.
+ * BrandPlanSettings â UI de suscripciÃ³n SaaS de marca.
  * Usado en /brand-settings/plan.
  * No es billing operativo ni payroll.
  */
@@ -20,28 +20,28 @@ const PLAN_DEFS: Array<{
   {
     tier: 'basic',
     features: [
-      'Campañas privadas ilimitadas',
-      'Primera campaña pública incluida',
+      'CampaÃ±as privadas ilimitadas',
+      'Primera campaÃ±a pÃºblica incluida',
       'Contenido ilimitado',
       'Hasta 5 creadoras activas',
-      'Programa de afiliados / códigos',
+      'Programa de afiliados / cÃ³digos',
       '1 marca incluida',
       'Hasta 5 usuarios',
-      'Reportería básica de campañas',
+      'ReporterÃ­a bÃ¡sica de campaÃ±as',
     ],
   },
   {
     tier: 'growth',
     highlight: true,
     features: [
-      'Campañas privadas ilimitadas',
-      'Primera campaña pública incluida',
+      'CampaÃ±as privadas ilimitadas',
+      'Primera campaÃ±a pÃºblica incluida',
       'Contenido ilimitado',
       'Hasta 50 creadoras activas',
-      'Programa de afiliados / códigos',
+      'Programa de afiliados / cÃ³digos',
       'Hasta 3 marcas incluidas',
       'Hasta 10 usuarios',
-      'Reportería avanzada de campañas',
+      'ReporterÃ­a avanzada de campaÃ±as',
       'Soporte preferente',
     ],
   },
@@ -49,16 +49,16 @@ const PLAN_DEFS: Array<{
     tier: 'pro',
     features: [
       'Acceso ilimitado a todo',
-      'Campañas privadas ilimitadas',
-      'Campañas públicas ilimitadas',
+      'CampaÃ±as privadas ilimitadas',
+      'CampaÃ±as pÃºblicas ilimitadas',
       'Marketplace abierto',
       'Postulaciones abiertas de creadoras',
       'Contenido ilimitado',
       'Creadoras ilimitadas',
       'Marcas ilimitadas',
       'Usuarios ilimitados',
-      'Programa de afiliados / códigos',
-      'Reportería completa',
+      'Programa de afiliados / cÃ³digos',
+      'ReporterÃ­a completa',
       'Soporte prioritario',
     ],
   },
@@ -104,10 +104,18 @@ export function BrandPlanSettings() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('checkout') !== 'processing') return
     setPaymentProcessing(true)
-    const timer = window.setTimeout(() => {
-      load().finally(() => setPaymentProcessing(false))
-    }, 3500)
-    return () => window.clearTimeout(timer)
+    const subscriptionId = new URLSearchParams(window.location.search).get('subscription_id')
+    if (!subscriptionId) return
+    fetch(`/api/paypal/complete?subscription_id=${encodeURIComponent(subscriptionId)}`, { method: 'POST' })
+      .then(async (res) => {
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error)
+        toast.success('Tu plan fue actualizado correctamente.')
+        window.history.replaceState({}, '', window.location.pathname)
+        return load()
+      })
+      .catch((error) => toast.error(error.message ?? 'Estamos confirmando tu pago.'))
+      .finally(() => setPaymentProcessing(false))
   }, [load])
 
   const currentTier = getPlanTier(orgPlan)
@@ -151,7 +159,7 @@ export function BrandPlanSettings() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">Suscripción a SCENCE</h2>
+          <h2 className="text-lg font-bold text-gray-900">SuscripciÃ³n a SCENCE</h2>
           <p className="text-sm text-gray-400 mt-0.5">Elige el plan que mejor se adapta a tu marca</p>
         </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -164,11 +172,11 @@ export function BrandPlanSettings() {
         <Sparkles className="h-5 w-5 text-violet-500 flex-shrink-0" />
         <p className="text-sm text-violet-700">
           Tu plan actual: <span className="font-bold">{currentInfo.label}</span>
-          {' · '}
+          {' Â· '}
           {currentTier === 'basic'
-            ? 'Acceso básico a SCENCE'
+            ? 'Acceso bÃ¡sico a SCENCE'
             : currentTier === 'growth'
-              ? 'Más creadoras, marcas y reportería'
+              ? 'MÃ¡s creadoras, marcas y reporterÃ­a'
               : 'Acceso ilimitado a todo'}
         </p>
       </div>
@@ -179,7 +187,7 @@ export function BrandPlanSettings() {
         <div>
           <p className="text-sm font-semibold text-amber-800">Estamos confirmando tu pago</p>
           <p className="text-xs text-amber-700 mt-0.5">
-            El medio de pago nos avisará cuando la suscripción quede aprobada. Esta página se actualizará automáticamente en unos segundos.
+            El medio de pago nos avisarÃ¡ cuando la suscripciÃ³n quede aprobada. Esta pÃ¡gina se actualizarÃ¡ automÃ¡ticamente en unos segundos.
           </p>
         </div>
       </div>
@@ -213,7 +221,7 @@ export function BrandPlanSettings() {
                 )}
                 {highlight && !isCurrent && (
                   <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-600 text-white">
-                    Más popular
+                    MÃ¡s popular
                   </span>
                 )}
               </div>
@@ -229,7 +237,7 @@ export function BrandPlanSettings() {
                   </span>
                   <span className="text-xs text-gray-400 mb-0.5">CLP/mes</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Cobro mensual automático con Mercado Pago o PayPal</p>
+                <p className="text-xs text-gray-500 mt-1">Cobro mensual automÃ¡tico con Mercado Pago o PayPal</p>
               </div>
 
               {/* Features */}
@@ -272,7 +280,7 @@ export function BrandPlanSettings() {
                     disabled={checkoutLoading?.tier === tier}
                     className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl border border-[#0070ba]/25 text-[#003087] hover:bg-[#f5f9ff] transition-colors disabled:opacity-60"
                   >
-                    {checkoutLoading?.tier === tier && checkoutLoading.provider === 'paypal' ? 'Abriendo PayPal…' : `PayPal · US$${PAYPAL_USD_PRICES[tier].launch}/mes`}
+                    {checkoutLoading?.tier === tier && checkoutLoading.provider === 'paypal' ? 'Abriendo PayPalâ¦' : `PayPal Â· US$${PAYPAL_USD_PRICES[tier].launch}/mes`}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                   <p className="text-[11px] leading-4 text-center text-gray-400 -mt-0.5">
@@ -285,9 +293,9 @@ export function BrandPlanSettings() {
         })}
       </div>
 
-      {/* Nota método de pago */}
+      {/* Nota mÃ©todo de pago */}
       <p className="text-xs text-gray-400 text-center pb-4">
-        Elige Mercado Pago en CLP o PayPal en USD. Tu acceso se actualiza cuando la suscripción sea aprobada.
+        Elige Mercado Pago en CLP o PayPal en USD. Tu acceso se actualiza cuando la suscripciÃ³n sea aprobada.
       </p>
     </div>
   )

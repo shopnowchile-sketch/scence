@@ -2381,9 +2381,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           )}
 
-          {/* Invitaciones pendientes (origin='invitation'): la marca invitó; la
-              influencer acepta/rechaza desde su portal cuando la campaña esté
-              activa. La marca NO ve botones Aceptar/Rechazar acá — solo el badge. */}
+          {/* Invitaciones pendientes (origin='invitation'): la influencer
+              acepta/rechaza desde su portal. Admin puede retirarlas, incluso
+              en campañas históricas/completadas; no se ofrece aceptar/rechazar
+              porque la decisión corresponde a la influencer. */}
           {pendingInvitations.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card p-4 border-violet-200 bg-violet-50">
@@ -2437,6 +2438,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       <span className="text-xs font-semibold text-violet-700 bg-violet-100 px-2.5 py-1 rounded-full flex-shrink-0">
                         Pendiente
                       </span>
+                      {!isBrandPortal && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`¿Quitar la invitación de ${inf.display_name}?`)) {
+                              removeInfluencer.mutate(inf.id)
+                            }
+                          }}
+                          disabled={removeInfluencer.isPending}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                          title="Quitar invitación"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   )
                 })}

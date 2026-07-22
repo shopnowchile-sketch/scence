@@ -610,26 +610,26 @@ function CoBrandManager({
   onChanged,
 }: {
   campaignId: string
-  collaborators: Array<{ id: string; name?: string; logo_url?: string | null }>
+  collaborators: Array<{ id: string; name?: string; logo_url?: string | null; instagram?: string | null }>
   canManage: boolean
   onChanged: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const [email, setEmail] = useState('')
+  const [instagram, setInstagram] = useState('')
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  const instagramValid = /^(?:@?[a-z0-9._]{1,30}|https?:\/\/(?:www\.)?instagram\.com\/[a-z0-9._]{1,30}\/?)/i.test(instagram.trim())
 
   async function submit() {
-    if (!emailValid || !name.trim()) return
+    if (!instagramValid || !name.trim()) return
     setSaving(true)
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/brands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), name: name.trim() }),
+        body: JSON.stringify({ instagram: instagram.trim(), name: name.trim() }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
@@ -640,7 +640,7 @@ function CoBrandManager({
         toast.success('Marca creada — queda pendiente de aprobación de Admin. Se asignará a la campaña automáticamente cuando se apruebe.')
       }
       setOpen(false)
-      setEmail('')
+      setInstagram('')
       setName('')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error agregando marca')
@@ -681,12 +681,11 @@ function CoBrandManager({
             </button>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Email del owner de la marca *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Instagram de la marca *</label>
             <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="owner@marca.com"
+              value={instagram}
+              onChange={e => setInstagram(e.target.value)}
+              placeholder="@marca o instagram.com/marca"
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
             />
           </div>
@@ -700,9 +699,9 @@ function CoBrandManager({
             />
           </div>
           <p className="text-[11px] text-gray-400">
-            Si ese email ya pertenece a una marca de SCENCE, se agrega directo. Si no, se crea una marca nueva pendiente de aprobación de Admin.
+            Si ese Instagram ya pertenece a una marca de SCENCE, se agrega directo. Si no, se crea la marca y queda pendiente de aprobación de Admin.
           </p>
-          <button type="button" onClick={submit} disabled={saving || !emailValid || !name.trim()}
+          <button type="button" onClick={submit} disabled={saving || !instagramValid || !name.trim()}
             className="w-full py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             {saving ? 'Guardando…' : 'Agregar'}
@@ -714,7 +713,14 @@ function CoBrandManager({
         <div className="mt-3 space-y-1.5">
           {collaborators.map(b => (
             <div key={b.id} className="flex items-center justify-between gap-2 text-xs px-2.5 py-1.5 bg-gray-50 rounded-lg">
-              <span className="text-gray-600 truncate">{b.name}</span>
+              <div className="min-w-0">
+                <span className="text-gray-600 truncate block">{b.name}</span>
+                {b.instagram && (
+                  <a href={`https://instagram.com/${b.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline truncate block">
+                    @{${b.instagram.replace(/^@/, '')}}
+                  </a>
+                )}
+              </div>
               <button type="button" onClick={() => remove(b.id)} disabled={removingId === b.id}
                 className="text-red-500 hover:text-red-600 disabled:opacity-50 flex-shrink-0">
                 {removingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
@@ -2013,7 +2019,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   campaignId={id}
                   collaborators={campaignBrands
                     .filter(b => b._role === 'Colaboradora')
-                    .map(b => ({ id: String(b.id), name: String(b.name ?? ''), logo_url: b.logo_url as string | null }))}
+                    .map(b => ({ id: String(b.id), name: String(b.name ?? ''), logo_url: b.logo_url as string | null, instagram: b.instagram as string | null }))}
                   canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
                   onChanged={() => void refetch()}
                 />

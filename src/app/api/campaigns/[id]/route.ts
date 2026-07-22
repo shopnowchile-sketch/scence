@@ -105,7 +105,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
       campaign_brands (
         id,
-        brand:brands (id, name, logo_url, website, contact_name, contact_email)
+        brand:brands (id, name, logo_url, website, instagram, contact_name, contact_email)
       ),
       campaign_influencers (
         id, fee, status, notes, application_status, origin, metadata,

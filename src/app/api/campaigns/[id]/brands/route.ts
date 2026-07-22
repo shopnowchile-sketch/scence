@@ -4,8 +4,26 @@ import { getOrgId, getUserRole, provisionOrgForBrand } from '@/lib/supabase/ensu
 
 type Params = { params: { id: string } }
 
+function normalizeInstagram(value: unknown) {
+  let instagram = String(value ?? '').trim()
+  if (!instagram) return null
+  try {
+    if (/^https?:\/\//i.test(instagram)) {
+      const url = new URL(instagram)
+      if (!/(^|\.)instagram\.com$/i.test(url.hostname)) return null
+      instagram = url.pathname.split('/').filter(Boolean)[0] ?? ''
+    }
+  } catch {
+    return null
+  }
+  instagram = instagram.replace(/^@/, '').replace(/\/$/, '')
+  return /^[a-z0-9._]{1,30}$/i.test(instagram) ? instagram.toLowerCase() : null
+}
+
 // POST /api/campaigns/[id]/brands
-// Alta de marca colaboradora. Dos modos de body:
+// Alta de marca colaboradora. Tres modos de body:
+//   { instagram, name } — flujo principal: identifica la marca por Instagram.
+//     Si no existe, crea su organización y una marca pendiente de aprobación.
 //   { email, name } — flujo nuevo (2026-07-12, pedido de Pri): busca por email
 //     (dedup). Si existe una marca con ese email, se asigna directo. Si no
 //     existe, se crea una marca liviana + organización propia en
@@ -25,15 +43,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
-  let body: { brand_id?: string; role?: string; email?: string; name?: string } = {}
+  let body: { brand_id?: string; role?: string; email?: string; instagram?: string; name?: string } = {}
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  if (!body.brand_id && !body.email) {
-    return NextResponse.json({ error: 'email (o brand_id) requerido' }, { status: 422 })
+  if (!body.brand_id && !body.email && !body.instagram) {
+    return NextResponse.json({ error: 'instagram (o brand_id) requerido' }, { status: 422 })
   }
 
   const { data: campaign, error: campaignError } = await admin
@@ -55,7 +73,51 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
-  // ── Modo nuevo: por email ────────────────────────────────────────────────
+  // ── Modo principal: por Instagram ───────────────────────────────────────
+  if (body.instagram) {
+    const instagram = normalizeInstagram(body.instagram)
+    const name = (body.name ?? '').trim()
+    if (!instagram) return NextResponse.json({ error: 'Instagram inválido. Usa @usuario o una URL de Instagram.' }, { status: 422 })
+    if (!name) return NextResponse.json({ error: 'name es requerido para crear una marca nueva' }, { status: 422 })
+
+    const { data: existingBrand } = await admin
+      .from('brands')
+      .select('id, name, status, instagram')
+      .ilike('instagram', instagram)
+      .maybeSingle()
+
+    if (existingBrand) {
+      if (campaign.brand_id === existingBrand.id) return NextResponse.json({ error: 'Esta marca ya es la marca principal' }, { status: 409 })
+      if (existingBrand.status !== 'approved') {
+        return NextResponse.json({ error: 'Esta marca ya existe y está pendiente de aprobación de Admin.' }, { status: 409 })
+      }
+      const { data, error } = await admin
+        .from('campaign_brands')
+        .upsert({ campaign_id: params.id, brand_id: existingBrand.id, role: 'collaborator', assigned_by: user.id }, { onConflict: 'campaign_id,brand_id' })
+        .select('id, campaign_id, brand_id, role, brand:brands(id, name, logo_url, instagram)')
+        .single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ data, matched: true, approved: true })
+    }
+
+    const newOrgId = await provisionOrgForBrand(name)
+    if (!newOrgId) return NextResponse.json({ error: 'No se pudo crear la organización de la marca' }, { status: 500 })
+    const { data: newBrand, error: newBrandError } = await admin
+      .from('brands')
+      .insert({
+        organization_id: newOrgId,
+        name,
+        instagram,
+        created_by: user.id,
+        metadata: { pending_collab_campaign_id: params.id, invited_by_brand_id: campaign.brand_id, source: 'campaign_collaborator' },
+      })
+      .select('id, name, instagram, status')
+      .single()
+    if (newBrandError) return NextResponse.json({ error: newBrandError.message }, { status: 500 })
+    return NextResponse.json({ data: newBrand, matched: false, pending: true }, { status: 201 })
+  }
+
+  // ── Modo anterior: por email (compatibilidad de API) ─────────────────────
   if (body.email) {
     const email = body.email.trim().toLowerCase()
     const name = (body.name ?? '').trim()

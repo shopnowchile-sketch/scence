@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       'X-Idempotency-Key': `${access.organizationId}-${tier}-${Date.now()}`,
+      ...(isPreview ? { 'X-scope': 'stage' } : {}),
     },
     body: JSON.stringify({
       reason: `Suscripción mensual SCENCE ${planRow.name}`,

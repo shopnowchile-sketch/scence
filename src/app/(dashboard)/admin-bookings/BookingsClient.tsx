@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   Plus, ChevronLeft, ChevronRight,
   List, MapPin, ExternalLink,
@@ -280,7 +280,7 @@ export function BookingsClient() {
   const [deliverables, setDeliverables] = useState<CalDeliverable[]>([])
 
   const { data, isLoading, error: bookingsError, refetch: refetchBookings } = useBookings()
-  const bookings = data?.data ?? []
+  const bookings = useMemo(() => data?.data ?? [], [data?.data])
 
   const updateStatus = useUpdateBookingStatus()
   const cancelMutation = useCancelBooking()

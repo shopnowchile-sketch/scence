@@ -23,6 +23,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // (no bloquear mientras carga, igual que instagramComplete).
   const [brandStatus, setBrandStatus] = useState<string | null>(null)
   const [brandPlan, setBrandPlan] = useState<string | null>(null)
+  const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
   const pathname = usePathname()
   // NOTA (build fix): NO usar useSearchParams() acá. Este layout envuelve
   // TODAS las rutas /brand-*, y useSearchParams() sin un boundary Suspense
@@ -63,6 +64,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
           if (!cancelled) {
             setBrandStatus('error')
             setBrandPlan(null)
+            setHasActiveSubscription(null)
             setInstagramComplete(false)
           }
           return
@@ -74,6 +76,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
         setBrandStatus(json?.data?.status ?? 'error')
         setBrandPlan(typeof json?.data?.org_plan === 'string' ? json.data.org_plan : null)
+        setHasActiveSubscription(json?.data?.has_active_subscription === true)
         setInstagramComplete(
           Boolean(
             json?.data?.instagram &&
@@ -86,6 +89,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         if (!cancelled) {
           setBrandStatus('error')
           setBrandPlan(null)
+          setHasActiveSubscription(null)
           setInstagramComplete(false)
         }
       }
@@ -99,6 +103,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
       setBrandStatus(null)
       setBrandPlan(null)
+      setHasActiveSubscription(null)
       setInstagramComplete(null)
 
       let registered = false
@@ -126,6 +131,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
       if (!registered) {
         setBrandStatus('error')
         setBrandPlan(null)
+        setHasActiveSubscription(null)
         setInstagramComplete(false)
 
         toast.error(
@@ -158,13 +164,22 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
     if (instagramComplete === false && !isProfilePage) router.replace('/brand-settings/organization?complete=1')
   }, [instagramComplete, isProfilePage, router])
 
+  // Antes del primer pago, la única sección disponible para una marca es
+  // Planes. Así una cuenta recién creada (o una ya aprobada como Xtronails)
+  // no navega el portal ni inicia una campaña sin una suscripción activa.
+  useEffect(() => {
+    if (hasActiveSubscription === false && !isPlanPage) router.replace('/brand-settings/plan')
+  }, [hasActiveSubscription, isPlanPage, router])
+
   // Marca autorregistrada sin aprobar todavía por un admin → sin acceso al
   // portal operativo (regla de producto explícita). Prioridad sobre el gate
   // de Instagram: si no está aprobada, ni siquiera importa si falta Instagram.
   const approved = brandStatus === 'approved'
-  const loadingStatus = instagramComplete === null || brandStatus === null
+  const loadingStatus = instagramComplete === null || brandStatus === null || hasActiveSubscription === null
   const pendingApproval = !loadingStatus && !approved
-  const blocked = loadingStatus || (approved && instagramComplete === false && !isProfilePage)
+  const blocked = loadingStatus
+    || (hasActiveSubscription === false && !isPlanPage)
+    || (approved && instagramComplete === false && !isProfilePage)
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">

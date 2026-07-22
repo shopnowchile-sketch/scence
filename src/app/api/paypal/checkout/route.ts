@@ -35,28 +35,16 @@ export async function POST(request: NextRequest) {
   const paypalPlanId = planIdFor(tier)
   if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavÃ­a no estÃ¡ habilitado para este plan.' }, { status: 503 })
   const admin = createAdminClient()
-  // La base existente usa `starter` para el plan Basic. Aceptamos ambos
-  // valores para no bloquear pagos mientras se conserva esa nomenclatura.
-  const planTiers = tier === 'basic' ? ['basic', 'starter'] : [tier]
-  let { data: planRow, error: planError } = await admin
+  // En la base, el plan que la UI llama Basic se almacena como `starter`.
+  // La columna es un enum, por lo que no se puede consultar `basic` allÃ­.
+  const databaseTier = tier === 'basic' ? 'starter' : tier
+  const { data: planRow, error: planError } = await admin
     .from('subscription_plans')
     .select('id')
-    .in('tier', planTiers)
+    .eq('tier', databaseTier)
     .eq('is_active', true)
     .limit(1)
     .maybeSingle()
-
-  // Si la instalaciÃ³n conserva un nombre legacy distinto, Basic siempre se
-  // asocia al plan activo de menor precio (el plan de entrada de SCENCE).
-  if (tier === 'basic' && !planRow && !planError) {
-    ;({ data: planRow, error: planError } = await admin
-      .from('subscription_plans')
-      .select('id')
-      .eq('is_active', true)
-      .order('price_monthly', { ascending: true })
-      .limit(1)
-      .maybeSingle())
-  }
   if (planError || !planRow) return NextResponse.json({ error: 'El plan seleccionado no estÃ¡ configurado en SCENCE.' }, { status: 500 })
   try {
     const token = await getAccessToken()

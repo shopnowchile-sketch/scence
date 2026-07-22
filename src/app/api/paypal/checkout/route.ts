@@ -1,130 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
-import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits'
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { type PlanTier } from '@/lib/plan-limits'
 
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
 
-const PAYPAL_USD_PRICE: Record<PlanTier, number> = {
-  basic: 79,
-  growth: 279,
-  pro: 749,
-}
+function paypalBaseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
 
-function paypalBaseUrl() {
-  return process.env.PAYPAL_ENV === 'live'
-    ? 'https://api-m.paypal.com'
-    : 'https://api-m.sandbox.paypal.com'
-}
-
-async function getPayPalAccessToken() {
+async function getAccessToken() {
   const clientId = process.env.PAYPAL_CLIENT_ID
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET
-
-  if (!clientId || !clientSecret) {
-    throw new Error('PayPal no está configurado')
-  }
-
-  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
-
-  const res = await fetch(`${paypalBaseUrl()}/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials',
-  })
-
-  const json = await res.json()
-
-  if (!res.ok) {
-    console.error('[PayPal OAuth]', json)
-    throw new Error('No se pudo autenticar con PayPal')
-  }
-
-  return json.access_token as string
+  if (!clientId || !clientSecret) throw new Error('PayPal no estÃ¡ configurado')
+  const authorization = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+  const response = await fetch(`${paypalBaseUrl()}/v1/oauth2/token`, { method: 'POST', headers: { Authorization: `Basic ${authorization}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials', cache: 'no-store' })
+  const result = await response.json()
+  if (!response.ok || !result.access_token) throw new Error('No se pudo autenticar con PayPal')
+  return result.access_token as string
 }
 
-export async function POST(req: NextRequest) {
+function planIdFor(tier: PlanTier) {
+  return ({ basic: process.env.PAYPAL_BASIC_PLAN_ID, growth: process.env.PAYPAL_GROWTH_PLAN_ID, pro: process.env.PAYPAL_PRO_PLAN_ID } as Record<PlanTier, string | undefined>)[tier]
+}
+
+export async function POST(request: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-
-  if (!orgId) {
-    return NextResponse.json({ error: 'No organization found' }, { status: 404 })
-  }
-
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   let body: { tier?: PlanTier }
-
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
-
+  try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const tier = body.tier
-
-  if (!tier || !VALID_TIERS.includes(tier)) {
-    return NextResponse.json({ error: 'Plan inválido' }, { status: 422 })
-  }
-
-  const plan = PLAN_LIMITS[tier]
-  const monthlyUsd = PAYPAL_USD_PRICE[tier]
-  const firstPaymentUsd = monthlyUsd * 1.5
-
-  const accessToken = await getPayPalAccessToken()
-
-  const res = await fetch(`${paypalBaseUrl()}/v2/checkout/orders`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'PayPal-Request-Id': `scence-${orgId}-${tier}-${Date.now()}`,
-    },
-    body: JSON.stringify({
-      intent: 'CAPTURE',
-      purchase_units: [
-        {
-          reference_id: `${orgId}:${tier}`,
-          description: `SCENCE ${plan.label} — activación mínima 3 meses`,
-          amount: {
-            currency_code: 'USD',
-            value: firstPaymentUsd.toFixed(2),
-          },
-          custom_id: `${orgId}:${tier}`,
-        },
-      ],
-      application_context: {
-        brand_name: 'SCENCE',
-        landing_page: 'LOGIN',
-        user_action: 'PAY_NOW',
-        return_url: `${APP_URL}/brand-settings/plan?paypal=success&tier=${tier}`,
-        cancel_url: `${APP_URL}/brand-settings/plan?paypal=cancel&tier=${tier}`,
-      },
-    }),
-  })
-
-  const json = await res.json()
-
-  if (!res.ok) {
-    console.error('[PayPal order]', json)
-    return NextResponse.json({ error: 'No se pudo crear el checkout de PayPal' }, { status: 500 })
-  }
-
-  const approveUrl = json.links?.find((l: { rel: string; href: string }) => l.rel === 'approve')?.href
-
-  if (!approveUrl) {
-    return NextResponse.json({ error: 'PayPal no devolvió URL de aprobación' }, { status: 500 })
-  }
-
-  return NextResponse.json({ url: approveUrl })
+  if (!tier || !VALID_TIERS.includes(tier)) return NextResponse.json({ error: 'Plan invÃ¡lido' }, { status: 422 })
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
+  const paypalPlanId = planIdFor(tier)
+  if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavÃ­a no estÃ¡ habilitado para este plan.' }, { status: 503 })
+  const admin = createAdminClient()
+  // En la base, el plan que la UI llama Basic se almacena como `starter`.
+  // La columna es un enum, por lo que no se puede consultar `basic` allÃ­.
+  const databaseTier = tier === 'basic' ? 'starter' : tier
+  const { data: planRow, error: planError } = await admin
+    .from('subscription_plans')
+    .select('id')
+    .eq('tier', databaseTier)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+  if (planError || !planRow) return NextResponse.json({ error: 'El plan seleccionado no estÃ¡ configurado en SCENCE.' }, { status: 500 })
+  try {
+    const token = await getAccessToken()
+    const appUrl = process.env.VERCEL_ENV === 'preview' ? request.nextUrl.origin : (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin)
+    const response = await fetch(`${paypalBaseUrl()}/v1/billing/subscriptions`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `scence-${access.organizationId}-${tier}-${Date.now()}` },
+      body: JSON.stringify({ plan_id: paypalPlanId, custom_id: `${access.organizationId}:${planRow.id}:${tier}`, application_context: { brand_name: 'SCENCE', user_action: 'SUBSCRIBE_NOW', return_url: `${appUrl}/brand-settings/plan?checkout=processing&provider=paypal`, cancel_url: `${appUrl}/brand-settings/plan?checkout=cancelled&provider=paypal` } }),
+    })
+    const result = await response.json()
+    if (!response.ok) return NextResponse.json({ error: result?.message ?? 'No se pudo iniciar la suscripciÃ³n con PayPal.' }, { status: 502 })
+    const url = result.links?.find((link: { rel?: string; href?: string }) => link.rel === 'approve')?.href
+    if (!url) return NextResponse.json({ error: 'PayPal no devolviÃ³ una URL de aprobaciÃ³n.' }, { status: 502 })
+    return NextResponse.json({ url, subscription_id: result.id })
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo conectar con PayPal.' }, { status: 502 }) }
 }

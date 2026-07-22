@@ -717,7 +717,7 @@ function CoBrandManager({
                 <span className="text-gray-600 truncate block">{b.name}</span>
                 {b.instagram && (
                   <a href={`https://instagram.com/${b.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline truncate block">
-                    @{${b.instagram.replace(/^@/, '')}}
+                    {`@${b.instagram.replace(/^@/, '')}`}
                   </a>
                 )}
               </div>

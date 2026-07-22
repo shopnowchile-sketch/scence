@@ -5,6 +5,7 @@ import { type PlanTier } from '@/lib/plan-limits'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
+const SANDBOX_PAYER_EMAIL = 'test_payer_1234567890@testuser.com'
 
 export async function POST(req: NextRequest) {
   const isPreview = process.env.VERCEL_ENV === 'preview'
@@ -30,11 +31,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tu cuenta no tiene un email válido para iniciar el pago.' }, { status: 422 })
   }
 
-  // En Preview, Mercado Pago exige que el pagador sea una cuenta de prueba
-  // distinta de la vendedora. Así no dependemos del email real del usuario
-  // que inició sesión en SCENCE durante una prueba sandbox.
-  const payerEmail = isPreview && process.env.MERCADOPAGO_TEST_PAYER_EMAIL
-    ? process.env.MERCADOPAGO_TEST_PAYER_EMAIL
+  // Mercado Pago validates sandbox payers by their `test_payer_*@testuser.com`
+  // email format. The dashboard does not expose an email for its Buyer Test
+  // User, so Preview must not reuse the email of the real SCENCE user.
+  const configuredTestPayer = process.env.MERCADOPAGO_TEST_PAYER_EMAIL
+  const payerEmail = isPreview
+    ? (/^test_payer_\d{1,10}@testuser\.com$/i.test(configuredTestPayer ?? '')
+        ? configuredTestPayer!
+        : SANDBOX_PAYER_EMAIL)
     : user.email
 
   const access = await resolveBrandAccess(user.id)

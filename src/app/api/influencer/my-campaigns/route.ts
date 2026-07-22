@@ -189,7 +189,7 @@ export async function GET() {
     for (const row of linkedBookings.data ?? []) {
       const booking = row.booking as unknown as Record<string, unknown> | null
       const campaignId = booking?.campaign_id as string | null | undefined
-      if (campaignId && campaignIds.includes(campaignId) && !byCampaign.has(campaignId)) {
+      if (booking && campaignId && campaignIds.includes(campaignId) && !byCampaign.has(campaignId)) {
         byCampaign.set(campaignId, booking)
       }
     }

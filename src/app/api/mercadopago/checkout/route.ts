@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
       reason: `Suscripción mensual SCENCE ${planRow.name}`,
       external_reference: externalReference,
       payer_email: payerEmail,
+      status: 'authorized',
       auto_recurring: { frequency: 1, frequency_type: 'months', transaction_amount: monthlyAmount, currency_id: 'CLP' },
       back_url: `${appUrl}/brand-settings/plan?checkout=processing`,
       notification_url: notificationUrl,

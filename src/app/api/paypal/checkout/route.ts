@@ -10,7 +10,7 @@ function paypalBaseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://a
 async function getAccessToken() {
   const clientId = process.env.PAYPAL_CLIENT_ID
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET
-  if (!clientId || !clientSecret) throw new Error('PayPal no está configurado')
+  if (!clientId || !clientSecret) throw new Error('PayPal no estÃ¡ configurado')
   const authorization = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
   const response = await fetch(`${paypalBaseUrl()}/v1/oauth2/token`, { method: 'POST', headers: { Authorization: `Basic ${authorization}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials', cache: 'no-store' })
   const result = await response.json()
@@ -29,14 +29,23 @@ export async function POST(request: NextRequest) {
   let body: { tier?: PlanTier }
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const tier = body.tier
-  if (!tier || !VALID_TIERS.includes(tier)) return NextResponse.json({ error: 'Plan inválido' }, { status: 422 })
+  if (!tier || !VALID_TIERS.includes(tier)) return NextResponse.json({ error: 'Plan invÃ¡lido' }, { status: 422 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
   const paypalPlanId = planIdFor(tier)
-  if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavía no está habilitado para este plan.' }, { status: 503 })
+  if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavÃ­a no estÃ¡ habilitado para este plan.' }, { status: 503 })
   const admin = createAdminClient()
-  const { data: planRow, error: planError } = await admin.from('subscription_plans').select('id').eq('tier', tier).eq('is_active', true).maybeSingle()
-  if (planError || !planRow) return NextResponse.json({ error: 'El plan seleccionado no está configurado en SCENCE.' }, { status: 500 })
+  // La base existente usa `starter` para el plan Basic. Aceptamos ambos
+  // valores para no bloquear pagos mientras se conserva esa nomenclatura.
+  const planTiers = tier === 'basic' ? ['basic', 'starter'] : [tier]
+  const { data: planRow, error: planError } = await admin
+    .from('subscription_plans')
+    .select('id')
+    .in('tier', planTiers)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+  if (planError || !planRow) return NextResponse.json({ error: 'El plan seleccionado no estÃ¡ configurado en SCENCE.' }, { status: 500 })
   try {
     const token = await getAccessToken()
     const appUrl = process.env.VERCEL_ENV === 'preview' ? request.nextUrl.origin : (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin)
@@ -45,9 +54,9 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ plan_id: paypalPlanId, custom_id: `${access.organizationId}:${planRow.id}:${tier}`, application_context: { brand_name: 'SCENCE', user_action: 'SUBSCRIBE_NOW', return_url: `${appUrl}/brand-settings/plan?checkout=processing&provider=paypal`, cancel_url: `${appUrl}/brand-settings/plan?checkout=cancelled&provider=paypal` } }),
     })
     const result = await response.json()
-    if (!response.ok) return NextResponse.json({ error: result?.message ?? 'No se pudo iniciar la suscripción con PayPal.' }, { status: 502 })
+    if (!response.ok) return NextResponse.json({ error: result?.message ?? 'No se pudo iniciar la suscripciÃ³n con PayPal.' }, { status: 502 })
     const url = result.links?.find((link: { rel?: string; href?: string }) => link.rel === 'approve')?.href
-    if (!url) return NextResponse.json({ error: 'PayPal no devolvió una URL de aprobación.' }, { status: 502 })
+    if (!url) return NextResponse.json({ error: 'PayPal no devolviÃ³ una URL de aprobaciÃ³n.' }, { status: 502 })
     return NextResponse.json({ url, subscription_id: result.id })
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo conectar con PayPal.' }, { status: 502 }) }
 }

@@ -42,7 +42,9 @@ export async function GET() {
 
   if (error || !data) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  // Plan efectivo individual de esta marca.
+  // Un override administrativo es un acceso comercial explícito: permite
+  // trabajar sin una suscripción de pago (ej. marca invitada por canje).
+  // Las marcas sin override siguen requiriendo una suscripción activa.
   const [orgPlan, activeSubscription] = await Promise.all([
     resolveBrandPlan(admin, data.organization_id, data.id),
     admin
@@ -57,7 +59,7 @@ export async function GET() {
     data: {
       ...data,
       org_plan: orgPlan,
-      has_active_subscription: Boolean(activeSubscription.data),
+      has_active_subscription: Boolean(activeSubscription.data) || Boolean(data.subscription_plan_override),
       member_role: access.role,
       is_owner: access.isOwner,
     },

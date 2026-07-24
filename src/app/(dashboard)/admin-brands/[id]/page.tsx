@@ -1165,7 +1165,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             <div>
               <h2 className="font-bold text-gray-900">Plan de la marca</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Define los permisos y límites internos de esta marca. No modifica facturas ni pagos.
+                Define los permisos y límites internos. Una asignación manual habilita acceso comercial sin cobro ni suscripción.
               </p>
             </div>
 
@@ -1193,7 +1193,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                   </div>
                   <p className="text-xs text-gray-400">
                     {brand.subscription_plan_override
-                      ? 'Asignado manualmente a esta marca.'
+                      ? 'Acceso comercial asignado manualmente a esta marca.'
                       : 'Heredado desde la suscripción o configuración general.'}
                   </p>
                 </div>

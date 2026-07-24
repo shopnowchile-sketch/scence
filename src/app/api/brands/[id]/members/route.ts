@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+const MEMBER_ROLES = ['brand_manager', 'finance', 'member'] as const
+
+async function getAdminBrand(userId: string, brandId: string) {
+  const admin = createAdminClient()
+  const { data: brand } = await admin
+    .from('brands')
+    .select('id, name, organization_id')
+    .eq('id', brandId)
+    .maybeSingle()
+  if (!brand) return { admin, brand: null, allowed: false }
+  const access = await getUserRole(userId, brand.organization_id, admin)
+  return { admin, brand, allowed: access.isAdmin }
+}
 
 // Vista admin de "quiénes tienen acceso al portal de esta marca" — mismo
 // listado que ve la marca en /api/brand/members (owner + brand_members),
@@ -19,7 +33,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const admin = createAdminClient()
+  const { admin, allowed } = await getAdminBrand(user.id, params.id)
+  if (!allowed) return NextResponse.json({ error: 'Solo administradores pueden ver el equipo de una marca' }, { status: 403 })
 
   const [
     { data: members, error: membersError },
@@ -102,10 +117,7 @@ function memberResendEmail({ brandName, actionLink }: { brandName: string; actio
 </html>`
 }
 
-// POST /api/brands/[id]/members — reenviar el email de login a un miembro del
-// equipo (brand_members). Para el owner (fila sintética "owner-...") el
-// frontend usa /api/brands/[id]/invite directamente, que ya cubre ese caso;
-// esta ruta es solo para filas reales de brand_members.
+// POST /api/brands/[id]/members — invitar o reenviar acceso a un miembro.
 export async function POST(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -113,17 +125,57 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { member_id?: string }
+  let body: { member_id?: string; email?: string; role?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'JSON inválido' }, { status: 400 }) }
 
-  const memberId = body.member_id
-  if (!memberId) return NextResponse.json({ error: 'member_id requerido' }, { status: 400 })
+  const { admin, brand, allowed } = await getAdminBrand(user.id, params.id)
+  if (!allowed) return NextResponse.json({ error: 'Solo administradores pueden gestionar el equipo de una marca' }, { status: 403 })
+  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const admin = createAdminClient()
+  const email = (body.email ?? '').trim().toLowerCase()
+  if (email) {
+    const role = body.role ?? 'member'
+    if (!(MEMBER_ROLES as readonly string[]).includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
+
+    const { data: member, error: insertError } = await admin
+      .from('brand_members')
+      .insert({ brand_id: params.id, email, role, invited_by: user.id })
+      .select('id, email, role, invited_at, joined_at, is_active')
+      .single()
+    if (insertError) {
+      if (insertError.code === '23505') return NextResponse.json({ error: 'Este email ya tiene acceso o una invitación pendiente' }, { status: 409 })
+      return NextResponse.json({ error: insertError.message }, { status: 500 })
+    }
+
+    let emailSent = false
+    try {
+      const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      const existing = users?.users?.find(u => u.email?.toLowerCase() === email)
+      if (!existing) {
+        const { error: createError } = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { is_brand: true, full_name: email.split('@')[0] } })
+        if (createError) throw createError
+      }
+      const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email, options: { redirectTo: `${APP_URL}/brand-dash` } })
+      if (!linkError && linkData?.properties?.hashed_token) {
+        const actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
+        const { error: emailError } = await getResend().emails.send({
+          from: FROM_EMAIL, to: email, subject: `Invitación al portal de ${brand.name} — Scence`,
+          html: memberResendEmail({ brandName: brand.name, actionLink }),
+        })
+        emailSent = !emailError
+      }
+    } catch (error) {
+      console.error('[admin brand members] invite email failed:', error)
+    }
+    return NextResponse.json({ data: { ...member, email_sent: emailSent } }, { status: 201 })
+  }
+
+  const memberId = body.member_id
+  if (!memberId) return NextResponse.json({ error: 'email o member_id requerido' }, { status: 400 })
 
   const [
     { data: member, error: memberErr },
-    { data: brand, error: brandErr },
+    { data: resendBrand, error: brandErr },
   ] = await Promise.all([
     admin
       .from('brand_members')
@@ -140,7 +192,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (memberErr) return NextResponse.json({ error: memberErr.message }, { status: 500 })
   if (!member) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
-  if (brandErr || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (brandErr || !resendBrand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   if (!member.is_active) return NextResponse.json({ error: 'Este usuario está desactivado' }, { status: 422 })
 
   // Crear/reutilizar el usuario de Auth — mismo patrón que POST /api/brand/members.
@@ -170,8 +222,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: member.email,
-    subject: `Tu link de acceso al portal de ${brand.name} — Scence`,
-    html: memberResendEmail({ brandName: brand.name, actionLink }),
+    subject: `Tu link de acceso al portal de ${resendBrand.name} — Scence`,
+    html: memberResendEmail({ brandName: resendBrand.name, actionLink }),
   })
 
   return NextResponse.json({

@@ -135,6 +135,9 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [members, setMembers] = useState<BrandMember[]>([])
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [resendingMemberId, setResendingMemberId] = useState<string | null>(null)
+  const [newMemberEmail, setNewMemberEmail] = useState('')
+  const [newMemberRole, setNewMemberRole] = useState<'member' | 'brand_manager' | 'finance'>('member')
+  const [invitingMember, setInvitingMember] = useState(false)
   const [newLocation, setNewLocation] = useState({
     name: '',
     address: '',
@@ -260,6 +263,26 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       toast.error((e as Error).message)
     } finally {
       setResendingMemberId(null)
+    }
+  }
+
+  async function inviteMember() {
+    if (!brand || !newMemberEmail.trim()) return
+    setInvitingMember(true)
+    try {
+      const res = await fetch(`/api/brands/${brand.id}/members`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: newMemberEmail, role: newMemberRole }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo invitar al usuario')
+      setNewMemberEmail('')
+      toast.success(json.data?.email_sent ? 'Invitación enviada por email' : 'Usuario agregado; el correo no pudo enviarse')
+      await loadMembers()
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setInvitingMember(false)
     }
   }
 
@@ -1344,8 +1367,21 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
           <div>
             <h2 className="font-bold text-gray-900">Usuarios con acceso al portal</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Equipo que la marca agregó desde su perfil — ven lo mismo que el owner.
+              Invita y gestiona el equipo de esta marca.
             </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 rounded-xl bg-gray-50 border border-gray-100 p-3">
+            <input type="email" value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && inviteMember()} placeholder="email@empresa.com" className="input-base flex-1 bg-white" />
+            <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value as typeof newMemberRole)} className="input-base bg-white sm:w-44">
+              <option value="member">Miembro</option>
+              <option value="brand_manager">Brand manager</option>
+              <option value="finance">Finanzas</option>
+            </select>
+            <button type="button" onClick={inviteMember} disabled={invitingMember || !newMemberEmail.trim()} className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50">
+              {invitingMember ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              Invitar usuario
+            </button>
           </div>
 
           {loadingMembers ? (

@@ -44,7 +44,8 @@ const DEFAULT_BRAND_WIDTHS: Record<'name' | BrandColumnKey, number> = {
 }
 
 // Badge de plan — mismo criterio de color que el resto de badges de estado.
-function planBadgeClass(tier: 'basic' | 'growth' | 'pro') {
+function planBadgeClass(tier: 'basic' | 'growth' | 'pro', isManual = false) {
+  if (isManual) return 'badge-orange'
   if (tier === 'pro') return 'badge-green'
   if (tier === 'growth') return 'badge-blue'
   return 'badge-gray'
@@ -70,6 +71,7 @@ interface Brand {
   metadata?: { referred_by_instagram?: string | null } | null
   campaigns?: Array<{ id: string; name: string; status: string; budget_total: number | null; currency: string }>
   org_plan?: string | null
+  subscription_plan_override?: 'basic' | 'growth' | 'pro' | null
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -428,7 +430,7 @@ export default function BrandsPage() {
                         )}
                         {visibleColumns.plan && (
                           <td className="px-4 py-3 overflow-hidden">
-                            <span className={cn('badge text-xs font-bold', planBadgeClass(getPlanTier(b.org_plan)))}>
+                            <span className={cn('badge text-xs font-bold', planBadgeClass(getPlanTier(b.org_plan), !!b.subscription_plan_override))}>
                               {PLAN_LIMITS[getPlanTier(b.org_plan)].label}
                             </span>
                           </td>

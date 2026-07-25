@@ -24,11 +24,17 @@ export async function GET() {
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
   const orgId = access.organizationId
 
-  const [plans, subscription, orgPlan] = await Promise.all([
+  const [plans, subscription, orgPlan, brand] = await Promise.all([
     getActivePlans(admin),
     getOrgSubscription(admin, orgId),
     resolveBrandPlan(admin, orgId, access.brandId),
+    admin.from('brands').select('subscription_plan_override').eq('id', access.brandId).maybeSingle(),
   ])
 
-  return NextResponse.json({ plans, subscription, org_plan: orgPlan })
+  return NextResponse.json({
+    plans,
+    subscription,
+    org_plan: orgPlan,
+    has_active_subscription: Boolean(subscription) || Boolean(brand.data?.subscription_plan_override),
+  })
 }

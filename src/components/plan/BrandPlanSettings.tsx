@@ -78,6 +78,7 @@ export function BrandPlanSettings() {
   const [checkoutLoading, setCheckoutLoading] = useState<{ tier: PlanTier; provider: 'paypal' } | null>(null)
   const [prices, setPrices] = useState<Partial<Record<PlanTier, number>>>({})
   const [paymentProcessing, setPaymentProcessing] = useState(false)
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -86,6 +87,7 @@ export function BrandPlanSettings() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setOrgPlan(json.org_plan ?? 'free')
+      setHasActiveSubscription(json.has_active_subscription === true)
       const nextPrices: Partial<Record<PlanTier, number>> = {}
       for (const plan of json.plans ?? []) {
         if (plan.tier === 'basic' || plan.tier === 'growth' || plan.tier === 'pro') {
@@ -170,17 +172,11 @@ export function BrandPlanSettings() {
         </button>
       </div>
 
-      {/* Plan actual */}
-      <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 flex items-center gap-3">
+      {/* Estado de suscripción */}
+      <div className={cn('rounded-2xl border p-4 flex items-center gap-3', hasActiveSubscription ? 'bg-violet-50 border-violet-100' : 'bg-amber-50 border-amber-200')}>
         <Sparkles className="h-5 w-5 text-violet-500 flex-shrink-0" />
-        <p className="text-sm text-violet-700">
-          Tu plan actual: <span className="font-bold">{currentInfo.label}</span>
-          {' · '}
-          {currentTier === 'basic'
-            ? 'Acceso básico a SCENCE'
-            : currentTier === 'growth'
-              ? 'Más creadoras, marcas y reportería'
-              : 'Acceso ilimitado a todo'}
+        <p className={cn('text-sm', hasActiveSubscription ? 'text-violet-700' : 'text-amber-900')}>
+          {hasActiveSubscription ? <>Tu plan actual: <span className="font-bold">{currentInfo.label}</span>{' · '}{currentTier === 'basic' ? 'Acceso básico a SCENCE' : currentTier === 'growth' ? 'Más creadoras, marcas y reportería' : 'Acceso ilimitado a todo'}</> : <>Tu acceso comercial fue suspendido. Elige un plan para reactivar tu cuenta.</>}
         </p>
       </div>
 
@@ -200,7 +196,7 @@ export function BrandPlanSettings() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {PLAN_DEFS.map(({ tier, highlight, features }) => {
           const info       = PLAN_LIMITS[tier]
-          const isCurrent  = tier === currentTier
+          const isCurrent  = hasActiveSubscription && tier === currentTier
           const regular    = prices[tier] ?? info.price_monthly_clp
 
           return (

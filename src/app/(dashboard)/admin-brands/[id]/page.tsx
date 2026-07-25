@@ -565,8 +565,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     const json = await res.json().catch(() => ({}))
     if (!res.ok) return toast.error(json.error ?? 'No se pudo actualizar')
 
-    setBrand({ ...brand, status })
-    toast.success(status === 'approved' ? 'Marca aprobada' : status === 'suspended' ? 'Marca suspendida' : 'Marca pendiente')
+    setBrand({ ...brand, status, subscription_plan_override: status === 'suspended' ? null : brand.subscription_plan_override })
+    toast.success(status === 'approved' ? 'Marca aprobada' : status === 'suspended' ? 'Marca suspendida: deberá suscribirse para reactivar su acceso' : 'Marca pendiente')
   }
 
   async function deleteBrand() {

@@ -226,6 +226,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     rest.subscription_plan_override = normalized
   }
 
+  // Suspender una marca que tenía acceso comercial manual revoca ese permiso
+  // gratuito. Al volver a entrar, el portal la redirige a Planes para que
+  // contrate una suscripción. No toca una suscripción pagada existente.
+  if (rest.status === 'suspended') {
+    rest.subscription_plan_override = null
+  }
+
   const { data, error } = await admin
     .from('brands')
     .update({ ...rest, updated_at: new Date().toISOString() })

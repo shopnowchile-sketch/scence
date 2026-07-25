@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Clock } from 'lucide-react'
 import { BrandSidebar } from './_components/BrandSidebar'
+import { BrandOnboarding } from '@/components/brand/BrandOnboarding'
 // Reutilizado del portal Influencer (mismo componente, sin cambios) — pedido
 // de Pri 2026-07-13: profiles.last_seen_at solo se actualizaba vía heartbeat
 // en Influencer; Marca no tenía ningún mecanismo, así que "última conexión"
@@ -217,7 +218,10 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
             <div className="flex items-center justify-center min-h-[60vh]">
               <div className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
             </div>
-          ) : children}
+          ) : <>
+            {children}
+            <BrandOnboarding />
+          </>}
         </div>
       </main>
     </div>

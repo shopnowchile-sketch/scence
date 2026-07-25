@@ -21,7 +21,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const { admin, response } = await requireAdmin()
   if (response || !admin) return response!
   const { data, error } = await admin.from('brand_documents')
-    .select('id, title, document_type, language, status, template_version, signer_name, signer_email, signer_role, signed_at, due_at, created_at')
+    .select('id, title, document_type, language, status, template_version, content_snapshot, signer_name, signer_rut, signer_email, signer_role, signed_at, due_at, created_at')
     .eq('brand_id', params.id).order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ data: data ?? [] })

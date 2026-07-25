@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
-import { getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -16,7 +16,16 @@ async function getAdminBrand(userId: string, brandId: string) {
     .eq('id', brandId)
     .maybeSingle()
   if (!brand) return { admin, brand: null, allowed: false }
-  const access = await getUserRole(userId, brand.organization_id, admin)
+
+  // La vista Admin puede gestionar el equipo de cualquier marca. No usamos
+  // brand.organization_id para validar porque algunas marcas antiguas pueden
+  // conservar un id histórico; la autorización debe venir de la organización
+  // SCENCE del administrador autenticado.
+  const { data: { user } } = await admin.auth.admin.getUserById(userId)
+  const adminOrgId = user ? await getOrgId(userId, user.user_metadata, admin) : null
+  const access = adminOrgId
+    ? await getUserRole(userId, adminOrgId, admin)
+    : { isAdmin: false }
   return { admin, brand, allowed: access.isAdmin }
 }
 

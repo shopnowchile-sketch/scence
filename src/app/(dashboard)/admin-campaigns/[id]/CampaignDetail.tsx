@@ -592,17 +592,9 @@ function AddDeliverableForm({
 }
 
 // ── Marcas colaboradoras (co-brands) ──────────────────────────────────────────
-// Rediseñado 2026-07-12 (correcciones de Pri sobre la 1ra versión):
-// - NO hay buscador abierto sobre toda la base de marcas — se busca únicamente
-//   por email exacto (dedup), nunca se lista/expone el resto de la base.
-// - Alta = { email, name } a POST /api/campaigns/[id]/brands:
-//     · si el email ya es de una marca existente -> se asigna directo (matched).
-//     · si no existe -> se crea una marca liviana + organización propia en
-//       'pending_approval', SIN asignar todavía (pending). Admin la aprueba en
-//       /admin-brands y ESO dispara la asignación automática (ver PATCH
-//       /api/brands/[id]).
-// - Nunca se acepta status='approved' desde acá.
-// - Solo pinta name + logo — nunca contact_email/website/etc.
+// Una colaboradora queda vinculada a la campaña de inmediato. Si se registra
+// un email, la aprobación posterior controla únicamente el acceso a su portal;
+// nunca bloquea el brief ni los tags de las influencers.
 function CoBrandManager({
   campaignId,
   collaborators,
@@ -617,6 +609,7 @@ function CoBrandManager({
   const [open, setOpen] = useState(false)
   const [instagram, setInstagram] = useState('')
   const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
 
@@ -629,19 +622,18 @@ function CoBrandManager({
       const res = await fetch(`/api/campaigns/${campaignId}/brands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instagram: instagram.trim(), name: name.trim() }),
+        body: JSON.stringify({ instagram: instagram.trim(), name: name.trim(), email: email.trim() || undefined }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      if (json.matched) {
-        toast.success('Marca existente agregada como colaboradora')
-        onChanged()
-      } else {
-        toast.success('Marca creada — queda pendiente de aprobación de Admin. Se asignará a la campaña automáticamente cuando se apruebe.')
-      }
+      toast.success(json.pending
+        ? 'Marca agregada a la campaña. Queda pendiente solo para acceder a su portal.'
+        : 'Marca agregada como colaboradora')
+      onChanged()
       setOpen(false)
       setInstagram('')
       setName('')
+      setEmail('')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error agregando marca')
     }
@@ -698,8 +690,18 @@ function CoBrandManager({
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
             />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Email de contacto <span className="font-normal text-gray-400">(opcional)</span></label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="contacto@marca.cl"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
+            />
+          </div>
           <p className="text-[11px] text-gray-400">
-            Si ese Instagram ya pertenece a una marca de SCENCE, se agrega directo. Si no, se crea la marca y queda pendiente de aprobación de Admin.
+            Sin email se crea y agrega de inmediato. Si agregas email, quedará pendiente solo para habilitar su portal, pero aparecerá igual en esta campaña para que las influencers la etiqueten.
           </p>
           <button type="button" onClick={submit} disabled={saving || !instagramValid || !name.trim()}
             className="w-full py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">

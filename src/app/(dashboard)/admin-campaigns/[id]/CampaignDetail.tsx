@@ -592,17 +592,75 @@ function AddDeliverableForm({
 }
 
 // ── Marcas colaboradoras (co-brands) ──────────────────────────────────────────
+function CampaignBrandsPanel({
+  campaignId,
+  brands,
+  canManage,
+  onChanged,
+}: {
+  campaignId: string
+  brands: Array<{ id?: string; name?: string; logo_url?: string | null; instagram?: string | null; _role?: string }>
+  canManage: boolean
+  onChanged: () => void
+}) {
+  if (brands.length === 0 && !canManage) return null
+
+  return (
+    <div className="card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-gray-700">Marcas participantes</h3>
+        <span className="text-xs text-gray-400">{brands.length} {brands.length === 1 ? 'marca' : 'marcas'}</span>
+      </div>
+      {brands.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {brands.map((brand, idx) => (
+            <div key={`${brand.id ?? idx}`} className="group flex min-w-0 items-center gap-2 rounded-xl border border-gray-100 bg-white px-2.5 py-2 shadow-sm">
+              <div className="flex min-w-0 items-center gap-2">
+                {brand.logo_url ? (
+                  <img src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-100 object-contain p-0.5" />
+                ) : (
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-violet-50 text-xs font-bold text-violet-600">{(brand.name ?? '?').slice(0, 1).toUpperCase()}</span>
+                )}
+                <div className="min-w-0 leading-tight">
+                  <div className="flex items-center gap-1.5">
+                    <span className="max-w-[160px] truncate text-sm font-semibold text-gray-900">{brand.name ?? 'Marca sin nombre'}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${brand._role === 'Principal' ? 'bg-violet-50 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>{brand._role ?? ''}</span>
+                  </div>
+                  {brand.instagram && <a href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="block max-w-[180px] truncate text-xs text-violet-600 hover:underline">@{brand.instagram.replace(/^@/, '')}</a>}
+                </div>
+              </div>
+              {canManage && brand._role === 'Colaboradora' && brand.id && (
+                <button type="button" aria-label={`Quitar ${brand.name ?? 'marca'}`} className="ml-1 text-gray-300 hover:text-red-500" onClick={async () => {
+                  if (!confirm(`¿Quitar ${brand.name ?? 'esta marca'} de la campaña?`)) return
+                  try {
+                    const response = await fetch(`/api/campaigns/${campaignId}/brands?brand_id=${brand.id}`, { method: 'DELETE' })
+                    const result = await response.json()
+                    if (!response.ok) throw new Error(result.error)
+                    toast.success('Marca quitada de la campaña')
+                    onChanged()
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : 'No se pudo quitar la marca')
+                  }
+                }}><X className="h-3.5 w-3.5" /></button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <CoBrandManager campaignId={campaignId} canManage={canManage} onChanged={onChanged} />
+    </div>
+  )
+}
+
 // Una colaboradora queda vinculada a la campaña de inmediato. Si se registra
 // un email, la aprobación posterior controla únicamente el acceso a su portal;
 // nunca bloquea el brief ni los tags de las influencers.
 function CoBrandManager({
   campaignId,
-  collaborators,
   canManage,
   onChanged,
 }: {
   campaignId: string
-  collaborators: Array<{ id: string; name?: string; logo_url?: string | null; instagram?: string | null }>
   canManage: boolean
   onChanged: () => void
 }) {
@@ -611,7 +669,6 @@ function CoBrandManager({
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
-  const [removingId, setRemovingId] = useState<string | null>(null)
 
   const instagramValid = /^(?:@?[a-z0-9._]{1,30}|https?:\/\/(?:www\.)?instagram\.com\/[a-z0-9._]{1,30}\/?)/i.test(instagram.trim())
 
@@ -638,21 +695,6 @@ function CoBrandManager({
       toast.error(e instanceof Error ? e.message : 'Error agregando marca')
     }
     setSaving(false)
-  }
-
-  async function remove(brandId: string) {
-    if (!confirm('¿Quitar esta marca colaboradora de la campaña?')) return
-    setRemovingId(brandId)
-    try {
-      const res = await fetch(`/api/campaigns/${campaignId}/brands?brand_id=${brandId}`, { method: 'DELETE' })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error)
-      toast.success('Marca quitada')
-      onChanged()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error quitando marca')
-    }
-    setRemovingId(null)
   }
 
   if (!canManage) return null
@@ -711,26 +753,6 @@ function CoBrandManager({
         </div>
       )}
 
-      {collaborators.length > 0 && (
-        <div className="mt-3 space-y-1.5">
-          {collaborators.map(b => (
-            <div key={b.id} className="flex items-center justify-between gap-2 text-xs px-2.5 py-1.5 bg-gray-50 rounded-lg">
-              <div className="min-w-0">
-                <span className="text-gray-600 truncate block">{b.name}</span>
-                {b.instagram && (
-                  <a href={`https://instagram.com/${b.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline truncate block">
-                    {`@${b.instagram.replace(/^@/, '')}`}
-                  </a>
-                )}
-              </div>
-              <button type="button" onClick={() => remove(b.id)} disabled={removingId === b.id}
-                className="text-red-500 hover:text-red-600 disabled:opacity-50 flex-shrink-0">
-                {removingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -1273,7 +1295,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       }, 0) / deliverableCount)
     : 0
   const pct = avgProgress
-  const budgetPct = c.budget_total ? Math.round((c.budget_spent / c.budget_total) * 100) : 0
+  const hasBudget = Number(c.budget_total ?? 0) > 0
+  const budgetPct = hasBudget ? Math.round((c.budget_spent / Number(c.budget_total)) * 100) : 0
 
   // Métricas reales de contenido (Apify) agregadas a nivel campaña — solo
   // suma deliverables ya sincronizados (performance != null). No incluye
@@ -1732,10 +1755,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   {formatDate(c.start_date)} → {c.end_date ? formatDate(c.end_date) : '—'}
                 </span>
               )}
-              <span className="flex items-center gap-1">
+              {hasBudget && <span className="flex items-center gap-1">
                 <DollarSign className="h-3.5 w-3.5 text-gray-300" />
                 <strong className="text-gray-800">{formatCurrency(c.budget_total ?? 0, c.currency)}</strong>
-              </span>
+              </span>}
               <span className="flex items-center gap-1">
                 <Users className="h-3.5 w-3.5 text-gray-300" />
                 <strong className="text-gray-800">{campaignInfluencers.length}</strong> influencers
@@ -1759,7 +1782,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <div className="text-sm font-bold text-gray-900">{pct}%</div>
               <div className="text-[9px] font-medium text-gray-600">Completado</div>
             </div>
-            {!!c.budget_total && (
+            {hasBudget && (
               <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
                 <div className="text-sm font-bold text-gray-900">{budgetPct}%</div>
                 <div className="text-[9px] font-medium text-gray-600">Budget usado</div>
@@ -1810,7 +1833,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         <div className="mt-2 pt-2 border-t border-gray-100">
           <div className="flex justify-between text-[11px] text-gray-400 mb-1">
             <span>{deliverableDone}/{deliverableCount} deliverables publicados</span>
-            <span>{formatCurrency(c.budget_spent, c.currency)} gastados de {formatCurrency(c.budget_total ?? 0, c.currency)}</span>
+            {hasBudget && <span>{formatCurrency(c.budget_spent, c.currency)} gastados de {formatCurrency(c.budget_total ?? 0, c.currency)}</span>}
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')}
@@ -1870,6 +1893,20 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </span>
             )}
           </div>
+        )}
+        {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
+          <CampaignBrandsPanel
+            campaignId={id}
+            brands={campaignBrands.map(brand => ({
+              id: String(brand.id ?? ''),
+              name: String(brand.name ?? ''),
+              logo_url: brand.logo_url as string | null,
+              instagram: brand.instagram as string | null,
+              _role: String(brand._role ?? ''),
+            }))}
+            canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
+            onChanged={() => void refetch()}
+          />
         )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="col-span-2 space-y-4">
@@ -1986,47 +2023,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </div>
             )}
 
-            {/* Marca(s) — antes existían 2 cards separadas ("Marca" acá arriba con
-                solo la principal, y "Marcas" al fondo con la lista completa, solo
-                admin). Se consolida en 1 sola card con marca principal +
-                colaboradoras. Visible en ambos portales: solo se muestra nombre
-                y rol de las colaboradoras (nunca datos comerciales sensibles),
-                consistente con la regla de permisos de marca. */}
-            {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  🏢 {campaignBrands.length > 1 ? 'Marcas' : 'Marca'}
-                </h3>
-                {campaignBrands.length > 0 && (
-                  <div className="space-y-2">
-                    {campaignBrands.map((brand, idx) => (
-                      <div key={`${brand.id ?? idx}`} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2">
-                        <div className="flex items-center gap-3 min-w-0">
-                          {!!brand.logo_url && (
-                            <img src={String(brand.logo_url)} alt={String(brand.name)}
-                              className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
-                          )}
-                          <span className="font-semibold text-gray-900 truncate">{String(brand.name ?? 'Marca sin nombre')}</span>
-                        </div>
-                        <span className="text-xs text-gray-400 flex-shrink-0">{String(brand._role ?? '')}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Gestión de colaboradoras: solo la marca principal (o admin) puede
-                    agregar/quitar — mismo gate que el resto de acciones de edición
-                    del componente. Una co-marca invitada ve la lista de arriba pero
-                    no ve este bloque de gestión. */}
-                <CoBrandManager
-                  campaignId={id}
-                  collaborators={campaignBrands
-                    .filter(b => b._role === 'Colaboradora')
-                    .map(b => ({ id: String(b.id), name: String(b.name ?? ''), logo_url: b.logo_url as string | null, instagram: b.instagram as string | null }))}
-                  canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
-                  onChanged={() => void refetch()}
-                />
-              </div>
-            )}
             {/* Visibility badge — solo admin. El estado (Pública/Por invitación) ya
                 se ve en el header (stat tile), esta card era una segunda
                 explicación del mismo dato; se deja solo donde hace falta el
@@ -2116,7 +2112,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           </div>
 
           <div className="space-y-4">
-            <div className="card p-5">
+            {hasBudget && <div className="card p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Budget</h3>
               <div className="space-y-3">
                 {[
@@ -2137,7 +2133,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <div className="text-[10px] text-gray-400 mt-1 text-right">{budgetPct}% utilizado</div>
                 </div>
               </div>
-            </div>
+            </div>}
 
             <div className="card p-4 space-y-2">
               <h3 className="text-sm font-semibold text-gray-700 mb-1">Acciones rápidas</h3>

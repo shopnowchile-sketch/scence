@@ -595,6 +595,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const c            = data.campaign
   const isSelfCreated = data._self_created === true
   const isPending    = data.application_status === 'pending'
+  // Los handles de marcas colaboradoras son instrucciones de ejecución: solo
+  // una influencer aceptada debe verlos, nunca una postulante o invitada.
+  const isAccepted   = data.application_status === 'accepted'
   // FIX (2026-07-04): mientras la postulación sigue pendiente, el badge del
   // header mostraba el estado de LA CAMPAÑA ("Activa") en vez de reflejar
   // que SU postulación todavía no fue aprobada — inconsistente con
@@ -704,10 +707,12 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           </span>
         </div>
 
-        {/* El brief es la primera acción: antes de fechas, métricas o tareas. */}
-        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
+        {/* Información operativa solo después de ser aceptada. Va arriba para
+            que fecha, hora y dirección del evento se vean antes del brief. */}
+        {isAccepted && data.event_booking && <EventBookingCard booking={data.event_booking} />}
 
-        {data.event_booking && <EventBookingCard booking={data.event_booking} />}
+        {/* El brief es la primera acción disponible luego del resumen del evento. */}
+        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
 
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
           <div>
@@ -730,7 +735,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         {!isPending && (
           <div className="mt-4 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              {participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas que debes mencionar</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
+              {isAccepted && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas que debes mencionar</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
               <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
                 <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>

@@ -137,6 +137,14 @@ export async function GET() {
     return contractedIds.has(ciId) || invoicedIds.has(ciId) || (!!campId && bookedCampaignIds.has(campId))
   })
 
+  // Las marcas colaboradoras y sus handles forman parte del brief operativo.
+  // No se exponen a quien todavía está postulando o debe aceptar una invitación.
+  const assignedWithAllowedBrands = visibleAssignedFiltered.map((row: Record<string, unknown>) => {
+    if (row.application_status === 'accepted') return row
+    const campaign = row.campaign as Record<string, unknown> | null
+    return { ...row, campaign: campaign ? { ...campaign, campaign_brands: [] } : campaign }
+  })
+
   // Merge: assigned from admin + self-created
   // Self-created are wrapped to match the assigned shape
   const assignedIds = new Set(visibleAssignedFiltered.map((ci: Record<string, unknown>) => {
@@ -156,7 +164,7 @@ export async function GET() {
       _self_created: true,
     }))
 
-  const merged = [...visibleAssignedFiltered, ...selfWrapped]
+  const merged = [...assignedWithAllowedBrands, ...selfWrapped]
 
   // La fecha, hora y dirección de un evento viven en `bookings`, que es
   // también la fuente usada por el calendario. Se agregan al detalle de la
@@ -196,7 +204,13 @@ export async function GET() {
 
     for (const row of merged as Array<Record<string, unknown>>) {
       const campaign = row.campaign as Record<string, unknown> | null
-      if (campaign?.id) row.event_booking = byCampaign.get(campaign.id as string) ?? null
+      // Fecha, hora y dirección son detalles operativos: solo se entregan a
+      // influencers aceptadas, nunca durante la postulación o invitación.
+      if (row.application_status !== 'accepted') {
+        row.event_booking = null
+      } else if (campaign?.id) {
+        row.event_booking = byCampaign.get(campaign.id as string) ?? null
+      }
     }
   }
 

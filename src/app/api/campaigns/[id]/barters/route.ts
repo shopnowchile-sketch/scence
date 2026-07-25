@@ -221,21 +221,65 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { barter_id, status, note, evidence_url, patch } = body as {
-    barter_id: string
+  const { barter_id, status, note, evidence_url, patch, bulk_benefit_updates } = body as {
+    barter_id?: string
     status?: BarterStatus
     note?: string
     evidence_url?: string
     patch?: Record<string, unknown>  // edición de campos no-status
-  }
-
-  if (!barter_id) {
-    return NextResponse.json({ error: 'barter_id es obligatorio' }, { status: 422 })
+    bulk_benefit_updates?: Array<{ barter_id?: string; benefit_index?: number; status?: string }>
   }
 
   const admin = createAdminClient()
   const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
   if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  if (bulk_benefit_updates) {
+    if (!Array.isArray(bulk_benefit_updates) || bulk_benefit_updates.length === 0 || bulk_benefit_updates.length > 100) {
+      return NextResponse.json({ error: 'Selecciona entre 1 y 100 canjes pendientes.' }, { status: 422 })
+    }
+    const ids = Array.from(new Set(bulk_benefit_updates.map(item => item.barter_id).filter((value): value is string => !!value)))
+    const updateKeys = new Set(bulk_benefit_updates.map(item => `${item.barter_id}:${item.benefit_index}`))
+    if (updateKeys.size !== bulk_benefit_updates.length || bulk_benefit_updates.some(item => !Number.isInteger(item.benefit_index) || !['pending', 'completed', 'problem'].includes(item.status ?? ''))) {
+      return NextResponse.json({ error: 'Selección de canjes inválida.' }, { status: 422 })
+    }
+    const { data: barters, error: bartersError } = await admin
+      .from('barters')
+      .select('id, benefit_tracking, simple_status, notes')
+      .eq('campaign_id', params.id)
+      .in('id', ids)
+    if (bartersError || (barters?.length ?? 0) !== ids.length) return NextResponse.json({ error: 'Uno o más canjes no pertenecen a esta campaña.' }, { status: 404 })
+
+    const byId = new Map((barters ?? []).map(row => [row.id, row]))
+    const nonPending = bulk_benefit_updates.some(item => {
+      const barter = byId.get(item.barter_id!)!
+      const tracking = Array.isArray(barter.benefit_tracking) ? barter.benefit_tracking.find((row: any) => row.benefit_index === item.benefit_index) : null
+      return (tracking?.status ?? barter.simple_status ?? 'pending') !== 'pending'
+    })
+    if (nonPending) return NextResponse.json({ error: 'Solo puedes actualizar canjes que siguen pendientes.' }, { status: 409 })
+    const selectedByBarter = new Map<string, Array<{ benefit_index?: number; status?: string }>>()
+    for (const item of bulk_benefit_updates) {
+      const rows = selectedByBarter.get(item.barter_id!) ?? []
+      rows.push(item)
+      selectedByBarter.set(item.barter_id!, rows)
+    }
+    const updates = Array.from(selectedByBarter.entries()).map(([barterId, selected]) => {
+      const barter = byId.get(barterId)!
+      const selectedIndexes = new Set(selected.map(item => item.benefit_index))
+      const current = Array.isArray(barter.benefit_tracking) ? barter.benefit_tracking.filter((row: any) => !selectedIndexes.has(row.benefit_index)) : []
+      const tracking = normalizeBenefitTracking([...current, ...selected.map(item => ({ benefit_index: item.benefit_index, status: item.status, note: '' }))])
+      return { id: barter.id, tracking }
+    })
+    if (updates.some(update => !update.tracking)) return NextResponse.json({ error: 'Seguimiento de beneficios inválido.' }, { status: 422 })
+    const results = await Promise.all(updates.map(update => admin.from('barters').update({ benefit_tracking: update.tracking, updated_at: new Date().toISOString() }).eq('id', update.id)))
+    const failed = results.find(result => result.error)
+    if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 })
+    return NextResponse.json({ data: { updated: bulk_benefit_updates.length } })
+  }
+
+  if (!barter_id) {
+    return NextResponse.json({ error: 'barter_id es obligatorio' }, { status: 422 })
+  }
 
   // Verificar que el canje pertenece a esta campaña
   const { data: existing, error: exErr } = await admin

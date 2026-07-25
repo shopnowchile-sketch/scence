@@ -93,6 +93,23 @@ export function useBarterAction(campaignId: string) {
   })
 }
 
+export function useBulkBenefitStatus(campaignId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (updates: Array<{ barter_id: string; benefit_index: number; status: 'pending' | 'completed' | 'problem' }>) => {
+      const res = await fetch(`/api/campaigns/${campaignId}/barters`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulk_benefit_updates: updates }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Error al actualizar canjes')
+      return json.data as { updated: number }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: key(campaignId) }),
+    onError: (error: Error) => toast.error(error.message),
+  })
+}
+
 // ── Eliminar canje ────────────────────────────────────────────────────────────
 export function useDeleteBarter(campaignId: string) {
   const qc = useQueryClient()

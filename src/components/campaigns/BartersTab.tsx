@@ -11,7 +11,7 @@ import {
   type CampaignBenefit,
   type CampaignInfluencerDetail,
 } from '@/types'
-import { useBarterAction, useCampaignBarters, useInitializeCampaignBarters } from '@/hooks/useBarters'
+import { useBarterAction, useBulkBenefitStatus, useCampaignBarters, useInitializeCampaignBarters } from '@/hooks/useBarters'
 
 export function BartersTab({
   campaignId,
@@ -30,6 +30,9 @@ export function BartersTab({
   const [editingOffer, setEditingOffer] = useState(false)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | BarterSimpleStatus>('all')
+  const [selectedPendingKeys, setSelectedPendingKeys] = useState<string[]>([])
+  const [bulkStatus, setBulkStatus] = useState<BarterSimpleStatus>('completed')
+  const bulkUpdate = useBulkBenefitStatus(campaignId)
 
   useEffect(() => {
     if (!isLoading && campaignBenefits.length > 0 && acceptedCount > barters.length && !initialize.isPending && !initialize.isSuccess) {
@@ -59,6 +62,26 @@ export function BartersTab({
       return matchesSearch && matchesStatus
     })
   }, [barters, campaignBenefits, query, statusFilter])
+
+  const pendingOptions = useMemo(() => filteredBarters.flatMap(barter => effectiveBenefits(barter, campaignBenefits)
+    .map((_, benefitIndex) => ({ barter_id: barter.id, benefit_index: benefitIndex, status: getBenefitTracking(barter, benefitIndex).status }))
+    .filter(item => item.status === 'pending')),
+  [filteredBarters, campaignBenefits])
+  const pendingKeys = pendingOptions.map(item => `${item.barter_id}:${item.benefit_index}`)
+  const selectedPending = pendingOptions.filter(item => selectedPendingKeys.includes(`${item.barter_id}:${item.benefit_index}`))
+
+  function togglePending(key: string, selected: boolean) {
+    setSelectedPendingKeys(current => selected ? Array.from(new Set([...Array.from(current), key])) : current.filter(value => value !== key))
+  }
+
+  async function applyBulkStatus() {
+    if (!selectedPending.length) return toast.error('Selecciona al menos un canje pendiente')
+    try {
+      const result = await bulkUpdate.mutateAsync(selectedPending.map(item => ({ ...item, status: bulkStatus })))
+      toast.success(`Estado actualizado para ${result.updated} canje${result.updated === 1 ? '' : 's'}`)
+      setSelectedPendingKeys([])
+    } catch { /* el hook muestra el error */ }
+  }
 
   return (
     <div className="space-y-3">
@@ -130,6 +153,27 @@ export function BartersTab({
           </div>
         </div>
 
+        {pendingOptions.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-100 bg-amber-50/40 px-3 py-2.5">
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-700">
+              <input type="checkbox" checked={pendingKeys.length > 0 && pendingKeys.every(key => selectedPendingKeys.includes(key))}
+                onChange={event => setSelectedPendingKeys(event.target.checked ? pendingKeys : [])}
+                className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
+              Seleccionar pendientes ({pendingOptions.length})
+            </label>
+            <div className="flex items-center gap-2">
+              <select value={bulkStatus} onChange={event => setBulkStatus(event.target.value as BarterSimpleStatus)} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-violet-400">
+                <option value="completed">Marcar como canje enviado</option>
+                <option value="problem">Marcar con problema</option>
+                <option value="pending">Mantener pendiente</option>
+              </select>
+              <button type="button" disabled={!selectedPending.length || bulkUpdate.isPending} onClick={() => void applyBulkStatus()} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {bulkUpdate.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Aplicar ({selectedPending.length})
+              </button>
+            </div>
+          </div>
+        )}
+
         {isLoading || initialize.isPending ? (
           <div className="flex items-center justify-center py-10 text-gray-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : barters.length === 0 ? (
@@ -143,7 +187,8 @@ export function BartersTab({
           filteredBarters.length === 0 ? (
             <div className="card p-5 text-center text-xs text-gray-500">No encontramos influencers con esa búsqueda.</div>
           ) : filteredBarters.map(barter => (
-            <TrackingRow key={barter.id} campaignId={campaignId} barter={barter} campaignBenefits={campaignBenefits} />
+            <TrackingRow key={barter.id} campaignId={campaignId} barter={barter} campaignBenefits={campaignBenefits}
+              selectedPendingKeys={selectedPendingKeys} onTogglePending={togglePending} />
           ))
         )}
       </section>
@@ -225,7 +270,7 @@ function CampaignOfferEditor({ initialBenefits, onCancel, onSave }: {
   )
 }
 
-function TrackingRow({ campaignId, barter, campaignBenefits }: { campaignId: string; barter: Barter; campaignBenefits: CampaignBenefit[] }) {
+function TrackingRow({ campaignId, barter, campaignBenefits, selectedPendingKeys, onTogglePending }: { campaignId: string; barter: Barter; campaignBenefits: CampaignBenefit[]; selectedPendingKeys: string[]; onTogglePending: (key: string, selected: boolean) => void }) {
   const action = useBarterAction(campaignId)
   const benefits = effectiveBenefits(barter, campaignBenefits)
 
@@ -245,18 +290,21 @@ function TrackingRow({ campaignId, barter, campaignBenefits }: { campaignId: str
       </div>
       <div className="divide-y divide-gray-50 px-3">
         {benefits.map((benefit, index) => (
-          <BenefitTrackingLine key={`${benefit.benefit_type}-${index}`} benefit={benefit} benefitIndex={index} barter={barter} action={action} />
+          <BenefitTrackingLine key={`${benefit.benefit_type}-${index}`} benefit={benefit} benefitIndex={index} barter={barter} action={action}
+            selected={selectedPendingKeys.includes(`${barter.id}:${index}`)} onToggleSelected={onTogglePending} />
         ))}
       </div>
     </div>
   )
 }
 
-function BenefitTrackingLine({ benefit, benefitIndex, barter, action }: {
+function BenefitTrackingLine({ benefit, benefitIndex, barter, action, selected, onToggleSelected }: {
   benefit: CampaignBenefit
   benefitIndex: number
   barter: Barter
   action: ReturnType<typeof useBarterAction>
+  selected: boolean
+  onToggleSelected: (key: string, selected: boolean) => void
 }) {
   const current = getBenefitTracking(barter, benefitIndex)
   const [status, setStatus] = useState<BarterSimpleStatus>(current.status)
@@ -275,7 +323,8 @@ function BenefitTrackingLine({ benefit, benefitIndex, barter, action }: {
   }
 
   return (
-    <div className="grid gap-2 py-2 md:grid-cols-[minmax(150px,1fr)_140px_minmax(180px,1.4fr)_32px] md:items-center">
+    <div className="grid gap-2 py-2 md:grid-cols-[28px_minmax(150px,1fr)_140px_minmax(180px,1.4fr)_32px] md:items-center">
+      <div className="flex justify-center">{current.status === 'pending' && <input type="checkbox" aria-label={`Seleccionar ${benefit.description}`} checked={selected} onChange={event => onToggleSelected(`${barter.id}:${benefitIndex}`, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />}</div>
       <div className="min-w-0">
         <p className="truncate text-xs font-medium text-gray-800">{benefit.quantity}× {benefit.description}</p>
         <p className="truncate text-[10px] text-gray-400">{activationText(benefit)}</p>

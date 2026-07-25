@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -606,28 +606,27 @@ function CampaignBrandsPanel({
   if (brands.length === 0 && !canManage) return null
 
   return (
-    <div className="card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="card px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-gray-700">Marcas participantes</h3>
         <span className="text-xs text-gray-400">{brands.length} {brands.length === 1 ? 'marca' : 'marcas'}</span>
       </div>
       {brands.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {brands.map((brand, idx) => (
-            <div key={`${brand.id ?? idx}`} className="group flex min-w-0 items-center gap-2 rounded-xl border border-gray-100 bg-white px-2.5 py-2 shadow-sm">
-              <div className="flex min-w-0 items-center gap-2">
+            <div key={`${brand.id ?? idx}`} className="group flex min-w-0 items-center gap-1.5 rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5">
+              <div className="flex min-w-0 items-center gap-1.5">
                 {brand.logo_url ? (
-                  <img src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-100 object-contain p-0.5" />
+                  <img src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-5 w-5 flex-shrink-0 rounded object-contain" />
                 ) : (
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-violet-50 text-xs font-bold text-violet-600">{(brand.name ?? '?').slice(0, 1).toUpperCase()}</span>
+                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-violet-50 text-[10px] font-bold text-violet-600">{(brand.name ?? '?').slice(0, 1).toUpperCase()}</span>
                 )}
-                <div className="min-w-0 leading-tight">
-                  <div className="flex items-center gap-1.5">
-                    <span className="max-w-[160px] truncate text-sm font-semibold text-gray-900">{brand.name ?? 'Marca sin nombre'}</span>
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${brand._role === 'Principal' ? 'bg-violet-50 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>{brand._role ?? ''}</span>
-                  </div>
-                  {brand.instagram && <a href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="block max-w-[180px] truncate text-xs text-violet-600 hover:underline">@{brand.instagram.replace(/^@/, '')}</a>}
-                </div>
+                {brand.instagram ? (
+                  <a href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="max-w-[170px] truncate text-xs font-semibold text-violet-700 hover:underline">@{brand.instagram.replace(/^@/, '')}</a>
+                ) : (
+                  <span className="max-w-[150px] truncate text-xs font-semibold text-gray-800">{brand.name ?? 'Marca sin nombre'}</span>
+                )}
+                {brand._role === 'Principal' && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-medium text-violet-700">Principal</span>}
               </div>
               {canManage && brand._role === 'Colaboradora' && brand.id && (
                 <button type="button" aria-label={`Quitar ${brand.name ?? 'marca'}`} className="ml-1 text-gray-300 hover:text-red-500" onClick={async () => {
@@ -757,10 +756,13 @@ function CoBrandManager({
   )
 }
 
-function OverviewEditPanel({ campaign, saving, isBrandPortal, onCancel, onSave }: {
+type OverviewEditSection = 'content' | 'deliverables'
+
+function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel, onSave }: {
   campaign: CampaignDetail
   saving: boolean
   isBrandPortal: boolean
+  section: OverviewEditSection
   onCancel: () => void
   onSave: (values: Record<string, unknown>) => Promise<void>
 }) {
@@ -822,71 +824,24 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, onCancel, onSave }
     ['reach', 'Reach'], ['impressions', 'Impresiones'], ['clicks', 'Clicks'],
     ['conversions', 'Conversiones'], ['engagement_rate', 'Engagement rate (%)'],
   ] as const
-  const campaignTypes = [
-    ['sponsored_post', 'Sponsored Post'], ['ambassador', 'Embajador'], ['ugc', 'UGC'],
-    ['event_appearance', 'Evento'], ['product_seeding', 'Product Seeding'],
-    ['live', 'Live / Streaming'], ['commission', 'Por comisión'],
-  ] as const
-  const currencies = ['CLP', 'USD', 'EUR', 'MXN', 'COP', 'ARS', 'BRL', 'GBP'] as const
+  const sectionTitle: Record<OverviewEditSection, string> = {
+    content: 'Editar contenido y objetivos',
+    deliverables: 'Editar entregables',
+  }
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className="card p-5 border-2 border-violet-200 bg-violet-50/20">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div><h2 className="font-bold text-gray-900">Editar Overview</h2><p className="text-xs text-gray-500 mt-0.5">Edita la campaña sin salir de su detalle.</p></div>
-          <div className="flex gap-2">
-            <button type="button" onClick={onCancel} disabled={saving} className="px-3 py-2 text-sm font-medium border border-gray-200 bg-white rounded-xl hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
-            <button type="submit" disabled={saving || form.name.trim().length < 3} className="px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2">
-              {saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? 'Guardando…' : 'Guardar cambios'}
-            </button>
-          </div>
-        </div>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <label className="sm:col-span-2 text-xs font-semibold text-gray-600">Nombre<input value={form.name} maxLength={120} onChange={e => field('name', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          <label className="sm:col-span-2 text-xs font-semibold text-gray-600">Descripción<textarea value={form.description} maxLength={3000} rows={4} onChange={e => field('description', e.target.value)} className={`${inputClass} mt-1 resize-y`} /><span className="block text-right text-[11px] font-normal text-gray-400 mt-1">{form.description.length} / 3000</span></label>
-          <div className="sm:col-span-2">
-            <p className="text-xs font-semibold text-gray-600 mb-2">Tipo de campaña</p>
-            <div className="grid sm:grid-cols-3 gap-2">{campaignTypes.map(([value, label]) => (
-              <button key={value} type="button" onClick={() => field('type', value)}
-                className={cn('px-3 py-2 rounded-xl border text-xs font-semibold text-left', form.type === value ? 'bg-violet-50 border-violet-500 text-violet-700' : 'bg-white border-gray-200 text-gray-600')}>{label}</button>
-            ))}</div>
-          </div>
-          <div className="sm:col-span-2 grid sm:grid-cols-2 gap-3">
-            {([['private', 'Privada', 'Solo influencers invitadas o asignadas.'], ['open', 'Pública', 'Las influencers pueden postular desde su portal.']] as const).map(([value, label, help]) => (
-              <button key={value} type="button" onClick={() => field('visibility', value)}
-                className={cn('p-3 rounded-xl border text-left', form.visibility === value ? 'bg-violet-50 border-violet-500' : 'bg-white border-gray-200')}>
-                <span className="block text-sm font-semibold text-gray-800">{label}</span><span className="block text-[11px] text-gray-500 mt-1">{help}</span>
-              </button>
-            ))}
-          </div>
-          <label className="text-xs font-semibold text-gray-600">Inicio<input type="date" value={form.start_date?.split('T')[0] ?? ''} onChange={e => field('start_date', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          <label className="text-xs font-semibold text-gray-600">Término<input type="date" value={form.end_date?.split('T')[0] ?? ''} onChange={e => field('end_date', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          {form.visibility === 'open' && <>
-            <label className="text-xs font-semibold text-gray-600">Cierre de postulaciones<input type="datetime-local" value={form.application_deadline?.slice(0, 16) ?? ''} onChange={e => field('application_deadline', e.target.value)} className={`${inputClass} mt-1`} /></label>
-            <label className="text-xs font-semibold text-gray-600">Cupos máximos<input type="number" min="1" value={form.max_influencers} onChange={e => field('max_influencers', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          </>}
-          <label className="text-xs font-semibold text-gray-600">Presupuesto<input type="number" min="0" value={form.budget_total} onChange={e => field('budget_total', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          <label className="text-xs font-semibold text-gray-600">Moneda<select value={form.currency} onChange={e => field('currency', e.target.value as typeof form.currency)} className={`${inputClass} mt-1`}>{currencies.map(currency => <option key={currency} value={currency}>{currency}</option>)}</select></label>
-          {form.type === 'commission' && <label className="text-xs font-semibold text-gray-600">Comisión (%)<input type="number" min="0" max="100" step="0.5" value={form.commission_rate} onChange={e => field('commission_rate', e.target.value)} className={`${inputClass} mt-1`} /></label>}
-          <label className="text-xs font-semibold text-gray-600">Ubicación<input value={form.address} onChange={e => field('address', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          {!isBrandPortal && <div className="sm:col-span-2"><BrandSelector value={form.brand_id} onChange={value => field('brand_id', value)} /></div>}
-          <label className="sm:col-span-2 flex items-center justify-between gap-4 border border-gray-200 bg-white rounded-xl p-3">
-            <span><span className="block text-sm font-semibold text-gray-800">Aprobación de contenido obligatoria</span><span className="block text-[11px] text-gray-500 mt-0.5">La marca o administración revisará el contenido antes de publicarlo.</span></span>
-            <input type="checkbox" checked={form.approval_required} onChange={e => field('approval_required', e.target.checked)} className="h-4 w-4 accent-violet-600" />
-          </label>
+      <div className="flex items-center justify-between gap-3">
+        <div><h2 className="text-base font-bold text-gray-900">{sectionTitle[section]}</h2><p className="text-xs text-gray-500 mt-0.5">Solo estás editando esta sección.</p></div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onCancel} disabled={saving} className="px-3 py-2 text-sm font-medium border border-gray-200 bg-white rounded-xl hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+          <button type="submit" disabled={saving || form.name.trim().length < 3} className="px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2">
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
         </div>
       </div>
-
-      <div className="card p-5 space-y-4">
-        <h3 className="font-semibold text-gray-800">Contenido y objetivos</h3>
+      {section === 'content' && <div className="card p-5 space-y-4">
         <label className="text-xs font-semibold text-gray-600">Guías de contenido<textarea value={form.content_guidelines} maxLength={3000} rows={5} onChange={e => field('content_guidelines', e.target.value)} className={`${inputClass} mt-1 resize-y`} /></label>
-        <div><p className="text-xs font-semibold text-gray-600 mb-2">Plataformas</p><div className="flex flex-wrap gap-2">
-          {['instagram', 'tiktok', 'youtube', 'facebook', 'twitter', 'linkedin'].map(platform => {
-            const active = form.platforms.includes(platform)
-            return <button key={platform} type="button" onClick={() => field('platforms', active ? form.platforms.filter(item => item !== platform) : [...form.platforms, platform])}
-              className={cn('px-3 py-1.5 rounded-full border text-xs font-semibold capitalize', active ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-gray-200 text-gray-600')}>{PLATFORM_ICONS[platform]} {platform}</button>
-          })}
-        </div></div>
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="text-xs font-semibold text-gray-600">Hashtags, separados por coma<input value={form.hashtags} onChange={e => field('hashtags', e.target.value)} className={`${inputClass} mt-1`} /></label>
           <label className="text-xs font-semibold text-gray-600">Tags, separados por coma<input value={form.social_tags} onChange={e => field('social_tags', e.target.value)} className={`${inputClass} mt-1`} /></label>
@@ -895,13 +850,10 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, onCancel, onSave }
           <label key={key} className="text-xs font-semibold text-gray-600">{label}<input type="number" min="0" step={key === 'engagement_rate' ? '0.1' : '1'} value={form.goals[key] ?? ''}
             onChange={e => setForm(previous => ({ ...previous, goals: { ...previous.goals, [key]: Number(e.target.value) || 0 } }))} className={`${inputClass} mt-1`} /></label>
         ))}</div>
-      </div>
+      </div>}
 
-      <div className="card p-5">
-        <h3 className="font-semibold text-gray-800 mb-1">Deliverables requeridos</h3>
-        <p className="text-xs text-gray-500 mb-4">Cada Reel o Story puede tener su propio brief, fecha límite y horario.</p>
-        <DeliverableTemplateBuilder value={form.deliverable_templates} onChange={value => field('deliverable_templates', value)} showSuggestions={false} />
-      </div>
+      {section === 'deliverables' && <div className="card p-5"><DeliverableTemplateBuilder value={form.deliverable_templates} onChange={value => field('deliverable_templates', value)} showSuggestions={false} /></div>}
+
     </form>
   )
 }
@@ -914,6 +866,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const apiBase = isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns'
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
   const [editingOverview, setEditingOverview] = useState(searchParams.get('mode') === 'edit')
+  const [overviewEditSection, setOverviewEditSection] = useState<OverviewEditSection>('content')
+  const [editingEvent, setEditingEvent] = useState(false)
+  const [eventSaving, setEventSaving] = useState(false)
+  const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', location_instructions: '' })
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [brandRoster, setBrandRoster] = useState<Array<{
@@ -991,8 +947,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [assetFile, setAssetFile] = useState<File | null>(null)
   const [assetFormOpen, setAssetFormOpen] = useState(false)
   const [assetSaving, setAssetSaving] = useState(false)
-  const [briefFile, setBriefFile] = useState<File | null>(null)
   const [briefSaving, setBriefSaving] = useState(false)
+  const briefInputRef = useRef<HTMLInputElement>(null)
   const [locationFormOpen, setLocationFormOpen] = useState(false)
   const [locationSaving, setLocationSaving] = useState(false)
   const [locationForm, setLocationForm] = useState({
@@ -1021,12 +977,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const patchCampaign = usePatchCampaign(id, apiBase)
   const removeInfluencer = useRemoveCampaignInfluencer(id)
 
-  function setOverviewEditMode(editing: boolean) {
+  function setOverviewEditMode(editing: boolean, section: OverviewEditSection = 'content') {
     const params = new URLSearchParams(searchParams.toString())
     params.set('tab', 'overview')
     if (editing) params.set('mode', 'edit')
     else params.delete('mode')
     setTab('overview')
+    setOverviewEditSection(section)
     setEditingOverview(editing)
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
@@ -1034,6 +991,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   useEffect(() => {
     const requested = searchParams.get('mode') === 'edit'
     setEditingOverview(requested)
+    if (requested) setOverviewEditSection('content')
     if (requested) setTab('overview')
   }, [searchParams])
 
@@ -1323,6 +1281,67 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     const metadata = asset.metadata as Record<string, unknown> | undefined
     return metadata?.asset_type === 'brief'
   })
+  const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
+  const campaignPeriod = c.start_date && c.end_date
+    ? `${formatDate(c.start_date)} — ${formatDate(c.end_date)}`
+    : c.start_date ? formatDate(c.start_date) : null
+  const deliveryDeadlines = (c.deliverable_templates ?? [])
+    .filter(template => !!template.due_date)
+    .map(template => `${template.type.replace(/_/g, ' ')}: ${formatDate(template.due_date!)}`)
+  const eventBooking = (c as unknown as {
+    event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string } | null } | null
+  }).event_booking ?? null
+  const eventDateTime = eventBooking?.starts_at
+    ? format(new Date(eventBooking.starts_at), "EEEE d 'de' MMMM · HH:mm", { locale: es })
+    : null
+  const eventLocation = eventBooking?.location || c.address || null
+
+  function openEventEditor() {
+    setOverviewEditMode(false)
+    setEventForm({
+      name: c.name ?? '',
+      starts_at: eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), "yyyy-MM-dd'T'HH:mm") : '',
+      ends_at: eventBooking?.ends_at ? format(new Date(eventBooking.ends_at), "yyyy-MM-dd'T'HH:mm") : '',
+      location: eventLocation ?? '',
+      location_instructions: eventBooking?.location_details?.instructions ?? '',
+    })
+    setEditingEvent(true)
+  }
+
+  async function saveEvent() {
+    if (!eventForm.name.trim() || !eventForm.starts_at || !eventForm.ends_at || !eventForm.location.trim()) {
+      toast.error('Completa nombre, fecha, hora y ubicación del evento')
+      return
+    }
+    setEventSaving(true)
+    try {
+      const startsAt = new Date(eventForm.starts_at).toISOString()
+      const endsAt = new Date(eventForm.ends_at).toISOString()
+      const bookingPayload = eventBooking?.id
+        ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
+        : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
+      const response = await fetch('/api/bookings', {
+        method: eventBooking?.id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingPayload),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudo guardar el evento')
+      await patchCampaign.mutateAsync({
+        name: eventForm.name.trim(),
+        start_date: eventForm.starts_at.slice(0, 10),
+        end_date: eventForm.ends_at.slice(0, 10),
+        address: eventForm.location.trim(),
+      })
+      await refetch()
+      setEditingEvent(false)
+      toast.success('Fecha y ubicación actualizadas')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el evento')
+    } finally {
+      setEventSaving(false)
+    }
+  }
 
   async function reloadCampaignAssets() {
     const res = await fetch(`/api/campaigns/${id}/assets`)
@@ -1401,14 +1420,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     toast.success('Asset eliminado')
   }
 
-  async function handleUploadBrief() {
-    if (!briefFile) return toast.error('Selecciona el archivo del brief')
+  async function handleUploadBrief(file: File) {
     setBriefSaving(true)
     try {
       const formData = new FormData()
-      formData.append('filename', briefFile.name)
+      formData.append('filename', file.name)
       formData.append('asset_type', 'brief')
-      formData.append('file', briefFile)
+      formData.append('file', file)
       const res = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body: formData })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? 'No se pudo cargar el brief')
@@ -1416,7 +1434,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       if (briefAsset?.id) {
         await fetch(`/api/campaigns/${id}/assets/${String(briefAsset.id)}`, { method: 'DELETE' })
       }
-      setBriefFile(null)
       await reloadCampaignAssets()
       toast.success('Brief cargado correctamente')
     } catch (error) {
@@ -1605,7 +1622,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     <div className="space-y-5">
       {/* Breadcrumb + actions */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={handleBack}
@@ -1615,6 +1633,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           </button>
           <span className="text-gray-200">/</span>
           <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{c.name}</span>
+          </div>
+          <p className="mt-1 text-xs capitalize text-gray-400">{format(new Date(), "EEEE d 'de' MMMM", { locale: es })}</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href={isBrandPortal ? `/brand-campaigns/${id}/report` : `/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
@@ -1622,17 +1642,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
             <FileDown className="h-3.5 w-3.5" />
           </Link>
-          {/* Editar: en portal marca solo la marca creadora puede editar —
-              mismo criterio que ya usa el panel de postulaciones más abajo
-              (_brand_permissions.canEdit). Antes se mostraba siempre, aunque
-              el backend igual lo rechazaba con 403 al guardar. */}
-          {(!isBrandPortal || c._brand_permissions?.canEdit) && (
-            <button type="button" onClick={() => setOverviewEditMode(true)}
-              title="Editar campaña"
-              className="flex items-center justify-center p-2 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
           {c.status === 'draft' && (
             isBrandPortal ? (
               <button
@@ -1718,12 +1727,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           </div>
           <div className="flex-1 min-w-0">
             {Boolean(campaignBrands[0]?.name) && (
-              <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-0.5 truncate">
-                {String(campaignBrands[0].name)}
-              </p>
+              <div className="mb-0.5 flex items-center gap-1.5">
+                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-gray-600">{String(campaignBrands[0].name)}</p>
+                {(!isBrandPortal || c._brand_permissions?.canEdit) && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={openEventEditor} title="Editar nombre, fecha y lugar" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
+              </div>
             )}
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>
+              {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-base font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>}
               {isBrandPortal ? (
                 <CampaignStatusBadge status={c.status} />
               ) : (
@@ -1747,90 +1757,29 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               )}
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
             </div>
-            {c.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>}
-            <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 mt-1">
-              {c.start_date && (
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5 text-violet-500" />
-                  {formatDate(c.start_date)} → {c.end_date ? formatDate(c.end_date) : '—'}
-                </span>
-              )}
-              {hasBudget && <span className="flex items-center gap-1">
-                <DollarSign className="h-3.5 w-3.5 text-gray-300" />
-                <strong className="text-gray-800">{formatCurrency(c.budget_total ?? 0, c.currency)}</strong>
-              </span>}
-              <span className="flex items-center gap-1">
-                <Users className="h-3.5 w-3.5 text-gray-300" />
-                <strong className="text-gray-800">{campaignInfluencers.length}</strong> influencers
-              </span>
-              {c.address && (
-                <span className="flex items-center gap-1 min-w-0">
-                  <MapPin className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
-                  <span className="truncate max-w-[220px]">{c.address}</span>
-                </span>
-              )}
-              {c.brief_url && (
-                <a href={c.brief_url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-violet-600 hover:underline">
-                  <FileText className="h-3.5 w-3.5" /> Brief
-                </a>
-              )}
-            </div>
+            {editingEvent ? <div className="mt-2 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Lugar o dirección" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-800 outline-none" /></div><input value={eventForm.location_instructions} placeholder="Cómo llegar o indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none" /></div></div> : <><div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-gray-600"><span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-violet-600" />{eventDateTime ?? 'Fecha por confirmar'}</span><span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-violet-600" />{eventLocation ?? 'Ubicación por confirmar'}</span></div><div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-2 text-[11px] text-gray-500"><span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5 text-gray-400" /><b className="font-semibold text-gray-600">Período:</b> {campaignPeriod ?? 'Por confirmar'}</span>{deliveryDeadlines.length > 0 && <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-gray-400" /><b className="font-semibold text-gray-600">Entregas:</b> {deliveryDeadlines.join(' · ')}</span>}<span className="inline-flex items-center gap-1"><FileText className="h-3.5 w-3.5 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Ver brief</a> : <span>Brief pendiente</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} className="ml-1 font-semibold text-violet-700 hover:underline disabled:opacity-50">{briefSaving ? 'Cargando…' : (briefAsset || c.brief_url) ? 'Reemplazar' : 'Subir'}</button></>}</span></div></>}
           </div>
-          <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:max-w-[380px] sm:justify-end sm:flex-shrink-0" style={{ minWidth: 0 }}>
-            <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-              <div className="text-sm font-bold text-gray-900">{pct}%</div>
-              <div className="text-[9px] font-medium text-gray-600">Completado</div>
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+            <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">{confirmedInfluencers.length}</div>
+              <div className="text-[10px] font-medium text-gray-500">Seleccionadas</div>
             </div>
-            {hasBudget && (
-              <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-                <div className="text-sm font-bold text-gray-900">{budgetPct}%</div>
-                <div className="text-[9px] font-medium text-gray-600">Budget usado</div>
-              </div>
-            )}
-            <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-              <div className="text-sm font-bold text-gray-900">{campaignInfluencers.length}</div>
-              <div className="text-[9px] font-medium text-gray-600">Invitadas</div>
+            <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">{activeRelations.length}</div>
+              <div className="text-[10px] font-medium text-gray-500">Influencers</div>
             </div>
-            <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-              <div className="text-[11px] font-bold text-violet-700 truncate">
-                {((c as { visibility?: string | null }).visibility === 'open' || (c as { visibility?: string | null }).visibility === 'public') ? 'Pública' : 'Invitación'}
-              </div>
-              <div className="text-[9px] font-medium text-violet-600">Visibilidad</div>
+            <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">{campaignBrands.length}</div>
+              <div className="text-[10px] font-medium text-gray-500">Marcas</div>
             </div>
-            {/* Comisión — Pri: "esto es importantisimo y deberia aparecer en la
-                card de arriba... donde aparece el resumen". Antes solo vivía
-                como card aparte en el Overview, fácil de perder de vista. Ahora
-                está en el resumen principal, junto a Completado/Budget/Invitadas. */}
-            {!!c.commission_rate && (
-              <div className="text-center bg-amber-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-                <div className="text-sm font-bold text-amber-700">{c.commission_rate}%</div>
-                <div className="text-[9px] font-medium text-amber-700">Comisión</div>
-              </div>
-            )}
-            {/* Métricas reales de contenido (Apify) — solo aparecen si al menos
-                1 deliverable ya fue sincronizado con "Actualizar métricas".
-                Views/likes/comments reales; engagement calculado por nosotros.
-                Cajas achicadas (pedido de Pri: "sigue muy grande, achicar"). */}
-            {hasCampaignMetrics && (
-              <>
-                <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-                  <div className="text-sm font-bold text-gray-900">{formatFollowers(totalViews)}</div>
-                  <div className="text-[9px] font-medium text-gray-600">Visualiz.</div>
-                </div>
-                <div className="text-center bg-gray-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-                  <div className="text-sm font-bold text-gray-900">{formatFollowers(totalInteractionsMetrics)}</div>
-                  <div className="text-[9px] font-medium text-gray-600">Interacc.</div>
-                </div>
-                <div className="text-center bg-violet-50 rounded-md p-1.5 w-[76px] flex-shrink-0">
-                  <div className="text-sm font-bold text-violet-700">{avgCampaignEngagement !== null ? `${avgCampaignEngagement}%` : '—'}</div>
-                  <div className="text-[9px] font-medium text-violet-600">Eng. (calc.)</div>
-                </div>
-              </>
-            )}
+            {c.visibility === 'open' && <div className={cn('rounded-lg px-2.5 py-1.5 text-center', c.applications_closed_at ? 'bg-amber-50' : 'bg-emerald-50')}>
+              <div className={cn('text-xs font-bold', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>{c.applications_closed_at ? 'Cerradas' : 'Abiertas'}</div>
+              <div className={cn('text-[10px] font-medium', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>Postulaciones</div>
+            </div>}
+            {!!c.commission_rate && <div className="rounded-lg bg-amber-50 px-3 py-2 text-center"><div className="text-sm font-bold text-amber-700">{c.commission_rate}%</div><div className="text-[10px] font-medium text-amber-700">Comisión</div></div>}
           </div>
         </div>
-        <div className="mt-2 pt-2 border-t border-gray-100">
+        {deliverableCount > 0 && <div className="mt-2 border-t border-gray-100 pt-2">
           <div className="flex justify-between text-[11px] text-gray-400 mb-1">
             <span>{deliverableDone}/{deliverableCount} deliverables publicados</span>
             {hasBudget && <span>{formatCurrency(c.budget_spent, c.currency)} gastados de {formatCurrency(c.budget_total ?? 0, c.currency)}</span>}
@@ -1839,7 +1788,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')}
               style={{ width: `${pct}%` }} />
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Tabs — achicados (pedido de Pri: "arregla la ui que se vea bien") */}
@@ -1865,35 +1814,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             campaign={c}
             saving={patchCampaign.isPending}
             isBrandPortal={isBrandPortal}
+            section={overviewEditSection}
             onCancel={() => setOverviewEditMode(false)}
             onSave={saveOverview}
           />
         ) : <>
-        {c.visibility === 'open' && (
-          <div className={cn(
-            'card p-4 border flex flex-wrap items-center justify-between gap-3',
-            c.applications_closed_at ? 'border-gray-200 bg-gray-50' : 'border-violet-200 bg-violet-50'
-          )}>
-            <div>
-              <p className="text-sm font-bold text-gray-900">
-                {c.applications_closed_at ? 'Postulaciones cerradas' : 'Cupos limitados'}
-              </p>
-              <p className="text-xs text-gray-600 mt-1">
-                {c.max_influencers
-                  ? `${confirmedInfluencers.length} de ${c.max_influencers} cupos ocupados`
-                  : `${confirmedInfluencers.length} influencers seleccionadas`}
-                {c.application_deadline
-                  ? ` · Cierre: ${new Date(c.application_deadline).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })}`
-                  : ''}
-              </p>
-            </div>
-            {!c.applications_closed_at && c.max_influencers && (
-              <span className="text-xs font-bold text-violet-700 bg-white px-3 py-1.5 rounded-full border border-violet-200">
-                {Math.max(c.max_influencers - confirmedInfluencers.length, 0)} disponibles
-              </span>
-            )}
-          </div>
-        )}
         {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
           <CampaignBrandsPanel
             campaignId={id}
@@ -1908,163 +1833,44 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             onChanged={() => void refetch()}
           />
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <div className="col-span-2 space-y-4">
-            <div className="card p-5 border-2 border-violet-100">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-violet-800 flex items-center gap-2">
-                    <FileText className="h-4 w-4" /> Brief de campaña
-                  </h3>
-                  <p className="text-xs text-gray-400 mt-1">PDF, Word o imagen disponible para las influencers aceptadas.</p>
-                </div>
-                {(briefAsset?.signed_url || c.brief_url) && (
-                  <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 hover:underline">
-                    <Download className="h-4 w-4" /> Descargar brief
-                  </a>
-                )}
-              </div>
-              {(!isBrandPortal || c._brand_permissions?.canEdit) && (
-                <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                  <input type="file" accept=".pdf,.doc,.docx,image/*" onChange={e => setBriefFile(e.target.files?.[0] ?? null)}
-                    className="input-base flex-1 text-sm bg-white" />
-                  <button type="button" onClick={handleUploadBrief} disabled={!briefFile || briefSaving}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-50">
-                    <Upload className="h-4 w-4" /> {briefSaving ? 'Cargando...' : briefAsset ? 'Reemplazar' : 'Cargar brief'}
-                  </button>
-                </div>
-              )}
-            </div>
+        <div className="space-y-4">
             {/* Guías de contenido — movida arriba (antes al final de la columna,
                 casi invisible después de scrollear). Pri: "necesito que al abrir
                 el overview lo entienda por completo las marcas... las guías de
                 contenido" — es lo primero que una marca necesita leer para saber
                 qué se espera de la campaña. */}
-            {c.address && (
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-violet-500" /> Ubicación
-                </h3>
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{c.address}</p>
-              </div>
-            )}
-
-            {c.content_guidelines && (
+            {(
               <div className="card p-5 border-2 border-violet-100 bg-violet-50/20">
-                <h3 className="text-sm font-semibold text-violet-800 mb-2 flex items-center gap-2">
-                  <FileText className="h-4 w-4" /> Guías de contenido
-                </h3>
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{c.content_guidelines}</p>
-              </div>
-            )}
-
-            {((c.platforms?.length ?? 0) > 0 || (c.hashtags?.length ?? 0) > 0 || (c.social_tags?.length ?? 0) > 0) && (
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Plataformas, hashtags y tags</h3>
-                {(c.platforms?.length ?? 0) > 0 && (
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    {c.platforms?.map(p => (
-                      <span key={p} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-lg text-sm font-medium text-gray-700">
-                        {PLATFORM_ICONS[p]} {p.charAt(0).toUpperCase() + p.slice(1)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {(c.social_tags?.length ?? 0) > 0 && (
-                  <div className="mb-3">
-                    <p className="text-xs text-gray-400 mb-1.5 font-medium">Tags obligatorios en posts:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {c.social_tags!.map(t => (
-                        <span key={t} className="px-2.5 py-1 bg-violet-100 text-violet-700 rounded-md text-xs font-semibold">{t}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(c.hashtags?.length ?? 0) > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {c.hashtags?.map(h => (
-                      <span key={h} className="px-2.5 py-1 bg-violet-50 text-violet-700 rounded-md text-xs font-medium">{h}</span>
-                    ))}
-                  </div>
-                )}
-                {/* Tags internos — antes vivía en una card aparte en el sidebar
-                    ("Tags"), duplicando el concepto de "tags" ya presente acá
-                    (hashtags/social_tags). Se fusiona todo en 1 sola card. */}
-                {(c.tags?.length ?? 0) > 0 && (
-                  <div>
-                    <p className="text-xs text-gray-400 mb-1.5 font-medium">Tags internos:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {c.tags?.map(t => <span key={t} className="badge badge-gray">{t}</span>)}
-                    </div>
-                  </div>
-                )}
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <h3 className="text-sm font-semibold text-violet-800 flex items-center gap-2"><FileText className="h-4 w-4" /> Guías de contenido</h3>
+                  {(!isBrandPortal || c._brand_permissions?.canEdit) && <button type="button" onClick={() => setOverviewEditMode(true, 'content')} className="text-xs font-semibold text-violet-700 hover:underline">Editar</button>}
+                </div>
+                {c.content_guidelines ? <>
+                  <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap line-clamp-4">{c.content_guidelines}</p>
+                  {c.content_guidelines.length > 420 && <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold text-violet-700">Ver guía completa</summary><p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{c.content_guidelines}</p></details>}
+                </> : <p className="text-sm text-gray-400">Aún no hay guías de contenido.</p>}
               </div>
             )}
 
             {/* Deliverable templates */}
-            {(c.deliverable_templates?.length ?? 0) > 0 && (
+            {(
               <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Deliverables requeridos por campaña</h3>
-                <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 mb-3"><h3 className="text-sm font-semibold text-gray-700">Deliverables requeridos por campaña</h3>{(!isBrandPortal || c._brand_permissions?.canEdit) && <button type="button" onClick={() => setOverviewEditMode(true, 'deliverables')} className="text-xs font-semibold text-violet-700 hover:underline">Editar</button>}</div>
+                {(c.deliverable_templates?.length ?? 0) > 0 ? <div className="space-y-2">
                   {c.deliverable_templates!.map(dt => (
-                    <div key={dt.type} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div key={dt.type} className="flex items-start gap-3 rounded-xl bg-gray-50 p-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-gray-800 capitalize">{dt.type.replace(/_/g,' ')}</span>
                           <span className="badge badge-gray text-[10px]">x{dt.quantity}</span>
                           {dt.due_date && <span className="text-xs text-gray-400">→ {dt.due_date}</span>}
                         </div>
-                        {dt.description && <p className="text-xs text-gray-500 mt-0.5">{dt.description}</p>}
+                        {dt.description && <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{dt.description}</p>}
                       </div>
                     </div>
                   ))}
-                </div>
+                </div> : <p className="text-sm text-gray-400">Aún no se han definido entregables.</p>}
               </div>
-            )}
-
-            {/* Visibility badge — solo admin. El estado (Pública/Por invitación) ya
-                se ve en el header (stat tile), esta card era una segunda
-                explicación del mismo dato; se deja solo donde hace falta el
-                control real (el toggle), que es exclusivamente admin. */}
-            {!isBrandPortal && (
-            <div className="card p-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700">Visibilidad</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {(c as {visibility?: string}).visibility === 'open'
-                    ? 'Las influencers pueden postular desde su portal'
-                    : 'Solo por invitación del equipo'}
-                </p>
-              </div>
-              <button
-                onClick={async () => {
-                  // FIX (2026-07-01): antes escribía 'public'/'invite_only', valores
-                  // que ningún otro endpoint reconoce (visibility es texto libre, sin
-                  // enum en BD). El resto del sistema (incl. GET /api/influencer/
-                  // campaigns/open) usa 'open'/'private'. Este botón nunca había sido
-                  // usado en producción (0 filas con 'public' hoy), pero de haberse
-                  // usado, la campaña habría dejado de aparecer para influencers sin
-                  // ningún error visible.
-                  const current = (c as {visibility?: string}).visibility ?? 'private'
-                  const next = current === 'open' ? 'private' : 'open'
-                  await fetch(`/api/campaigns/${id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ visibility: next }),
-                  })
-                  void refetch()
-                }}
-                className={cn(
-                  'text-xs font-bold px-3 py-1.5 rounded-full border transition-colors',
-                  (c as {visibility?: string}).visibility === 'open'
-                    ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
-                    : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
-                )}
-              >
-                {(c as {visibility?: string}).visibility === 'open' ? '🌐 Pública' : '🔒 Invitación'}
-              </button>
-            </div>
             )}
 
             {!isBrandPortal && (c as {visibility?: string}).visibility === 'open' && (
@@ -2108,47 +1914,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 )}
               </div>
             )}
-
-          </div>
-
-          <div className="space-y-4">
-            {hasBudget && <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Budget</h3>
-              <div className="space-y-3">
-                {[
-                  { label: 'Total asignado', value: c.budget_total ?? 0, color: 'text-gray-900' },
-                  { label: 'Gastado',         value: c.budget_spent,      color: 'text-violet-700' },
-                  { label: 'Disponible',      value: (c.budget_total ?? 0) - c.budget_spent, color: budgetPct > 90 ? 'text-red-600' : 'text-emerald-600' },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">{label}</span>
-                    <span className={cn('text-sm font-bold', color)}>{formatCurrency(value, c.currency)}</span>
-                  </div>
-                ))}
-                <div className="pt-2">
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={cn('h-full rounded-full', budgetPct > 90 ? 'bg-red-400' : 'bg-violet-500')}
-                      style={{ width: `${Math.min(budgetPct, 100)}%` }} />
-                  </div>
-                  <div className="text-[10px] text-gray-400 mt-1 text-right">{budgetPct}% utilizado</div>
-                </div>
-              </div>
-            </div>}
-
-            <div className="card p-4 space-y-2">
-              <h3 className="text-sm font-semibold text-gray-700 mb-1">Acciones rápidas</h3>
-              {[
-                { label: '+ Agregar influencer', href: isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`, color: 'text-violet-700 bg-violet-50 hover:bg-violet-100' },
-                { label: '📄 Ver contratos',      href: `/admin-contracts`,  color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
-                { label: '💳 Crear factura',      href: `/admin-billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
-                { label: '💸 Crear payroll run',  href: `/admin-billing`,    color: 'text-gray-700 bg-gray-50 hover:bg-gray-100' },
-              ].map(({ label, href, color }) => (
-                <Link key={label} href={href} className={cn('block w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors', color)}>
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* NOTA (2026-07-04, redesign Overview): antes había un 2do grid acá abajo

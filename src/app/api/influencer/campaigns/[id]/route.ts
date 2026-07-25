@@ -89,6 +89,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
     delete payload.brief_url
   }
 
+  // Para decidir si postular, la influencer puede ver cuándo es el evento,
+  // pero nunca dirección ni instrucciones antes de ser aceptada.
+  const { data: eventBooking } = await admin
+    .from('bookings')
+    .select('id, starts_at, ends_at')
+    .eq('campaign_id', params.id)
+    .is('influencer_id', null)
+    .order('starts_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
   const { count: acceptedCount } = await admin
     .from('campaign_influencers')
     .select('id', { count: 'exact', head: true })
@@ -101,6 +112,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       accepted_count: acceptedCount ?? 0,
       _applied: !!existing,
       application_status: existing?.application_status ?? null,
+      event_booking: eventBooking ?? null,
     },
   })
 }

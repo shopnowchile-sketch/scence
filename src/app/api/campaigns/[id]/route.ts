@@ -158,10 +158,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // El horario y lugar del evento se guardan en bookings (no en campaigns).
+  // Se incluyen en el resumen para que Admin y Marca vean la información real
+  // del evento, en vez del rango general de duración de la campaña.
+  const { data: eventBooking } = await admin
+    .from('bookings')
+    .select('id, title, starts_at, ends_at, location, location_details, status')
+    .eq('campaign_id', params.id)
+    .order('starts_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  const campaignWithEvent = { ...data, event_booking: eventBooking ?? null }
+
   if (user.user_metadata?.is_brand) {
     const access = await getBrandAccess(admin, user.id, params.id)
     if (!access.canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
-    return NextResponse.json({ data: { ...data, _brand_permissions: access } })
+    return NextResponse.json({ data: { ...campaignWithEvent, _brand_permissions: access } })
   }
 
   // Mismo criterio que la lista (GET /api/campaigns): admin/super_admin/owner
@@ -173,7 +186,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
-  return NextResponse.json({ data })
+  return NextResponse.json({ data: campaignWithEvent })
 }
 
 // ── PUT /api/campaigns/[id] — full update ─────────────────────────────────────

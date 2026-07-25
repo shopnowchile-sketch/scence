@@ -166,26 +166,31 @@ export async function GET() {
 
   const merged = [...assignedWithAllowedBrands, ...selfWrapped]
 
-  // La fecha, hora y dirección de un evento viven en `bookings`, que es
-  // también la fuente usada por el calendario. Se agregan al detalle de la
-  // campaña para que la influencer vea exactamente la misma información que
-  // se sincroniza con Google Calendar, sin duplicar campos en campaigns.
+  // Fecha, hora y lugar del evento viven en `bookings`, que también alimenta
+  // el calendario. La fecha/hora se muestran antes de aprobar; dirección e
+  // instrucciones son operativas y solo se revelan a la influencer aceptada.
   const campaignIds = merged
     .map((row: Record<string, unknown>) => (row.campaign as Record<string, unknown> | null)?.id)
     .filter(Boolean) as string[]
 
   if (campaignIds.length > 0) {
-    const [directBookings, linkedBookings] = await Promise.all([
+    const [directBookings, linkedBookings, campaignEvents] = await Promise.all([
       admin
         .from('bookings')
-        .select('id, campaign_id, title, starts_at, ends_at, location, status')
+        .select('id, campaign_id, title, starts_at, ends_at, location, location_details, status')
         .eq('influencer_id', influencer.id)
         .in('campaign_id', campaignIds)
         .order('starts_at', { ascending: true }),
       admin
         .from('booking_influencers')
-        .select('booking:bookings (id, campaign_id, title, starts_at, ends_at, location, status)')
+        .select('booking:bookings (id, campaign_id, title, starts_at, ends_at, location, location_details, status)')
         .eq('influencer_id', influencer.id),
+      admin
+        .from('bookings')
+        .select('id, campaign_id, title, starts_at, ends_at, location, location_details, status')
+        .in('campaign_id', campaignIds)
+        .is('influencer_id', null)
+        .order('starts_at', { ascending: true }),
     ])
 
     const byCampaign = new Map<string, Record<string, unknown>>()
@@ -202,14 +207,22 @@ export async function GET() {
       }
     }
 
+    const campaignEventByCampaign = new Map<string, Record<string, unknown>>()
+    for (const booking of campaignEvents.data ?? []) {
+      if (booking.campaign_id && !campaignEventByCampaign.has(booking.campaign_id)) {
+        campaignEventByCampaign.set(booking.campaign_id, booking as Record<string, unknown>)
+      }
+    }
+
     for (const row of merged as Array<Record<string, unknown>>) {
       const campaign = row.campaign as Record<string, unknown> | null
-      // Fecha, hora y dirección son detalles operativos: solo se entregan a
-      // influencers aceptadas, nunca durante la postulación o invitación.
-      if (row.application_status !== 'accepted') {
-        row.event_booking = null
-      } else if (campaign?.id) {
-        row.event_booking = byCampaign.get(campaign.id as string) ?? null
+      if (!campaign?.id) continue
+      const booking = byCampaign.get(campaign.id as string) ?? campaignEventByCampaign.get(campaign.id as string)
+      if (!booking) continue
+      if (row.application_status === 'accepted') {
+        row.event_booking = booking
+      } else {
+        row.event_booking = { ...booking, location: null, location_details: null }
       }
     }
   }

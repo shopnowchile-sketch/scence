@@ -40,7 +40,7 @@ type CampaignRow = {
   campaign_deliverables: Deliverable[]
   event_booking?: {
     id: string; title: string | null; starts_at: string | null; ends_at: string | null
-    location: string | null; status: string | null
+    location: string | null; location_details?: { instructions?: string } | null; status: string | null
   } | null
   campaign: {
     id: string; name: string; status: string
@@ -61,6 +61,7 @@ type PreviewCampaign = {
   id: string; name: string; status: string; visibility: string
   description: string | null; content_guidelines: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
+  event_booking?: { id: string; starts_at: string | null; ends_at: string | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
   deliverable_templates: Array<{ type: string; quantity?: number; description?: string }> | null
@@ -95,7 +96,7 @@ function activationText(benefit: CampaignBenefitOffer) {
   return 'Activación informada por la marca'
 }
 
-function EventBookingCard({ booking }: { booking: NonNullable<CampaignRow['event_booking']> }) {
+function EventBookingCard({ booking, showLocation }: { booking: NonNullable<CampaignRow['event_booking']>; showLocation: boolean }) {
   const startsAt = booking.starts_at ? new Date(booking.starts_at) : null
   const endsAt = booking.ends_at ? new Date(booking.ends_at) : null
   const when = startsAt && !Number.isNaN(startsAt.getTime())
@@ -113,7 +114,8 @@ function EventBookingCard({ booking }: { booking: NonNullable<CampaignRow['event
       </div>
       <div className="mt-3 space-y-2 text-sm">
         <div className="flex gap-2.5 text-violet-950"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {when}{endTime ? ` · hasta las ${endTime}` : ''}</span></div>
-        <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Dirección:</b> {booking.location || 'La marca confirmará la dirección pronto.'}</span></div>
+        {showLocation && <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Lugar:</b> {booking.location || 'La marca confirmará la dirección pronto.'}</span></div>}
+        {showLocation && booking.location_details?.instructions?.trim() && <div className="ml-6 rounded-lg bg-white/70 px-3 py-2 text-xs leading-relaxed text-violet-900"><b>Cómo llegar:</b> {booking.location_details.instructions}</div>}
       </div>
       <p className="mt-3 border-t border-violet-200 pt-3 text-xs font-medium leading-relaxed text-violet-800">Tu entrada o confirmación llegará por correo cuando la marca la envíe y, como máximo, el día anterior al evento.</p>
     </section>
@@ -464,6 +466,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', pStatus.color)}>{pStatus.label}</span>
           </div>
 
+          {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, title: null, location: null, status: null }} showLocation={false} />}
+
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
             <div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
@@ -707,9 +711,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           </span>
         </div>
 
-        {/* Información operativa solo después de ser aceptada. Va arriba para
-            que fecha, hora y dirección del evento se vean antes del brief. */}
-        {isAccepted && data.event_booking && <EventBookingCard booking={data.event_booking} />}
+        {/* Fecha y hora se informan desde el inicio. Lugar e instrucciones solo
+            aparecen cuando la influencer ya fue aceptada. */}
+        {data.event_booking && <EventBookingCard booking={data.event_booking} showLocation={isAccepted} />}
 
         {/* El brief es la primera acción disponible luego del resumen del evento. */}
         {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}

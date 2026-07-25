@@ -124,6 +124,28 @@ export async function acceptCampaignApplication(
     console.error('[acceptCampaignApplication] auto-deliverables failed:', e)
   }
 
+  // La confirmación de asistencia puede haberse agregado después de que ya
+  // existían otros entregables. Se asegura de forma independiente para cada
+  // nueva influencer aceptada, sin duplicar la fila.
+  try {
+    const templates = Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : []
+    const attendanceTemplate = templates.find(template => template.type === 'event_attendance')
+    if (attendanceTemplate) {
+      const { data: alreadyAssigned } = await admin.from('campaign_deliverables').select('id')
+        .eq('campaign_id', campaignId).eq('influencer_id', app.influencer_id).eq('type', 'event_attendance').maybeSingle()
+      if (!alreadyAssigned) {
+        await admin.from('campaign_deliverables').insert({
+          campaign_id: campaignId, campaign_influencer_id: applicationId, influencer_id: app.influencer_id,
+          type: 'event_attendance', title: attendanceTemplate.title ?? 'Confirmar asistencia',
+          description: attendanceTemplate.description ?? null, due_date: attendanceTemplate.due_date ?? null,
+          quantity: 1, status: 'pending',
+        })
+      }
+    }
+  } catch (error) {
+    console.error('[acceptCampaignApplication] attendance confirmation failed:', error)
+  }
+
   // NOTA (2026-07-12, pedido de Pri): antes esta función activaba la campaña
   // sola cuando estaba en draft/pending_approval. Eso se sacó — la activación
   // es una acción manual de la marca (botón "Activar", PATCH /api/campaigns/[id]

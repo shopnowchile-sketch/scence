@@ -11,12 +11,15 @@
 export const DELIVERABLE_COMPLETE_STATUSES = ['approved', 'completed', 'published'] as const
 
 export interface DeliverableStatusFields {
+  type?: string | null
   status?: string | null
   content_url?: string | null
   published_url?: string | null
+  attendance_response?: string | null
 }
 
 export function isDeliverableComplete(d: DeliverableStatusFields): boolean {
+  if (d.type === 'event_attendance') return !!d.attendance_response
   // Un link rechazado sigue guardado para que la influencer y el equipo
   // puedan revisarlo, pero ya no cuenta como avance. Debe volver a pendiente
   // hasta que se suba una corrección y se apruebe.

@@ -23,6 +23,7 @@ type Deliverable = {
   // descripción/requisitos en el acordeón mobile solo cuando existen.
   description?: string | null
   hashtags?: string[] | null
+  attendance_response?: 'confirmed' | 'declined' | null
 }
 
 type CampaignRow = {
@@ -136,6 +137,7 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
   const [url, setUrl] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [attendanceSaving, setAttendanceSaving] = useState<string | null>(null)
   const total = items.length
   const submitted = items.filter(d => isDeliverableComplete(d)).length
   const awaitingReview = items.filter(d => d.status === 'in_review').length
@@ -168,6 +170,18 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
     } finally { setSaving(false) }
   }
 
+  async function respondAttendance(d: Deliverable, response: 'confirmed' | 'declined') {
+    setAttendanceSaving(d.id)
+    try {
+      const res = await fetch(`/api/influencer/deliverables/${d.id}/attendance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response }) })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo registrar tu respuesta')
+      toast.success(response === 'confirmed' ? '¡Asistencia confirmada! Te esperamos.' : 'Respuesta registrada. Avisaremos al equipo.')
+      onUpdated()
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Error al confirmar asistencia') }
+    finally { setAttendanceSaving(null) }
+  }
+
   if (!total) return null
   return (
     <section className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -183,11 +197,13 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
       </div>
       <div className="space-y-3">
         {items.map(d => {
+          const isAttendance = d.type === 'event_attendance'
           const canSubmit = d.status === 'pending' || d.status === 'rejected'
           const isReview = d.status === 'in_review'
           const complete = isDeliverableComplete(d) && !isReview
           const isRejected = d.status === 'rejected'
           const opened = openId === d.id
+          const attendanceLabel = d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
           return <div key={d.id} className={cn('rounded-xl border p-3', isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
             <div className="flex items-start gap-3">
               <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
@@ -197,13 +213,14 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
                 <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
                 <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
                   <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                    {isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
+                    {isAttendance && attendanceLabel ? attendanceLabel : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
                   </span>
                   {d.due_date && <span className="text-gray-400">Vence: {fmtDate(d.due_date)}</span>}
                 </div>
+                {isAttendance && !d.attendance_response && <p className="mt-2 text-xs leading-relaxed text-amber-700">Confirma antes de la fecha límite. Si no respondes, tu cupo se liberará para otra creadora.</p>}
                 {d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
               </div>
-              {canSubmit && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700">
+              {isAttendance && !d.attendance_response ? <div className="flex gap-2"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-gray-200 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50">No podré asistir</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Sí, asistiré'}</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700">
                 {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
               </button>}
             </div>

@@ -45,7 +45,8 @@ export async function GET() {
         )
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags
+        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags,
+        attendance_response, attendance_responded_at, attendance_note
       )
     `)
     .eq('influencer_id', influencer.id)
@@ -64,7 +65,8 @@ export async function GET() {
         brand:brands (id, name, logo_url, website, instagram)
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags
+        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags,
+        attendance_response, attendance_responded_at, attendance_note
       )
     `)
     .eq('created_by', user.id)

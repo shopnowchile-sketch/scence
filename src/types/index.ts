@@ -208,6 +208,9 @@ export interface CampaignDeliverableDetail {
   metrics_provider: string | null      // ej. 'apify'
   metrics_updated_at: string | null    // última sync real
   engagement_rate: number | null       // CALCULADO por nosotros, no dato real de Instagram
+  attendance_response?: 'confirmed' | 'declined' | null
+  attendance_responded_at?: string | null
+  attendance_note?: string | null
   influencer: {
     id: string
     display_name: string

@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
+import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceConfirmationPanel'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -93,6 +94,12 @@ function DeliverableContent({
   const cfg = DEL_CONFIG[d.status] ?? DEL_CONFIG.pending
   const url = d.published_url || d.content_url
   const typeLabel = d.type ? d.type.replace(/_/g, ' ') : (d.platform ?? 'Contenido')
+
+  if (d.type === 'event_attendance') {
+    const confirmed = d.attendance_response === 'confirmed'
+    const declined = d.attendance_response === 'declined'
+    return <div className="flex items-center justify-between gap-3 py-1"><div><p className="text-sm font-semibold text-gray-800">Confirmación de asistencia</p><p className="text-xs text-gray-400">{d.due_date ? `Plazo: ${formatDate(d.due_date)}` : 'Sin fecha límite'}</p></div><span className={cn('badge text-[11px]', confirmed ? 'badge-green' : declined ? 'badge-red' : 'badge-gray')}>{confirmed ? 'Confirmada' : declined ? 'No asistirá' : 'Pendiente'}</span></div>
+  }
 
   async function handle(act: 'approve' | 'reject') {
     try {
@@ -360,7 +367,7 @@ function RemindButton({ campaignId, influencerId, compact, onSent }: { campaignI
 }
 
 function DeliverableInfluencerGroup({
-  influencer, igUsername, followers, items, campaignId, reviewNotes, setReviewNotes, pct, avgRating, ratedCount, metrics,
+  influencer, igUsername, followers, items, campaignId, reviewNotes, setReviewNotes, pct, avgRating, ratedCount, metrics, attendanceReminder,
 }: {
   influencer: { id: string; display_name: string; avatar_url: string | null }
   igUsername: string | null
@@ -373,6 +380,7 @@ function DeliverableInfluencerGroup({
   avgRating: number | null
   ratedCount: number
   metrics: { views: number; likes: number; comments: number; avgEngagement: number | null } | null
+  attendanceReminder?: { selected: boolean; sending: boolean; onSelected: (selected: boolean) => void; onSend: () => void }
 }) {
   const [open, setOpen] = useState(false)
 
@@ -421,6 +429,10 @@ function DeliverableInfluencerGroup({
         <div className="flex items-center gap-3 flex-shrink-0">
           {scoreBlocks}
           {statusBadges}
+          {attendanceReminder && <div className="flex items-center gap-1" onClick={event => event.stopPropagation()}>
+            <input aria-label={`Seleccionar a ${influencer.display_name} para recordatorio`} type="checkbox" checked={attendanceReminder.selected} onChange={event => attendanceReminder.onSelected(event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
+            <button type="button" disabled={attendanceReminder.sending} onClick={attendanceReminder.onSend} title="Enviar recordatorio de asistencia por email" className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 disabled:opacity-50">{attendanceReminder.sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}</button>
+          </div>}
           <ChevronRight className={cn('h-4 w-4 text-gray-400 transition-transform', open ? 'rotate-90' : '')} />
         </div>
       </div>
@@ -904,6 +916,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // uno-a-uno) — reusa el mismo endpoint /remind, solo dispara N fetches.
   const [remindSelection, setRemindSelection] = useState<Set<string>>(new Set())
   const [bulkSending, setBulkSending] = useState(false)
+  const [attendanceReminderSelection, setAttendanceReminderSelection] = useState<Set<string>>(new Set())
+  const [attendanceReminderSending, setAttendanceReminderSending] = useState(false)
 
   async function handleBulkRemind() {
     const ids = Array.from(remindSelection)
@@ -1221,6 +1235,38 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   })
   const infFiltersActive = !!(infSearch || infPlatform || infStatus)
   const campaignDeliverables = c.campaign_deliverables ?? []
+  const pendingAttendanceInfluencerIds = Array.from(new Set(campaignDeliverables
+    .filter(d => d.type === 'event_attendance' && d.status === 'pending' && !d.attendance_response && !!d.influencer?.id)
+    .map(d => d.influencer!.id)))
+
+  function setAttendanceReminderSelected(influencerId: string, selected: boolean) {
+    setAttendanceReminderSelection(current => {
+      const next = new Set(current)
+      if (selected) next.add(influencerId)
+      else next.delete(influencerId)
+      return next
+    })
+  }
+
+  async function sendAttendanceReminders(influencerIds: string[]) {
+    const ids = Array.from(new Set(influencerIds)).filter(Boolean)
+    if (!ids.length) return toast.error('Selecciona al menos una influencer pendiente')
+    setAttendanceReminderSending(true)
+    try {
+      const response = await fetch(`/api/campaigns/${id}/attendance-confirmations`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remind', influencer_ids: ids }),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudo enviar el recordatorio')
+      toast.success(`Recordatorio enviado a ${json.data.sent} influencer${json.data.sent === 1 ? '' : 's'}`)
+      setAttendanceReminderSelection(current => new Set(Array.from(current).filter(value => !ids.includes(value))))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo enviar el recordatorio')
+    } finally {
+      setAttendanceReminderSending(false)
+    }
+  }
   // IDs de influencers visibles (tras filtros) con al menos 1 pendiente en
   // esta campaña — usados para el checkbox "seleccionar todas" del recordatorio.
   const remindablePendingIds = filteredInfluencers
@@ -1242,7 +1288,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Deliverables (que ya filtra por esto). Antes contaba los 148 templates
   // creados en bulk sin entrega, mostrando "Deliverables (148)" cuando en
   // realidad solo había 1 entregable real.
-  const submittedForCount = campaignDeliverables.filter(d => d.content_url || d.published_url)
+  const submittedForCount = campaignDeliverables
   const deliverableCount = submittedForCount.length
   const deliverableDone  = submittedForCount.filter(d => d.status === 'published').length
   // Average progress: published=100, others use progress field
@@ -1295,6 +1341,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     ? format(new Date(eventBooking.starts_at), "EEEE d 'de' MMMM · HH:mm", { locale: es })
     : null
   const eventLocation = eventBooking?.location || c.address || null
+  const attendanceSuggestedDueDate = eventBooking?.starts_at ? format(new Date(new Date(eventBooking.starts_at).getTime() - 3 * 86400000), 'yyyy-MM-dd') : ''
 
   function openEventEditor() {
     setOverviewEditMode(false)
@@ -2783,11 +2830,34 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── DELIVERABLES ─────────────────────────────────────────────────────── */}
       {tab === 'deliverables' && (
         <div className="space-y-3">
+          <AttendanceConfirmationPanel campaignId={id} acceptedCount={confirmedInfluencers.length} deliverables={campaignDeliverables} defaultDueDate={attendanceSuggestedDueDate} canManage={!isBrandPortal || !!c._brand_permissions?.canEdit} onChanged={() => void refetch()} />
+          {pendingAttendanceInfluencerIds.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={pendingAttendanceInfluencerIds.length > 0 && pendingAttendanceInfluencerIds.every(value => attendanceReminderSelection.has(value))}
+                  onChange={event => setAttendanceReminderSelection(event.target.checked ? new Set(pendingAttendanceInfluencerIds) : new Set())}
+                  className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                />
+                Seleccionar pendientes ({pendingAttendanceInfluencerIds.length})
+              </label>
+              <button
+                type="button"
+                disabled={!attendanceReminderSelection.size || attendanceReminderSending}
+                onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {attendanceReminderSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                Enviar recordatorio ({attendanceReminderSelection.size})
+              </button>
+            </div>
+          )}
           {/* Solo se listan deliverables donde el influencer ya subió su URL
               (content_url o published_url) — evita ruido de los templates
               creados en bulk para todas las invitadas que aún no entregan nada. */}
           {(() => {
-            const submittedDeliverables = campaignDeliverables.filter(d => d.content_url || d.published_url)
+            const submittedDeliverables = campaignDeliverables
 
             return (
               <>
@@ -2916,6 +2986,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           avgRating={stats?.avgRating ?? null}
                           ratedCount={stats?.ratedCount ?? 0}
                           metrics={stats?.hasMetrics ? { views: stats.views, likes: stats.likes, comments: stats.comments, avgEngagement: stats.avgEngagement } : null}
+                          attendanceReminder={g.items.some(d => d.type === 'event_attendance' && d.status === 'pending' && !d.attendance_response)
+                            ? {
+                              selected: attendanceReminderSelection.has(g.influencer.id),
+                              sending: attendanceReminderSending,
+                              onSelected: selected => setAttendanceReminderSelected(g.influencer.id, selected),
+                              onSend: () => void sendAttendanceReminders([g.influencer.id]),
+                            }
+                            : undefined}
                         />
                       )
                     })

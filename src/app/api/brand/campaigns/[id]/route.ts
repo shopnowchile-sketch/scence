@@ -73,6 +73,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_deliverables (
         id, title, type, status, due_date, platform,
         content_url, submitted_at, published_url, published_at, review_notes, progress,
+        attendance_response, attendance_responded_at, attendance_note,
         influencer:influencers (id, display_name, avatar_url)
       )
     `)

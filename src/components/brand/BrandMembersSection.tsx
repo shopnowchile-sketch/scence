@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
-import { Users, Plus, Loader2, Trash2 } from 'lucide-react'
+import { Users, Plus, Loader2, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -41,6 +41,7 @@ export function BrandMembersSection() {
   const [newEmail, setNewEmail] = useState('')
   const [newRole,  setNewRole]  = useState<'brand_manager' | 'finance' | 'member'>('member')
   const [inviting, setInviting] = useState(false)
+  const [resendingId, setResendingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -92,6 +93,17 @@ export function BrandMembersSection() {
     } else {
       toast.error('Error al desactivar')
     }
+  }
+
+  async function handleResend(member: BrandMember) {
+    setResendingId(member.id)
+    try {
+      const res = await fetch('/api/brand/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ member_id: member.id }) })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast.success(json.email_sent ? `Acceso enviado a ${member.email}` : 'Se generó el acceso, pero el email no pudo enviarse')
+      if (json.action_link && !json.email_sent) await navigator.clipboard.writeText(json.action_link).catch(() => {})
+    } catch (e) { toast.error((e as Error).message) } finally { setResendingId(null) }
   }
 
   if (loading) return (
@@ -156,6 +168,7 @@ export function BrandMembersSection() {
                   {m.joined_at ? '✓ Activo' : '⏳ Invitación pendiente'} · {ROLE_LABELS[m.role] ?? m.role}
                 </p>
               </div>
+              {m.is_active && m.role !== 'owner' && <button onClick={() => handleResend(m)} disabled={resendingId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-50 text-violet-700 text-xs font-semibold hover:bg-violet-100 disabled:opacity-50" title="Enviar o reenviar acceso por email"><Send className="h-3.5 w-3.5" />{resendingId === m.id ? 'Enviando…' : 'Enviar acceso'}</button>}
               {m.is_active && m.role !== 'owner' && (
                 <button
                   onClick={() => handleRemove(m.id)}

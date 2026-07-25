@@ -6,13 +6,17 @@
  * Fetch propio de /api/brand/me, guarda solo campos de empresa/contacto.
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle } from 'lucide-react'
+import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle, ImagePlus } from 'lucide-react'
 import { toast } from 'sonner'
+import { COUNTRY_OPTIONS } from '@/lib/utils'
+import { GooglePlacesAddress } from '@/components/brand/GooglePlacesAddress'
+import { COMUNAS_CHILE } from '@/lib/communes-chile'
 
 interface BrandProfile {
   name:          string | null
+  logo_url:      string | null
   rut:           string | null
   industry:      string | null
   website:       string | null
@@ -20,6 +24,14 @@ interface BrandProfile {
   contact_name:  string | null
   contact_email: string | null
   contact_phone: string | null
+  address_street: string | null
+  address_number: string | null
+  address_city: string | null
+  address_region: string | null
+  address_country: string | null
+  address_place_id: string | null
+  address_lat: number | null
+  address_lng: number | null
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -47,6 +59,10 @@ export function BrandOrgForm() {
   const [organizationId, setOrganizationId] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
+  const [countryCode, setCountryCode] = useState('CL')
+  const [addressSearch, setAddressSearch] = useState('')
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
 
   const set = (k: keyof BrandProfile) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
@@ -59,6 +75,7 @@ export function BrandOrgForm() {
       setOrganizationId(json.data.organization_id ?? '')
       setForm({
         name:          json.data.name          ?? '',
+        logo_url:      json.data.logo_url      ?? '',
         rut:           json.data.rut           ?? '',
         industry:      json.data.industry      ?? '',
         website:       json.data.website       ?? '',
@@ -66,7 +83,18 @@ export function BrandOrgForm() {
         contact_name:  json.data.contact_name  ?? '',
         contact_email: json.data.contact_email ?? '',
         contact_phone: json.data.contact_phone ?? '',
+        address_street: json.data.address_street ?? '',
+        address_number: json.data.address_number ?? '',
+        address_city: json.data.address_city ?? '',
+        address_region: json.data.address_region ?? '',
+        address_country: json.data.address_country ?? 'Chile',
+        address_place_id: json.data.address_place_id ?? '',
+        address_lat: json.data.address_lat ?? null,
+        address_lng: json.data.address_lng ?? null,
       })
+      const country = COUNTRY_OPTIONS.find(c => c.label === (json.data.address_country ?? 'Chile'))
+      setCountryCode(country?.code ?? 'CL')
+      setAddressSearch([json.data.address_street, json.data.address_number, json.data.address_city, json.data.address_region, json.data.address_country].filter(Boolean).join(', '))
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -76,7 +104,23 @@ export function BrandOrgForm() {
 
   useEffect(() => { load() }, [load])
 
+  async function uploadLogo(file: File) {
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) { toast.error('Usa una imagen JPG, PNG o WebP de máximo 5 MB.'); return }
+    setUploadingLogo(true)
+    try {
+      const data = new FormData(); data.append('file', file)
+      const res = await fetch('/api/brand/logo', { method: 'POST', body: data })
+      const json = await res.json(); if (!res.ok) throw new Error(json.error)
+      setForm(current => ({ ...current, logo_url: json.logo_url }))
+      toast.success('Logo actualizado')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo subir el logo') } finally { setUploadingLogo(false) }
+  }
+
   async function handleSave() {
+    if (!form.rut?.trim() || !form.address_street?.trim() || !form.address_city?.trim() || !form.address_region?.trim() || !form.address_country?.trim()) {
+      toast.error('Completa RUT y todos los datos de dirección legal')
+      return
+    }
     setSaving(true)
     try {
       const res  = await fetch('/api/brand/me', {
@@ -107,6 +151,8 @@ export function BrandOrgForm() {
   )
 
   const missingInstagram = !form.instagram || !String(form.instagram).trim()
+  const localityLabel = countryCode === 'CL' ? 'Comuna *' : 'Ciudad / localidad *'
+  const regionLabel = countryCode === 'CL' ? 'Región *' : 'Región / estado *'
 
   return (
     <div className="space-y-5">
@@ -121,14 +167,23 @@ export function BrandOrgForm() {
       {/* Empresa */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
         <SectionTitle icon={Building2} label="Empresa" />
+        <div className="flex items-center gap-4 pb-1">
+          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 text-white flex items-center justify-center text-xl font-bold">
+            {form.logo_url ? <img src={form.logo_url} alt="Logo de la marca" className="h-full w-full object-cover" /> : (form.name?.trim().charAt(0).toUpperCase() || 'M')}
+          </div>
+          <div><input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadLogo(file); event.currentTarget.value = '' }} />
+            <button type="button" disabled={uploadingLogo} onClick={() => logoInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 disabled:opacity-60"><ImagePlus className="h-4 w-4" />{uploadingLogo ? 'Subiendo logo…' : form.logo_url ? 'Cambiar logo' : 'Subir logo'}</button>
+            <p className="mt-1.5 text-xs text-gray-400">JPG, PNG o WebP. Máximo 5 MB.</p>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <Field label="Nombre de la empresa">
               <input value={form.name ?? ''} onChange={set('name')} placeholder="Nike LATAM" className="input-base w-full" />
             </Field>
           </div>
-          <Field label="RUT">
-            <input value={form.rut ?? ''} onChange={set('rut')} placeholder="76.123.456-7" className="input-base w-full" />
+          <Field label="RUT *">
+            <input value={form.rut ?? ''} onChange={set('rut')} placeholder="76.123.456-7" required className="input-base w-full" />
           </Field>
           <Field label="Organization ID">
             <input
@@ -151,6 +206,40 @@ export function BrandOrgForm() {
               <Instagram className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
               <input value={form.instagram ?? ''} onChange={set('instagram')} placeholder="@miempresa" required className="input-base w-full" />
             </div>
+          </Field>
+          <div className="col-span-2 pt-2 border-t border-gray-100">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Dirección legal *</p>
+            <p className="text-xs text-gray-400 mt-1">Puedes buscar con Google Maps cuando esté configurado o completar los datos manualmente.</p>
+          </div>
+          <Field label="País *">
+            <select value={countryCode} onChange={e => {
+              const selected = COUNTRY_OPTIONS.find(c => c.code === e.target.value)
+              setCountryCode(e.target.value)
+              setAddressSearch('')
+              setForm(f => ({ ...f, address_country: selected?.label ?? '', address_place_id: '', address_lat: null, address_lng: null, address_street: '', address_number: '', address_city: '', address_region: '' }))
+            }} className="input-base w-full">
+              {COUNTRY_OPTIONS.map(country => <option key={country.code} value={country.code}>{country.label}</option>)}
+            </select>
+          </Field>
+          <div className="col-span-2">
+            <Field label="Buscar dirección en Google Maps *">
+              <GooglePlacesAddress countryCode={countryCode} value={addressSearch} onChange={setAddressSearch} onSelect={address => {
+                setCountryCode(address.countryCode)
+                setForm(f => ({ ...f, address_street: address.street, address_number: address.number, address_city: address.commune, address_region: address.region, address_country: address.country, address_place_id: address.placeId, address_lat: address.lat, address_lng: address.lng }))
+              }} />
+            </Field>
+          </div>
+          <Field label="Calle *">
+            <input value={form.address_street ?? ''} onChange={set('address_street')} placeholder="Av. Providencia" required className="input-base w-full" />
+          </Field>
+          <Field label="Número">
+            <input value={form.address_number ?? ''} onChange={set('address_number')} placeholder="1234" className="input-base w-full" />
+          </Field>
+          <Field label={localityLabel}>
+            <><input value={form.address_city ?? ''} onChange={set('address_city')} placeholder={countryCode === 'CL' ? 'Providencia' : 'Ciudad'} list={countryCode === 'CL' ? 'brand-communes' : undefined} required className="input-base w-full" />{countryCode === 'CL' && <datalist id="brand-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist>}</>
+          </Field>
+          <Field label={regionLabel}>
+            <input value={form.address_region ?? ''} onChange={set('address_region')} placeholder={countryCode === 'CL' ? 'Región Metropolitana' : 'Estado / región'} required className="input-base w-full" />
           </Field>
         </div>
       </div>

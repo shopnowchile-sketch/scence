@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
+import { BrandDocumentsAdmin } from '@/components/brands/BrandDocumentsAdmin'
 
 type Campaign = {
   id: string
@@ -100,7 +101,7 @@ function money(value: number | null, currency?: string | null) {
   return `${currency ?? 'CLP'} ${value.toLocaleString('es-CL')}`
 }
 
-const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'plan', 'billing', 'access', 'members', 'history'] as const
+const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'plan', 'billing', 'documents', 'access', 'members', 'history'] as const
 type Tab = typeof VALID_TABS[number]
 
 export default function AdminBrandDetailPage({ params }: { params: { id: string } }) {
@@ -848,6 +849,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             ['locations', 'Lugares'],
             ['plan', 'Plan'],
             ['billing', 'Billing'],
+            ['documents', 'Documentos'],
             ['access', 'Acceso'],
             ['members', 'Usuarios'],
             ['history', 'Historial'],
@@ -931,6 +933,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
           </div>
         </div>
       )}
+
+      {tab === 'documents' && <BrandDocumentsAdmin brandId={brand.id} />}
 
       {tab === 'campaigns' && (
         <div className="card overflow-hidden">

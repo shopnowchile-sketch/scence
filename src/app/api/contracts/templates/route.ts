@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await admin
     .from('contract_templates')
-    .select('id, name, campaign_type, content, variables, created_at, updated_at')
+    .select('id, name, campaign_type, document_type, language, version, content, variables, created_at, updated_at')
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
@@ -39,9 +39,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { name, campaign_type, content, variables } = body as {
+  const { name, campaign_type, document_type, language, content, variables } = body as {
     name?: string
     campaign_type?: string
+    document_type?: 'contract' | 'nda' | 'policy' | 'other'
+    language?: 'es' | 'en'
     content?: string
     variables?: string[]
   }
@@ -60,11 +62,13 @@ export async function POST(request: NextRequest) {
       organization_id: orgId,
       name,
       campaign_type: campaign_type ?? null,
+      document_type: document_type ?? 'contract',
+      language: language ?? 'es',
       content,
       variables: variables ?? [],
       created_by: user.id,
     })
-    .select('id, name, campaign_type, content, variables, created_at, updated_at')
+    .select('id, name, campaign_type, document_type, language, version, content, variables, created_at, updated_at')
     .single()
 
   if (error) {

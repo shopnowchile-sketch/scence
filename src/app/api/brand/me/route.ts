@@ -4,9 +4,10 @@ import { resolveBrandPlan } from '@/lib/plan-limits'
 import { resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 
 const BRAND_FIELDS = `
-  id, name, logo_url, website, instagram, industry, rut,
+  id, name, logo_url, logo_path, website, instagram, industry, rut,
   contact_name, contact_email, contact_phone,
   address_street, address_number, address_city, address_region, address_country,
+  address_place_id, address_lat, address_lng,
   address2_street, address2_number, address2_city, address2_region, address2_country,
   organization_id, user_id, status, subscription_plan_override
 `
@@ -82,6 +83,7 @@ export async function PATCH(request: Request) {
     name, website, instagram, industry, rut,
     contact_name, contact_email, contact_phone,
     address_street, address_number, address_city, address_region, address_country,
+    address_place_id, address_lat, address_lng,
     address2_street, address2_number, address2_city, address2_region, address2_country,
   } = body
 
@@ -103,6 +105,18 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Instagram es obligatorio para usar el portal de marca' }, { status: 400 })
   }
 
+  const requiredLegalFields = [
+    ['RUT', rut],
+    ['calle', address_street],
+    ['comuna', address_city],
+    ['región', address_region],
+    ['país', address_country],
+  ] as const
+  const missingLegalField = requiredLegalFields.find(([, value]) => !String(value ?? '').trim())
+  if (missingLegalField) {
+    return NextResponse.json({ error: `${missingLegalField[0]} es obligatorio para la organización` }, { status: 400 })
+  }
+
   const { data, error } = await admin
     .from('brands')
     .update({
@@ -119,6 +133,9 @@ export async function PATCH(request: Request) {
       address_city:     address_city     || null,
       address_region:   address_region   || null,
       address_country:  address_country  || null,
+      address_place_id: address_place_id || null,
+      address_lat:      address_lat      ?? null,
+      address_lng:      address_lng      ?? null,
       address2_street:  address2_street  || null,
       address2_number:  address2_number  || null,
       address2_city:    address2_city    || null,

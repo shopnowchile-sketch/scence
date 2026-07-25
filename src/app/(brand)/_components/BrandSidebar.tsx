@@ -8,6 +8,7 @@ import {
   CreditCard,
   Building2,
   Bug,
+  FileText,
 } from 'lucide-react'
 import { AppSidebar, type NavSection } from '@/components/layout/AppSidebar'
 
@@ -26,6 +27,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/brand-billing', label: 'Billing', icon: CreditCard },
       { href: '/brand-brands',  label: 'Marcas',  icon: Building2 },
+      { href: '/brand-documents', label: 'Documentos', icon: FileText },
     ],
   },
   {

@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data, error } = await admin
     .from('contract_templates')
-    .select('id, name, campaign_type, content, variables, created_at, updated_at')
+    .select('id, name, campaign_type, document_type, language, version, content, variables, created_at, updated_at')
     .eq('id', params.id)
     .eq('organization_id', orgId)
     .single()
@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
-  const allowed = ['name', 'campaign_type', 'content', 'variables']
+  const allowed = ['name', 'campaign_type', 'document_type', 'language', 'version', 'content', 'variables']
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in body) update[key] = body[key]
@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .update(update)
     .eq('id', params.id)
     .eq('organization_id', orgId)
-    .select('id, name, campaign_type, content, variables, created_at, updated_at')
+    .select('id, name, campaign_type, document_type, language, version, content, variables, created_at, updated_at')
     .single()
 
   if (error) {

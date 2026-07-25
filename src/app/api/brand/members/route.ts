@@ -134,11 +134,30 @@ export async function POST(request: NextRequest) {
   const { user, brand } = await getOwnerBrand()
   if (!user || !brand) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { email?: string; role?: string }
+  let body: { email?: string; role?: string; member_id?: string }
   try { body = await request.json() } catch { return NextResponse.json({ error: 'JSON inválido' }, { status: 400 }) }
 
   const email = (body.email ?? '').trim().toLowerCase()
   const role = body.role ?? 'member'
+  const resendMemberId = body.member_id
+  if (resendMemberId) {
+    const admin = createAdminClient()
+    const { data: member, error: memberError } = await admin.from('brand_members').select('id, email, is_active').eq('id', resendMemberId).eq('brand_id', brand.id).maybeSingle()
+    if (memberError || !member) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
+    if (!member.is_active) return NextResponse.json({ error: 'Este usuario está desactivado' }, { status: 422 })
+    let actionLink: string | null = null
+    let emailSent = false
+    try {
+      const { data: existingUsers } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      if (!existingUsers?.users.find(existing => existing.email?.toLowerCase() === member.email.toLowerCase())) await admin.auth.admin.createUser({ email: member.email, email_confirm: true, user_metadata: { is_brand: true, full_name: member.email.split('@')[0] } })
+      const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email: member.email, options: { redirectTo: `${APP_URL}/brand-dash` } })
+      if (linkError || !linkData?.properties?.hashed_token) throw linkError ?? new Error('No se pudo generar el link')
+      actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
+      const { error: emailError } = await getResend().emails.send({ from: FROM_EMAIL, to: member.email, subject: `Tu acceso al portal de ${brand.name} — Scence`, html: brandMemberInviteEmail({ brandName: brand.name, actionLink }) })
+      emailSent = !emailError
+    } catch (error) { console.error('[POST /api/brand/members] resend failed:', error) }
+    return NextResponse.json({ message: emailSent ? `Acceso enviado a ${member.email}` : 'Link generado; el email no pudo enviarse', email_sent: emailSent, action_link: actionLink })
+  }
   if (!email) return NextResponse.json({ error: 'Email requerido' }, { status: 400 })
   if (!(MEMBER_ROLES as readonly string[]).includes(role)) {
     return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })

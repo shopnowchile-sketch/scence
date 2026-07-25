@@ -7,6 +7,7 @@ import {
   FileSignature, RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { NDA_TEMPLATE_ES, templateVariables } from '@/lib/document-templates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type CampaignType =
@@ -25,6 +26,8 @@ interface ContractTemplate {
   variables: string[]
   created_at: string
   updated_at?: string
+  document_type?: 'contract' | 'nda' | 'policy' | 'other'
+  language?: 'es' | 'en'
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -686,6 +689,19 @@ export default function ContractsPage() {
   const [deleteTarget, setDeleteTarget] = useState<ContractTemplate | null>(null)
   const [dbError, setDbError] = useState<string | null>(null)
 
+  const createNdaTemplate = async () => {
+    try {
+      const res = await fetch('/api/contracts/templates', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'NDA SCENCE – Marca', campaign_type: null, document_type: 'nda', language: 'es', content: NDA_TEMPLATE_ES, variables: templateVariables(NDA_TEMPLATE_ES) }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo crear el NDA')
+      toast.success('Plantilla NDA creada')
+      loadTemplates()
+    } catch (error) { toast.error((error as Error).message) }
+  }
+
   const loadTemplates = useCallback(async () => {
     setLoading(true)
     setDbError(null)
@@ -729,18 +745,19 @@ export default function ContractsPage() {
       {/* Page header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Contratos</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Templates</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Plantillas de contrato reutilizables con variables dinámicas
+            Modelos reutilizables para contratos, NDA y futuros documentos
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          Nueva plantilla
-        </button>
+        <div className="flex gap-2">
+          <button onClick={createNdaTemplate} className="inline-flex items-center gap-2 border border-violet-200 text-violet-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-50 transition-colors">
+            <FileSignature className="h-4 w-4" /> Crear NDA
+          </button>
+          <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors shadow-sm">
+            <Plus className="h-4 w-4" /> Nueva plantilla
+          </button>
+        </div>
       </div>
 
       {/* Stats bar */}

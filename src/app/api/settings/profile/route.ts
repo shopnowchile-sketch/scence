@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest) {
   let body: Record<string, unknown>
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { full_name, display_name, phone, timezone, locale, avatar_url, notification_preferences } = body
+  const { full_name, display_name, phone, timezone, locale, avatar_url, notification_preferences, signer_rut, signer_role } = body
 
   const admin = createAdminClient()
 
@@ -41,6 +41,8 @@ export async function PATCH(request: NextRequest) {
     timezone:     timezone     ?? undefined,
     locale:       locale       ?? undefined,
     avatar_url:   avatar_url   ?? null,
+    signer_rut:   signer_rut   ?? null,
+    signer_role:  signer_role  ?? null,
     updated_at:   new Date().toISOString(),
   }
 

@@ -43,6 +43,8 @@ interface Brand {
   contact_name: string | null
 }
 
+interface PendingDocument { id: string; title: string; due_at: string; status: string }
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   draft:            { label: 'Borrador',    color: 'bg-gray-100 text-gray-600',   icon: Clock },
   active:           { label: 'Activa',      color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
@@ -69,15 +71,17 @@ export default function BrandDashboard() {
   const [brand, setBrand]         = useState<Brand | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading]     = useState(true)
+  const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/brand/campaigns')
-      const json = await res.json()
+      const [res, documentsRes] = await Promise.all([fetch('/api/brand/campaigns'), fetch('/api/brand/documents')])
+      const [json, documentsJson] = await Promise.all([res.json(), documentsRes.json()])
       if (!res.ok) throw new Error(json.error)
       setCampaigns(json.data ?? [])
       setBrand(json.brand ?? null)
+      if (documentsRes.ok) setPendingDocuments((documentsJson.data ?? []).filter((d: PendingDocument) => d.status === 'pending'))
     } catch (e) {
       toast.error((e as Error).message ?? 'Error cargando campañas')
     }
@@ -90,6 +94,7 @@ export default function BrandDashboard() {
   const pendingDeliverables = campaigns.flatMap(c =>
     c.campaign_deliverables.filter(d => d.status === 'in_review')
   )
+  const totalPendingItems = pendingDeliverables.length + pendingDocuments.length
   // Solo cuenta influencers con postulación/invitación aceptada — antes
   // contaba también pending/rejected, inflando el KPI de la portada.
   const totalInfluencers = new Set(
@@ -104,6 +109,7 @@ export default function BrandDashboard() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
       </div>
+
     )
   }
 
@@ -122,12 +128,20 @@ export default function BrandDashboard() {
         </button>
       </div>
 
+      {pendingDocuments.length > 0 && (
+        <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0"><AlertCircle className="h-6 w-6" /></div>
+          <div className="flex-1"><p className="font-bold text-amber-950">Acción requerida: firma tu NDA de confidencialidad</p><p className="text-sm text-amber-800 mt-1">Para mantener activo el acceso de tu Marca a SCENCE, revisa y firma el documento antes del <b>{fmt(pendingDocuments[0].due_at)}</b>.</p></div>
+          <Link href="/brand-documents" className="inline-flex justify-center bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold whitespace-nowrap">Firmar NDA ahora</Link>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: 'Campañas activas', value: activeCampaigns.length, icon: Target, color: 'text-violet-600', bg: 'bg-violet-50' },
           { label: 'Influencers',      value: totalInfluencers,        icon: Users,  color: 'text-blue-600',   bg: 'bg-blue-50' },
-          { label: 'Para revisar',     value: pendingDeliverables.length, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'Para revisar',     value: totalPendingItems, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className="bg-white rounded-2xl border border-gray-100 p-5">
             <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center mb-3', bg)}>

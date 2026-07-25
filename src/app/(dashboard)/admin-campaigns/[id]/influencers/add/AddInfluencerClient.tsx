@@ -59,9 +59,10 @@ export function AddInfluencerClient({ campaignId }: Props) {
       const res = await fetch(`/api/campaigns/${campaignId}/influencers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      body: JSON.stringify({
           influencer_id: influencerId,
           fee: fee[influencerId] ? Number(fee[influencerId]) : null,
+          invite: true,
         }),
       })
       if (!res.ok) {
@@ -69,7 +70,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
         throw new Error(err.error ?? 'Error al agregar')
       }
       setAdded(prev => { const next = new Set(prev); next.add(influencerId); return next })
-      toast.success('Influencer agregado a la campaña')
+      toast.success('Invitación privada enviada · queda pendiente de aceptación')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
@@ -86,8 +87,8 @@ export function AddInfluencerClient({ campaignId }: Props) {
           <ChevronLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Agregar influencer</h1>
-          <p className="text-sm text-gray-400">Busca, filtra y agrega influencers a esta campaña</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Invitar influencer</h1>
+          <p className="text-sm text-gray-400">La invitación es privada, incluso con postulaciones cerradas. La influencer debe aceptarla.</p>
         </div>
       </div>
 
@@ -95,7 +96,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
         influencers={influencers}
         loading={loading}
         basePath="/admin-influencers"
-        actionLabel="Agregar"
+        actionLabel="Invitar"
         renderAction={inf => {
           const isAdded = added.has(inf.id)
           const isAdding = adding === inf.id
@@ -103,7 +104,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
           if (isAdded) {
             return (
               <span className="inline-flex items-center gap-1.5 text-emerald-600 text-sm font-semibold whitespace-nowrap">
-                <Check className="h-4 w-4" /> Agregado
+                <Check className="h-4 w-4" /> Invitada
               </span>
             )
           }
@@ -126,7 +127,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors whitespace-nowrap"
               >
                 {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                Agregar
+                Invitar
               </button>
             </div>
           )

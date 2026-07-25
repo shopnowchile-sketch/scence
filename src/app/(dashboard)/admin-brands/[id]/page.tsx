@@ -1,12 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, Target, Users,
   FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2, Instagram,
-  Search, X, Loader2, UserPlus,
+  Search, X, Loader2, UserPlus, ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -111,6 +111,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [logoSaving, setLogoSaving] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
   // Soporta deep-link a un tab específico (?tab=influencers) — usado al
   // volver desde /admin-influencers tras asignar influencers a la marca.
   const initialTabParam = searchParams.get('tab')
@@ -167,6 +169,27 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       setLoading(false)
     }
   }, [params.id])
+
+  async function uploadLogo(file: File) {
+    if (!brand) return
+    if (!file.type.startsWith('image/')) return toast.error('Usa una imagen JPG, PNG o WebP.')
+    if (file.size > 5 * 1024 * 1024) return toast.error('El logo no puede superar 5 MB.')
+    setLogoSaving(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/brands/${brand.id}/logo`, { method: 'POST', body: form })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo subir el logo')
+      setBrand(previous => previous ? { ...previous, logo_url: json.logo_url } : previous)
+      toast.success('Logo de marca actualizado')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo subir el logo')
+    } finally {
+      setLogoSaving(false)
+      if (logoInputRef.current) logoInputRef.current.value = ''
+    }
+  }
 
   const loadInfluencers = useCallback(async () => {
     if (!brand) return
@@ -639,6 +662,15 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                 {initials(brand.name)}
               </div>
             )}
+            <div className="self-end pb-1">
+              <input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => {
+                const file = event.target.files?.[0]
+                if (file) void uploadLogo(file)
+              }} />
+              <button type="button" onClick={() => logoInputRef.current?.click()} disabled={logoSaving} className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 hover:underline disabled:opacity-50">
+                <ImagePlus className="h-3.5 w-3.5" /> {logoSaving ? 'Subiendo…' : brand.logo_url ? 'Cambiar logo' : 'Subir logo'}
+              </button>
+            </div>
 
             <div className="min-w-0">
               <div className="flex items-center gap-3 flex-wrap">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getResend, FROM_EMAIL, campaignAssignedEmail } from '@/lib/resend'
+import { getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const { influencer_id, fee, notes } = body
+  const invite = body.invite === true
 
   if (!influencer_id) {
     return NextResponse.json({ error: 'influencer_id is required' }, { status: 422 })
@@ -69,6 +70,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     .maybeSingle()
   const isNewAssignment = !existingCi
 
+  if (invite && existingCi) {
+    return NextResponse.json({ error: 'Esta influencer ya tiene una invitación o participación en la campaña' }, { status: 422 })
+  }
+
   // Upsert to handle duplicate adds gracefully.
   // Alta DIRECTA del admin = participación inmediata (no es una solicitud): se
   // marca aceptada/activa explícitamente, sin depender de los defaults de la
@@ -84,9 +89,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         influencer_id,
         fee: fee ?? null,
         notes: notes ?? null,
-        status: 'active',
-        application_status: 'accepted',
-        accepted_at: new Date().toISOString(),
+        status: invite ? 'pending' : 'active',
+        application_status: invite ? 'pending' : 'accepted',
+        origin: invite ? 'invitation' : 'invitation',
+        ...(invite ? {} : { accepted_at: new Date().toISOString() }),
       },
       { onConflict: 'campaign_id,influencer_id' }
     )
@@ -105,7 +111,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // ── Auto-create campaign_deliverables from campaign's deliverable_templates ──
-  try {
+  if (!invite) try {
     const { data: campaign } = await admin
       .from('campaigns')
       .select('organization_id, start_date, deliverable_templates, name, type')
@@ -159,7 +165,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const inf = (data as { influencer?: { display_name?: string | null; email?: string | null } | null }).influencer
     const { data: camp } = await admin
       .from('campaigns')
-      .select('name, type, status')
+      .select('name, type, status, brand:brands!brand_id(name)')
       .eq('id', params.id)
       .single()
 
@@ -168,13 +174,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: inf.email,
-        subject: `Fuiste asignada a la campaña "${camp.name}"`,
-        html: campaignAssignedEmail({
-          influencerName: inf.display_name ?? 'Influencer',
-          campaignName:   camp.name,
-          campaignType:   camp.type,
-          campaignUrl:    `${APP_URL}/inf-campaign/${params.id}`,
-        }),
+        subject: invite ? `Tienes una invitación privada: ${camp.name}` : `Fuiste asignada a la campaña "${camp.name}"`,
+        html: invite
+          ? influencerInviteEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, brandName: (camp.brand as { name?: string } | null)?.name ?? 'Scence', inviteUrl: `${APP_URL}/inf-campaigns` })
+          : campaignAssignedEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, campaignType: camp.type, campaignUrl: `${APP_URL}/inf-campaign/${params.id}` }),
       })
       // Resend no lanza excepción en errores de API — hay que revisar `error`.
       if (emailErr) console.error('[POST /api/campaigns/[id]/influencers] Resend devolvió error:', emailErr)

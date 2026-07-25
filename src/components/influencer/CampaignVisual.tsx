@@ -15,7 +15,12 @@ function colorFor(value: string) {
   return COVER_STYLES[Math.abs(value.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)) % COVER_STYLES.length]
 }
 
-export function CampaignCover({ name, className }: { name: string; className?: string }) {
+export function CampaignCover({ name, src, className }: { name: string; src?: string | null; className?: string }) {
+  if (src) return <div className={cn('relative overflow-hidden bg-gray-100', className)}>
+    <img src={src} alt={`Portada de ${name}`} className="h-full w-full object-cover" />
+    <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/5 to-transparent" />
+    <p className="absolute bottom-3 left-4 right-4 text-lg font-bold leading-tight text-white drop-shadow-sm line-clamp-2">{name}</p>
+  </div>
   return (
     <div className={cn('relative overflow-hidden bg-gradient-to-br', colorFor(name), className)}>
       <div className="absolute -right-7 -top-10 h-40 w-40 rounded-full bg-white/15" />

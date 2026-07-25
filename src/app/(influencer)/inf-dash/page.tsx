@@ -29,6 +29,7 @@ type Campaign = {
     type?: string | null
     start_date: string | null
     end_date: string | null
+    cover_url?: string | null
     deliverable_templates?: Array<{ type: string; quantity?: number }> | null
     brand: { name: string; logo_url: string | null; instagram?: string | null } | null
   } | null
@@ -42,6 +43,7 @@ type OpenCampaign = {
   name: string
   start_date: string | null
   end_date: string | null
+  cover_url?: string | null
   brand: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   _applied?: boolean
 }
@@ -449,7 +451,7 @@ export default function InfluencerDashboard() {
               const done = pct === 100
               return (
                 <button key={c.id} onClick={() => router.push(`/inf-campaign/${c.id}`)} className="group overflow-hidden rounded-3xl border border-gray-100 bg-white text-left hover:border-violet-200 hover:shadow-lg transition-all">
-                  <CampaignCover name={c.name} className="h-40 transition-transform duration-300 group-hover:scale-[1.02]" />
+                  <CampaignCover name={c.name} src={c.cover_url} className="h-40 transition-transform duration-300 group-hover:scale-[1.02]" />
                   <div className="p-5">
                     <BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} />
                     <div className="flex items-end justify-between gap-3 mt-5">

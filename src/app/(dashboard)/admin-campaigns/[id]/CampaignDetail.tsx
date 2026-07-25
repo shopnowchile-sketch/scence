@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -963,6 +963,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [assetSaving, setAssetSaving] = useState(false)
   const [briefSaving, setBriefSaving] = useState(false)
   const briefInputRef = useRef<HTMLInputElement>(null)
+  const [coverSaving, setCoverSaving] = useState(false)
+  const coverInputRef = useRef<HTMLInputElement>(null)
   const [locationFormOpen, setLocationFormOpen] = useState(false)
   const [locationSaving, setLocationSaving] = useState(false)
   const [locationForm, setLocationForm] = useState({
@@ -1327,6 +1329,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     const metadata = asset.metadata as Record<string, unknown> | undefined
     return metadata?.asset_type === 'brief'
   })
+  const coverAsset = campaignAssets.find(asset => {
+    const metadata = asset.metadata as Record<string, unknown> | undefined
+    return metadata?.asset_type === 'campaign_cover'
+  })
   const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
   const campaignPeriod = c.start_date && c.end_date
     ? `${formatDate(c.start_date)} — ${formatDate(c.end_date)}`
@@ -1487,6 +1493,29 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       toast.error(error instanceof Error ? error.message : 'No se pudo cargar el brief')
     } finally {
       setBriefSaving(false)
+    }
+  }
+
+  async function handleUploadCampaignCover(file: File) {
+    if (!file.type.startsWith('image/')) return toast.error('La portada debe ser una imagen JPG, PNG o WebP')
+    if (file.size > 5 * 1024 * 1024) return toast.error('La portada no puede superar 5 MB')
+    setCoverSaving(true)
+    try {
+      const formData = new FormData()
+      formData.append('filename', `Portada · ${c.name}`)
+      formData.append('asset_type', 'campaign_cover')
+      formData.append('file', file)
+      const res = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body: formData })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo subir la portada')
+      if (coverAsset?.id) await fetch(`/api/campaigns/${id}/assets/${String(coverAsset.id)}`, { method: 'DELETE' })
+      await reloadCampaignAssets()
+      toast.success('Portada de campaña actualizada')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo subir la portada')
+    } finally {
+      setCoverSaving(false)
+      if (coverInputRef.current) coverInputRef.current.value = ''
     }
   }
 
@@ -1769,9 +1798,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* Header card — compacto (pedido de Pri: "sigue muy grande, achicar") */}
       <div className="card p-3">
         <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+          {coverAsset?.signed_url ? <img src={String(coverAsset.signed_url)} alt="Portada de campaña" className="h-12 w-16 rounded-lg object-cover flex-shrink-0" /> : <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
             <Target className="h-4 w-4 text-violet-600" />
-          </div>
+          </div>}
           <div className="flex-1 min-w-0">
             {Boolean(campaignBrands[0]?.name) && (
               <div className="mb-0.5 flex items-center gap-1.5">
@@ -1803,6 +1832,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </div>
               )}
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
+              {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1 rounded-md border border-violet-200 px-2 py-1 text-[10px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3 w-3" /> {coverSaving ? 'Subiendo…' : coverAsset ? 'Cambiar banner' : 'Subir banner'}</button></>}
             </div>
             {editingEvent ? <div className="mt-2 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Lugar o dirección" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-800 outline-none" /></div><input value={eventForm.location_instructions} placeholder="Cómo llegar o indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none" /></div></div> : <><div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-gray-600"><span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-violet-600" />{eventDateTime ?? 'Fecha por confirmar'}</span><span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-violet-600" />{eventLocation ?? 'Ubicación por confirmar'}</span></div><div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-2 text-[11px] text-gray-500"><span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5 text-gray-400" /><b className="font-semibold text-gray-600">Período:</b> {campaignPeriod ?? 'Por confirmar'}</span>{deliveryDeadlines.length > 0 && <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-gray-400" /><b className="font-semibold text-gray-600">Entregas:</b> {deliveryDeadlines.join(' · ')}</span>}<span className="inline-flex items-center gap-1"><FileText className="h-3.5 w-3.5 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Ver brief</a> : <span>Brief pendiente</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} className="ml-1 font-semibold text-violet-700 hover:underline disabled:opacity-50">{briefSaving ? 'Cargando…' : (briefAsset || c.brief_url) ? 'Reemplazar' : 'Subir'}</button></>}</span></div></>}
           </div>

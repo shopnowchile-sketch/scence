@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
+import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ type CampaignRow = {
     brief_url?: string | null
     hashtags: string[] | null; platforms: string[] | null
     start_date: string | null; end_date: string | null
+    cover_url?: string | null
     currency: string
     application_questions?: string[] | null
     brand: { id: string; name: string; logo_url: string | null; website: string | null; instagram?: string | null } | null
@@ -62,6 +64,7 @@ type PreviewCampaign = {
   id: string; name: string; status: string; visibility: string
   description: string | null; content_guidelines: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
+  cover_url?: string | null
   event_booking?: { id: string; starts_at: string | null; ends_at: string | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
@@ -712,7 +715,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       </div>
 
       {/* Card combinada: nombre, marca, badge, fechas, fee, brief colapsado */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="overflow-hidden bg-white rounded-2xl border border-gray-100">
+        {c.cover_url && <CampaignCover name={c.name} src={c.cover_url} className="h-44" />}
+        <div className="p-5">
         <div className="flex items-start gap-3 mb-3">
           {c.brand?.logo_url
             ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
@@ -764,6 +769,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} variant="kpi" />
           </div>
         )}
+        </div>
       </div>
 
       {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}

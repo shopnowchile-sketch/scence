@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
 type Params = { params: { id: string } }
 
@@ -83,6 +84,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // presupuesto/remuneración, entregables generales, plazo) quedan visibles.
   const isAccepted = existing?.application_status === 'accepted'
   const payload: Record<string, unknown> = { ...campaign }
+  const covers = await getCampaignCoverUrls(admin, [campaign.id])
+  payload.cover_url = covers.get(campaign.id) ?? null
   if (!isAccepted) {
     // Campos privados: solo tras aceptación.
     delete payload.content_guidelines

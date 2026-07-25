@@ -28,6 +28,7 @@ type Campaign = {
   deliverables_done: number
   next_due: string | null
   self_created: boolean
+  cover_url?: string | null
 }
 
 type OpenCampaign = {
@@ -37,6 +38,7 @@ type OpenCampaign = {
   description: string | null
   start_date: string | null
   end_date: string | null
+  cover_url?: string | null
   brand: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   _applied?: boolean
   campaign_benefits?: Array<{ description: string; quantity?: number }>
@@ -67,6 +69,7 @@ type ApiRow = {
     status: string
     start_date: string | null
     end_date: string | null
+    cover_url?: string | null
     visibility?: string | null
     brand?: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   } | null
@@ -463,7 +466,7 @@ export default function MyCampaignsPage() {
                 'rounded-2xl overflow-hidden border',
                 c._applied ? 'bg-amber-50/50 border-amber-100' : 'bg-white border-gray-100'
               )}>
-                <CampaignCover name={c.name} className="h-28" />
+                <CampaignCover name={c.name} src={c.cover_url} className="h-28" />
                 <div className="flex items-start gap-3 p-4">
                   {c.brand?.logo_url ? (
                     <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
@@ -627,7 +630,7 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
       onClick={() => router.push(`/inf-campaign/${c.id}`)}
       className={cn('w-full overflow-hidden rounded-2xl border text-left transition-all hover:shadow-md', c.status === 'completed' ? 'border-gray-100 bg-gray-50 opacity-65 grayscale-[0.35]' : 'border-gray-100 bg-white hover:border-violet-200')}
     >
-      <CampaignCover name={c.name} className="h-32" />
+      <CampaignCover name={c.name} src={c.cover_url} className="h-32" />
       <div className="p-4">
         <div className="flex items-start justify-between gap-2"><BrandBadge name={c.brand_name} logoUrl={c.brand_logo} instagram={c.brand_instagram} compact /><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', stCfg.color)}>{stCfg.label}</span></div>
         <p className="text-base font-bold text-gray-900 mt-3 truncate">{c.name}</p>

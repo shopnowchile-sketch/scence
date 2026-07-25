@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
 // GET /api/influencer/campaigns/open
 // Returns active campaigns the influencer is NOT yet part of (open to apply)
@@ -81,5 +82,6 @@ export async function GET() {
       application_status: pendingMap.has(c.id) ? 'pending' : null,
     }))
 
-  return NextResponse.json({ data: enriched })
+  const covers = await getCampaignCoverUrls(admin, enriched.map(c => c.id))
+  return NextResponse.json({ data: enriched.map(c => ({ ...c, cover_url: covers.get(c.id) ?? null })) })
 }

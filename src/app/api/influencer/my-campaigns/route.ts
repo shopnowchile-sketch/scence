@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -167,6 +168,14 @@ export async function GET() {
     }))
 
   const merged = [...assignedWithAllowedBrands, ...selfWrapped]
+
+  const covers = await getCampaignCoverUrls(admin, merged
+    .map((row: Record<string, unknown>) => (row.campaign as Record<string, unknown> | null)?.id)
+    .filter(Boolean) as string[])
+  for (const row of merged as Array<Record<string, unknown>>) {
+    const campaign = row.campaign as Record<string, unknown> | null
+    if (campaign?.id) campaign.cover_url = covers.get(campaign.id as string) ?? null
+  }
 
   // Fecha, hora y lugar del evento viven en `bookings`, que también alimenta
   // el calendario. La fecha/hora se muestran antes de aprobar; dirección e

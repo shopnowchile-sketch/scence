@@ -5,5 +5,8 @@
       "memory": 1769,
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/cron/brand-document-reminders", "schedule": "0 12 * * *" }
+  ]
 }

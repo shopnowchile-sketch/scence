@@ -492,14 +492,16 @@ const DELIVERABLE_TYPE_OPTIONS = [
 ]
 
 function AddDeliverableForm({
-  campaignId, influencers, onSuccess, onCancel,
+  campaignId, influencers, collaboratorBrands, onSuccess, onCancel,
 }: {
   campaignId: string
   influencers: Array<{ id: string; name: string }>
+  collaboratorBrands: Array<{ id: string; name: string; instagram?: string | null }>
   onSuccess: () => void
   onCancel: () => void
 }) {
   const [saving, setSaving] = useState(false)
+  const [brandIds, setBrandIds] = useState<string[]>([])
   const [form, setForm] = useState({
     influencer_id: influencers[0]?.id ?? '',
     type: 'reel',
@@ -528,6 +530,7 @@ function AddDeliverableForm({
           due_date:      form.due_date || null,
           scheduled_at:  form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
           quantity:      form.quantity,
+          brand_ids:     brandIds,
         }),
       })
       const json = await res.json()
@@ -587,6 +590,16 @@ function AddDeliverableForm({
             className="input-base w-full text-sm py-1.5 resize-y" />
           <p className="text-[11px] text-gray-400 text-right mt-1">{form.description.length} / 3000</p>
         </div>
+        {collaboratorBrands.length > 0 && <div className="col-span-2 rounded-lg border border-fuchsia-100 bg-fuchsia-50/40 p-3">
+          <p className="text-xs font-semibold text-fuchsia-800">Marcas a etiquetar en este entregable</p>
+          <p className="mt-0.5 text-[11px] text-fuchsia-700">Solo estas marcas se mostrarán a la influencer para este contenido.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {collaboratorBrands.map(brand => <label key={brand.id} className="flex cursor-pointer items-center gap-1.5 rounded-md bg-white px-2 py-1 text-xs font-medium text-gray-700 ring-1 ring-fuchsia-100">
+              <input type="checkbox" checked={brandIds.includes(brand.id)} onChange={event => setBrandIds(current => event.target.checked ? [...current, brand.id] : current.filter(id => id !== brand.id))} />
+              {brand.instagram ? `@${brand.instagram.replace(/^@/, '')}` : brand.name}
+            </label>)}
+          </div>
+        </div>}
       </div>
       <div className="flex gap-2 justify-end pt-1">
         <button type="button" onClick={onCancel}
@@ -1301,8 +1314,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       }, 0) / deliverableCount)
     : 0
   const pct = avgProgress
-  const hasBudget = Number(c.budget_total ?? 0) > 0
-  const budgetPct = hasBudget ? Math.round((c.budget_spent / Number(c.budget_total)) * 100) : 0
 
   // Métricas reales de contenido (Apify) agregadas a nivel campaña — solo
   // suma deliverables ya sincronizados (performance != null). No incluye
@@ -1334,18 +1345,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return metadata?.asset_type === 'campaign_cover'
   })
   const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
-  const campaignPeriod = c.start_date && c.end_date
-    ? `${formatDate(c.start_date)} — ${formatDate(c.end_date)}`
-    : c.start_date ? formatDate(c.start_date) : null
-  const deliveryDeadlines = (c.deliverable_templates ?? [])
-    .filter(template => !!template.due_date)
-    .map(template => `${template.type.replace(/_/g, ' ')}: ${formatDate(template.due_date!)}`)
   const eventBooking = (c as unknown as {
     event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string } | null } | null
   }).event_booking ?? null
-  const eventDateTime = eventBooking?.starts_at
-    ? format(new Date(eventBooking.starts_at), "EEEE d 'de' MMMM · HH:mm", { locale: es })
-    : null
   const eventLocation = eventBooking?.location || c.address || null
   const attendanceSuggestedDueDate = eventBooking?.starts_at ? format(new Date(new Date(eventBooking.starts_at).getTime() - 3 * 86400000), 'yyyy-MM-dd') : ''
 
@@ -1834,16 +1836,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
               {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1 rounded-md border border-violet-200 px-2 py-1 text-[10px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3 w-3" /> {coverSaving ? 'Subiendo…' : coverAsset ? 'Cambiar banner' : 'Subir banner'}</button></>}
             </div>
-            {editingEvent ? <div className="mt-2 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Lugar o dirección" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-800 outline-none" /></div><input value={eventForm.location_instructions} placeholder="Cómo llegar o indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none" /></div></div> : <><div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-gray-600"><span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-violet-600" />{eventDateTime ?? 'Fecha por confirmar'}</span><span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-violet-600" />{eventLocation ?? 'Ubicación por confirmar'}</span></div><div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-2 text-[11px] text-gray-500"><span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5 text-gray-400" /><b className="font-semibold text-gray-600">Período:</b> {campaignPeriod ?? 'Por confirmar'}</span>{deliveryDeadlines.length > 0 && <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-gray-400" /><b className="font-semibold text-gray-600">Entregas:</b> {deliveryDeadlines.join(' · ')}</span>}<span className="inline-flex items-center gap-1"><FileText className="h-3.5 w-3.5 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Ver brief</a> : <span>Brief pendiente</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} className="ml-1 font-semibold text-violet-700 hover:underline disabled:opacity-50">{briefSaving ? 'Cargando…' : (briefAsset || c.brief_url) ? 'Reemplazar' : 'Subir'}</button></>}</span></div></>}
+            {editingEvent ? <div className="mt-2 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Lugar o dirección" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-800 outline-none" /></div><input value={eventForm.location_instructions} placeholder="Cómo llegar o indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none" /></div></div> : <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-gray-600"><span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-violet-600" />{eventLocation ?? 'Ubicación por confirmar'}</span><span className="inline-flex items-center gap-1"><FileText className="h-3.5 w-3.5 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Ver brief</a> : <span>Brief pendiente</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} className="ml-1 font-semibold text-violet-700 hover:underline disabled:opacity-50">{briefSaving ? 'Cargando…' : (briefAsset || c.brief_url) ? 'Reemplazar' : 'Subir'}</button></>}</span></div>}
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
             <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
               <div className="text-sm font-bold text-gray-900">{confirmedInfluencers.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Seleccionadas</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
-              <div className="text-sm font-bold text-gray-900">{activeRelations.length}</div>
-              <div className="text-[10px] font-medium text-gray-500">Influencers</div>
             </div>
             <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
               <div className="text-sm font-bold text-gray-900">{campaignBrands.length}</div>
@@ -1856,16 +1854,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             {!!c.commission_rate && <div className="rounded-lg bg-amber-50 px-3 py-2 text-center"><div className="text-sm font-bold text-amber-700">{c.commission_rate}%</div><div className="text-[10px] font-medium text-amber-700">Comisión</div></div>}
           </div>
         </div>
-        {deliverableCount > 0 && <div className="mt-2 border-t border-gray-100 pt-2">
-          <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-            <span>{deliverableDone}/{deliverableCount} deliverables publicados</span>
-            {hasBudget && <span>{formatCurrency(c.budget_spent, c.currency)} gastados de {formatCurrency(c.budget_total ?? 0, c.currency)}</span>}
-          </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')}
-              style={{ width: `${pct}%` }} />
-          </div>
-        </div>}
       </div>
 
       {/* Tabs — achicados (pedido de Pri: "arregla la ui que se vea bien") */}
@@ -2917,6 +2905,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <AddDeliverableForm
                     campaignId={id}
                     influencers={campaignInfluencers.map(ci => ({ id: ci.influencer?.id ?? '', name: ci.influencer?.display_name ?? 'Influencer' }))}
+                    collaboratorBrands={campaignBrands.filter(brand => brand._role === 'Colaboradora' && brand.id).map(brand => ({ id: String(brand.id), name: String(brand.name ?? 'Marca'), instagram: brand.instagram as string | null }))}
                     onSuccess={() => { setAddingDeliverable(false); void refetch() }}
                     onCancel={() => setAddingDeliverable(false)}
                   />

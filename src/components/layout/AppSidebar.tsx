@@ -33,6 +33,7 @@ export interface NavItem {
   /** Igual al patrón ya usado en SettingsLayout (Notificaciones/Seguridad):
    *  deshabilita el link y muestra badge "soon" en vez de navegar a un 404. */
   soon?: boolean
+  subitem?: boolean
 }
 
 export interface NavSection {
@@ -129,14 +130,14 @@ function SidebarContent({
                 {section.title}
               </p>
             )}
-            {section.items.map(({ href, label, icon: Icon, exact, badge, badgeColor, soon }) => {
+            {section.items.map(({ href, label, icon: Icon, exact, badge, badgeColor, soon, subitem }) => {
               const active = exact ? pathname === href : pathname === href || pathname.startsWith(href + '/')
               return (
                 <Link
                   key={href}
                   href={soon ? '#' : href}
                   onClick={e => { if (soon) e.preventDefault(); else onNavClick?.() }}
-                  className={cn('nav-link', active && 'active', soon && 'opacity-40 cursor-not-allowed')}
+                  className={cn('nav-link', subitem && 'ml-4 text-xs', active && 'active', soon && 'opacity-40 cursor-not-allowed')}
                 >
                   <Icon className="h-4 w-4 flex-shrink-0" />
                   <span className="flex-1">{label}</span>

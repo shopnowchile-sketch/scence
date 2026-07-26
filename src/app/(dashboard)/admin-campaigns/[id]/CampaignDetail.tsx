@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -896,6 +896,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [eventSaving, setEventSaving] = useState(false)
   const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', commune: '', location_instructions: '' })
   const [deletingCampaign, setDeletingCampaign] = useState(false)
+  const [duplicatingCampaign, setDuplicatingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [brandRoster, setBrandRoster] = useState<Array<{
     id: string
@@ -1353,6 +1354,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const eventTime = eventBooking?.starts_at
     ? format(new Date(eventBooking.starts_at), 'HH:mm', { locale: es })
     : null
+  const eventDateLabel = eventBooking?.starts_at
+    ? format(new Date(eventBooking.starts_at), "EEEE d 'de' MMMM", { locale: es })
+    : null
+  const eventDateDay = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'dd') : null
+  const eventDateMonth = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'MMM', { locale: es }).replace('.', '').toUpperCase() : null
+  const eventDateWeekday = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'EEE', { locale: es }).replace('.', '').toUpperCase() : null
   const attendanceSuggestedDueDate = eventBooking?.starts_at ? format(new Date(new Date(eventBooking.starts_at).getTime() - 3 * 86400000), 'yyyy-MM-dd') : ''
 
   function openEventEditor() {
@@ -1646,6 +1653,36 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
   }
 
+  async function handleVisibilityChange(visibility: 'open' | 'private') {
+    if (visibility === c.visibility || patchCampaign.isPending) return
+    try {
+      await patchCampaign.mutateAsync(
+        visibility === 'open'
+          ? { visibility }
+          : { visibility, application_deadline: null, max_influencers: null, applications_closed_at: null },
+      )
+      toast.success(visibility === 'open' ? 'Campaña pública' : 'Campaña privada')
+    } catch {
+      // El hook muestra el error.
+    }
+  }
+
+  async function handleDuplicateCampaign() {
+    if (duplicatingCampaign) return
+    setDuplicatingCampaign(true)
+    try {
+      const response = await fetch(`/api/campaigns/${id}/duplicate`, { method: 'POST' })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudo duplicar la campaña')
+      toast.success('Campaña duplicada como borrador')
+      router.push(isBrandPortal ? `/brand-campaigns/${json.data.id}` : `/admin-campaigns/${json.data.id}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo duplicar la campaña')
+    } finally {
+      setDuplicatingCampaign(false)
+    }
+  }
+
   async function handleDeleteCampaign() {
     if (!confirm(`¿Eliminar la campaña "${c.name}"? Quedará marcada como Cancelada (no se borra la data). Esta acción no se puede deshacer desde la interfaz.`)) return
     setDeletingCampaign(true)
@@ -1720,6 +1757,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           <p className="mt-1 text-xs capitalize text-gray-400">{format(new Date(), "EEEE d 'de' MMMM", { locale: es })}</p>
         </div>
         <div className="flex items-center gap-2">
+          {canEditCampaign && (
+            <button
+              type="button"
+              onClick={() => void handleDuplicateCampaign()}
+              disabled={duplicatingCampaign}
+              title="Duplicar campaña como borrador"
+              aria-label="Duplicar campaña como borrador"
+              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
+            >
+              {duplicatingCampaign ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+          )}
           <Link href={isBrandPortal ? `/brand-campaigns/${id}/report` : `/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
             title="Reporte PDF"
             className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
@@ -1805,9 +1854,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* Resumen del evento: la hora y el lugar son la información principal. */}
       <div className="card overflow-hidden p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-          <div className="relative h-20 w-28 flex-shrink-0 overflow-hidden rounded-xl border border-violet-100 bg-violet-50 shadow-sm">
-            {coverAsset?.signed_url ? <img src={String(coverAsset.signed_url)} alt="Banner de campaña" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Target className="h-7 w-7 text-violet-500" /></div>}
-            {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} title={coverAsset ? 'Cambiar banner' : 'Subir banner'} aria-label={coverAsset ? 'Cambiar banner' : 'Subir banner'} className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-violet-700 shadow-md transition hover:bg-violet-700 hover:text-white disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5" /></button></>}
+          <div className="flex h-20 flex-shrink-0 gap-2">
+            {eventDateDay && <div className="flex w-14 flex-col items-center justify-center rounded-xl border border-gray-200 bg-white text-center"><span className="text-[10px] font-bold tracking-wide text-violet-700">{eventDateWeekday}</span><span className="text-2xl font-bold leading-none text-gray-950">{eventDateDay}</span><span className="text-[10px] font-semibold text-gray-500">{eventDateMonth}</span></div>}
+            <div className="relative w-28 overflow-hidden rounded-xl border border-violet-100 bg-violet-50 shadow-sm">
+              {coverAsset?.signed_url ? <img src={String(coverAsset.signed_url)} alt="Banner de campaña" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Target className="h-7 w-7 text-violet-500" /></div>}
+              {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} title={coverAsset ? 'Cambiar banner' : 'Subir banner'} aria-label={coverAsset ? 'Cambiar banner' : 'Subir banner'} className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-violet-700 shadow-md transition hover:bg-violet-700 hover:text-white disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5" /></button></>}
+            </div>
           </div>
           <div className="flex-1 min-w-0">
             {Boolean(campaignBrands[0]?.name) && (
@@ -1839,10 +1891,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <ChevronDown className="h-3 w-3 pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-60" />
                 </div>
               )}
+              {canEditCampaign && <div className="relative inline-flex"><select value={c.visibility ?? 'private'} disabled={patchCampaign.isPending} onChange={e => void handleVisibilityChange(e.target.value as 'open' | 'private')} title="Visibilidad de la campaña" className="badge appearance-none cursor-pointer border-0 bg-gray-100 pr-5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"><option value="private">Privada</option><option value="open">Pública</option></select><ChevronDown className="pointer-events-none absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 opacity-60" /></div>}
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
               {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
-            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-stretch gap-2"><>{eventTime && <div className="flex min-w-[132px] items-center gap-3 rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2.5"><Calendar className="h-5 w-5 text-violet-600" /><div><p className="text-[10px] font-semibold uppercase tracking-wide text-violet-500">Hora</p><p className="text-base font-bold leading-tight text-violet-950">{eventTime}</p></div></div>}<div className="flex min-w-[280px] max-w-xl flex-1 items-center gap-3 rounded-xl border border-violet-100 bg-white px-3 py-2.5 shadow-sm"><MapPin className="h-5 w-5 shrink-0 text-violet-600" /><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Ubicación</p><p className="truncate text-sm font-semibold text-gray-900">{eventLocation ?? 'Ubicación por confirmar'}</p>{eventCommune && <span className="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{eventCommune}</span>}</div></div><span className="inline-flex items-center gap-1.5 self-center px-1 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
+            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm"><>{eventDateLabel && <span className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}</span>}{eventTime && <span className="inline-flex items-center gap-2 border-l border-gray-200 pl-3 font-semibold text-gray-900"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</span>}<span className="inline-flex min-w-0 items-center gap-2 border-l border-gray-200 pl-3 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" /><span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span></span><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
             <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">

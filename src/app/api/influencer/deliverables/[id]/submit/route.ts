@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { ADMIN_NOTIFICATION_EMAIL, getResend, FROM_EMAIL } from '@/lib/resend'
 
 type Params = { params: { id: string } }
 
@@ -67,27 +67,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Non-fatal: notify org admin via email
+  // Non-fatal: notify the central SCENCE operations inbox.
   try {
-    if (influencer.organization_id) {
-      // Buscar el owner de la organización via organization_members → auth.users
-      // (profiles no tiene organization_id — se busca por membresía)
-      const { data: ownerMember } = await admin
-        .from('organization_members')
-        .select('user_id')
-        .eq('organization_id', influencer.organization_id)
-        .eq('is_owner', true)
-        .eq('is_active', true)
-        .limit(1)
-        .single()
-
-      const adminEmail = ownerMember?.user_id
-        ? (await admin.auth.admin.getUserById(ownerMember.user_id)).data.user?.email
-        : null
-
-      const adminProfile = adminEmail ? { email: adminEmail } : null
-
-      if (adminProfile?.email) {
+    if (ADMIN_NOTIFICATION_EMAIL) {
         const influencerName = influencer.display_name ?? 'Influencer'
         const deliverableTitle = (deliverable as { title?: string | null }).title ?? 'Entregable'
         const campaignData = (deliverable as { campaign?: { name?: string } | null }).campaign
@@ -96,7 +78,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
         const { error: sendErr } = await getResend().emails.send({
           from: FROM_EMAIL,
-          to: adminProfile.email,
+          to: ADMIN_NOTIFICATION_EMAIL,
           subject: `Nueva entrega de contenido — ${influencerName} · ${deliverableTitle}`,
           html: `<!DOCTYPE html>
 <html>
@@ -126,7 +108,6 @@ export async function POST(req: NextRequest, { params }: Params) {
         })
         // Resend no lanza excepción en errores de API — hay que revisar `error`.
         if (sendErr) console.warn('[deliverable submit] Resend devolvió error:', sendErr)
-      }
     }
   } catch (emailErr) {
     console.warn('[deliverable submit] email notification failed (non-fatal):', emailErr)

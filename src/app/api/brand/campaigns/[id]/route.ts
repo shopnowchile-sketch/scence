@@ -11,7 +11,7 @@ import {
 
 type Params = { params: { id: string } }
 
-// GET /api/brand-campaigns/[id] — detalle de campaña para marca principal o co-marca
+// GET /api/brand-campaigns/[id] — detalle solo para la marca creadora.
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -39,20 +39,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     campaignBase.brand_id === brand.id ||
     campaignBase.created_by_brand_id === brand.id
 
-  let hasAccess = canEdit
-
-  if (!hasAccess) {
-    const { data: coBrand } = await admin
-      .from('campaign_brands')
-      .select('campaign_id')
-      .eq('campaign_id', params.id)
-      .eq('brand_id', brand.id)
-      .maybeSingle()
-
-    hasAccess = !!coBrand
-  }
-
-  if (!hasAccess) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  if (!canEdit) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
   const { data, error } = await admin
     .from('campaigns')
@@ -66,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, application_status, status, origin, message, fee, currency, notes,
         influencer:influencers (
-          id, display_name, avatar_url, city, country, commune, categories,
+          id, display_name, email, avatar_url, city, country, commune, categories,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),

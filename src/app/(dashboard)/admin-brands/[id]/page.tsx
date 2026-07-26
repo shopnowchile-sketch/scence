@@ -1,13 +1,3 @@
-npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
-
-> scence-app@0.1.0 type-check
-> tsc --noEmit
-
-npm notice
-npm notice New minor version of npm available! 11.9.0 -> 11.18.0
-npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.18.0
-npm notice To update run: npm install -g npm@11.18.0
-npm notice
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -145,6 +135,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [newMemberEmail, setNewMemberEmail] = useState('')
   const [newMemberRole, setNewMemberRole] = useState<'member' | 'brand_manager' | 'finance'>('member')
   const [invitingMember, setInvitingMember] = useState(false)
+  const [ownerEmail, setOwnerEmail] = useState('')
+  const [savingOwner, setSavingOwner] = useState(false)
   const [newLocation, setNewLocation] = useState({
     name: '',
     address: '',
@@ -166,6 +158,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       if (!res.ok) throw new Error(json.error ?? 'Error cargando marca')
       setBrand(json.data)
       setInvoiceEmail(json.data?.contact_email ?? '')
+      setOwnerEmail(json.data?.contact_email ?? '')
       setPlanOverride(json.data?.subscription_plan_override ?? '')
     } catch (e) {
       toast.error((e as Error).message)
@@ -250,6 +243,28 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       toast.error((e as Error).message)
     } finally {
       setResendingMemberId(null)
+    }
+  }
+
+  async function saveOwner() {
+    if (!brand || !ownerEmail.trim()) return
+    setSavingOwner(true)
+    try {
+      const res = await fetch(`/api/brands/${brand.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact_email: ownerEmail.trim().toLowerCase() }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo asignar el owner')
+      setBrand(json.data)
+      setOwnerEmail(json.data.contact_email ?? '')
+      toast.success('Owner asignado y acceso enviado')
+      await loadMembers()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo asignar el owner')
+    } finally {
+      setSavingOwner(false)
     }
   }
 
@@ -1361,11 +1376,38 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         <div className="card p-5 space-y-4">
           <div>
             <h2 className="font-bold text-gray-900">Usuarios con acceso al portal</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Invita y gestiona el equipo de esta marca.
-            </p>
+            <p className="text-sm text-gray-500 mt-1">El contacto principal es el owner. Los demás son miembros del equipo.</p>
           </div>
 
+          <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-violet-950">Owner de la marca</p>
+                <p className="text-xs text-violet-700">Tiene el acceso principal al portal.</p>
+              </div>
+              {brand.user_id && <span className="badge badge-purple">Owner activo</span>}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="email"
+                value={ownerEmail}
+                onChange={event => setOwnerEmail(event.target.value)}
+                placeholder="owner@empresa.com"
+                className="input-base flex-1 bg-white"
+              />
+              <button
+                type="button"
+                onClick={saveOwner}
+                disabled={savingOwner || !ownerEmail.trim()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                {savingOwner ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                {brand.user_id ? 'Actualizar owner' : 'Asignar owner'}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Equipo adicional</p>
           <div className="flex flex-col sm:flex-row gap-2 rounded-xl bg-gray-50 border border-gray-100 p-3">
             <input type="email" value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && inviteMember()} placeholder="email@empresa.com" className="input-base flex-1 bg-white" />
             <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value as typeof newMemberRole)} className="input-base bg-white sm:w-44">

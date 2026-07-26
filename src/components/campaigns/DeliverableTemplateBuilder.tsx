@@ -21,6 +21,7 @@ export interface DeliverableTemplate {
   due_date?: string
   scheduled_at?: string
   items?: DeliverableTemplateItem[]
+  tag_brand_ids?: string[]
 }
 
 // ── Deliverable types ─────────────────────────────────────────────────────────
@@ -84,6 +85,9 @@ interface Props {
   campaignType?: string
   /** Show suggested defaults banner */
   showSuggestions?: boolean
+  /** Compact configuration used from a campaign overview. */
+  compact?: boolean
+  taggableBrands?: Array<{ id: string; name: string; instagram?: string | null }>
 }
 
 export function DeliverableTemplateBuilder({
@@ -91,6 +95,8 @@ export function DeliverableTemplateBuilder({
   onChange,
   campaignType,
   showSuggestions = true,
+  compact = false,
+  taggableBrands = [],
 }: Props) {
   const suggested = campaignType ? (CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []) : []
 
@@ -128,6 +134,16 @@ export function DeliverableTemplateBuilder({
         description: d.description ?? '', due_date: d.due_date ?? '', scheduled_at: d.scheduled_at ?? '',
       }))
       return { ...d, items: items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: val } : item) }
+    }))
+  }
+
+  function toggleTagBrand(type: string, brandId: string) {
+    onChange(value.map(deliverable => {
+      if (deliverable.type !== type) return deliverable
+      const selected = new Set(deliverable.tag_brand_ids ?? [])
+      if (selected.has(brandId)) selected.delete(brandId)
+      else selected.add(brandId)
+      return { ...deliverable, tag_brand_ids: Array.from(selected) }
     }))
   }
 
@@ -171,8 +187,32 @@ export function DeliverableTemplateBuilder({
         })}
       </div>
 
-      {/* Detalle de cada deliverable seleccionado */}
-      {value.length > 0 && (
+      {/* Configuración compacta del Overview: tipo, cantidad y etiquetas. */}
+      {compact && value.length > 0 && (
+        <div className="space-y-2">
+          {value.map(deliverable => {
+            const type = DELIVERABLE_TYPES.find(item => item.value === deliverable.type)
+            const selectedBrandIds = new Set(deliverable.tag_brand_ids ?? [])
+            return <div key={deliverable.type} className="rounded-xl border border-gray-200 bg-white p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-gray-900">{type?.emoji} {type?.label ?? deliverable.type}</p>
+                <label className="flex items-center gap-2 text-xs font-medium text-gray-500">Cantidad
+                  <input type="number" min="1" max="50" value={deliverable.quantity} onChange={event => update(deliverable.type, 'quantity', parseInt(event.target.value) || 1)} className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-800 outline-none focus:border-violet-400" />
+                </label>
+              </div>
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <p className="mb-2 text-xs font-semibold text-gray-600">Marcas a etiquetar</p>
+                {taggableBrands.length ? <div className="flex flex-wrap gap-2">{taggableBrands.map(brand => <button key={brand.id} type="button" onClick={() => toggleTagBrand(deliverable.type, brand.id)} className={cn('rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors', selectedBrandIds.has(brand.id) ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-gray-200 bg-white text-gray-500 hover:border-violet-200')}>
+                  {selectedBrandIds.has(brand.id) ? '✓ ' : ''}{brand.instagram ? `@${brand.instagram.replace(/^@/, '')}` : brand.name}
+                </button>)}</div> : <p className="text-xs text-gray-400">Agrega marcas participantes a la campaña para poder seleccionarlas.</p>}
+              </div>
+            </div>
+          })}
+        </div>
+      )}
+
+      {/* Detalle completo utilizado en la creación de campaña. */}
+      {!compact && value.length > 0 && (
         <div className="space-y-2">
           {value.map(d => {
             const dt = DELIVERABLE_TYPES.find(t => t.value === d.type)

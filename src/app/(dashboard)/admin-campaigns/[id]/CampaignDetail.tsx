@@ -824,11 +824,8 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
       name: form.name.trim(),
       description: form.description.trim() || null,
       type: form.type,
-      visibility: form.visibility,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
-      application_deadline: form.visibility === 'open' && form.application_deadline ? form.application_deadline : null,
-      max_influencers: form.visibility === 'open' && form.max_influencers !== '' ? Number(form.max_influencers) : null,
       budget_total: form.budget_total === '' ? null : Number(form.budget_total),
       currency: form.currency,
       commission_rate: form.type === 'commission' && form.commission_rate !== '' ? Number(form.commission_rate) : null,
@@ -1665,20 +1662,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
   }
 
-  async function handleVisibilityChange(visibility: 'open' | 'private') {
-    if (visibility === c.visibility || patchCampaign.isPending) return
-    try {
-      await patchCampaign.mutateAsync(
-        visibility === 'open'
-          ? { visibility }
-          : { visibility, application_deadline: null, max_influencers: null, applications_closed_at: null },
-      )
-      toast.success(visibility === 'open' ? 'Campaña pública' : 'Campaña privada')
-    } catch {
-      // El hook muestra el error.
-    }
-  }
-
   async function handleDuplicateCampaign() {
     if (duplicatingCampaign) return
     setDuplicatingCampaign(true)
@@ -1903,7 +1886,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <ChevronDown className="h-3 w-3 pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-60" />
                 </div>
               )}
-              {canEditCampaign && <div className="relative inline-flex"><select value={c.visibility ?? 'private'} disabled={patchCampaign.isPending} onChange={e => void handleVisibilityChange(e.target.value as 'open' | 'private')} title="Visibilidad de la campaña" className="badge appearance-none cursor-pointer border-0 bg-gray-100 pr-5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"><option value="private">Privada</option><option value="open">Pública</option></select><ChevronDown className="pointer-events-none absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 opacity-60" /></div>}
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
               {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
@@ -1917,6 +1899,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
               <div className="text-sm font-bold text-gray-900">{campaignBrands.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Marcas</div>
+            </div>
+            <div className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-center">
+              <div className="text-sm font-bold text-blue-700">{c.visibility === 'open' ? 'Pública' : 'Privada'}</div>
+              <div className="text-[10px] font-medium text-blue-600">Visibilidad</div>
             </div>
             {c.visibility === 'open' && <div className={cn('rounded-lg px-2.5 py-1.5 text-center', c.applications_closed_at ? 'bg-amber-50' : 'bg-emerald-50')}>
               <div className={cn('text-xs font-bold', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>{c.applications_closed_at ? 'Cerradas' : 'Abiertas'}</div>

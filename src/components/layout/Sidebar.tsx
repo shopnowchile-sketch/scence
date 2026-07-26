@@ -68,6 +68,7 @@ export function Sidebar() {
         { href: '/admin-payroll',   label: 'Payroll',   icon: Banknote },
         { href: '/admin-contracts', label: 'Contratos', icon: FileText },
         { href: '/admin-brands',    label: 'Marcas',    icon: Building2, badge: brandCount, badgeColor: 'bg-amber-500' },
+        ...(isAdmin ? [{ href: '/admin-brands/users', label: 'Usuarios de marcas', icon: Users, subitem: true }] : []),
       ],
     },
     {

@@ -850,6 +850,10 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
     content: 'Editar contenido y objetivos',
     deliverables: 'Editar entregables',
   }
+  const taggableBrands = [
+    (campaign as unknown as { brand?: { id?: string; name?: string; instagram?: string | null } | null }).brand,
+    ...(((campaign as unknown as { campaign_brands?: Array<{ brand?: { id?: string; name?: string; instagram?: string | null } | null }> }).campaign_brands ?? []).map(row => row.brand)),
+  ].flatMap(brand => brand?.id ? [{ id: brand.id, name: brand.name ?? 'Marca', instagram: brand.instagram ?? null }] : [])
 
   return (
     <form onSubmit={submit} className="space-y-4">
@@ -874,7 +878,7 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
         ))}</div>
       </div>}
 
-      {section === 'deliverables' && <div className="card p-5"><DeliverableTemplateBuilder value={form.deliverable_templates} onChange={value => field('deliverable_templates', value)} showSuggestions={false} /></div>}
+      {section === 'deliverables' && <div className="card p-5"><DeliverableTemplateBuilder value={form.deliverable_templates} onChange={value => field('deliverable_templates', value)} showSuggestions={false} compact taggableBrands={taggableBrands} /></div>}
 
     </form>
   )

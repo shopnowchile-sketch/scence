@@ -241,3 +241,32 @@ export async function POST(req: NextRequest, { params }: Params) {
     action_link: actionLink,
   })
 }
+
+// PATCH /api/brands/[id]/members — cambiar el rol de un miembro del equipo.
+// El owner no vive en brand_members: se reasigna desde la ficha de la marca.
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const supabase = createServerClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  let body: { member_id?: string; role?: string }
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'JSON inválido' }, { status: 400 }) }
+
+  const { admin, brand, allowed } = await getAdminBrand(user.id, params.id)
+  if (!allowed) return NextResponse.json({ error: 'Solo administradores pueden gestionar el equipo de una marca' }, { status: 403 })
+  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!body.member_id || !body.role) return NextResponse.json({ error: 'member_id y role son requeridos' }, { status: 400 })
+  if (!(MEMBER_ROLES as readonly string[]).includes(body.role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
+
+  const { data, error } = await admin
+    .from('brand_members')
+    .update({ role: body.role })
+    .eq('id', body.member_id)
+    .eq('brand_id', params.id)
+    .select('id, email, role, invited_at, joined_at, is_active')
+    .maybeSingle()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
+  return NextResponse.json({ data })
+}

@@ -29,21 +29,9 @@ async function getBrandCampaignAccess(admin: any, userId: string, campaignId: st
   const isMainBrand = campaign.brand_id === brand.id
   const isCreatorBrand = campaign.created_by_brand_id === brand.id
 
-  let isCoBrand = false
-  if (!isMainBrand && !isCreatorBrand) {
-    const { data: coBrand } = await admin
-      .from('campaign_brands')
-      .select('campaign_id')
-      .eq('campaign_id', campaignId)
-      .eq('brand_id', brand.id)
-      .maybeSingle()
-
-    isCoBrand = !!coBrand
-  }
-
   return {
     isBrand: true,
-    canView: isMainBrand || isCreatorBrand || isCoBrand,
+    canView: isMainBrand || isCreatorBrand,
     canEdit: isMainBrand || isCreatorBrand,
     brandId: brand.id,
   }
@@ -69,20 +57,9 @@ async function getBrandAccess(admin: ReturnType<typeof createAdminClient>, userI
   const isMain = campaign.brand_id === profileBrand.id
   const isCreator = campaign.created_by_brand_id === profileBrand.id || campaign.brand_id === profileBrand.id
 
-  let isCoBrand = false
-  if (!isMain) {
-    const { data: coBrand } = await admin
-      .from('campaign_brands')
-      .select('campaign_id')
-      .eq('campaign_id', campaignId)
-      .eq('brand_id', profileBrand.id)
-      .maybeSingle()
-    isCoBrand = !!coBrand
-  }
-
   return {
     isBrand: true,
-    canView: isMain || isCoBrand || isCreator,
+    canView: isMain || isCreator,
     canEdit: isCreator,
   }
 }
@@ -136,7 +113,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, fee, status, notes, application_status, origin, metadata,
         influencer:influencers (
-          id, display_name, avatar_url, city, country, commune, categories,
+          id, display_name, email, avatar_url, city, country, commune, categories,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),

@@ -1378,6 +1378,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const eventDateDay = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'dd') : null
   const eventDateMonth = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'MMM', { locale: es }).replace('.', '').toUpperCase() : null
   const eventDateWeekday = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'EEE', { locale: es }).replace('.', '').toUpperCase() : null
+  const campaignSummaryName = c.name.replace(/\s*\([^)]*\d{1,2}:\d{2}[^)]*\)\s*$/i, '') || c.name
   const attendanceSuggestedDueDate = eventBooking?.starts_at ? format(new Date(new Date(eventBooking.starts_at).getTime() - 3 * 86400000), 'yyyy-MM-dd') : ''
 
   function openEventEditor() {
@@ -1622,6 +1623,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
 
     router.push(isBrandPortal ? '/brand-campaigns' : '/admin-campaigns')
+  }
+
+  function goToKpiSection(target: Tab, openPendingApplications = false) {
+    setTab(target)
+    if (openPendingApplications) setPendingApplicationsOpen(true)
   }
 
   async function handleStatusAction(action: string) {
@@ -1873,7 +1879,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </div>
             )}
             <div className="flex items-center gap-2 flex-wrap">
-              {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>}
+              {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {isBrandPortal ? (
                 <CampaignStatusBadge status={c.status} />
               ) : (
@@ -1898,45 +1904,45 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
               {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
-            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm"><>{eventDateLabel && <span className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}</span>}{eventEndLabel && <span className="inline-flex items-center gap-2 border-l border-gray-200 pl-3 font-medium text-gray-700"><Calendar className="h-4 w-4 text-violet-600" />Termina {eventEndLabel}</span>}{eventTime && <span className="inline-flex items-center gap-2 border-l border-gray-200 pl-3 font-semibold text-gray-900"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</span>}<span className="inline-flex min-w-0 items-center gap-2 border-l border-gray-200 pl-3 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" /><span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span></span><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
+            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><>{eventDateLabel && <span className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}</span>}{eventTime && <span className="inline-flex items-center gap-2 font-semibold text-gray-900"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</span>}<span className="inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" /><span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span></span><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
           </div>
           <div className="grid w-full grid-cols-3 gap-2 sm:w-[360px] sm:flex-none">
-            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+            <button type="button" onClick={() => goToKpiSection('influencers')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver influencers seleccionadas">
               <div className="text-sm font-bold text-gray-900">{confirmedInfluencers.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Seleccionadas</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+            </button>
+            <button type="button" onClick={() => goToKpiSection('influencers', true)} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver solicitudes pendientes">
               <div className="text-sm font-bold text-gray-900">{pendingApplications.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Postularon</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+            </button>
+            <button type="button" onClick={() => goToKpiSection('overview')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver marcas participantes">
               <div className="text-sm font-bold text-gray-900">{campaignBrands.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Marcas</div>
-            </div>
-            <div className="rounded-lg bg-blue-50 px-2 py-1.5 text-center">
+            </button>
+            <button type="button" onClick={() => goToKpiSection('overview')} className="rounded-lg bg-blue-50 px-2 py-1.5 text-center transition hover:bg-blue-100 hover:ring-1 hover:ring-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-300" title="Ver resumen de campaña">
               <div className="text-sm font-bold text-blue-700">{c.visibility === 'open' ? 'Pública' : 'Privada'}</div>
               <div className="text-[10px] font-medium text-blue-600">Visibilidad</div>
-            </div>
-            <div className={cn('rounded-lg px-2 py-1.5 text-center', c.applications_closed_at ? 'bg-amber-50' : 'bg-emerald-50')}>
+            </button>
+            <button type="button" onClick={() => goToKpiSection('influencers', true)} className={cn('rounded-lg px-2 py-1.5 text-center transition hover:ring-1 focus:outline-none focus:ring-2', c.applications_closed_at ? 'bg-amber-50 hover:bg-amber-100 hover:ring-amber-200 focus:ring-amber-300' : 'bg-emerald-50 hover:bg-emerald-100 hover:ring-emerald-200 focus:ring-emerald-300')} title="Ver postulaciones">
               <div className={cn('text-xs font-bold', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>{c.visibility === 'open' ? (c.applications_closed_at ? 'Cerradas' : 'Abiertas') : 'No aplica'}</div>
               <div className={cn('text-[10px] font-medium', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>Postulaciones</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+            </button>
+            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
               <div className="text-sm font-bold text-gray-900">{hasCampaignMetrics ? formatFollowers(totalViews) : '—'}</div>
               <div className="text-[10px] font-medium text-gray-500">Visualizaciones</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+            </button>
+            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
               <div className="text-sm font-bold text-gray-900">{hasCampaignMetrics ? formatFollowers(totalInteractionsMetrics) : '—'}</div>
               <div className="text-[10px] font-medium text-gray-500">Engagement total</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+            </button>
+            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver entregables">
               <div className="text-sm font-bold text-gray-900">{deliverableDone}/{deliverableCount}</div>
               <div className="text-[10px] font-medium text-gray-500">Entregables publicados</div>
-            </div>
-            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+            </button>
+            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
               <div className="text-sm font-bold text-gray-900">—</div>
               <div className="text-[10px] font-medium text-gray-500">Alcance total</div>
-            </div>
+            </button>
           </div>
         </div>
       </div>

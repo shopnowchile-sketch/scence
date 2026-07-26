@@ -132,6 +132,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [members, setMembers] = useState<BrandMember[]>([])
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [resendingMemberId, setResendingMemberId] = useState<string | null>(null)
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
   const [newMemberEmail, setNewMemberEmail] = useState('')
   const [newMemberRole, setNewMemberRole] = useState<'member' | 'brand_manager' | 'finance'>('member')
   const [invitingMember, setInvitingMember] = useState(false)
@@ -243,6 +244,23 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       toast.error((e as Error).message)
     } finally {
       setResendingMemberId(null)
+    }
+  }
+
+  async function removeMember(member: BrandMember) {
+    if (!brand || member.role === 'owner') return
+    if (!window.confirm(`¿Eliminar el acceso de ${member.email} a esta marca?`)) return
+    setRemovingMemberId(member.id)
+    try {
+      const res = await fetch(`/api/brands/${brand.id}/members?member_id=${member.id}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo eliminar el acceso')
+      setMembers(current => current.filter(item => item.id !== member.id))
+      toast.success('Usuario desvinculado de la marca')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el acceso')
+    } finally {
+      setRemovingMemberId(null)
     }
   }
 
@@ -1462,15 +1480,28 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                           : '—'}
                       </td>
                       <td className="py-3 pr-4 text-right">
-                        {m.is_active && (
-                          <button
-                            onClick={() => resendMemberAccess(m)}
-                            disabled={resendingMemberId === m.id}
-                            className="px-3 py-1.5 text-xs font-semibold text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 disabled:opacity-50"
-                          >
-                            {resendingMemberId === m.id ? 'Enviando…' : 'Reenviar acceso'}
-                          </button>
-                        )}
+                        <div className="inline-flex items-center gap-2">
+                          {m.is_active && (
+                            <button
+                              onClick={() => resendMemberAccess(m)}
+                              disabled={resendingMemberId === m.id}
+                              className="px-3 py-1.5 text-xs font-semibold text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 disabled:opacity-50"
+                            >
+                              {resendingMemberId === m.id ? 'Enviando…' : 'Reenviar acceso'}
+                            </button>
+                          )}
+                          {m.role !== 'owner' && (
+                            <button
+                              type="button"
+                              onClick={() => removeMember(m)}
+                              disabled={removingMemberId === m.id}
+                              title="Desvincular usuario de esta marca"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {removingMemberId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

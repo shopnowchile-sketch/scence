@@ -1351,15 +1351,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }).event_booking ?? null
   const eventLocation = eventBooking?.location || c.address || null
   const eventCommune = eventBooking?.location_details?.commune?.trim() || null
-  const eventTime = eventBooking?.starts_at
+  const eventStartTime = eventBooking?.starts_at
     ? format(new Date(eventBooking.starts_at), 'HH:mm', { locale: es })
     : null
   const eventDateLabel = eventBooking?.starts_at
-    ? format(new Date(eventBooking.starts_at), "EEEE d 'de' MMMM", { locale: es })
+    ? format(new Date(eventBooking.starts_at), "EEEE d 'de' MMMM", { locale: es }).replace(/^./, letter => letter.toUpperCase())
     : null
-  const eventEndLabel = eventBooking?.ends_at
-    ? `${format(new Date(eventBooking.ends_at), "EEEE d 'de' MMMM", { locale: es })} · ${format(new Date(eventBooking.ends_at), 'HH:mm', { locale: es })}`
+  const eventEndTime = eventBooking?.ends_at
+    ? format(new Date(eventBooking.ends_at), 'HH:mm', { locale: es })
     : null
+  const eventTime = eventStartTime ? (eventEndTime ? `${eventStartTime}–${eventEndTime}` : eventStartTime) : null
+  const eventEndLabel = null
   const eventDateDay = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'dd') : null
   const eventDateMonth = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'MMM', { locale: es }).replace('.', '').toUpperCase() : null
   const eventDateWeekday = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'EEE', { locale: es }).replace('.', '').toUpperCase() : null

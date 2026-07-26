@@ -1,3 +1,13 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> scence-app@0.1.0 type-check
+> tsc --noEmit
+
+npm notice
+npm notice New minor version of npm available! 11.9.0 -> 11.18.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.18.0
+npm notice To update run: npm install -g npm@11.18.0
+npm notice
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -82,12 +92,6 @@ type PickerInfluencer = {
 
 function initials(name: string) {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
-}
-
-function statusLabel(status?: string | null) {
-  if (status === 'approved') return 'Aprobada'
-  if (status === 'suspended') return 'Suspendida'
-  return 'Pendiente'
 }
 
 function statusClass(status?: string | null) {
@@ -194,57 +198,16 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const loadInfluencers = useCallback(async () => {
     if (!brand) return
     setLoadingInf(true)
-    setInfluencers([])
-
-    try {
-      const results = await Promise.all(
-        (brand.campaigns ?? []).map(c =>
-          fetch(`/api/campaigns/${c.id}/influencers`)
-            .then(r => r.json())
-            .then(j => ({ campaign: c, influencers: j.data ?? [] }))
-        )
-      )
-
-      const seen = new Set<string>()
-      const flat: BrandInfluencer[] = []
-
-      for (const result of results) {
-        for (const ci of result.influencers) {
-          const inf = ci.influencer
-          if (!inf || seen.has(inf.id)) continue
-          seen.add(inf.id)
-          flat.push({
-            id: inf.id,
-            display_name: inf.display_name,
-            avatar_url: inf.avatar_url,
-            status: ci.status ?? ci.application_status ?? 'active',
-            campaign_name: result.campaign.name,
-          })
-        }
-      }
-
-      // Sumar influencers agregadas/asignadas directamente vía brand_influencers
-      // (ya vienen en brand.direct_influencers desde GET /api/brands/[id]).
-      // Si ya está por campaña, no se duplica — se prioriza mostrarla como
-      // "de campaña" (más específico); si es solo directa, se marca via:'direct'.
-      for (const inf of brand.direct_influencers ?? []) {
-        if (seen.has(inf.id)) continue
-        seen.add(inf.id)
-        flat.push({
-          id: inf.id,
-          display_name: inf.display_name,
-          avatar_url: inf.avatar_url,
-          status: 'active',
-          via: 'direct',
-        })
-      }
-
-      setInfluencers(flat)
-    } catch {
-      toast.error('Error cargando influencers')
-    } finally {
-      setLoadingInf(false)
-    }
+    // La ficha de marca es su roster propio, no un historial de participantes
+    // de campañas. Solo muestra relaciones explícitas en brand_influencers.
+    setInfluencers((brand.direct_influencers ?? []).map(inf => ({
+      id: inf.id,
+      display_name: inf.display_name,
+      avatar_url: inf.avatar_url,
+      status: 'active',
+      via: 'direct' as const,
+    })))
+    setLoadingInf(false)
   }, [brand])
 
   const loadMembers = useCallback(async () => {
@@ -647,64 +610,67 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-6xl space-y-5">
       <button onClick={() => router.push('/admin-brands')} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-violet-600">
         <ArrowLeft className="h-4 w-4" /> Volver a marcas
       </button>
 
-      <div className="card p-6">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-          <div className="flex items-center gap-4 min-w-0">
-            {brand.logo_url ? (
-              <img src={brand.logo_url} alt={brand.name} className="w-16 h-16 rounded-2xl object-contain border border-gray-100 p-1" />
-            ) : (
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg">
-                {initials(brand.name)}
-              </div>
-            )}
-            <div className="self-end pb-1">
+      <div className="card p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="relative shrink-0">
+              {brand.logo_url ? (
+                <img src={brand.logo_url} alt={`Logo de ${brand.name}`} className="h-24 w-24 rounded-2xl border border-gray-100 bg-white object-cover shadow-sm" />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-blue-500 text-3xl font-bold text-white shadow-sm">
+                  {initials(brand.name)}
+                </div>
+              )}
               <input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => {
                 const file = event.target.files?.[0]
                 if (file) void uploadLogo(file)
               }} />
-              <button type="button" onClick={() => logoInputRef.current?.click()} disabled={logoSaving} className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 hover:underline disabled:opacity-50">
-                <ImagePlus className="h-3.5 w-3.5" /> {logoSaving ? 'Subiendo…' : brand.logo_url ? 'Cambiar logo' : 'Subir logo'}
+              <button
+                type="button"
+                onClick={() => logoInputRef.current?.click()}
+                disabled={logoSaving}
+                title={logoSaving ? 'Subiendo logo' : brand.logo_url ? 'Cambiar logo' : 'Subir logo'}
+                aria-label={logoSaving ? 'Subiendo logo' : brand.logo_url ? 'Cambiar logo' : 'Subir logo'}
+                className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white text-violet-600 shadow-md hover:bg-violet-50 disabled:opacity-50"
+              >
+                {logoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
               </button>
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold text-gray-900 truncate">{brand.name}</h1>
-                <span className={cn('badge text-xs font-bold', statusClass(brand.status))}>
-                  {statusLabel(brand.status)}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">
-                {brand.industry ?? 'Sin industria'} · {campaigns.length} campaña{campaigns.length !== 1 ? 's' : ''} · {activeCampaigns.length} activa{activeCampaigns.length !== 1 ? 's' : ''}
+              <h1 className="truncate text-2xl font-bold text-gray-900">{brand.name}</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                {brand.industry ?? 'Sin industria'} · {brand.user_id ? 'Portal habilitado' : 'Sin acceso al portal'}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => updateStatus('approved')} className="px-3 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700">
-              <CheckCircle2 className="h-4 w-4 inline mr-1" /> Aprobar
-            </button>
-            <button onClick={() => updateStatus('pending_approval')} className="px-3 py-2 text-sm font-semibold bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100">
-              Pendiente
-            </button>
-            <button onClick={() => updateStatus('suspended')} className="px-3 py-2 text-sm font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
-              <Ban className="h-4 w-4 inline mr-1" /> Suspender
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={brand.status ?? 'pending_approval'}
+              onChange={event => updateStatus(event.target.value as 'approved' | 'pending_approval' | 'suspended')}
+              aria-label="Estado de la marca"
+              className={cn('rounded-lg border px-3 py-2 text-sm font-semibold outline-none', statusClass(brand.status))}
+            >
+              <option value="approved">Aprobada</option>
+              <option value="pending_approval">Pendiente</option>
+              <option value="suspended">Suspendida</option>
+            </select>
             {brand.contact_email && (
-              <button onClick={invite} className="px-3 py-2 text-sm font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700">
-                <Send className="h-4 w-4 inline mr-1" /> Invitar acceso
+              <button onClick={invite} title="Enviar acceso" aria-label="Enviar acceso" className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-600 text-white hover:bg-violet-700">
+                <Send className="h-4 w-4" />
               </button>
             )}
-            <button onClick={() => setShowEditModal(true)} className="px-3 py-2 text-sm font-semibold bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100">
-              <Pencil className="h-4 w-4 inline mr-1" /> Editar
+            <button onClick={() => setShowEditModal(true)} title="Editar marca" aria-label="Editar marca" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+              <Pencil className="h-4 w-4" />
             </button>
-            <button onClick={deleteBrand} disabled={deleting} className="px-3 py-2 text-sm font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50">
-              <Trash2 className="h-4 w-4 inline mr-1" /> Eliminar
+            <button onClick={deleteBrand} disabled={deleting} title="Eliminar marca" aria-label="Eliminar marca" className="flex h-10 w-10 items-center justify-center rounded-lg border border-red-100 text-red-500 hover:bg-red-50 disabled:opacity-50">
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -713,6 +679,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       {showEditModal && (
         <BrandModal
           editing={brand}
+          inline
           onClose={() => setShowEditModal(false)}
           onSaved={() => load()}
         />
@@ -849,26 +816,18 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="card p-4">
-          <Target className="h-5 w-5 text-violet-600 mb-2" />
-          <p className="text-2xl font-bold text-gray-900">{activeCampaigns.length}</p>
-          <p className="text-sm text-gray-400">Campañas activas</p>
+      <div className="grid grid-cols-3 divide-x divide-gray-100 rounded-xl border border-gray-100 bg-white">
+        <div className="p-4">
+          <p className="text-xl font-bold text-gray-900">{activeCampaigns.length}</p>
+          <p className="text-xs text-gray-500">Activas</p>
         </div>
-        <div className="card p-4">
-          <FileText className="h-5 w-5 text-blue-600 mb-2" />
-          <p className="text-2xl font-bold text-gray-900">{campaigns.length}</p>
-          <p className="text-sm text-gray-400">Total campañas</p>
+        <div className="p-4">
+          <p className="text-xl font-bold text-gray-900">{campaigns.length}</p>
+          <p className="text-xs text-gray-500">Campañas</p>
         </div>
-        <div className="card p-4">
-          <Users className="h-5 w-5 text-emerald-600 mb-2" />
-          <p className="text-2xl font-bold text-gray-900">{influencers.length || '—'}</p>
-          <p className="text-sm text-gray-400">Influencers</p>
-        </div>
-        <div className="card p-4">
-          <Building2 className="h-5 w-5 text-gray-600 mb-2" />
-          <p className="text-sm font-bold text-gray-900">{brand.user_id ? 'Con acceso' : 'Sin acceso'}</p>
-          <p className="text-sm text-gray-400">Portal marca</p>
+        <div className="p-4">
+          <p className="text-xl font-bold text-gray-900">{brand.direct_influencers?.length ?? 0}</p>
+          <p className="text-xs text-gray-500">Roster propio</p>
         </div>
       </div>
 
@@ -1009,7 +968,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       {tab === 'influencers' && (
         <div className="card p-5">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-bold text-gray-900">Influencers relacionadas</h2>
+            <h2 className="font-bold text-gray-900">Influencers de esta marca</h2>
             <button
               type="button"
               onClick={() => {
@@ -1027,7 +986,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
           {loadingInf ? (
             <p className="text-sm text-gray-400">Cargando influencers…</p>
           ) : influencers.length === 0 ? (
-            <p className="text-sm text-gray-400">Sin influencers asociadas a esta marca (ni por campaña ni agregadas directamente).</p>
+            <p className="text-sm text-gray-400">Esta marca aún no tiene influencers agregadas a su roster propio.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {influencers.map(inf => (

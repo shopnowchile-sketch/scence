@@ -21,7 +21,7 @@ import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus, Camp
 import { getInfluencerTier } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
-import { groupCommunes } from '@/lib/communes-chile'
+import { COMUNAS_CHILE, groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
@@ -894,7 +894,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [overviewEditSection, setOverviewEditSection] = useState<OverviewEditSection>('content')
   const [editingEvent, setEditingEvent] = useState(false)
   const [eventSaving, setEventSaving] = useState(false)
-  const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', location_instructions: '' })
+  const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', commune: '', location_instructions: '' })
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
   const [brandRoster, setBrandRoster] = useState<Array<{
@@ -1346,9 +1346,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   })
   const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
   const eventBooking = (c as unknown as {
-    event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string } | null } | null
+    event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string; commune?: string } | null } | null
   }).event_booking ?? null
   const eventLocation = eventBooking?.location || c.address || null
+  const eventCommune = eventBooking?.location_details?.commune?.trim() || null
   const eventTime = eventBooking?.starts_at
     ? format(new Date(eventBooking.starts_at), 'HH:mm', { locale: es })
     : null
@@ -1361,6 +1362,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       starts_at: eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), "yyyy-MM-dd'T'HH:mm") : '',
       ends_at: eventBooking?.ends_at ? format(new Date(eventBooking.ends_at), "yyyy-MM-dd'T'HH:mm") : '',
       location: eventLocation ?? '',
+      commune: eventCommune ?? '',
       location_instructions: eventBooking?.location_details?.instructions ?? '',
     })
     setEditingEvent(true)
@@ -1376,8 +1378,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       const startsAt = new Date(eventForm.starts_at).toISOString()
       const endsAt = new Date(eventForm.ends_at).toISOString()
       const bookingPayload = eventBooking?.id
-        ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
-        : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
+        ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
+        : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
       const response = await fetch('/api/bookings', {
         method: eventBooking?.id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1800,21 +1802,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
       </div>
 
-      {/* Header card — compacto (pedido de Pri: "sigue muy grande, achicar") */}
-      <div className="card p-3">
+      {/* Resumen del evento: la hora y el lugar son la información principal. */}
+      <div className="card overflow-hidden p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-          {coverAsset?.signed_url ? <img src={String(coverAsset.signed_url)} alt="Portada de campaña" className="h-12 w-16 rounded-lg object-cover flex-shrink-0" /> : <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
-            <Target className="h-4 w-4 text-violet-600" />
-          </div>}
+          <div className="relative h-20 w-28 flex-shrink-0 overflow-hidden rounded-xl border border-violet-100 bg-violet-50 shadow-sm">
+            {coverAsset?.signed_url ? <img src={String(coverAsset.signed_url)} alt="Banner de campaña" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Target className="h-7 w-7 text-violet-500" /></div>}
+            {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} title={coverAsset ? 'Cambiar banner' : 'Subir banner'} aria-label={coverAsset ? 'Cambiar banner' : 'Subir banner'} className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-violet-700 shadow-md transition hover:bg-violet-700 hover:text-white disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5" /></button></>}
+          </div>
           <div className="flex-1 min-w-0">
             {Boolean(campaignBrands[0]?.name) && (
-              <div className="mb-0.5 flex items-center gap-1.5">
-                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-gray-600">{String(campaignBrands[0].name)}</p>
+              <div className="mb-1 flex items-center gap-1.5">
+                <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-gray-500">{String(campaignBrands[0].name)}</p>
                 {(!isBrandPortal || c._brand_permissions?.canEdit) && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={openEventEditor} title="Editar nombre, fecha y lugar" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
               </div>
             )}
             <div className="flex items-center gap-2 flex-wrap">
-              {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-base font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>}
+              {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{c.name}</h1>}
               {isBrandPortal ? (
                 <CampaignStatusBadge status={c.status} />
               ) : (
@@ -1837,9 +1840,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </div>
               )}
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
-              {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1 rounded-md border border-violet-200 px-2 py-1 text-[10px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3 w-3" /> {coverSaving ? 'Subiendo…' : coverAsset ? 'Cambiar banner' : 'Subir banner'}</button></>}
+              {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
-            {editingEvent ? <div className="mt-2 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded border border-violet-200 bg-white px-1.5 py-1 text-[11px] outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Lugar o dirección" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-800 outline-none" /></div><input value={eventForm.location_instructions} placeholder="Cómo llegar o indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none" /></div></div> : <div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><>{eventTime && <div className="inline-flex items-center gap-2 rounded-lg border border-violet-100 bg-white px-2.5 py-1.5"><Calendar className="h-3.5 w-3.5 text-violet-600" /><span className="text-gray-500">Hora</span><b className="text-violet-900">{eventTime}</b></div>}<div className="inline-flex max-w-md items-center gap-2 rounded-lg border border-violet-100 bg-white px-2.5 py-1.5"><MapPin className="h-3.5 w-3.5 shrink-0 text-violet-600" /><span className="text-gray-500">Lugar</span><b className="truncate text-gray-800">{eventLocation ?? 'Ubicación por confirmar'}</b></div><span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600"><FileText className="h-3.5 w-3.5 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Ver brief</a> : <span>Brief pendiente</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} className="ml-1 font-semibold text-violet-700 hover:underline disabled:opacity-50">{briefSaving ? 'Cargando…' : (briefAsset || c.brief_url) ? 'Reemplazar' : 'Subir'}</button></>}</span></></div>}
+            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-stretch gap-2"><>{eventTime && <div className="flex min-w-[132px] items-center gap-3 rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2.5"><Calendar className="h-5 w-5 text-violet-600" /><div><p className="text-[10px] font-semibold uppercase tracking-wide text-violet-500">Hora</p><p className="text-base font-bold leading-tight text-violet-950">{eventTime}</p></div></div>}<div className="flex min-w-[280px] max-w-xl flex-1 items-center gap-3 rounded-xl border border-violet-100 bg-white px-3 py-2.5 shadow-sm"><MapPin className="h-5 w-5 shrink-0 text-violet-600" /><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Ubicación</p><p className="truncate text-sm font-semibold text-gray-900">{eventLocation ?? 'Ubicación por confirmar'}</p>{eventCommune && <span className="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{eventCommune}</span>}</div></div><span className="inline-flex items-center gap-1.5 self-center px-1 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
             <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">

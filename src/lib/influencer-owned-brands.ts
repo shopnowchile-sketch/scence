@@ -1,9 +1,9 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js'
-import { FROM_EMAIL, getResend } from '@/lib/resend'
+import { ADMIN_NOTIFICATION_EMAIL, FROM_EMAIL, getResend } from '@/lib/resend'
 
 export const OWNED_BRAND_BUCKET = 'influencer-brand-logos'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-const APPROVAL_EMAIL = process.env.BRAND_APPROVAL_EMAIL ?? process.env.SUPPORT_NOTIFICATION_EMAIL ?? 'hola@scence.cl'
+const APPROVAL_EMAIL = ADMIN_NOTIFICATION_EMAIL
 
 export async function getInfluencer(user: User, admin: SupabaseClient) {
   const { data } = await admin.from('influencers').select('id, display_name, email').eq('user_id', user.id).maybeSingle()

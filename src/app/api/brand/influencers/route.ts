@@ -280,10 +280,6 @@ export async function POST(req: NextRequest) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (!user.user_metadata?.is_brand) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const admin = createAdminClient()
 
   const access = await resolveBrandAccess(user.id)

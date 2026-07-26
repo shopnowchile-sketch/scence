@@ -8,6 +8,9 @@ export function getResend(): Resend {
 }
 
 export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'Scence <noreply@scence.app>'
+// Destino único de las alertas internas de operación. No se usa para emails
+// dirigidos a marcas, influencers o clientes.
+export const ADMIN_NOTIFICATION_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
 
 // ── Email templates (inline HTML — no React Email dependency needed) ──────────
 

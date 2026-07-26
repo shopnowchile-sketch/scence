@@ -1,7 +1,7 @@
-import { FROM_EMAIL, getResend } from '@/lib/resend'
+import { ADMIN_NOTIFICATION_EMAIL, FROM_EMAIL, getResend } from '@/lib/resend'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-const SUPPORT_EMAIL = process.env.SUPPORT_NOTIFICATION_EMAIL ?? 'hola@scence.cl'
+const SUPPORT_EMAIL = ADMIN_NOTIFICATION_EMAIL
 
 function escapeHtml(value: string): string {
   return value

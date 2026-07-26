@@ -9,6 +9,7 @@ import {
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
+import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
 // GET /api/brand-campaigns — campañas de la marca autenticada
 // Acepta los mismos filtros que /api/campaigns (status/type/platform/visibility/search)
@@ -108,6 +109,7 @@ export async function GET(req: NextRequest) {
   // anidados, porque brand-dash/page.tsx y brand/dashboard/page.tsx ya
   // dependen de ellos completos.
   type Row = { campaign_influencers?: Array<{ application_status?: string }>; campaign_deliverables?: Array<{ status: string }> }
+  const coverUrls = await getCampaignCoverUrls(admin, (data ?? []).map(c => c.id))
   const enriched = (data ?? []).map(c => {
     const row = c as Row
     const deliverables = row.campaign_deliverables ?? []
@@ -116,6 +118,7 @@ export async function GET(req: NextRequest) {
     const acceptedCount = (row.campaign_influencers ?? []).filter(ci => ci.application_status === 'accepted').length
     return {
       ...c,
+      cover_url: coverUrls.get(c.id) ?? null,
       influencer_count:  acceptedCount,
       deliverable_count: deliverables.length,
       deliverable_done:  deliverables.filter(isDeliverableComplete).length,

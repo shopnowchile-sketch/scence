@@ -444,10 +444,17 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                     return (
                       <tr key={c.id} className="hover:bg-gray-50/70 transition-colors group">
                         {visibleColumns.campaign && (
-                          <td className="px-4 py-3 max-w-[200px]">
+                          <td className="px-4 py-3 max-w-[260px]">
                             <Link href={`${isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'}/${c.id}`} className="block">
-                              <div className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors line-clamp-1">{c.name}</div>
-                              {c.description && <div className="text-xs text-gray-400 line-clamp-1 mt-0.5">{c.description}</div>}
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className="h-11 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gradient-to-br from-violet-100 via-fuchsia-50 to-amber-50">
+                                  {c.cover_url && <img src={c.cover_url} alt="" className="h-full w-full object-cover" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors line-clamp-1">{c.name}</div>
+                                  {c.description && <div className="text-xs text-gray-400 line-clamp-1 mt-0.5">{c.description}</div>}
+                                </div>
+                              </div>
                             </Link>
                           </td>
                         )}

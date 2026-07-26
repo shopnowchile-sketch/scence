@@ -277,6 +277,8 @@ export interface Campaign {
   commission_rate?: number | null
   brand?: { id: string; name: string; logo_url: string | null } | null
   social_tags?: string[] | null
+  /** URL temporal del banner de campaña, resuelta por las APIs de listado. */
+  cover_url?: string | null
   deliverable_templates?: Array<{ type: string; quantity: number; description?: string; due_date?: string }> | null
   campaign_benefits?: CampaignBenefit[] | null
   created_at: string

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
 // ── GET /api/campaigns ────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -140,8 +141,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const coverUrls = await getCampaignCoverUrls(admin, campaignIds)
   const enriched = (data ?? []).map(c => ({
     ...c,
+    cover_url:         coverUrls.get(c.id) ?? null,
     influencer_count:  infCount[c.id]  ?? 0,
     deliverable_count: delCount[c.id]  ?? 0,
     deliverable_done:  delDone[c.id]   ?? 0,

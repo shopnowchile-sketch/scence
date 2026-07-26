@@ -1002,6 +1002,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingCommuneFilter, setPendingCommuneFilter] = useState('')
   const [pendingCategoryFilter, setPendingCategoryFilter] = useState('')
   const [pendingMinEngagement, setPendingMinEngagement] = useState(0)
+  const [pendingSearch, setPendingSearch] = useState('')
+  const [pendingApplicationsOpen, setPendingApplicationsOpen] = useState(false)
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
   const patchCampaign = usePatchCampaign(id, apiBase)
@@ -1179,6 +1181,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     if (pendingCommuneFilter && !pendingCommuneFilter.split(',').includes(inf.commune ?? '')) return false
     if (pendingCategoryFilter && !(inf.categories ?? []).includes(pendingCategoryFilter)) return false
     if (pendingMinEngagement > 0 && (primarySP?.engagement_rate ?? 0) < pendingMinEngagement) return false
+    if (pendingSearch.trim()) {
+      const query = pendingSearch.trim().toLowerCase()
+      const handles = (inf.influencer_social_profiles ?? []).map(profile => profile.username ?? '').join(' ')
+      if (![inf.display_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(query)) return false
+    }
     return true
   })
 
@@ -1244,8 +1251,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     if (infStatus && (ci.status ?? 'draft') !== infStatus) return false
     if (infSearch.trim()) {
       const q = infSearch.trim().toLowerCase()
-      const handle = inf.influencer_social_profiles?.[0]?.username ?? ''
-      if (!inf.display_name.toLowerCase().includes(q) && !handle.toLowerCase().includes(q)) return false
+      const handles = (inf.influencer_social_profiles ?? []).map(profile => profile.username ?? '').join(' ')
+      if (![inf.display_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(q)) return false
     }
     return true
   })
@@ -2066,17 +2073,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── INFLUENCERS ─────────────────────────────────────────────────────── */}
       {tab === 'influencers' && (
         <div className="space-y-4">
-          {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-            <div className="flex justify-end">
-              <a
-                href={`/api/campaigns/${id}/influencers/export`}
-                className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
-              >
-                <FileDown className="h-4 w-4" />
-                Descargar seleccionadas en Excel
-              </a>
-            </div>
-          )}
           {/* Pending applications (fix 2026-07-01: filtraba por ci.status === 'applied',
               un valor que el flujo real de postulación nunca setea — el campo correcto
               es application_status. Ver src/lib/campaign-applications.ts)
@@ -2092,24 +2088,24 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               endpoint correcto según el portal. */}
           {pendingApplications.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-            <div className="card p-4 border-amber-200 bg-amber-50">
-              <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="card overflow-hidden border-amber-200 bg-amber-50">
+              <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-amber-100/50">
                 <p className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                   {pendingApplications.length} solicitud(es) pendiente(s)
                 </p>
-                <ColumnVisibilityMenu
-                  columns={CI_COLUMNS}
-                  visible={pendingVisibleColumns}
-                  onToggle={togglePendingColumn}
-                  onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)}
-                  iconOnly
-                />
-              </div>
+                <ChevronDown className={cn('h-5 w-5 text-amber-700 transition-transform', pendingApplicationsOpen && 'rotate-180')} />
+              </button>
+
+              {pendingApplicationsOpen && <div className="border-t border-amber-200 p-4">
+              <div className="mb-3 flex items-center justify-end"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
 
               {/* Filtros de postulantes — mismo estilo (select/input) que
                   InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
                   Solo aparecen si hay algo que filtrar (>3 postulantes). */}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[240px] flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-amber-200 bg-white py-1.5 pl-9 pr-8 text-xs text-gray-700 outline-none focus:border-violet-400" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"><X className="h-3.5 w-3.5" /></button>}</div>
+              </div>
               {pendingApplications.length > 3 && (
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <select
@@ -2270,6 +2266,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   </table>
                 </div>
               )}
+              </div>}
             </div>
           )}
 
@@ -2357,6 +2354,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
             </p>
             <div className="flex items-center gap-2">
+              {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
+                <a href={`/api/campaigns/${id}/influencers/export`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
+                  <FileDown className="h-4 w-4" /> Excel
+                </a>
+              )}
               {remindSelection.size > 0 && (
                 <button
                   onClick={handleBulkRemind}
@@ -2458,7 +2460,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar por nombre o @usuario..."
+                  placeholder="Buscar nombre, Instagram o email..."
                   value={infSearch}
                   onChange={e => setInfSearch(e.target.value)}
                   className="input-base pl-9"

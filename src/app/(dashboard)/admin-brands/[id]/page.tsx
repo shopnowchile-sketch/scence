@@ -694,7 +694,6 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       {showEditModal && (
         <BrandModal
           editing={brand}
-          inline
           onClose={() => setShowEditModal(false)}
           onSaved={() => load()}
         />

@@ -19,9 +19,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!user.user_metadata?.is_brand) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const admin = createAdminClient()
 
@@ -69,25 +66,26 @@ export async function GET(req: NextRequest) {
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
-  // Pro ve el catálogo completo. Basic/Growth ven únicamente su roster privado:
-  // asignadas directamente desde Admin/marca + participantes aceptadas.
-  const orgPlan    = await resolveBrandPlan(admin, brand.organization_id, brand.id)
+  // La visibilidad se decide únicamente en servidor. Pro puede explorar el
+  // catálogo completo; Basic/Growth solo pueden ver personas que POSTULARON a
+  // campañas de esta marca. No se mezclan roster privado, invitaciones ni
+  // participantes creados manualmente: eso evitaría que una marca gratuita
+  // use este endpoint como catálogo encubierto.
+  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const fullAccess = canViewFullInfluencerBase(orgPlan)
 
   let restrictedInfluencerIds: string[] | null = null
 
-  if (!fullAccess || scope === 'roster') {
+  if (!fullAccess || scope === 'applicants') {
     const [
       { data: primaryCampaigns, error: primaryError },
       { data: collaboratorRows, error: collaboratorError },
-      { data: directRows, error: directError },
     ] = await Promise.all([
       admin.from('campaigns').select('id').eq('brand_id', brand.id),
       admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
-      admin.from('brand_influencers').select('influencer_id').eq('brand_id', brand.id),
     ])
 
-    const relationError = primaryError ?? collaboratorError ?? directError
+    const relationError = primaryError ?? collaboratorError
     if (relationError) {
       return NextResponse.json({ error: relationError.message }, { status: 500 })
     }
@@ -97,32 +95,33 @@ export async function GET(req: NextRequest) {
       ...(collaboratorRows ?? []).map(row => row.campaign_id),
     ].filter(Boolean)))
 
-    let acceptedInfluencerIds: string[] = []
-
-    if (campaignIds.length > 0) {
-      const { data: acceptedRows, error: acceptedError } = await admin
+    if (campaignIds.length === 0) {
+      restrictedInfluencerIds = []
+    } else {
+      // "Postulante" = solicitud pendiente o aceptada. Las invitaciones
+      // privadas y las solicitudes rechazadas no aparecen en esta vista.
+      const { data: applicantRows, error: applicantError } = await admin
         .from('campaign_influencers')
         .select('influencer_id')
         .in('campaign_id', campaignIds)
-        .eq('application_status', 'accepted')
+        .in('application_status', ['pending', 'accepted'])
 
-      if (acceptedError) {
-        return NextResponse.json({ error: acceptedError.message }, { status: 500 })
+      if (applicantError) {
+        return NextResponse.json({ error: applicantError.message }, { status: 500 })
       }
 
-      acceptedInfluencerIds = (acceptedRows ?? [])
-        .map(row => row.influencer_id)
-        .filter(Boolean)
+      restrictedInfluencerIds = Array.from(new Set(
+        (applicantRows ?? []).map(row => row.influencer_id).filter(Boolean)
+      ))
     }
-
-    restrictedInfluencerIds = Array.from(new Set([
-      ...acceptedInfluencerIds,
-      ...(directRows ?? []).map(row => row.influencer_id).filter(Boolean),
-    ]))
 
     if (restrictedInfluencerIds.length === 0) {
       if (summaryOnly) {
-        return NextResponse.json({ summary: { total: 0, followers: 0, avg_engagement: 0, verified: 0 } })
+        return NextResponse.json({
+          summary: { total: 0, followers: 0, avg_engagement: 0, verified: 0 },
+          full_access: false,
+          scope: 'applicants',
+        })
       }
       return NextResponse.json({
         data: [],
@@ -130,6 +129,7 @@ export async function GET(req: NextRequest) {
         page,
         limit,
         full_access: false,
+        scope: 'applicants',
       })
     }
   }
@@ -257,6 +257,7 @@ export async function GET(req: NextRequest) {
     page,
     limit,
     full_access: fullAccess,
+    scope: fullAccess && scope !== 'applicants' ? 'catalog' : 'applicants',
   })
 }
 

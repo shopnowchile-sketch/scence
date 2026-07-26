@@ -340,3 +340,32 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!data) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
   return NextResponse.json({ data })
 }
+
+
+// DELETE /api/brands/[id]/members?member_id=... — revoca el acceso de un miembro.
+// El owner no se borra aquí: primero debe transferirse a otra persona.
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const supabase = createServerClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const memberId = new URL(req.url).searchParams.get('member_id')
+  if (!memberId) return NextResponse.json({ error: 'member_id requerido' }, { status: 400 })
+
+  const { admin, brand, allowed } = await getAdminBrand(user.id, params.id)
+  if (!allowed) return NextResponse.json({ error: 'Solo administradores pueden gestionar el equipo de una marca' }, { status: 403 })
+  if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
+  const { data: member, error: memberError } = await admin
+    .from('brand_members')
+    .select('id, email')
+    .eq('id', memberId)
+    .eq('brand_id', params.id)
+    .maybeSingle()
+  if (memberError) return NextResponse.json({ error: memberError.message }, { status: 500 })
+  if (!member) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
+
+  const { error: deleteError } = await admin.from('brand_members').delete().eq('id', member.id).eq('brand_id', params.id)
+  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  return NextResponse.json({ success: true })
+}

@@ -8,7 +8,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle, ImagePlus } from 'lucide-react'
+import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle, ImagePlus, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { COUNTRY_OPTIONS } from '@/lib/utils'
 import { GooglePlacesAddress } from '@/components/brand/GooglePlacesAddress'
@@ -151,6 +151,7 @@ export function BrandOrgForm() {
   )
 
   const missingInstagram = !form.instagram || !String(form.instagram).trim()
+  const instagramConnection = searchParams.get('instagram')
   const localityLabel = countryCode === 'CL' ? 'Comuna *' : 'Ciudad / localidad *'
   const regionLabel = countryCode === 'CL' ? 'Región *' : 'Región / estado *'
 
@@ -163,6 +164,10 @@ export function BrandOrgForm() {
           Para usar el portal necesitas completar el Instagram de tu marca.
         </div>
       )}
+
+      {instagramConnection === 'connected' && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Instagram conectado. Actualizamos el @usuario y la foto de perfil de tu marca.</div>}
+      {instagramConnection === 'error' && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">No pudimos conectar Instagram. Inténtalo nuevamente.</div>}
+      {instagramConnection === 'unavailable' && <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">La conexión de Instagram está siendo configurada por SCENCE.</div>}
 
       {/* Empresa */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
@@ -207,6 +212,10 @@ export function BrandOrgForm() {
               <input value={form.instagram ?? ''} onChange={set('instagram')} placeholder="@miempresa" required className="input-base w-full" />
             </div>
           </Field>
+          <div className="col-span-2 -mt-1 flex items-center justify-between rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5">
+            <p className="text-xs text-violet-800">Conecta tu cuenta profesional para usar automáticamente su foto y @usuario.</p>
+            <button type="button" onClick={() => { window.location.assign('/api/brand/instagram/connect') }} className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-700 shadow-sm ring-1 ring-violet-200 hover:bg-violet-100"><Link2 className="h-3.5 w-3.5" />Conectar</button>
+          </div>
           <div className="col-span-2 pt-2 border-t border-gray-100">
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Dirección legal *</p>
             <p className="text-xs text-gray-400 mt-1">Puedes buscar con Google Maps cuando esté configurado o completar los datos manualmente.</p>

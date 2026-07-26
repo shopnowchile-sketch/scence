@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Loader2, Mail, Search, ShieldCheck, Users } from 'lucide-react'
+import { Loader2, Mail, Search, ShieldCheck, Users, Pencil, Trash2 } from 'lucide-react'
 
 type BrandUser = {
   id: string
@@ -75,6 +75,53 @@ export default function AdminUsersPage() {
     finally { setWorkingId(null) }
   }
 
+  async function transferOwner(user: BrandUser) {
+    if (!user.member_id || !window.confirm(`¿Convertir a ${user.email} en owner de ${user.brand_name}?`)) return
+    setWorkingId(`owner-${user.id}`)
+    try {
+      const res = await fetch(`/api/brands/${user.brand_id}/members`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member_id: user.member_id, action: 'transfer_owner' }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      await load()
+      toast.success('Owner actualizado')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo cambiar el owner') }
+    finally { setWorkingId(null) }
+  }
+
+  async function editEmail(user: BrandUser) {
+    if (!user.member_id) return
+    const email = window.prompt('Nuevo email', user.email)?.trim().toLowerCase()
+    if (!email || email === user.email) return
+    setWorkingId(`email-${user.id}`)
+    try {
+      const res = await fetch(`/api/brands/${user.brand_id}/members`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member_id: user.member_id, email }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setUsers(current => current.map(item => item.id === user.id ? { ...item, email } : item))
+      toast.success('Email actualizado')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el email') }
+    finally { setWorkingId(null) }
+  }
+
+  async function removeUser(user: BrandUser) {
+    if (!user.member_id || !window.confirm(`¿Eliminar el acceso de ${user.email}?`)) return
+    setWorkingId(`delete-${user.id}`)
+    try {
+      const res = await fetch(`/api/brands/${user.brand_id}/members?member_id=${user.member_id}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setUsers(current => current.filter(item => item.id !== user.id))
+      toast.success('Acceso eliminado')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el acceso') }
+    finally { setWorkingId(null) }
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -87,7 +134,11 @@ export default function AdminUsersPage() {
           <span className="text-sm text-gray-500">{filtered.length} usuarios</span>
         </div>
         {loading ? <div className="h-48 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-600" /></div> : (
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400"><tr><th className="px-5 py-3">Marca</th><th className="px-5 py-3">Usuario</th><th className="px-5 py-3">Rol</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-gray-100">{filtered.map(user => <tr key={user.id} className="hover:bg-gray-50/70"><td className="px-5 py-4"><Link className="font-semibold text-gray-900 hover:text-violet-700" href={`/admin-brands/${user.brand_id}`}>{user.brand_name}</Link></td><td className="px-5 py-4 text-gray-700">{user.email || <span className="text-red-500">Sin email</span>}</td><td className="px-5 py-4">{user.role === 'owner' ? <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"><ShieldCheck className="h-3.5 w-3.5" /> Owner</span> : <select value={user.role} disabled={workingId === `role-${user.id}`} onChange={e => void changeRole(user, e.target.value as BrandUser['role'])} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 disabled:opacity-50"><option value="brand_manager">Administrador</option><option value="finance">Finanzas</option><option value="member">Miembro</option></select>}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.status === 'activo' ? 'bg-emerald-50 text-emerald-700' : user.status === 'pendiente' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{user.status}</span></td><td className="px-5 py-4 text-right"><button disabled={!user.email || workingId === `mail-${user.id}`} onClick={() => void resend(user)} title="Enviar login por email" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-40">{workingId === `mail-${user.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}</button></td></tr>)}</tbody></table>{!filtered.length && <div className="py-12 text-center text-sm text-gray-500">No encontramos usuarios.</div>}</div>
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400"><tr><th className="px-5 py-3">Marca</th><th className="px-5 py-3">Usuario</th><th className="px-5 py-3">Rol</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-gray-100">{filtered.map(user => <tr key={user.id} className="hover:bg-gray-50/70"><td className="px-5 py-4"><Link className="font-semibold text-gray-900 hover:text-violet-700" href={`/admin-brands/${user.brand_id}`}>{user.brand_name}</Link></td><td className="px-5 py-4 text-gray-700">{user.email || <span className="text-red-500">Sin email</span>}</td><td className="px-5 py-4">{user.role === 'owner' ? <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"><ShieldCheck className="h-3.5 w-3.5" /> Owner</span> : <select value={user.role} disabled={workingId === `role-${user.id}`} onChange={e => { const role = e.target.value as BrandUser['role']; void (role === 'owner' ? transferOwner(user) : changeRole(user, role)) }} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 disabled:opacity-50"><option value="owner">Hacer owner</option><option value="brand_manager">Administrador</option><option value="finance">Finanzas</option><option value="member">Miembro</option></select>}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.status === 'activo' ? 'bg-emerald-50 text-emerald-700' : user.status === 'pendiente' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{user.status}</span></td><td className="px-5 py-4 text-right"><div className="inline-flex gap-1">
+  <button disabled={!user.email || workingId === `mail-${user.id}`} onClick={() => void resend(user)} title="Enviar login por email" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-40">{workingId === `mail-${user.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}</button>
+  {user.member_id && <button disabled={workingId === `email-${user.id}`} onClick={() => void editEmail(user)} title="Editar email" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40"><Pencil className="h-4 w-4" /></button>}
+  {user.member_id && <button disabled={workingId === `delete-${user.id}`} onClick={() => void removeUser(user)} title="Eliminar acceso" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40">{workingId === `delete-${user.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>}
+</div></td></tr>)}</tbody></table>{!filtered.length && <div className="py-12 text-center text-sm text-gray-500">No encontramos usuarios.</div>}</div>
         )}
       </div>
     </div>

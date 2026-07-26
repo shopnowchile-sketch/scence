@@ -134,8 +134,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const previousEmailNormalized = (currentBrand.contact_email ?? '').trim().toLowerCase()
 
-    if (newEmail && newEmail !== previousEmailNormalized) {
-      // Cambio real de correo de contacto → gate de super_admin.
+    // El mismo email de contacto es el owner. Si una marca histórica no tiene
+    // user_id, guardar ese mismo email debe reparar/vincular el owner aunque
+    // el texto del email no haya cambiado.
+    if (newEmail && (newEmail !== previousEmailNormalized || !currentBrand.user_id)) {
+      // Cambio real de correo o reparación de owner → gate de super_admin.
       const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).maybeSingle()
       if (profile?.role !== 'super_admin') {
         return NextResponse.json(
@@ -352,6 +355,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (emailError) console.error('[PATCH /api/brands/[id]] invitación owner no enviada:', emailError.message)
     } else {
       console.error('[PATCH /api/brands/[id]] no se pudo generar invitación owner:', linkError?.message)
+    }
+
+    // Si este mismo email fue agregado antes como "miembro", ya no debe
+    // mostrarse duplicado: desde ahora es el único owner de la marca.
+    const { error: duplicateMemberError } = await admin
+      .from('brand_members')
+      .delete()
+      .eq('brand_id', params.id)
+      .ilike('email', ownerInvitation.email)
+    if (duplicateMemberError) {
+      console.error('[PATCH /api/brands/[id]] no se pudo limpiar miembro duplicado del owner:', duplicateMemberError.message)
     }
   }
 

@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const profile = member.profile as unknown as { email?: string | null } | null
       return profile?.email?.trim().toLowerCase() ?? null
     }).filter((email): email is string => Boolean(email))
-    const fallbackEmail = process.env.NDA_NOTIFICATION_EMAIL ?? process.env.SUPPORT_NOTIFICATION_EMAIL ?? ''
+    const fallbackEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
     const recipients = Array.from(new Set([...memberEmails, fallbackEmail.trim().toLowerCase()].filter(Boolean)))
     if (recipients.length > 0) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'

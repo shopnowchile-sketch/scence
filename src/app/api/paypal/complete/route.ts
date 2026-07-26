@@ -4,7 +4,7 @@ import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 
 function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
-const ADMIN_PAYMENT_EMAIL = process.env.PAYPAL_ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
+const ADMIN_PAYMENT_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
 
 export async function POST(request: NextRequest) {
   const subscriptionId = request.nextUrl.searchParams.get('subscription_id')

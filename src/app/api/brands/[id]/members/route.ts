@@ -249,13 +249,83 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { member_id?: string; role?: string }
+  let body: { member_id?: string; role?: string; email?: string; action?: 'transfer_owner' }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'JSON inválido' }, { status: 400 }) }
 
   const { admin, brand, allowed } = await getAdminBrand(user.id, params.id)
   if (!allowed) return NextResponse.json({ error: 'Solo administradores pueden gestionar el equipo de una marca' }, { status: 403 })
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!body.member_id || !body.role) return NextResponse.json({ error: 'member_id y role son requeridos' }, { status: 400 })
+
+  if (!body.member_id) return NextResponse.json({ error: 'member_id requerido' }, { status: 400 })
+
+  const { data: targetMember, error: targetMemberError } = await admin
+    .from('brand_members')
+    .select('id, email, user_id')
+    .eq('id', body.member_id)
+    .eq('brand_id', params.id)
+    .maybeSingle()
+  if (targetMemberError) return NextResponse.json({ error: targetMemberError.message }, { status: 500 })
+  if (!targetMember) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
+
+  if (body.action === 'transfer_owner') {
+    const { data: currentBrand, error: currentBrandError } = await admin
+      .from('brands')
+      .select('user_id, contact_name, name')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (currentBrandError || !currentBrand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+
+    let nextOwnerId = targetMember.user_id as string | null
+    if (!nextOwnerId) {
+      let page = 1
+      for (;;) {
+        const { data: usersPage, error: usersError } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
+        if (usersError || !usersPage?.users?.length) break
+        const match = usersPage.users.find(u => u.email?.toLowerCase() === targetMember.email.toLowerCase())
+        if (match) { nextOwnerId = match.id; break }
+        if (usersPage.users.length < 1000) break
+        page++
+      }
+    }
+    if (!nextOwnerId) {
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email: targetMember.email, email_confirm: true,
+        user_metadata: { is_brand: true, brand_id: params.id, full_name: currentBrand.contact_name ?? currentBrand.name },
+      })
+      if (createError || !created?.user) return NextResponse.json({ error: createError?.message ?? 'No se pudo crear el owner' }, { status: 500 })
+      nextOwnerId = created.user.id
+    }
+
+    const { error: brandUpdateError } = await admin.from('brands').update({
+      user_id: nextOwnerId, contact_email: targetMember.email, updated_at: new Date().toISOString(),
+    }).eq('id', params.id)
+    if (brandUpdateError) return NextResponse.json({ error: brandUpdateError.message }, { status: 500 })
+
+    const { data: nextOwner } = await admin.auth.admin.getUserById(nextOwnerId)
+    if (nextOwner?.user) {
+      await admin.auth.admin.updateUserById(nextOwnerId, {
+        user_metadata: { ...nextOwner.user.user_metadata, is_brand: true, brand_id: params.id, full_name: currentBrand.contact_name ?? currentBrand.name },
+      })
+    }
+    await admin.from('brand_members').delete().eq('id', targetMember.id).eq('brand_id', params.id)
+    return NextResponse.json({ data: { email: targetMember.email, role: 'owner' } })
+  }
+
+  if (body.email) {
+    const email = body.email.trim().toLowerCase()
+    if (!/^\S+@\S+\.\S+$/.test(email)) return NextResponse.json({ error: 'Email inválido' }, { status: 422 })
+    if (email !== targetMember.email.toLowerCase()) {
+      if (targetMember.user_id) {
+        const { error: authUpdateError } = await admin.auth.admin.updateUserById(targetMember.user_id, { email, email_confirm: true })
+        if (authUpdateError) return NextResponse.json({ error: authUpdateError.message }, { status: 409 })
+      }
+      const { error: emailUpdateError } = await admin.from('brand_members').update({ email }).eq('id', targetMember.id).eq('brand_id', params.id)
+      if (emailUpdateError) return NextResponse.json({ error: emailUpdateError.message }, { status: 500 })
+    }
+    return NextResponse.json({ data: { ...targetMember, email } })
+  }
+
+  if (!body.role) return NextResponse.json({ error: 'role requerido' }, { status: 400 })
   if (!(MEMBER_ROLES as readonly string[]).includes(body.role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
 
   const { data, error } = await admin

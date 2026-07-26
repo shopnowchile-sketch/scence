@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
+import { getResend, FROM_EMAIL } from '@/lib/resend'
 
 type Params = { params: { id: string } }
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
@@ -112,6 +114,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // super_admin solo cuando cambia contact_email — el resto de campos de la
   // marca conserva los permisos de siempre.
   let pendingAuthRollback: { userId: string; previousEmail: string | null } | null = null
+  let createdOwnerUserId: string | null = null
+  let ownerInvitation: { email: string; name: string } | null = null
 
   if ('contact_email' in rest) {
     const rawEmail = rest.contact_email
@@ -119,7 +123,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const { data: currentBrand, error: currentBrandErr } = await admin
       .from('brands')
-      .select('user_id, contact_email')
+      .select('user_id, contact_email, contact_name, name, status')
       .eq('id', params.id)
       .single()
 
@@ -140,12 +144,52 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         )
       }
 
+      // Reparación administrativa: una marca antigua o creada como
+      // colaboradora puede no tener owner. Al agregar su email desde Admin,
+      // se crea/vincula el owner en el mismo guardado; no queda un simple
+      // correo de contacto sin acceso al portal.
       if (!currentBrand.user_id) {
-        return NextResponse.json(
-          { error: 'Esta marca no tiene owner vinculado. Requiere reparación administrativa antes de poder cambiar el correo.' },
-          { status: 422 },
-        )
-      }
+        let page = 1
+        let existingUser: Awaited<ReturnType<typeof admin.auth.admin.listUsers>>['data']['users'][number] | null = null
+        for (;;) {
+          const { data: usersPage, error: usersErr } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
+          if (usersErr || !usersPage?.users?.length) break
+          const match = usersPage.users.find(u => u.email?.toLowerCase() === newEmail)
+          if (match) {
+            existingUser = match
+            break
+          }
+          if (usersPage.users.length < 1000) break
+          page++
+        }
+
+        if (existingUser) {
+          const existingBrandId = typeof existingUser.user_metadata?.brand_id === 'string'
+            ? existingUser.user_metadata.brand_id
+            : null
+          if (existingBrandId && existingBrandId !== params.id) {
+            return NextResponse.json(
+              { error: 'Este correo ya es owner de otra marca. Usa otro correo o reasigna esa cuenta primero.' },
+              { status: 409 },
+            )
+          }
+          rest.user_id = existingUser.id
+        } else {
+          const { data: created, error: createError } = await admin.auth.admin.createUser({
+            email: newEmail,
+            email_confirm: true,
+          })
+          if (createError || !created?.user) {
+            console.error('[PATCH /api/brands/[id]] no se pudo crear owner:', createError?.message)
+            return NextResponse.json({ error: 'No se pudo crear el owner de la marca' }, { status: 500 })
+          }
+          createdOwnerUserId = created.user.id
+          rest.user_id = created.user.id
+        }
+
+        rest.contact_email = newEmail
+        ownerInvitation = { email: newEmail, name: currentBrand.contact_name ?? currentBrand.name }
+      } else {
 
       // Fuente de verdad real: el email actual en auth.users, no
       // brands.contact_email (que puede ya estar desincronizado de una
@@ -200,6 +244,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         if (membersErr) {
           console.error('[PATCH /api/brands/[id]] sync brand_members.email falló (no bloqueante):', membersErr.message)
         }
+      }
       }
     }
 
@@ -258,8 +303,56 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         )
       }
     }
+    if (createdOwnerUserId) {
+      const { error: deleteOwnerError } = await admin.auth.admin.deleteUser(createdOwnerUserId)
+      if (deleteOwnerError) {
+        console.error('[PATCH /api/brands/[id]] no se pudo revertir el owner creado:', deleteOwnerError.message)
+      }
+    }
     console.error('[PATCH /api/brands/[id]] update de brands falló:', error.message)
     return NextResponse.json({ error: 'No se pudo guardar los cambios de la marca' }, { status: 500 })
+  }
+
+  // Completa la relación de acceso recién después de guardar la marca. Así un
+  // owner nunca queda apuntando a una marca que falló al persistirse.
+  if (ownerInvitation && data.user_id) {
+    const { data: ownerAuth, error: ownerAuthError } = await admin.auth.admin.getUserById(data.user_id)
+    if (ownerAuthError || !ownerAuth?.user) {
+      console.error('[PATCH /api/brands/[id]] owner creado/vinculado no encontrado:', ownerAuthError?.message)
+      return NextResponse.json({ error: 'La marca se guardó, pero no se pudo preparar el acceso del owner' }, { status: 500 })
+    }
+
+    const { error: ownerMetadataError } = await admin.auth.admin.updateUserById(data.user_id, {
+      user_metadata: {
+        ...ownerAuth.user.user_metadata,
+        is_brand: true,
+        brand_id: params.id,
+        full_name: ownerInvitation.name,
+      },
+    })
+    if (ownerMetadataError) {
+      console.error('[PATCH /api/brands/[id]] no se pudo preparar metadata del owner:', ownerMetadataError.message)
+      return NextResponse.json({ error: 'La marca se guardó, pero no se pudo preparar el acceso del owner' }, { status: 500 })
+    }
+
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: ownerInvitation.email,
+      options: { redirectTo: `${APP_URL}/brand-dash` },
+    })
+    const token = linkData?.properties?.hashed_token
+    if (!linkError && token) {
+      const actionLink = `${APP_URL}/auth/confirm?token_hash=${token}&type=magiclink&next=/brand-dash`
+      const { error: emailError } = await getResend().emails.send({
+        from: FROM_EMAIL,
+        to: ownerInvitation.email,
+        subject: `Acceso al portal de ${data.name} — Scence`,
+        html: `<p>Hola ${ownerInvitation.name},</p><p>Ya tienes acceso al portal de marca de <strong>${data.name}</strong> en Scence.</p><p><a href="${actionLink}">Ingresar al portal</a></p>`,
+      })
+      if (emailError) console.error('[PATCH /api/brands/[id]] invitación owner no enviada:', emailError.message)
+    } else {
+      console.error('[PATCH /api/brands/[id]] no se pudo generar invitación owner:', linkError?.message)
+    }
   }
 
   // Auto-asignación de marca colaboradora tras aprobación (2026-07-12, pedido

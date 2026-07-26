@@ -1359,15 +1359,20 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }).event_booking ?? null
   const eventLocation = eventBooking?.location || c.address || null
   const eventCommune = eventBooking?.location_details?.commune?.trim() || null
-  const eventStartTime = eventBooking?.starts_at
-    ? format(new Date(eventBooking.starts_at), 'HH:mm', { locale: es })
-    : null
+  const formatEventTime = (value: string) => {
+    const date = new Date(value)
+    return `${format(date, 'hh:mm')} ${date.getHours() >= 12 ? 'PM' : 'AM'}`
+  }
+  const eventStartTime = eventBooking?.starts_at ? formatEventTime(eventBooking.starts_at) : null
   const eventDateLabel = eventBooking?.starts_at
-    ? format(new Date(eventBooking.starts_at), "EEEE d 'de' MMMM", { locale: es }).replace(/^./, letter => letter.toUpperCase())
+    ? (() => {
+        const date = new Date(eventBooking.starts_at)
+        const weekday = format(date, 'EEEE', { locale: es }).replace(/^./, letter => letter.toUpperCase())
+        const month = format(date, 'MMMM', { locale: es }).replace(/^./, letter => letter.toUpperCase())
+        return `${weekday} ${format(date, 'd')} de ${month}`
+      })()
     : null
-  const eventEndTime = eventBooking?.ends_at
-    ? format(new Date(eventBooking.ends_at), 'HH:mm', { locale: es })
-    : null
+  const eventEndTime = eventBooking?.ends_at ? formatEventTime(eventBooking.ends_at) : null
   const eventTime = eventStartTime ? (eventEndTime ? `${eventStartTime}–${eventEndTime}` : eventStartTime) : null
   const eventEndLabel = null
   const eventDateDay = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'dd') : null
@@ -1895,24 +1900,43 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
             {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm"><>{eventDateLabel && <span className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}</span>}{eventEndLabel && <span className="inline-flex items-center gap-2 border-l border-gray-200 pl-3 font-medium text-gray-700"><Calendar className="h-4 w-4 text-violet-600" />Termina {eventEndLabel}</span>}{eventTime && <span className="inline-flex items-center gap-2 border-l border-gray-200 pl-3 font-semibold text-gray-900"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</span>}<span className="inline-flex min-w-0 items-center gap-2 border-l border-gray-200 pl-3 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" /><span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span></span><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
           </div>
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-            <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
+          <div className="grid w-full grid-cols-3 gap-2 sm:w-[360px] sm:flex-none">
+            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
               <div className="text-sm font-bold text-gray-900">{confirmedInfluencers.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Seleccionadas</div>
             </div>
-            <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 text-center">
+            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">{pendingApplications.length}</div>
+              <div className="text-[10px] font-medium text-gray-500">Postularon</div>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
               <div className="text-sm font-bold text-gray-900">{campaignBrands.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Marcas</div>
             </div>
-            <div className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-center">
+            <div className="rounded-lg bg-blue-50 px-2 py-1.5 text-center">
               <div className="text-sm font-bold text-blue-700">{c.visibility === 'open' ? 'Pública' : 'Privada'}</div>
               <div className="text-[10px] font-medium text-blue-600">Visibilidad</div>
             </div>
-            {c.visibility === 'open' && <div className={cn('rounded-lg px-2.5 py-1.5 text-center', c.applications_closed_at ? 'bg-amber-50' : 'bg-emerald-50')}>
-              <div className={cn('text-xs font-bold', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>{c.applications_closed_at ? 'Cerradas' : 'Abiertas'}</div>
+            <div className={cn('rounded-lg px-2 py-1.5 text-center', c.applications_closed_at ? 'bg-amber-50' : 'bg-emerald-50')}>
+              <div className={cn('text-xs font-bold', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>{c.visibility === 'open' ? (c.applications_closed_at ? 'Cerradas' : 'Abiertas') : 'No aplica'}</div>
               <div className={cn('text-[10px] font-medium', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>Postulaciones</div>
-            </div>}
-            {!!c.commission_rate && <div className="rounded-lg bg-amber-50 px-3 py-2 text-center"><div className="text-sm font-bold text-amber-700">{c.commission_rate}%</div><div className="text-[10px] font-medium text-amber-700">Comisión</div></div>}
+            </div>
+            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">{hasCampaignMetrics ? formatFollowers(totalViews) : '—'}</div>
+              <div className="text-[10px] font-medium text-gray-500">Visualizaciones</div>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">{hasCampaignMetrics ? formatFollowers(totalInteractionsMetrics) : '—'}</div>
+              <div className="text-[10px] font-medium text-gray-500">Engagement total</div>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">{deliverableDone}/{deliverableCount}</div>
+              <div className="text-[10px] font-medium text-gray-500">Entregables publicados</div>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-2 py-1.5 text-center">
+              <div className="text-sm font-bold text-gray-900">—</div>
+              <div className="text-[10px] font-medium text-gray-500">Alcance total</div>
+            </div>
           </div>
         </div>
       </div>

@@ -194,6 +194,25 @@ export async function PUT(request: NextRequest, { params }: Params) {
     delete rest.brand_id
   }
 
+  // Una marca principal es una marca real existente. La organización de la
+  // campaña no cambia: `brand_id` sólo define quién se presenta como anfitriona
+  // y evita que una campaña creada por SCENCE se transfiera entre tenants.
+  if (!user.user_metadata?.is_brand && Object.prototype.hasOwnProperty.call(rest, 'brand_id')) {
+    if (rest.brand_id === '' || rest.brand_id === null) {
+      rest.brand_id = null
+    } else if (typeof rest.brand_id !== 'string') {
+      return NextResponse.json({ error: 'Marca principal inválida' }, { status: 422 })
+    } else {
+      const { data: selectedBrand, error: selectedBrandError } = await admin
+        .from('brands')
+        .select('id')
+        .eq('id', rest.brand_id)
+        .maybeSingle()
+      if (selectedBrandError) return NextResponse.json({ error: selectedBrandError.message }, { status: 500 })
+      if (!selectedBrand) return NextResponse.json({ error: 'La marca principal no existe' }, { status: 422 })
+    }
+  }
+
   if ('address' in body) {
     const { data: existingCampaign } = await admin
       .from('campaigns')
@@ -243,6 +262,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (error.code === 'PGRST116') return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     console.error('[PUT /api/campaigns/[id]]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Si la marca elegida ya era colaboradora, deja de serlo para que se muestre
+  // una sola vez con el rol correcto en la campaña.
+  if (!user.user_metadata?.is_brand && typeof rest.brand_id === 'string') {
+    const { error: collaboratorCleanupError } = await admin
+      .from('campaign_brands')
+      .delete()
+      .eq('campaign_id', params.id)
+      .eq('brand_id', rest.brand_id)
+    if (collaboratorCleanupError) {
+      console.error('[PUT /api/campaigns/[id]] collaborator cleanup', collaboratorCleanupError)
+    }
   }
 
   return NextResponse.json({ data })

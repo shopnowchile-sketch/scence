@@ -7,12 +7,30 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import {
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,
 } from '@/lib/google-calendar'
+
+async function resolveCampaignWriteOrg(
+  admin: ReturnType<typeof createAdminClient>,
+  user: { id: string; user_metadata?: Record<string, unknown> },
+  campaignId: string,
+  actorOrgId: string,
+) {
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .select('organization_id')
+    .eq('id', campaignId)
+    .maybeSingle()
+  if (!campaign?.organization_id) return null
+  if (campaign.organization_id === actorOrgId) return campaign.organization_id
+
+  const { isAdmin } = await getUserRole(user.id, actorOrgId, admin)
+  return isAdmin ? campaign.organization_id : null
+}
 
 // ── GET /api/bookings ─────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -82,13 +100,18 @@ export async function POST(req: NextRequest) {
   const {
     campaign_id, influencer_id, organization_id,
     title, description, event_type,
-    location, is_virtual, virtual_link,
+    location, location_details, is_virtual, virtual_link,
     starts_at, ends_at,
     fee, currency, travel_covered,
     notes, attendee_emails = [],
     timezone = 'America/Mexico_City',
     influencer_ids = [],  // multi-influencer support
   } = body
+
+  const campaignOrgId = campaign_id
+    ? await resolveCampaignWriteOrg(admin, user, String(campaign_id), orgId)
+    : orgId
+  if (!campaignOrgId) return NextResponse.json({ error: 'No tienes permiso para editar el evento de esta campaña' }, { status: 403 })
 
   // Merge influencer_id + influencer_ids into a unified list
   const allInfluencerIds: string[] = Array.from(new Set([
@@ -126,12 +149,13 @@ export async function POST(req: NextRequest) {
     .insert({
       campaign_id: campaign_id ?? null,
       influencer_id: primaryInfluencerId,
-      organization_id: orgId,
+      organization_id: campaignOrgId,
       created_by: user.id,
       title,
       description,
       event_type,
       location,
+      location_details: location_details ?? null,
       is_virtual: is_virtual ?? false,
       virtual_link,
       starts_at,
@@ -189,10 +213,15 @@ export async function PUT(req: NextRequest) {
   // Obtain existing to get gcal ID
   const { data: existing } = await admin
     .from('bookings')
-    .select('calendar_event_id')
+    .select('calendar_event_id, campaign_id, organization_id')
     .eq('id', id)
-    .eq('organization_id', orgId)
-    .single()
+    .maybeSingle()
+
+  if (!existing) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
+  const writeOrgId = existing.campaign_id
+    ? await resolveCampaignWriteOrg(admin, user, existing.campaign_id, orgId)
+    : (existing.organization_id === orgId ? orgId : null)
+  if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para editar este evento' }, { status: 403 })
 
   if (existing?.calendar_event_id) {
     try {
@@ -211,7 +240,7 @@ export async function PUT(req: NextRequest) {
     .from('bookings')
     .update({ title, description, location, starts_at, ends_at, ...rest, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('organization_id', orgId)
+    .eq('organization_id', writeOrgId)
     .select('*')
     .single()
 

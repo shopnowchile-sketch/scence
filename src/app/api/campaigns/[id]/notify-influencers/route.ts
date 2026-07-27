@@ -65,7 +65,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const { data: candidates, error: infErr } = await admin
     .from('influencers')
     .select(`
-      id, display_name, email,
+      id, user_id, display_name, email,
       social_profiles:influencer_social_profiles ( platform, username, followers, is_primary )
     `)
     .eq('is_active', true)
@@ -73,8 +73,28 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   if (infErr) return NextResponse.json({ error: infErr.message }, { status: 500 })
 
+  // La comunicación de campañas públicas es siempre voluntaria. Por
+  // compatibilidad, una cuenta sin preferencias guardadas conserva el valor
+  // inicial del formulario (recibir campañas públicas).
+  const userIds = (candidates ?? []).map(inf => inf.user_id).filter((id): id is string => Boolean(id))
+  const { data: profiles } = userIds.length
+    ? await admin.from('profiles').select('id, metadata').in('id', userIds)
+    : { data: [] }
+  const acceptsPublicCampaignEmails = new Map(
+    (profiles ?? []).map(profile => {
+      const metadata = profile.metadata && typeof profile.metadata === 'object'
+        ? profile.metadata as Record<string, unknown>
+        : {}
+      const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
+        ? metadata.notification_preferences as Record<string, unknown>
+        : {}
+      return [profile.id, preferences.public_campaigns_email !== false]
+    })
+  )
+
   const eligible = (candidates ?? [])
     .filter(inf => !excludeIds.has(inf.id))
+    .filter(inf => !inf.user_id || acceptsPublicCampaignEmails.get(inf.user_id) !== false)
     .map(inf => ({
       ...inf,
       followers: Number(getPrimarySocial(inf as unknown as RankingInfluencerRow)?.followers ?? 0),

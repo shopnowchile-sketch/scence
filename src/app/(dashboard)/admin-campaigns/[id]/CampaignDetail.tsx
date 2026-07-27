@@ -1770,6 +1770,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {canEditCampaign && (
             <button
               type="button"
+              onClick={openEventEditor}
+              title="Editar fecha, hora, lugar y nombre de la campaña"
+              aria-label="Editar fecha, hora, lugar y nombre de la campaña"
+              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {canEditCampaign && (
+            <button
+              type="button"
               onClick={() => void handleDuplicateCampaign()}
               disabled={duplicatingCampaign}
               title="Duplicar campaña como borrador"
@@ -1872,12 +1883,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            {Boolean(campaignBrands[0]?.name) && (
-              <div className="mb-1 flex items-center gap-1.5">
+            <div className="mb-1 flex items-center gap-1.5">
+              {Boolean(campaignBrands[0]?.name) && (
                 <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-gray-500">{String(campaignBrands[0].name)}</p>
-                {(!isBrandPortal || c._brand_permissions?.canEdit) && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={openEventEditor} title="Editar nombre, fecha y lugar" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
-              </div>
-            )}
+              )}
+              {canEditCampaign && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={openEventEditor} title="Editar nombre, fecha y lugar" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
+            </div>
             <div className="flex items-center gap-2 flex-wrap">
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {isBrandPortal ? (
@@ -2035,7 +2046,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700">Notificar influencers</h3>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      Envía un email a las siguientes 50 influencers con más seguidores que aún no fueron notificadas de esta campaña
+                      Envío manual a las siguientes 50 influencers con más seguidores que aún no fueron notificadas y tienen activado recibir campañas públicas por email.
                     </p>
                   </div>
                   <button

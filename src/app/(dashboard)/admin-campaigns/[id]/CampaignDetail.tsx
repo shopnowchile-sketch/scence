@@ -1507,6 +1507,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   async function handleUploadBrief(file: File) {
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('El brief debe pesar máximo 4 MB. Comprímelo e inténtalo nuevamente.')
+      return
+    }
     setBriefSaving(true)
     try {
       const formData = new FormData()

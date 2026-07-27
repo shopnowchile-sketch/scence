@@ -672,7 +672,74 @@ function CampaignBrandsPanel({
           ))}
         </div>
       )}
+      <PrimaryBrandManager campaignId={campaignId} brands={brands} canManage={canManage} onChanged={onChanged} />
       <CoBrandManager campaignId={campaignId} canManage={canManage} onChanged={onChanged} />
+    </div>
+  )
+}
+
+function PrimaryBrandManager({
+  campaignId,
+  brands,
+  canManage,
+  onChanged,
+}: {
+  campaignId: string
+  brands: Array<{ id?: string; name?: string; _role?: string }>
+  canManage: boolean
+  onChanged: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [brandId, setBrandId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const primaryBrand = brands.find(brand => brand._role === 'Principal')
+
+  if (!canManage) return null
+
+  async function save() {
+    if (!brandId) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_id: brandId }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? 'No se pudo asignar la marca principal')
+      toast.success('Marca principal actualizada')
+      setOpen(false)
+      setBrandId('')
+      onChanged()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo asignar la marca principal')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-violet-700">
+          <Plus className="h-3.5 w-3.5" /> {primaryBrand ? 'Cambiar marca principal' : 'Asignar marca principal'}
+        </button>
+      ) : (
+        <div className="space-y-3 rounded-xl bg-violet-50/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-700">Marca principal de la campaña</p>
+              <p className="text-[11px] text-gray-500">Es la marca que aparecerá como anfitriona para las influencers.</p>
+            </div>
+            <button type="button" onClick={() => { setOpen(false); setBrandId('') }} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar"><X className="h-4 w-4" /></button>
+          </div>
+          <BrandSelector value={brandId} onChange={setBrandId} />
+          <button type="button" onClick={() => void save()} disabled={!brandId || saving}
+            className="w-full rounded-lg bg-violet-600 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+            {saving ? 'Guardando…' : 'Guardar marca principal'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

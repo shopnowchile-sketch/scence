@@ -5,6 +5,7 @@ import { resolveCampaignAssetAccess } from '@/lib/campaign-asset-access'
 type Params = { params: { id: string } }
 
 const BUCKET = 'campaign-assets'
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024
 
 function safeFilename(name: string) {
   return name
@@ -16,13 +17,15 @@ function safeFilename(name: string) {
 }
 
 async function ensureBucket(admin: ReturnType<typeof createAdminClient>) {
-  const { data: buckets } = await admin.storage.listBuckets()
+  const { data: buckets, error: listError } = await admin.storage.listBuckets()
+  if (listError) throw listError
   const exists = buckets?.some(bucket => bucket.name === BUCKET)
   if (!exists) {
-    await admin.storage.createBucket(BUCKET, {
+    const { error: createError } = await admin.storage.createBucket(BUCKET, {
       public: false,
       fileSizeLimit: 50 * 1024 * 1024,
     })
+    if (createError) throw createError
   }
 }
 
@@ -85,16 +88,30 @@ export async function POST(request: NextRequest, { params }: Params) {
   const finalOrgId = campaign.organization_id
 
   if (contentType.includes('multipart/form-data')) {
-    const formData = await request.formData()
+    let formData: FormData
+    try {
+      formData = await request.formData()
+    } catch {
+      return NextResponse.json({ error: 'No se pudo leer el archivo. Intenta con un PDF, Word o imagen de máximo 4 MB.' }, { status: 422 })
+    }
     const file = formData.get('file')
     const customName = String(formData.get('filename') ?? '').trim()
     const assetType = String(formData.get('asset_type') ?? 'asset').trim()
 
-    if (!(file instanceof File)) {
+    if (!file || typeof file === 'string' || typeof file.arrayBuffer !== 'function') {
       return NextResponse.json({ error: 'file is required' }, { status: 422 })
     }
 
-    await ensureBucket(admin)
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json({ error: 'El archivo supera el máximo de 4 MB.' }, { status: 422 })
+    }
+
+    try {
+      await ensureBucket(admin)
+    } catch (error) {
+      console.error('[POST /api/campaigns/[id]/assets] bucket', error)
+      return NextResponse.json({ error: 'No fue posible preparar el almacenamiento del brief. Intenta nuevamente.' }, { status: 500 })
+    }
 
     const originalName = file.name || 'asset'
     const filename = customName || originalName

@@ -378,18 +378,16 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       if (found) {
         setData(found)
         setPreview(null)
-        if (found.application_status === 'accepted') {
-          const assetsRes = await fetch(`/api/campaigns/${id}/assets`)
-          const assetsJson = await assetsRes.json().catch(() => ({}))
-          setAssets(assetsRes.ok && Array.isArray(assetsJson.data) ? assetsJson.data : [])
-        } else {
-          setAssets([])
-        }
+        const assetsRes = await fetch(`/api/campaigns/${id}/assets`)
+        const assetsJson = await assetsRes.json().catch(() => ({}))
+        setAssets(assetsRes.ok && Array.isArray(assetsJson.data) ? assetsJson.data : [])
       } else {
         // No está entre mis campañas todavía — puede ser una campaña abierta
         // que aún no postula. Traer preview de solo-lectura.
         setData(null)
-        setAssets([])
+        const assetsRes = await fetch(`/api/campaigns/${id}/assets`)
+        const assetsJson = await assetsRes.json().catch(() => ({}))
+        setAssets(assetsRes.ok && Array.isArray(assetsJson.data) ? assetsJson.data : [])
         const pRes = await fetch(`/api/influencer/campaigns/${id}`)
         setPreview(pRes.ok ? (await pRes.json()).data : null)
       }
@@ -511,7 +509,12 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           )}
 
-          <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} briefUrl={p.brief_url} />
+          {(() => {
+            const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
+            return uploadedBrief
+              ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />
+              : <CollapsibleBrief text={p.description} guidelines={p.content_guidelines} briefUrl={p.brief_url} />
+          })()}
         </div>
 
         {(p.campaign_benefits?.length ?? 0) > 0 && (
@@ -743,7 +746,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             el brief anterior de Pickleball) y el PDF nuevo quedaba perdido abajo
             como un asset más. Cuando existe un archivo marcado como brief, éste
             reemplaza visualmente ese contenido anterior para la influencer. */}
-        {!isPending && (() => {
+        {(() => {
           const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
           return uploadedBrief
             ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />

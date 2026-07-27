@@ -75,8 +75,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { admin, campaign, canView } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
-  if (!campaign || !canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  const { admin, campaign, canView, canViewBrief } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
+  if (!campaign || (!canView && !canViewBrief)) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
   let query = admin
     .from('media_files')
@@ -84,6 +84,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .eq('campaign_id', params.id)
     .is('deliverable_id', null)
     .order('created_at', { ascending: false })
+
+  // A candidate may access only the current campaign brief. Attachments,
+  // product files and any other assets stay restricted to accepted influencers.
+  if (!canView) query = query.contains('metadata', { asset_type: 'brief' })
 
   const { data, error } = await query
 

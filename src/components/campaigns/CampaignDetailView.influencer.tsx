@@ -737,8 +737,18 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             aparecen cuando la influencer ya fue aceptada. */}
         {data.event_booking && <EventBookingCard booking={data.event_booking} showLocation={isAccepted} />}
 
-        {/* El brief es la primera acción disponible luego del resumen del evento. */}
-        {!isPending && <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />}
+      {/* El brief es la primera acción disponible luego del resumen del evento. */}
+        {/* Un brief cargado como archivo es la versión operativa más reciente.
+            Antes se mostraba primero el texto legacy de la campaña (por ejemplo,
+            el brief anterior de Pickleball) y el PDF nuevo quedaba perdido abajo
+            como un asset más. Cuando existe un archivo marcado como brief, éste
+            reemplaza visualmente ese contenido anterior para la influencer. */}
+        {!isPending && (() => {
+          const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
+          return uploadedBrief
+            ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />
+            : <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />
+        })()}
 
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
           <div>
@@ -775,14 +785,14 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}
       {!isPending && <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />}
 
-      {!isPending && assets.length > 0 && (
+      {!isPending && assets.some(asset => asset.metadata?.asset_type !== 'brief') && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
           <div className="flex items-center gap-2 mb-3">
             <Download className="h-4 w-4 text-violet-600" />
             <h2 className="text-sm font-bold text-gray-900">Archivos de la campaña</h2>
           </div>
           <div className="space-y-2">
-            {assets.map(asset => (
+            {assets.filter(asset => asset.metadata?.asset_type !== 'brief').map(asset => (
               <a key={asset.id} href={asset.signed_url ?? asset.storage_path} target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:border-violet-200 hover:bg-violet-50/30 transition-colors">
                 <div className="min-w-0">

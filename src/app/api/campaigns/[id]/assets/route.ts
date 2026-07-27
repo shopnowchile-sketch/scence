@@ -29,6 +29,44 @@ async function ensureBucket(admin: ReturnType<typeof createAdminClient>) {
   }
 }
 
+async function createCampaignUpload(
+  admin: ReturnType<typeof createAdminClient>,
+  organizationId: string,
+  campaignId: string,
+  filename: string,
+) {
+  await ensureBucket(admin)
+  const storagePath = `${organizationId}/${campaignId}/${crypto.randomUUID()}-${safeFilename(filename)}`
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(storagePath)
+  if (error || !data) throw error ?? new Error('No se pudo preparar la carga del archivo')
+  return { storagePath, token: data.token }
+}
+
+async function registerUploadedFile(
+  admin: ReturnType<typeof createAdminClient>,
+  input: { organizationId: string; campaignId: string; userId: string; filename: string; storagePath: string; mimeType: string | null; sizeBytes: number; assetType: string },
+) {
+  const { data, error } = await admin
+    .from('media_files')
+    .insert({
+      organization_id: input.organizationId,
+      campaign_id: input.campaignId,
+      deliverable_id: null,
+      uploaded_by: input.userId,
+      filename: input.filename,
+      storage_path: input.storagePath,
+      mime_type: input.mimeType,
+      size_bytes: input.sizeBytes,
+      tags: ['campaign_asset'],
+      metadata: { source: 'campaign_assets_tab', kind: 'uploaded_file', bucket: BUCKET, original_name: input.filename, asset_type: input.assetType },
+      is_public: false,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function GET(_request: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -167,6 +205,36 @@ export async function POST(request: NextRequest, { params }: Params) {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  // Los archivos se envían directo a Supabase Storage para no atravesar el
+  // límite de body de Vercel. La API solo autoriza y registra el asset.
+  if (body.action === 'create_signed_upload') {
+    const filename = String(body.filename ?? '').trim()
+    const sizeBytes = Number(body.size_bytes ?? 0)
+    if (!filename || !Number.isFinite(sizeBytes) || sizeBytes <= 0) return NextResponse.json({ error: 'Archivo inválido' }, { status: 422 })
+    if (sizeBytes > MAX_FILE_SIZE_BYTES) return NextResponse.json({ error: 'El archivo supera el máximo de 4 MB.' }, { status: 422 })
+    try {
+      const upload = await createCampaignUpload(admin, finalOrgId, params.id, filename)
+      return NextResponse.json(upload)
+    } catch (error) {
+      console.error('[POST /api/campaigns/[id]/assets] signed upload', error)
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'No fue posible preparar el almacenamiento del brief.' }, { status: 500 })
+    }
+  }
+
+  if (body.action === 'register_signed_upload') {
+    const filename = String(body.filename ?? '').trim()
+    const storagePath = String(body.storage_path ?? '').trim()
+    const sizeBytes = Number(body.size_bytes ?? 0)
+    if (!filename || !storagePath || !Number.isFinite(sizeBytes) || sizeBytes <= 0 || !storagePath.startsWith(`${finalOrgId}/${params.id}/`)) return NextResponse.json({ error: 'Datos de archivo inválidos' }, { status: 422 })
+    try {
+      const data = await registerUploadedFile(admin, { organizationId: finalOrgId, campaignId: params.id, userId: user.id, filename, storagePath, mimeType: typeof body.mime_type === 'string' ? body.mime_type : null, sizeBytes, assetType: String(body.asset_type ?? 'asset') })
+      return NextResponse.json({ data }, { status: 201 })
+    } catch (error) {
+      console.error('[POST /api/campaigns/[id]/assets] register signed upload', error)
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo registrar el brief.' }, { status: 500 })
+    }
   }
 
   const filename = String(body.filename ?? '').trim()

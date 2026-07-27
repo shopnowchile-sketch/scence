@@ -27,6 +27,7 @@ import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
 import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceConfirmationPanel'
+import { createClient } from '@/lib/supabase/client'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -1513,13 +1514,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
     setBriefSaving(true)
     try {
-      const formData = new FormData()
-      formData.append('filename', file.name)
-      formData.append('asset_type', 'brief')
-      formData.append('file', file)
-      const res = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body: formData })
+      const api = `/api/campaigns/${id}/assets`
+      const prepare = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_signed_upload', filename: file.name, size_bytes: file.size }) })
+      const prepared = await prepare.json().catch(() => ({}))
+      if (!prepare.ok || !prepared.token || !prepared.storagePath) throw new Error(prepared.error ?? 'No se pudo preparar la carga del brief')
+
+      const { error: uploadError } = await createClient().storage.from('campaign-assets').uploadToSignedUrl(prepared.storagePath, prepared.token, file)
+      if (uploadError) throw new Error(uploadError.message)
+
+      const res = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'register_signed_upload', filename: file.name, storage_path: prepared.storagePath, mime_type: file.type || null, size_bytes: file.size, asset_type: 'brief' }) })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'No se pudo cargar el brief')
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo registrar el brief')
 
       if (briefAsset?.id) {
         await fetch(`/api/campaigns/${id}/assets/${String(briefAsset.id)}`, { method: 'DELETE' })

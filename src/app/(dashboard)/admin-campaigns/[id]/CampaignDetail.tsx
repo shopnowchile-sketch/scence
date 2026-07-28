@@ -3078,7 +3078,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               (content_url o published_url) — evita ruido de los templates
               creados en bulk para todas las invitadas que aún no entregan nada. */}
           {(() => {
-            const submittedDeliverables = campaignDeliverables
+            const submittedDeliverables = campaignDeliverables.filter(
+              deliverable => Boolean(deliverable.content_url || deliverable.published_url)
+            )
 
             return (
               <>

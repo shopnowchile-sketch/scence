@@ -27,7 +27,6 @@ import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
 import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceConfirmationPanel'
-import { createClient } from '@/lib/supabase/client'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -672,74 +671,7 @@ function CampaignBrandsPanel({
           ))}
         </div>
       )}
-      <PrimaryBrandManager campaignId={campaignId} brands={brands} canManage={canManage} onChanged={onChanged} />
       <CoBrandManager campaignId={campaignId} canManage={canManage} onChanged={onChanged} />
-    </div>
-  )
-}
-
-function PrimaryBrandManager({
-  campaignId,
-  brands,
-  canManage,
-  onChanged,
-}: {
-  campaignId: string
-  brands: Array<{ id?: string; name?: string; _role?: string }>
-  canManage: boolean
-  onChanged: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [brandId, setBrandId] = useState('')
-  const [saving, setSaving] = useState(false)
-  const primaryBrand = brands.find(brand => brand._role === 'Principal')
-
-  if (!canManage) return null
-
-  async function save() {
-    if (!brandId) return
-    setSaving(true)
-    try {
-      const response = await fetch(`/api/campaigns/${campaignId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_id: brandId }),
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? 'No se pudo asignar la marca principal')
-      toast.success('Marca principal actualizada')
-      setOpen(false)
-      setBrandId('')
-      onChanged()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo asignar la marca principal')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="mt-3 pt-3 border-t border-gray-100">
-      {!open ? (
-        <button type="button" onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-violet-700">
-          <Plus className="h-3.5 w-3.5" /> {primaryBrand ? 'Cambiar marca principal' : 'Asignar marca principal'}
-        </button>
-      ) : (
-        <div className="space-y-3 rounded-xl bg-violet-50/60 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold text-gray-700">Marca principal de la campaña</p>
-              <p className="text-[11px] text-gray-500">Es la marca que aparecerá como anfitriona para las influencers.</p>
-            </div>
-            <button type="button" onClick={() => { setOpen(false); setBrandId('') }} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar"><X className="h-4 w-4" /></button>
-          </div>
-          <BrandSelector value={brandId} onChange={setBrandId} />
-          <button type="button" onClick={() => void save()} disabled={!brandId || saving}
-            className="w-full rounded-lg bg-violet-600 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
-            {saving ? 'Guardando…' : 'Guardar marca principal'}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -1380,20 +1312,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Deliverables (que ya filtra por esto). Antes contaba los 148 templates
   // creados en bulk sin entrega, mostrando "Deliverables (148)" cuando en
   // realidad solo había 1 entregable real.
-  // Solo mostrar entregables reales enviados o revisados
-  const visibleDeliverables = campaignDeliverables.filter(d => {
-    // ocultar asistencia pendiente sin respuesta
-    if (d.type === 'event_attendance') {
-      return !!d.attendance_response
-    }
-
-    // mostrar solo contenido enviado o revisado
-    return !!d.content_url ||
-           !!d.submitted_at ||
-           ['in_review','approved','rejected','published'].includes(d.status)
-  })
-
-  const submittedForCount = visibleDeliverables
+  const submittedForCount = campaignDeliverables
   const deliverableCount = submittedForCount.length
   const deliverableDone  = submittedForCount.filter(d => d.status === 'published').length
   // Average progress: published=100, others use progress field
@@ -1588,23 +1507,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   async function handleUploadBrief(file: File) {
-    if (file.size > 4 * 1024 * 1024) {
-      toast.error('El brief debe pesar máximo 4 MB. Comprímelo e inténtalo nuevamente.')
-      return
-    }
     setBriefSaving(true)
     try {
-      const api = `/api/campaigns/${id}/assets`
-      const prepare = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_signed_upload', filename: file.name, size_bytes: file.size }) })
-      const prepared = await prepare.json().catch(() => ({}))
-      if (!prepare.ok || !prepared.token || !prepared.storagePath) throw new Error(prepared.error ?? 'No se pudo preparar la carga del brief')
-
-      const { error: uploadError } = await createClient().storage.from('campaign-assets').uploadToSignedUrl(prepared.storagePath, prepared.token, file)
-      if (uploadError) throw new Error(uploadError.message)
-
-      const res = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'register_signed_upload', filename: file.name, storage_path: prepared.storagePath, mime_type: file.type || null, size_bytes: file.size, asset_type: 'brief' }) })
+      const formData = new FormData()
+      formData.append('filename', file.name)
+      formData.append('asset_type', 'brief')
+      formData.append('file', file)
+      const res = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body: formData })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'No se pudo registrar el brief')
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo cargar el brief')
 
       if (briefAsset?.id) {
         await fetch(`/api/campaigns/${id}/assets/${String(briefAsset.id)}`, { method: 'DELETE' })
@@ -1859,17 +1770,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {canEditCampaign && (
             <button
               type="button"
-              onClick={openEventEditor}
-              title="Editar fecha, hora, lugar y nombre de la campaña"
-              aria-label="Editar fecha, hora, lugar y nombre de la campaña"
-              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {canEditCampaign && (
-            <button
-              type="button"
               onClick={() => void handleDuplicateCampaign()}
               disabled={duplicatingCampaign}
               title="Duplicar campaña como borrador"
@@ -1972,12 +1872,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="mb-1 flex items-center gap-1.5">
-              {Boolean(campaignBrands[0]?.name) && (
+            {Boolean(campaignBrands[0]?.name) && (
+              <div className="mb-1 flex items-center gap-1.5">
                 <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-gray-500">{String(campaignBrands[0].name)}</p>
-              )}
-              {canEditCampaign && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={openEventEditor} title="Editar nombre, fecha y lugar" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
-            </div>
+                {(!isBrandPortal || c._brand_permissions?.canEdit) && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={openEventEditor} title="Editar nombre, fecha y lugar" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
+              </div>
+            )}
             <div className="flex items-center gap-2 flex-wrap">
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {isBrandPortal ? (
@@ -2135,7 +2035,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700">Notificar influencers</h3>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      Envío manual a las siguientes 50 influencers con más seguidores que aún no fueron notificadas y tienen activado recibir campañas públicas por email.
+                      Envía un email a las siguientes 50 influencers con más seguidores que aún no fueron notificadas de esta campaña
                     </p>
                   </div>
                   <button

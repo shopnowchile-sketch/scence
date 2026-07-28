@@ -2728,8 +2728,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         />
                       )}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Influencer</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Asistencia</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Influencer</th>
                     {ciVisibleColumns.platform && (
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataforma</th>
                     )}
@@ -2799,15 +2799,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               onChange={event => setAttendanceReminderSelected(inf.id, event.target.checked)}
                               title="Seleccionar para enviar email de asistencia"
                               className="w-3.5 h-3.5 accent-violet-600 cursor-pointer"
-                              checked={remindSelection.has(inf.id)}
-                              onChange={(e) => {
-                                setRemindSelection(prev => {
-                                  const next = new Set(prev)
-                                  if (e.target.checked) next.add(inf.id)
-                                  else next.delete(inf.id)
-                                  return next
-                                })
-                              }}
                             />
                           )}
                         </td>

@@ -179,6 +179,7 @@ export interface CampaignInfluencerDetail {
   commune: string | null
     country: string | null
     categories: string[] | null
+    rating: number | null
     influencer_social_profiles: Array<{
       platform: string
       username: string | null

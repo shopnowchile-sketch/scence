@@ -2196,6 +2196,41 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── INFLUENCERS ─────────────────────────────────────────────────────── */}
       {tab === 'influencers' && (
         <div className="space-y-4">
+          <AttendanceConfirmationPanel
+            campaignId={id}
+            acceptedCount={confirmedInfluencers.length}
+            deliverables={campaignDeliverables}
+            defaultDueDate={attendanceSuggestedDueDate}
+            canManage={!isBrandPortal || !!c._brand_permissions?.canEdit}
+            onChanged={() => void refetch()}
+          />
+          {pendingAttendanceInfluencerIds.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
+              <span className="text-xs font-semibold text-violet-800">
+                {pendingAttendanceInfluencerIds.length} confirmación(es) de asistencia pendiente(s)
+              </span>
+              <div className="flex items-center gap-3">
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={pendingAttendanceInfluencerIds.every(value => attendanceReminderSelection.has(value))}
+                    onChange={event => setAttendanceReminderSelection(event.target.checked ? new Set(pendingAttendanceInfluencerIds) : new Set())}
+                    className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  Seleccionar todas
+                </label>
+                <button
+                  type="button"
+                  disabled={!attendanceReminderSelection.size || attendanceReminderSending}
+                  onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {attendanceReminderSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                  Enviar recordatorio ({attendanceReminderSelection.size})
+                </button>
+              </div>
+            </div>
+          )}
           {/* Pending applications (fix 2026-07-01: filtraba por ci.status === 'applied',
               un valor que el flujo real de postulación nunca setea — el campo correcto
               es application_status. Ver src/lib/campaign-applications.ts)
@@ -3051,35 +3086,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── DELIVERABLES ─────────────────────────────────────────────────────── */}
       {tab === 'deliverables' && (
         <div className="space-y-3">
-          <AttendanceConfirmationPanel campaignId={id} acceptedCount={confirmedInfluencers.length} deliverables={campaignDeliverables} defaultDueDate={attendanceSuggestedDueDate} canManage={!isBrandPortal || !!c._brand_permissions?.canEdit} onChanged={() => void refetch()} />
-          {pendingAttendanceInfluencerIds.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-              <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={pendingAttendanceInfluencerIds.length > 0 && pendingAttendanceInfluencerIds.every(value => attendanceReminderSelection.has(value))}
-                  onChange={event => setAttendanceReminderSelection(event.target.checked ? new Set(pendingAttendanceInfluencerIds) : new Set())}
-                  className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-                />
-                Seleccionar pendientes ({pendingAttendanceInfluencerIds.length})
-              </label>
-              <button
-                type="button"
-                disabled={!attendanceReminderSelection.size || attendanceReminderSending}
-                onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {attendanceReminderSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                Enviar recordatorio ({attendanceReminderSelection.size})
-              </button>
-            </div>
-          )}
           {/* Solo se listan deliverables donde el influencer ya subió su URL
               (content_url o published_url) — evita ruido de los templates
               creados en bulk para todas las invitadas que aún no entregan nada. */}
           {(() => {
+            // Contenido con URL y asistencias ya confirmadas. Las solicitudes
+            // pendientes viven y se gestionan en el tab Influencers.
             const submittedDeliverables = campaignDeliverables.filter(
-              deliverable => Boolean(deliverable.content_url || deliverable.published_url)
+              deliverable => Boolean(
+                deliverable.content_url ||
+                deliverable.published_url ||
+                (deliverable.type === 'event_attendance' && deliverable.attendance_response === 'confirmed')
+              )
             )
 
             return (

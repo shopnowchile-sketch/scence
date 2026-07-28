@@ -2196,29 +2196,29 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {pendingApplications.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card overflow-hidden border-amber-200 bg-amber-50">
-              <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-amber-100/50">
-                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-2">
+              <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-amber-100/50">
+                <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-amber-800">
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                   {pendingApplications.length} solicitud(es) pendiente(s)
                 </p>
                 <ChevronDown className={cn('h-5 w-5 text-amber-700 transition-transform', pendingApplicationsOpen && 'rotate-180')} />
               </button>
 
-              {pendingApplicationsOpen && <div className="border-t border-amber-200 p-4">
-              <div className="mb-3 flex items-center justify-end"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
+              {pendingApplicationsOpen && <div className="border-t border-amber-200 p-3 sm:p-4">
 
               {/* Filtros de postulantes — mismo estilo (select/input) que
                   InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
                   Solo aparecen si hay algo que filtrar (>3 postulantes). */}
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[240px] flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-amber-200 bg-white py-1.5 pl-9 pr-8 text-xs text-gray-700 outline-none focus:border-violet-400" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"><X className="h-3.5 w-3.5" /></button>}</div>
+                <div className="relative min-w-[240px] flex-1 sm:max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-600" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-amber-200 bg-white py-2 pl-9 pr-8 text-sm text-gray-800 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
+                <div className="ml-auto"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
               </div>
               {pendingApplications.length > 3 && (
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <select
                     value={pendingTierFilter}
                     onChange={e => setPendingTierFilter(e.target.value as InfluencerTier | '')}
-                    className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                    className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                   >
                     <option value="">Todos los seguidores</option>
                     <option value="nano">Nano (&lt;10K)</option>
@@ -2230,7 +2230,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <select
                     value={pendingMinEngagement}
                     onChange={e => setPendingMinEngagement(Number(e.target.value))}
-                    className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                    className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                   >
                     <option value={0}>Todo engagement</option>
                     <option value={1}>Engagement 1%+</option>
@@ -2242,7 +2242,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <select
                       value={pendingCommuneFilter}
                       onChange={e => setPendingCommuneFilter(e.target.value)}
-                      className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                      className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                     >
                       <option value="">Todas las comunas</option>
                       {pendingCommuneGroups.map(c => (
@@ -2255,7 +2255,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <select
                       value={pendingCategoryFilter}
                       onChange={e => setPendingCategoryFilter(e.target.value)}
-                      className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+                      className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                     >
                       <option value="">Todos los nichos</option>
                       {pendingCategoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -2271,20 +2271,20 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         setPendingCategoryFilter('')
                         setPendingMinEngagement(0)
                       }}
-                      className="text-xs font-semibold text-amber-700 hover:underline"
+                      className="text-sm font-semibold text-amber-800 hover:underline"
                     >
                       Limpiar filtros
                     </button>
                   )}
 
-                  <span className="text-xs text-amber-600 ml-auto">
+                  <span className="ml-auto text-sm font-medium text-amber-800">
                     Mostrando {filteredPendingApplications.length} de {pendingApplications.length}
                   </span>
                 </div>
               )}
 
               {filteredPendingApplications.length === 0 && (
-                <p className="text-xs text-amber-600 italic py-2">
+                <p className="py-2 text-sm italic text-amber-700">
                   Ningún postulante coincide con estos filtros.
                 </p>
               )}
@@ -2294,17 +2294,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <table className="w-full min-w-[900px]">
                     <thead>
                       <tr className="border-b border-amber-100">
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Influencer</th>
-                        {pendingVisibleColumns.platform && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Plataforma</th>}
-                        {pendingVisibleColumns.categories && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Categorías</th>}
-                        {pendingVisibleColumns.followers && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Seguidores</th>}
-                        {pendingVisibleColumns.engagement && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Engagement</th>}
-                        {pendingVisibleColumns.commune && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Comuna</th>}
-                        {pendingVisibleColumns.fee && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Fee</th>}
-                        {pendingVisibleColumns.deliverables && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Deliverables</th>}
-                        {pendingVisibleColumns.progress && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Progreso</th>}
-                        {pendingVisibleColumns.status && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Estado</th>}
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider bg-amber-50/60">Acciones</th>
+                        <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Influencer</th>
+                        {pendingVisibleColumns.platform && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Plataforma</th>}
+                        {pendingVisibleColumns.categories && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>}
+                        {pendingVisibleColumns.followers && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Seguidores</th>}
+                        {pendingVisibleColumns.engagement && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Engagement</th>}
+                        {pendingVisibleColumns.commune && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Comuna</th>}
+                        {pendingVisibleColumns.fee && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Fee</th>}
+                        {pendingVisibleColumns.deliverables && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Deliverables</th>}
+                        {pendingVisibleColumns.progress && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Progreso</th>}
+                        {pendingVisibleColumns.status && <th className="bg-amber-50/60 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}
+                        <th className="bg-amber-50/60 px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-amber-50">
@@ -2336,13 +2336,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               </div>
                             </td>
                             {pendingVisibleColumns.platform && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>}
-                            {pendingVisibleColumns.categories && <td className="px-4 py-3 text-xs text-gray-500">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>}
+                            {pendingVisibleColumns.categories && <td className="px-4 py-3 text-sm text-gray-600">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>}
                             {pendingVisibleColumns.followers && <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>}
                             {pendingVisibleColumns.engagement && <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>}
                             {pendingVisibleColumns.commune && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>}
                             {pendingVisibleColumns.fee && <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>}
-                            {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-400">0/0</td>}
-                            {pendingVisibleColumns.progress && <td className="px-4 py-3 text-xs text-gray-300">Sin deliverables</td>}
+                            {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-600">0/0</td>}
+                            {pendingVisibleColumns.progress && <td className="px-4 py-3 text-sm text-gray-600">Sin deliverables</td>}
                             {pendingVisibleColumns.status && <td className="px-4 py-3"><span className="text-[11px] font-semibold rounded-full px-2 py-1 bg-amber-100 text-amber-700">Pendiente</span></td>}
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2 whitespace-nowrap">

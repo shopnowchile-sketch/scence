@@ -2196,41 +2196,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── INFLUENCERS ─────────────────────────────────────────────────────── */}
       {tab === 'influencers' && (
         <div className="space-y-4">
-          <AttendanceConfirmationPanel
-            campaignId={id}
-            acceptedCount={confirmedInfluencers.length}
-            deliverables={campaignDeliverables}
-            defaultDueDate={attendanceSuggestedDueDate}
-            canManage={!isBrandPortal || !!c._brand_permissions?.canEdit}
-            onChanged={() => void refetch()}
-          />
-          {pendingAttendanceInfluencerIds.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-              <span className="text-xs font-semibold text-violet-800">
-                {pendingAttendanceInfluencerIds.length} confirmación(es) de asistencia pendiente(s)
-              </span>
-              <div className="flex items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={pendingAttendanceInfluencerIds.every(value => attendanceReminderSelection.has(value))}
-                    onChange={event => setAttendanceReminderSelection(event.target.checked ? new Set(pendingAttendanceInfluencerIds) : new Set())}
-                    className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-                  />
-                  Seleccionar todas
-                </label>
-                <button
-                  type="button"
-                  disabled={!attendanceReminderSelection.size || attendanceReminderSending}
-                  onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {attendanceReminderSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                  Enviar recordatorio ({attendanceReminderSelection.size})
-                </button>
-              </div>
-            </div>
-          )}
           {/* Pending applications (fix 2026-07-01: filtraba por ci.status === 'applied',
               un valor que el flujo real de postulación nunca setea — el campo correcto
               es application_status. Ver src/lib/campaign-applications.ts)
@@ -2521,6 +2486,30 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           )}
 
+          <AttendanceConfirmationPanel
+            campaignId={id}
+            acceptedCount={confirmedInfluencers.length}
+            deliverables={campaignDeliverables}
+            defaultDueDate={attendanceSuggestedDueDate}
+            canManage={!isBrandPortal || !!c._brand_permissions?.canEdit}
+            onChanged={() => void refetch()}
+          />
+          {pendingAttendanceInfluencerIds.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
+              <span className="text-xs font-semibold text-violet-800">
+                Selecciona las influencers que aún no confirman y envíales un recordatorio.
+              </span>
+              <button
+                type="button"
+                disabled={!attendanceReminderSelection.size || attendanceReminderSending}
+                onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {attendanceReminderSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                Enviar email ({attendanceReminderSelection.size})
+              </button>
+            </div>
+          )}
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">
               {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
@@ -2531,14 +2520,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <FileDown className="h-4 w-4" /> Excel
                 </a>
               )}
-              {remindSelection.size > 0 && (
+              {pendingAttendanceInfluencerIds.length > 0 && (
                 <button
-                  onClick={handleBulkRemind}
-                  disabled={bulkSending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+                  onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
+                  disabled={!attendanceReminderSelection.size || attendanceReminderSending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-50"
                 >
-                  {bulkSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                  Enviar recordatorio ({remindSelection.size})
+                  {attendanceReminderSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  Enviar email ({attendanceReminderSelection.size})
                 </button>
               )}
               <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
@@ -2740,6 +2729,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       )}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Influencer</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Asistencia</th>
                     {ciVisibleColumns.platform && (
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataforma</th>
                     )}
@@ -2779,6 +2769,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const delivsDone  = myDelivs.filter(d => d.status === 'published').length
                     const delivsTotal = myDelivs.length
                     const myPending   = myDelivs.filter(d => !isDeliverableComplete(d)).length
+                    const attendance = myDelivs.find(d => d.type === 'event_attendance')
+                    const attendanceConfirmed = attendance?.attendance_response === 'confirmed'
+                    const attendanceDeclined = attendance?.attendance_response === 'declined'
+                    const attendancePending = !!attendance && !attendanceConfirmed && !attendanceDeclined
                     const p = delivsTotal > 0
                       ? Math.round(myDelivs.reduce((sum, d) => {
                           if (d.status === 'published') return sum + 100
@@ -2798,9 +2792,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         )}
                       >
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          {myPending > 0 && (
+                          {attendancePending && (
                             <input
                               type="checkbox"
+                              checked={attendanceReminderSelection.has(inf.id)}
+                              onChange={event => setAttendanceReminderSelected(inf.id, event.target.checked)}
+                              title="Seleccionar para enviar email de asistencia"
                               className="w-3.5 h-3.5 accent-violet-600 cursor-pointer"
                               checked={remindSelection.has(inf.id)}
                               onChange={(e) => {
@@ -2812,6 +2809,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 })
                               }}
                             />
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {attendanceConfirmed ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Confirmó</span>
+                          ) : attendanceDeclined ? (
+                            <span className="inline-flex rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">No asistirá</span>
+                          ) : attendancePending ? (
+                            <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">Sin confirmar</span>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3">

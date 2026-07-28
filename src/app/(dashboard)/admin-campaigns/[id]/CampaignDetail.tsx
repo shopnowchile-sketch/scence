@@ -2225,8 +2225,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {/* Filtros de postulantes — mismo estilo (select/input) que
                   InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
                   Solo aparecen si hay algo que filtrar (>3 postulantes). */}
-              <div className="mb-3 flex min-w-max items-center gap-2 overflow-visible pb-1">
-                <div className="relative w-[300px] shrink-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
+              <div className="mb-3 flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible pb-1">
+                <div className="relative min-w-0 w-full sm:w-[300px] sm:shrink-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
               {pendingApplications.length > 3 && (<>
                   <select
                     value={pendingTierFilter}
@@ -2308,7 +2308,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     Mostrando {filteredPendingApplications.length} de {pendingApplications.length}
                   </span>
               </>)}
-                <div className="relative z-30 shrink-0"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
+                <div className="relative z-50 shrink-0"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
               </div>
 
               {filteredPendingApplications.length === 0 && (

@@ -206,11 +206,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
-  // No borrar una relación si ya tiene entregables: campaign_deliverables
-  // referencia campaign_influencers con ON DELETE CASCADE, por lo que una
-  // eliminación directa borraría también contenido entregado. Esto cubre
-  // invitaciones antiguas que aún aparecen como "pending" aunque la creadora
-  // sí haya trabajado en la campaña.
+  // Los entregables pendientes sin URL pueden eliminarse junto con la
+  // asignación. Cualquier URL enviada es evidencia de contenido y protege a la
+  // influencer de una eliminación accidental.
   const { data: relation } = await admin
     .from('campaign_influencers')
     .select('id')
@@ -219,19 +217,36 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     .maybeSingle()
 
   if (relation) {
-    const { count, error: deliverablesError } = await admin
+    const { data: deliverables, error: deliverablesError } = await admin
       .from('campaign_deliverables')
-      .select('id', { count: 'exact', head: true })
+      .select('id, content_url, published_url')
       .eq('campaign_influencer_id', relation.id)
 
     if (deliverablesError) {
       return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
     }
-    if ((count ?? 0) > 0) {
+
+    const hasSubmittedContent = (deliverables ?? []).some(deliverable =>
+      Boolean(deliverable.content_url?.trim() || deliverable.published_url?.trim())
+    )
+
+    if (hasSubmittedContent) {
       return NextResponse.json({
-        error: 'No se puede quitar esta influencer porque tiene entregables asociados. Su contenido se conserva en la campaña.',
-        code: 'CAMPAIGN_INFLUENCER_HAS_DELIVERABLES',
+        error: 'No se puede quitar esta influencer porque ya envió contenido. Su URL se conserva en la campaña.',
+        code: 'CAMPAIGN_INFLUENCER_HAS_SUBMITTED_CONTENT',
       }, { status: 409 })
+    }
+
+    const pendingIds = (deliverables ?? []).map(deliverable => deliverable.id)
+    if (pendingIds.length > 0) {
+      const { error: deleteDeliverablesError } = await admin
+        .from('campaign_deliverables')
+        .delete()
+        .in('id', pendingIds)
+
+      if (deleteDeliverablesError) {
+        return NextResponse.json({ error: deleteDeliverablesError.message }, { status: 500 })
+      }
     }
   }
 

@@ -2195,8 +2195,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               endpoint correcto según el portal. */}
           {pendingApplications.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-            <div className="card overflow-hidden border-gray-200 bg-white shadow-sm">
-              <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 border-l-4 border-amber-400 px-4 py-3.5 text-left hover:bg-amber-50/60">
+            <div className="card border-amber-200 bg-white shadow-sm">
+              <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 border-l-4 border-amber-400 bg-amber-50 px-4 py-3.5 text-left hover:bg-amber-100/80">
                 <p className="flex items-center gap-2 text-base font-bold text-gray-900">
                   <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
                   {pendingApplications.length} solicitud(es) pendiente(s)

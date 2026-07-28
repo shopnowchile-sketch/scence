@@ -63,12 +63,13 @@ type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 
 
 // ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
 // admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
-type CiColumnKey = 'platform' | 'categories' | 'followers' | 'engagement' | 'commune' | 'fee' | 'deliverables' | 'progress' | 'status'
+type CiColumnKey = 'platform' | 'categories' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee' | 'deliverables' | 'progress' | 'status'
 const CI_COLUMNS: Array<{ key: CiColumnKey; label: string }> = [
   { key: 'platform',     label: 'Plataforma' },
   { key: 'categories',   label: 'Categorías' },
   { key: 'followers',    label: 'Seguidores' },
   { key: 'engagement',   label: 'Engagement' },
+  { key: 'rating',       label: 'Rating' },
   { key: 'commune',      label: 'Comuna' },
   { key: 'fee',          label: 'Fee' },
   { key: 'deliverables', label: 'Deliverables' },
@@ -1071,6 +1072,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingCommuneFilter, setPendingCommuneFilter] = useState('')
   const [pendingCategoryFilter, setPendingCategoryFilter] = useState('')
   const [pendingMinEngagement, setPendingMinEngagement] = useState(0)
+  const [pendingMinRating, setPendingMinRating] = useState(0)
   const [pendingSearch, setPendingSearch] = useState('')
   const [pendingApplicationsOpen, setPendingApplicationsOpen] = useState(false)
 
@@ -1250,6 +1252,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     if (pendingCommuneFilter && !pendingCommuneFilter.split(',').includes(inf.commune ?? '')) return false
     if (pendingCategoryFilter && !(inf.categories ?? []).includes(pendingCategoryFilter)) return false
     if (pendingMinEngagement > 0 && (primarySP?.engagement_rate ?? 0) < pendingMinEngagement) return false
+    if (pendingMinRating > 0 && (inf.rating ?? 0) < pendingMinRating) return false
     if (pendingSearch.trim()) {
       const query = pendingSearch.trim().toLowerCase()
       const handles = (inf.influencer_social_profiles ?? []).map(profile => profile.username ?? '').join(' ')
@@ -2235,6 +2238,19 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <option value={5}>Engagement 5%+</option>
                   </select>
 
+                  <select
+                    value={pendingMinRating}
+                    onChange={e => setPendingMinRating(Number(e.target.value))}
+                    className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                  >
+                    <option value={0}>Todo rating</option>
+                    <option value={5}>Rating 5 estrellas</option>
+                    <option value={4}>Rating 4+ estrellas</option>
+                    <option value={3}>Rating 3+ estrellas</option>
+                    <option value={2}>Rating 2+ estrellas</option>
+                    <option value={1}>Rating 1+ estrella</option>
+                  </select>
+
                   {pendingCommuneGroups.length > 0 && (
                     <select
                       value={pendingCommuneFilter}
@@ -2259,7 +2275,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     </select>
                   )}
 
-                  {(pendingTierFilter || pendingCommuneFilter || pendingCategoryFilter || pendingMinEngagement > 0) && (
+                  {(pendingTierFilter || pendingCommuneFilter || pendingCategoryFilter || pendingMinEngagement > 0 || pendingMinRating > 0) && (
                     <button
                       type="button"
                       onClick={() => {
@@ -2267,6 +2283,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         setPendingCommuneFilter('')
                         setPendingCategoryFilter('')
                         setPendingMinEngagement(0)
+                        setPendingMinRating(0)
                       }}
                       className="text-sm font-semibold text-violet-700 hover:underline"
                     >
@@ -2297,6 +2314,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         {pendingVisibleColumns.categories && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>}
                         {pendingVisibleColumns.followers && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Seguidores</th>}
                         {pendingVisibleColumns.engagement && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Engagement</th>}
+                        {pendingVisibleColumns.rating && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Rating</th>}
                         {pendingVisibleColumns.commune && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Comuna</th>}
                         {pendingVisibleColumns.fee && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Fee</th>}
                         {pendingVisibleColumns.deliverables && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Deliverables</th>}
@@ -2337,6 +2355,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             {pendingVisibleColumns.categories && <td className="px-4 py-3 text-sm text-gray-600">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>}
                             {pendingVisibleColumns.followers && <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>}
                             {pendingVisibleColumns.engagement && <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>}
+                            {pendingVisibleColumns.rating && <td className="px-4 py-3 text-sm font-semibold text-gray-700 whitespace-nowrap">{inf.rating != null ? <span className="inline-flex items-center gap-1"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{inf.rating.toFixed(1)}</span> : 'Sin rating'}</td>}
                             {pendingVisibleColumns.commune && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>}
                             {pendingVisibleColumns.fee && <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>}
                             {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-600">0/0</td>}

@@ -108,7 +108,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, fee, status, notes, application_status, origin, metadata,
         influencer:influencers (
-          id, display_name, email, avatar_url, city, country, commune, categories,
+          id, display_name, email, avatar_url, city, country, commune, categories, rating,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),

@@ -179,7 +179,7 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
       const res = await fetch(`/api/influencer/deliverables/${d.id}/attendance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response }) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? 'No se pudo registrar tu respuesta')
-      toast.success(response === 'confirmed' ? '¡Asistencia confirmada! Te esperamos.' : 'Respuesta registrada. Avisaremos al equipo.')
+      toast.success('¡Asistencia confirmada! Te esperamos.')
       onUpdated()
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Error al confirmar asistencia') }
     finally { setAttendanceSaving(null) }
@@ -223,7 +223,7 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
                 {isAttendance && !d.attendance_response && <p className="mt-2 text-xs leading-relaxed text-amber-700">Confirma antes de la fecha límite. Si no respondes, tu cupo se liberará para otra creadora.</p>}
                 {d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
               </div>
-              {isAttendance && !d.attendance_response ? <div className="flex gap-2"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-gray-200 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50">No podré asistir</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Sí, asistiré'}</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700">
+              {isAttendance && !d.attendance_response ? <button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Aceptar asistencia'}</button> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700">
                 {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
               </button>}
             </div>

@@ -2209,16 +2209,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {/* Filtros de postulantes — mismo estilo (select/input) que
                   InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
                   Solo aparecen si hay algo que filtrar (>3 postulantes). */}
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[260px] flex-1 sm:max-w-lg"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar por nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
-                <div className="ml-auto shrink-0"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
-              </div>
-              {pendingApplications.length > 3 && (
-                <div className="flex flex-wrap items-center gap-2 mb-3">
+              <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
+                <div className="relative w-[300px] shrink-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
+              {pendingApplications.length > 3 && (<>
                   <select
                     value={pendingTierFilter}
                     onChange={e => setPendingTierFilter(e.target.value as InfluencerTier | '')}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                    className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                   >
                     <option value="">Todos los seguidores</option>
                     <option value="nano">Nano (&lt;10K)</option>
@@ -2230,7 +2227,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <select
                     value={pendingMinEngagement}
                     onChange={e => setPendingMinEngagement(Number(e.target.value))}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                    className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                   >
                     <option value={0}>Todo engagement</option>
                     <option value={1}>Engagement 1%+</option>
@@ -2242,7 +2239,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <select
                       value={pendingCommuneFilter}
                       onChange={e => setPendingCommuneFilter(e.target.value)}
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                     >
                       <option value="">Todas las comunas</option>
                       {pendingCommuneGroups.map(c => (
@@ -2255,7 +2252,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <select
                       value={pendingCategoryFilter}
                       onChange={e => setPendingCategoryFilter(e.target.value)}
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                     >
                       <option value="">Todos los nichos</option>
                       {pendingCategoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -2277,11 +2274,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     </button>
                   )}
 
-                  <span className="ml-auto text-sm font-medium text-gray-600">
+                  <span className="ml-auto shrink-0 text-sm font-medium text-gray-600">
                     Mostrando {filteredPendingApplications.length} de {pendingApplications.length}
                   </span>
-                </div>
-              )}
+              </>)}
+                <div className="shrink-0"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
+              </div>
 
               {filteredPendingApplications.length === 0 && (
                 <p className="py-2 text-sm italic text-gray-600">

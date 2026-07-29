@@ -25,22 +25,18 @@ type Props = {
   defaultDueDate: string
   canManage: boolean
   onChanged: () => void
-  reminderSelection?: Set<string>
-  reminderSending?: boolean
-  onReminderSelected?: (influencerId: string, selected: boolean) => void
-  onSelectAllPending?: (selected: boolean) => void
-  onSendReminder?: () => void
 }
 
 export function AttendanceConfirmationPanel({
   campaignId, acceptedCount, deliverables, defaultDueDate, canManage, onChanged,
-  reminderSelection = new Set(), reminderSending = false, onReminderSelected, onSelectAllPending, onSendReminder,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [dueDate, setDueDate] = useState('')
   const [message, setMessage] = useState('')
   const [sendEmail, setSendEmail] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [reminderSelection, setReminderSelection] = useState<Set<string>>(new Set())
+  const [reminderSending, setReminderSending] = useState(false)
 
   const rows = deliverables.filter(d => d.type === 'event_attendance')
   const confirmedRows = rows.filter(d => d.attendance_response === 'confirmed')
@@ -48,6 +44,35 @@ export function AttendanceConfirmationPanel({
   const pendingRows = rows.filter(d => !d.attendance_response && d.influencer?.id)
   const pendingIds = pendingRows.map(row => row.influencer!.id!).filter((id, index, ids) => ids.indexOf(id) === index)
   const allPendingSelected = pendingIds.length > 0 && pendingIds.every(id => reminderSelection.has(id))
+
+  function setReminderSelected(influencerId: string, selected: boolean) {
+    setReminderSelection(current => {
+      const next = new Set(current)
+      if (selected) next.add(influencerId)
+      else next.delete(influencerId)
+      return next
+    })
+  }
+
+  async function sendReminders() {
+    const influencerIds = Array.from(reminderSelection)
+    if (!influencerIds.length) return toast.error('Selecciona al menos una influencer pendiente')
+    setReminderSending(true)
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/attendance-confirmations`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remind', influencer_ids: influencerIds }),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudo enviar el recordatorio')
+      toast.success(`Recordatorio enviado a ${json.data.sent} influencer${json.data.sent === 1 ? '' : 's'}`)
+      setReminderSelection(new Set())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo enviar el recordatorio')
+    } finally {
+      setReminderSending(false)
+    }
+  }
 
   async function send() {
     if (!dueDate) return toast.error('Define la fecha límite de confirmación')
@@ -91,10 +116,10 @@ export function AttendanceConfirmationPanel({
             <p className="font-semibold text-violet-800">{pendingRows.length} confirmación(es) de asistencia pendiente(s)</p>
             {canManage && <div className="flex items-center gap-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
-                <input type="checkbox" checked={allPendingSelected} onChange={event => onSelectAllPending?.(event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
+                <input type="checkbox" checked={allPendingSelected} onChange={event => setReminderSelection(event.target.checked ? new Set(pendingIds) : new Set())} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
                 Seleccionar todas
               </label>
-              <button type="button" disabled={!reminderSelection.size || reminderSending} onClick={onSendReminder} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" disabled={!reminderSelection.size || reminderSending} onClick={() => void sendReminders()} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50">
                 <Mail className="h-4 w-4" /> {reminderSending ? 'Enviando…' : `Enviar recordatorio (${reminderSelection.size})`}
               </button>
             </div>}
@@ -105,7 +130,7 @@ export function AttendanceConfirmationPanel({
               const personId = person.id!
               const handle = person.instagram_username?.replace(/^@/, '')
               return <label key={row.id ?? personId ?? index} className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-violet-50/50">
-                {canManage && <input type="checkbox" checked={reminderSelection.has(personId)} onChange={event => onReminderSelected?.(personId, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />}
+                {canManage && <input type="checkbox" checked={reminderSelection.has(personId)} onChange={event => setReminderSelected(personId, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />}
                 <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-gray-800">{person.display_name ?? 'Influencer'}</span>{handle && <span className="block truncate text-xs text-violet-600">@{handle}</span>}</span>
                 <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Pendiente</span>
               </label>

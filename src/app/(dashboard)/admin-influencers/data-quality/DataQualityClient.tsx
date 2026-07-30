@@ -304,6 +304,27 @@ export function DataQualityClient() {
     } finally { setBusy(null) }
   }
 
+  async function handleSendRecoveredAccess() {
+    setBusy('recovery-access')
+    try {
+      const dry = await fetch('/api/influencers/send-recovery-access', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: true }),
+      }).then(r => r.json())
+      if (!dry.count) { toast.info('No hay accesos de cuentas recuperadas pendientes de envío'); return }
+      if (!confirm(`Enviar el email de acceso a ${dry.count} influencer(s) recuperada(s)? Solo se enviará a estas cuentas; no a toda la base.`)) return
+      const response = await fetch('/api/influencers/send-recovery-access', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: false }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? 'No se pudieron enviar los accesos')
+      toast.success(`Acceso enviado a ${result.sent} influencer(s)${result.failed ? ` · ${result.failed} fallaron` : ''}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al enviar accesos')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function handleSyncAllInstagram() {
     setSyncingAll(true)
     try {
@@ -477,6 +498,23 @@ export function DataQualityClient() {
                 className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
                 {busy === 'no-instagram' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar email para completar perfil
+              </button>
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="card p-5 flex items-center justify-between border-violet-200 bg-violet-50/40">
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-violet-600" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Cuentas recuperadas sin email de acceso</p>
+                  <p className="text-xs text-gray-500">Envía un nuevo link solo a las influencers que fueron reparadas tras quedar huérfanas.</p>
+                </div>
+              </div>
+              <button onClick={handleSendRecoveredAccess} disabled={busy === 'recovery-access'}
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
+                {busy === 'recovery-access' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Enviar emails de acceso
               </button>
             </div>
           )}

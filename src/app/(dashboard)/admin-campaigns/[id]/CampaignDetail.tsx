@@ -1333,6 +1333,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const pendingAttendanceInfluencerIds = Array.from(new Set(campaignDeliverables
     .filter(d => d.type === 'event_attendance' && d.status === 'pending' && !d.attendance_response && !!d.influencer?.id)
     .map(d => d.influencer!.id)))
+  const visiblePendingAttendanceInfluencerIds = filteredInfluencers
+    .map(ci => ci.influencer?.id)
+    .filter((influencerId): influencerId is string => !!influencerId && pendingAttendanceInfluencerIds.includes(influencerId))
 
   function setAttendanceReminderSelected(influencerId: string, selected: boolean) {
     setAttendanceReminderSelection(current => {
@@ -2494,22 +2497,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             canManage={!isBrandPortal || !!c._brand_permissions?.canEdit}
             onChanged={() => void refetch()}
           />
-          {pendingAttendanceInfluencerIds.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-              <span className="text-xs font-semibold text-violet-800">
-                Selecciona las influencers que aún no confirman y envíales un recordatorio.
-              </span>
-              <button
-                type="button"
-                disabled={!attendanceReminderSelection.size || attendanceReminderSending}
-                onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {attendanceReminderSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                Enviar email ({attendanceReminderSelection.size})
-              </button>
-            </div>
-          )}
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">
               {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
@@ -2711,17 +2698,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <thead>
                   <tr className="border-b border-gray-100">
                     <th className="px-3 py-3 text-left bg-gray-50 w-8">
-                      {remindablePendingIds.length > 0 && (
+                      {visiblePendingAttendanceInfluencerIds.length > 0 && (
                         <input
                           type="checkbox"
-                          title="Seleccionar todas las que tienen pendientes"
+                          title="Seleccionar todas las asistentes pendientes"
                           className="w-3.5 h-3.5 accent-violet-600 cursor-pointer"
-                          checked={remindablePendingIds.every(pid => remindSelection.has(pid))}
+                          checked={visiblePendingAttendanceInfluencerIds.every(influencerId => attendanceReminderSelection.has(influencerId))}
                           onChange={(e) => {
-                            setRemindSelection(prev => {
+                            setAttendanceReminderSelection(prev => {
                               const next = new Set(prev)
-                              if (e.target.checked) remindablePendingIds.forEach(pid => next.add(pid))
-                              else remindablePendingIds.forEach(pid => next.delete(pid))
+                              if (e.target.checked) visiblePendingAttendanceInfluencerIds.forEach(influencerId => next.add(influencerId))
+                              else visiblePendingAttendanceInfluencerIds.forEach(influencerId => next.delete(influencerId))
                               return next
                             })
                           }}
@@ -2804,7 +2791,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         </td>
                         <td className="px-4 py-3">
                           {attendanceConfirmed ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Confirmó</span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Confirmada</span>
                           ) : attendanceDeclined ? (
                             <span className="inline-flex rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">No asistirá</span>
                           ) : attendancePending ? (

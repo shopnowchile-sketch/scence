@@ -447,6 +447,21 @@ export function InfluencerCampaignView({ id }: { id: string }) {
     setResponding(false)
   }
 
+  async function handleWithdrawApplication() {
+    if (!id || !confirm('¿Retirar tu postulación? Quedará registrada en tu historial.')) return
+    setResponding(true)
+    try {
+      const res = await fetch(`/api/influencer/campaigns/${id}/apply`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast.success('Postulación retirada')
+      load()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo retirar la postulación')
+    }
+    setResponding(false)
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
@@ -564,11 +579,14 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           )}
           {p._applied ? (
-            <div className="flex items-center gap-2 text-sm font-semibold text-green-600">
-              <CheckCircle2 className="h-4 w-4" />
-              {p.application_status === 'pending'
-                ? 'Solicitud enviada — te avisaremos apenas la revisemos.'
-                : 'Ya estás vinculada a esta campaña.'}
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-amber-700">
+                <Clock className="h-4 w-4" />
+                {p.application_status === 'pending' ? 'Solicitud enviada — te avisaremos apenas la revisemos.' : 'Ya estás vinculada a esta campaña.'}
+              </div>
+              {p.application_status === 'pending' && (
+                <button onClick={handleWithdrawApplication} disabled={responding} className="text-xs font-semibold text-amber-800 underline disabled:opacity-50">Retirar postulación</button>
+              )}
             </div>
           ) : applicationsClosed ? (
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 bg-gray-50 rounded-xl px-4 py-3">
@@ -695,11 +713,12 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
       {/* Postulación propia en revisión — la marca decide, no hay acción acá */}
       {isPending && data.origin !== 'invitation' && (
-        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center gap-3">
-          <Clock className="h-5 w-5 text-amber-500 flex-shrink-0" />
-          <p className="text-sm text-amber-700 font-medium">
-            Tu postulación está en revisión — te avisaremos por email apenas la aprobemos.
-          </p>
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Clock className="h-5 w-5 text-amber-500 flex-shrink-0" />
+            <p className="text-sm text-amber-700 font-medium">Tu postulación está en revisión — te avisaremos por email apenas la aprobemos.</p>
+          </div>
+          <button onClick={handleWithdrawApplication} disabled={responding} className="shrink-0 text-xs font-semibold text-amber-800 underline disabled:opacity-50">Retirar postulación</button>
         </div>
       )}
 

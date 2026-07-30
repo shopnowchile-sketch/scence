@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, Target, Users,
-  FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2, Instagram,
+  FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2, Instagram, Store, Link2,
   Search, X, Loader2, UserPlus, ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -49,6 +49,8 @@ type BrandLocation = {
   city: string | null
   region: string | null
   country: string | null
+  location_type: 'store' | 'online' | 'event' | 'restaurant' | 'home' | 'virtual' | 'other'
+  website_url: string | null
   is_public: boolean
   notes: string | null
 }
@@ -140,10 +142,12 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [savingOwner, setSavingOwner] = useState(false)
   const [newLocation, setNewLocation] = useState({
     name: '',
+    location_type: 'store' as 'store' | 'online',
     address: '',
     city: '',
     region: '',
     country: 'Chile',
+    website_url: '',
     is_public: false,
     notes: '',
   })
@@ -507,7 +511,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     if (!res.ok) return toast.error(json.error ?? 'No se pudo crear lugar')
 
     setLocations(prev => [json.data, ...prev])
-    setNewLocation({ name: '', address: '', city: '', region: '', country: 'Chile', is_public: false, notes: '' })
+    setNewLocation({ name: '', location_type: 'store', address: '', city: '', region: '', country: 'Chile', website_url: '', is_public: false, notes: '' })
     toast.success('Lugar agregado')
   }
 
@@ -1060,129 +1064,89 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
 
       {tab === 'locations' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="card p-5 space-y-4">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <section className="card space-y-4 p-5">
             <div>
-              <h2 className="font-bold text-gray-900">Agregar lugar</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Lugares asociados a {brand.name}. Marca público solo si otras marcas pueden verlo.
-              </p>
+              <h2 className="font-bold text-gray-900">Agregar punto de venta</h2>
+              <p className="mt-1 text-sm text-gray-500">Registra una tienda física o el link de e-commerce de esta marca.</p>
             </div>
-
             <div className="space-y-3">
-              <input
-                value={newLocation.name}
-                onChange={e => setNewLocation(v => ({ ...v, name: e.target.value }))}
-                placeholder="Nombre del lugar"
-                className="input-base w-full"
-              />
-
-              <input
-                value={newLocation.address}
-                onChange={e => setNewLocation(v => ({ ...v, address: e.target.value }))}
-                placeholder="Dirección"
-                className="input-base w-full"
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={newLocation.city}
-                  onChange={e => setNewLocation(v => ({ ...v, city: e.target.value }))}
-                  placeholder="Ciudad"
-                  className="input-base w-full"
-                />
-                <input
-                  value={newLocation.region}
-                  onChange={e => setNewLocation(v => ({ ...v, region: e.target.value }))}
-                  placeholder="Región"
-                  className="input-base w-full"
-                />
-              </div>
-
-              <textarea
-                value={newLocation.notes}
-                onChange={e => setNewLocation(v => ({ ...v, notes: e.target.value }))}
-                placeholder="Notas internas"
-                className="input-base w-full min-h-[80px]"
-              />
-
+              <select value={newLocation.location_type} onChange={event => setNewLocation(value => ({ ...value, location_type: event.target.value as 'store' | 'online', is_public: event.target.value === 'online' ? true : value.is_public }))} className="input-base w-full">
+                <option value="store">Punto de venta físico</option>
+                <option value="online">E-commerce</option>
+              </select>
+              <input value={newLocation.name} onChange={event => setNewLocation(value => ({ ...value, name: event.target.value }))} placeholder={newLocation.location_type === 'online' ? 'Nombre del e-commerce' : 'Nombre del punto de venta'} className="input-base w-full" />
+              <input type="url" value={newLocation.website_url} onChange={event => setNewLocation(value => ({ ...value, website_url: event.target.value }))} placeholder={newLocation.location_type === 'online' ? 'https://tienda.marca.cl' : 'Link del sitio o e-commerce (opcional)'} className="input-base w-full" />
+              {newLocation.location_type === 'store' && (
+                <>
+                  <input value={newLocation.address} onChange={event => setNewLocation(value => ({ ...value, address: event.target.value }))} placeholder="Dirección" className="input-base w-full" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input value={newLocation.city} onChange={event => setNewLocation(value => ({ ...value, city: event.target.value }))} placeholder="Comuna / ciudad" className="input-base w-full" />
+                    <input value={newLocation.region} onChange={event => setNewLocation(value => ({ ...value, region: event.target.value }))} placeholder="Región" className="input-base w-full" />
+                  </div>
+                </>
+              )}
+              <textarea value={newLocation.notes} onChange={event => setNewLocation(value => ({ ...value, notes: event.target.value }))} placeholder="Notas internas (opcional)" className="input-base min-h-[72px] w-full" />
               <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={newLocation.is_public}
-                  onChange={e => setNewLocation(v => ({ ...v, is_public: e.target.checked }))}
-                />
-                Público para otras marcas
+                <input type="checkbox" checked={newLocation.is_public} disabled={newLocation.location_type === 'online'} onChange={event => setNewLocation(value => ({ ...value, is_public: event.target.checked }))} />
+                Visible para asignarlo a campañas
               </label>
-
-              <button
-                type="button"
-                onClick={createLocation}
-                className="w-full py-2 text-sm font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700"
-              >
-                Agregar lugar
+              <button type="button" onClick={createLocation} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-700">
+                {newLocation.location_type === 'online' ? <Link2 className="h-4 w-4" /> : <Store className="h-4 w-4" />}
+                Agregar
               </button>
             </div>
-          </div>
-
-          <div className="lg:col-span-2 card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900">Lugares de la marca</h2>
-              <span className="text-sm text-gray-400">{locations.length} lugar{locations.length !== 1 ? 'es' : ''}</span>
+          </section>
+          <section className="card p-5 lg:col-span-2">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-gray-900">Lugares y puntos de venta</h2>
+                <p className="mt-1 text-sm text-gray-500">Disponibles para usar en campañas.</p>
+              </div>
+              <span className="text-sm text-gray-400">{locations.length} registrado{locations.length !== 1 ? 's' : ''}</span>
             </div>
-
-            {loadingLocations ? (
-              <p className="text-sm text-gray-400">Cargando lugares…</p>
-            ) : locations.length === 0 ? (
-              <p className="text-sm text-gray-400">Aún no hay lugares asociados.</p>
+            {loadingLocations ? <p className="text-sm text-gray-400">Cargando lugares…</p> : locations.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                <Store className="mx-auto mb-2 h-5 w-5 text-gray-300" />
+                <p className="text-sm text-gray-400">Aún no hay puntos de venta ni e-commerce registrados.</p>
+              </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {locations.map(location => (
-                  <div key={location.id} className="rounded-xl border border-gray-100 p-4 bg-gray-50">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold text-gray-900 truncate">{location.name}</p>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {location.address || 'Sin dirección'}
-                        </p>
-                        {(location.city || location.region) && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            {[location.city, location.region, location.country].filter(Boolean).join(', ')}
-                          </p>
-                        )}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {locations.map(location => {
+                  const isOnline = location.location_type === 'online'
+                  return (
+                    <article key={location.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            {isOnline ? <Globe className="h-4 w-4 text-violet-600" /> : <MapPin className="h-4 w-4 text-violet-600" />}
+                            <p className="truncate font-bold text-gray-900">{location.name}</p>
+                          </div>
+                          <p className="mt-2 text-sm text-gray-500">{isOnline ? 'E-commerce' : location.address || 'Sin dirección'}</p>
+                          {!isOnline && (location.city || location.region) && <p className="mt-1 text-xs text-gray-400">{[location.city, location.region, location.country].filter(Boolean).join(', ')}</p>}
+                        </div>
+                        <span className={cn('badge text-xs font-bold', location.is_public ? 'badge-green' : 'badge-gray')}>{location.is_public ? 'Disponible' : 'Privado'}</span>
                       </div>
-
-                      <span className={cn('badge text-xs font-bold', location.is_public ? 'badge-green' : 'badge-gray')}>
-                        {location.is_public ? 'Público' : 'Privado'}
-                      </span>
-                    </div>
-
-                    {location.notes && (
-                      <p className="mt-3 text-xs text-gray-500 bg-white rounded-lg p-2">{location.notes}</p>
-                    )}
-
-                    <div className="flex gap-2 mt-4">
-                      <button
-                        type="button"
-                        onClick={() => toggleLocationPublic(location)}
-                        className="flex-1 py-2 text-xs font-semibold rounded-lg bg-white text-gray-700 hover:bg-gray-100"
-                      >
-                        {location.is_public ? 'Hacer privado' : 'Hacer público'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => deleteLocation(location)}
-                        className="px-3 py-2 text-xs font-semibold rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                      {location.website_url && (
+                        <a href={location.website_url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex max-w-full items-center gap-1.5 text-sm font-semibold text-violet-600 hover:underline">
+                          <Globe className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{location.website_url.replace(/^https?:\/\//, '')}</span>
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        </a>
+                      )}
+                      {location.notes && <p className="mt-3 rounded-lg bg-white p-2 text-xs text-gray-500">{location.notes}</p>}
+                      <div className="mt-4 flex gap-2">
+                        <button type="button" disabled={isOnline} onClick={() => toggleLocationPublic(location)} className="flex-1 rounded-lg bg-white py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50">
+                          {isOnline ? 'Disponible' : location.is_public ? 'Hacer privado' : 'Hacer público'}
+                        </button>
+                        <button type="button" onClick={() => deleteLocation(location)} aria-label={`Eliminar ${location.name}`} className="inline-flex items-center justify-center rounded-lg bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100"><Trash2 className="h-3.5 w-3.5" /></button>
+                      </div>
+                    </article>
+                  )
+                })}
               </div>
             )}
-          </div>
+          </section>
         </div>
       )}
 

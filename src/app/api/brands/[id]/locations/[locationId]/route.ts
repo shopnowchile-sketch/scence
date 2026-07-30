@@ -2,32 +2,54 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 type Params = { params: { id: string; locationId: string } }
+type BrandRecord = { id: string; user_id: string | null }
 
-async function canManageBrand(user: any, brand: any, admin: any) {
-  const role = user?.user_metadata?.role ?? user?.app_metadata?.role
-  if (['super_admin', 'admin'].includes(role)) return true
-  if (brand.user_id === user.id) return true
+const LOCATION_TYPES = ['store', 'online', 'event', 'restaurant', 'home', 'virtual', 'other'] as const
 
-  const { data } = await admin
-    .from('organization_members')
-    .select('role, is_owner')
-    .eq('user_id', user.id)
-    .eq('organization_id', brand.organization_id ?? 'none')
-    .eq('is_active', true)
+function normalizeWebsiteUrl(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || !value.trim()) return null
 
-  return (data ?? []).some((m: any) =>
-    m.is_owner || ['super_admin', 'brand_manager'].includes(m.role)
-  )
+  try {
+    const candidate = /^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`
+    const parsed = new URL(candidate)
+    if (!['http:', 'https:'].includes(parsed.protocol)) return undefined
+    return parsed.toString()
+  } catch {
+    return undefined
+  }
 }
 
-async function canEditBrand(user: any, brandId: string, admin: any) {
+async function canManageBrand(userId: string, brand: BrandRecord, admin: ReturnType<typeof createAdminClient>) {
+  if (brand.user_id === userId) return true
+
+  const [{ data: brandMember }, { data: staffMemberships }] = await Promise.all([
+    admin
+      .from('brand_members')
+      .select('role')
+      .eq('brand_id', brand.id)
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle(),
+    admin
+      .from('organization_members')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .in('role', ['super_admin', 'admin']),
+  ])
+
+  return brandMember?.role === 'brand_manager' || (staffMemberships?.length ?? 0) > 0
+}
+
+async function getManagedBrand(userId: string, brandId: string, admin: ReturnType<typeof createAdminClient>) {
   const { data: brand } = await admin
     .from('brands')
-    .select('id, user_id, organization_id')
+    .select('id, user_id')
     .eq('id', brandId)
-    .single()
+    .maybeSingle()
 
-  return !!brand && await canManageBrand(user, brand, admin)
+  return brand && await canManageBrand(userId, brand, admin) ? brand : null
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -36,32 +58,44 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await canEditBrand(user, params.id, admin))) {
+  if (!(await getManagedBrand(user.id, params.id, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const body = await req.json().catch(() => null)
-  if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
 
-  const allowed = {
-    name: body.name,
-    address: body.address,
-    city: body.city,
-    region: body.region,
-    country: body.country,
-    location_type: body.location_type,
-    is_sensitive: body.location_type === 'home' ? true : body.is_sensitive,
-    is_public: body.location_type === 'home' ? false : body.is_public,
-    notes: body.notes,
+  const update: Record<string, string | boolean | null> = {}
+  if (typeof body.name === 'string') {
+    const name = body.name.trim()
+    if (!name) return NextResponse.json({ error: 'Nombre requerido' }, { status: 422 })
+    update.name = name
   }
+  for (const key of ['address', 'city', 'region', 'country', 'notes'] as const) {
+    if (body[key] !== undefined) {
+      update[key] = typeof body[key] === 'string' && body[key].trim() ? body[key].trim() : null
+    }
+  }
+  if (body.location_type !== undefined) {
+    if (typeof body.location_type !== 'string' || !(LOCATION_TYPES as readonly string[]).includes(body.location_type)) {
+      return NextResponse.json({ error: 'Tipo de lugar inválido' }, { status: 422 })
+    }
+    update.location_type = body.location_type
+    update.is_sensitive = body.location_type === 'home'
+    if (body.location_type === 'home') update.is_public = false
+  }
+  const websiteUrl = normalizeWebsiteUrl(body.website_url)
+  if (websiteUrl === undefined) return NextResponse.json({ error: 'Ingresa un link válido de e-commerce' }, { status: 422 })
+  if (websiteUrl !== undefined) update.website_url = websiteUrl
 
-  Object.keys(allowed).forEach(k => {
-    if ((allowed as any)[k] === undefined) delete (allowed as any)[k]
-  })
+  if (body.is_public !== undefined && update.location_type !== 'home') {
+    update.is_public = body.is_public === true
+  }
+  if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Sin cambios válidos' }, { status: 422 })
 
   const { data, error } = await admin
     .from('brand_locations')
-    .update(allowed)
+    .update(update)
     .eq('id', params.locationId)
     .eq('brand_id', params.id)
     .select()
@@ -77,7 +111,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await canEditBrand(user, params.id, admin))) {
+  if (!(await getManagedBrand(user.id, params.id, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

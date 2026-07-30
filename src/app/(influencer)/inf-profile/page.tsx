@@ -37,18 +37,19 @@ type InfluencerProfile = {
   referred_brands_count?: number
 }
 
-// Perfil obligatorio: Instagram + comuna + dirección. Se usa para forzar la
+// Perfil obligatorio: nombre + Instagram + comuna + dirección. Se usa para forzar la
 // edición al entrar al portal si falta alguno (ver useEffect más abajo).
 // NOTA (2026-07-04): fecha de nacimiento es obligatoria SOLO al guardar
 // (ver findMissingRequired) — no se agregó acá para no bloquear de golpe la
 // navegación de las 1432 cuentas ya activas que no la tienen (decisión Pri).
 function isProfileComplete(p: InfluencerProfile) {
+  const hasName      = !!(p.display_name && p.display_name.trim())
   const hasAddress   = !!(p.address && p.address.trim())
   const hasCommune   = !!(p.commune && p.commune.trim())
   const hasInstagram = (p.influencer_social_profiles ?? []).some(
     sp => sp.platform === 'instagram' && sp.username && sp.username.trim()
   )
-  return hasAddress && hasCommune && hasInstagram
+  return hasName && hasAddress && hasCommune && hasInstagram
 }
 
 type Deliverable = { id: string; status: string }
@@ -169,6 +170,7 @@ export default function ProfilePage() {
 
   function findMissingRequired(): string[] {
     const missing: string[] = []
+    if (!editForm.display_name.trim()) missing.push('Nombre')
     if (!editForm.address.trim()) missing.push('Dirección')
     if (!editForm.commune.trim()) missing.push('Comuna')
     if (!editForm.birth_date.trim()) missing.push('Fecha de nacimiento')

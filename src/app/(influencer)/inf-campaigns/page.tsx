@@ -616,6 +616,8 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   // no punitivo.
   const stCfg   = c.application_status === 'pending'
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
+    : c.application_status === 'withdrawn'
+    ? { label: 'Postulación retirada', color: 'bg-gray-100 text-gray-500' }
     : c.application_status === 'rejected'
     ? { label: 'Te invitamos a la próxima', color: 'bg-gray-100 text-gray-500' }
     : STATUS_CONFIG[c.status] ?? STATUS_CONFIG.active
@@ -623,7 +625,7 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   // El clic en la fila siempre lleva al detalle de la campaña. "Próxima
   // entrega" es solo informativa acá (pedido de Pri: el link a entregables
   // vive en el dashboard/detalle, no reemplaza el detalle de campaña).
-  const isActive = c.status === 'active' && c.application_status !== 'pending' && c.application_status !== 'rejected'
+  const isActive = c.status === 'active' && c.application_status !== 'pending' && c.application_status !== 'rejected' && c.application_status !== 'withdrawn'
 
   return (
     <button
@@ -637,6 +639,7 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
         <div className="flex items-center gap-2 mt-1 text-xs text-gray-400"><Calendar className="h-3 w-3" />{fmt(c.start_date) ?? 'Sin fecha'}{c.end_date ? ` → ${fmt(c.end_date)}` : ''}</div>
         {isActive && c.next_due && <p className="text-sm font-semibold text-violet-700 mt-3">Próxima entrega: {fmt(c.next_due)}</p>}
         {c.application_status === 'rejected' && <p className="text-xs text-gray-400 mt-3">Gracias por postular. Tendrás nuevas oportunidades pronto.</p>}
+        {c.application_status === 'withdrawn' && <p className="text-xs text-gray-400 mt-3">Retiraste esta postulación. Se conserva en tu historial.</p>}
         {c.deliverables_total > 0 && <div className="mt-4"><div className="flex justify-between text-[11px] text-gray-400 mb-1"><span>{c.deliverables_done}/{c.deliverables_total} entregables</span><span>{pct}%</span></div><div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={cn('h-full rounded-full', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} /></div></div>}
       </div>
     </button>

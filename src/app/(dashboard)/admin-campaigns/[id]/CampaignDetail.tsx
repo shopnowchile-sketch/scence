@@ -63,8 +63,9 @@ type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 
 
 // ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
 // admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
-type CiColumnKey = 'platform' | 'categories' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee' | 'deliverables' | 'progress' | 'status'
+type CiColumnKey = 'origin' | 'platform' | 'categories' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee' | 'deliverables' | 'progress' | 'status'
 const CI_COLUMNS: Array<{ key: CiColumnKey; label: string }> = [
+  { key: 'origin',       label: 'Origen' },
   { key: 'platform',     label: 'Plataforma' },
   { key: 'categories',   label: 'Categorías' },
   { key: 'followers',    label: 'Seguidores' },
@@ -2512,7 +2513,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           )}
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">
-              {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
+              <span className="font-semibold text-gray-800">Influencers aprobadas</span>
+              {' · '}
+              {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''}
             </p>
             <div className="flex items-center gap-2">
               {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
@@ -2730,6 +2733,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Asistencia</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Influencer</th>
+                    {ciVisibleColumns.origin && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Origen</th>
+                    )}
                     {ciVisibleColumns.platform && (
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataforma</th>
                     )}
@@ -2813,6 +2819,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             <span className="text-xs text-gray-300">—</span>
                           )}
                         </td>
+                        {ciVisibleColumns.origin && (
+                          <td className="px-4 py-3">
+                            {ci.origin === 'application' ? (
+                              <span className="inline-flex rounded-full bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700">Postuló a la campaña</span>
+                            ) : (
+                              <span className="inline-flex rounded-full bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Invitada por equipo</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {inf.avatar_url ? (

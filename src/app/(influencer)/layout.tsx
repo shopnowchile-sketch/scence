@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
-// Perfil obligatorio (Instagram + comuna + dirección) — misma condición que
+// Perfil obligatorio (nombre + Instagram + comuna + dirección) — misma condición que
 // isProfileComplete() en inf-profile/page.tsx y la validación server-side de
 // PATCH /api/influencer/me. Se calcula acá (server, admin client, mismo
 // patrón que /api/influencer/me) para no dejar pasar al resto del portal sin
@@ -21,17 +21,21 @@ async function isInfluencerProfileComplete(userId: string) {
   const admin = createAdminClient()
   const { data } = await admin
     .from('influencers')
-    .select('address, commune, influencer_social_profiles (platform, username)')
+    .select('display_name, address, commune, metadata, influencer_social_profiles (platform, username)')
     .eq('user_id', userId)
     .single()
-  if (!data) return true // no es cuenta influencer (ensureOrg ya validó rol) — no bloquear
+  if (!data) return { complete: true, required: false }
 
+  const hasName      = !!(data.display_name && String(data.display_name).trim())
   const hasAddress   = !!(data.address && String(data.address).trim())
   const hasCommune   = !!(data.commune && String(data.commune).trim())
   const hasInstagram = (data.influencer_social_profiles ?? []).some(
     (sp: { platform: string; username: string | null }) => sp.platform === 'instagram' && sp.username && sp.username.trim()
   )
-  return hasAddress && hasCommune && hasInstagram
+  return {
+    complete: hasName && hasAddress && hasCommune && hasInstagram,
+    required: data.metadata?.self_registered === true,
+  }
 }
 
 export default async function InfluencerLayout({ children }: { children: React.ReactNode }) {
@@ -52,7 +56,7 @@ export default async function InfluencerLayout({ children }: { children: React.R
   // `influencers` (ver ensureInfluencerRow en ensureOrg.ts). No-op para
   // cuentas que ya tienen su fila.
   await ensureInfluencerRow(user)
-  const profileComplete = await isInfluencerProfileComplete(user.id)
+  const profileState = await isInfluencerProfileComplete(user.id)
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -60,7 +64,7 @@ export default async function InfluencerLayout({ children }: { children: React.R
       <InfluencerSidebar />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="w-full p-4 lg:p-8 max-w-[1440px] mx-auto">
-          <ProfileCompletionGate complete={profileComplete}>
+          <ProfileCompletionGate complete={profileState.complete} required={profileState.required}>
             {children}
           </ProfileCompletionGate>
         </div>

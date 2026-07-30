@@ -31,7 +31,24 @@ export async function GET(request: NextRequest) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (user.user_metadata?.is_brand || user.user_metadata?.is_influencer) {
+  // El roster global contiene datos personales y solo puede ser leído desde
+  // administración SCENCE. Nunca confiar en user_metadata: se verifica el
+  // rol persistido en organization_members desde el servidor.
+  const admin = createAdminClient()
+  const { data: adminMembership, error: membershipError } = await admin
+    .from('organization_members')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('role', 'super_admin')
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+
+  if (membershipError) {
+    console.error('[GET /api/influencers] membership:', membershipError)
+    return NextResponse.json({ error: 'No se pudo validar el acceso' }, { status: 500 })
+  }
+  if (!adminMembership) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -60,7 +77,6 @@ export async function GET(request: NextRequest) {
   const limit      = parseInt(searchParams.get('limit') ?? '100', 10)
   const summaryOnly = searchParams.get('summary') === '1'
 
-  const admin = createAdminClient()
   // Roster global admin: sin filtro de organization_id — a diferencia de
   // /api/brand/influencers (que sí filtra por la marca), acá el caller ya
   // está garantizado admin/staff por el guard de arriba, y el objetivo es

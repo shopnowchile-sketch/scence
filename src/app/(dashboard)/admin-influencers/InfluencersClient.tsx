@@ -214,7 +214,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Influencers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Gestiona tu roster de talento</p>
+          <p className="text-sm text-gray-500 mt-0.5">{isBrandPortal ? 'Postulaciones recibidas en tus campañas' : 'Gestiona tu roster de talento'}</p>
         </div>
         <div className="flex items-center gap-2">
           {!isBrandPortal && (
@@ -245,28 +245,19 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
             </>
           )}
           {isBrandPortal && (
-            <>
-              <Link
-                href="/brand-campaigns"
-                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-              >
-                Ir a mis campañas
-              </Link>
-              <Link
-                href="/brand-influencers/new"
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                Agregar influencer
-              </Link>
-            </>
+            <Link
+              href="/brand-campaigns"
+              className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              Ir a mis campañas
+            </Link>
           )}
         </div>
       </div>
       {isBrandPortal && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 rounded-xl bg-violet-50 border border-violet-100">
           <p className="text-sm text-violet-800">
-            Aquí aparecen las influencers privadas de tu marca.
+            Aquí aparecen únicamente las influencers que postularon a tus campañas.
           </p>
           <Link
             href="/brand-settings/plan"
@@ -425,16 +416,15 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
           <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center">
             <Users className="h-6 w-6 text-violet-400" />
           </div>
-          <p className="text-sm font-semibold text-gray-700">Aún no tienes influencers en tu roster</p>
+          <p className="text-sm font-semibold text-gray-700">Aún no tienes postulaciones</p>
           <p className="text-xs text-gray-400 max-w-xs">
-            Agrega una influencer propia o solicita al equipo SCENCE que la asigne a tu marca.
+            Publica una campaña abierta para recibir postulaciones de influencers.
           </p>
           <Link
-            href="/brand-influencers/new"
+            href="/brand-campaigns"
             className="mt-2 flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
           >
-            <Plus className="h-4 w-4" />
-            Agregar influencer
+            Ir a mis campañas
           </Link>
         </div>
       )}

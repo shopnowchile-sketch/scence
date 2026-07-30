@@ -494,11 +494,9 @@ export function DataQualityClient() {
                   </p>
                 </div>
               </div>
-              <button onClick={handleNotifyNoInstagram} disabled={busy === 'no-instagram'}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                {busy === 'no-instagram' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar email para completar perfil
-              </button>
+              <p className="max-w-xs text-right text-xs font-medium text-amber-800">
+                Los recordatorios masivos están desactivados para evitar envíos accidentales.
+              </p>
             </div>
           )}
 

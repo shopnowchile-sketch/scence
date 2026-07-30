@@ -5,6 +5,15 @@ import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
+function attendanceConfirmationEmail({ influencerName, campaignName, campaignId, dueDate }: {
+  influencerName: string; campaignName: string; campaignId: string; dueDate: string | null
+}) {
+  const dueLabel = dueDate
+    ? new Date(`${dueDate}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null
+  return `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fb;margin:0;padding:32px 0;color:#1f2937"><div style="max-width:540px;margin:auto;background:#fff;border-radius:18px;overflow:hidden"><div style="padding:28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff"><b style="font-size:20px">Confirma tu asistencia</b></div><div style="padding:28px"><p>Hola ${influencerName},</p><p>Ya quedaste aceptada en <b>${campaignName}</b>. Para asegurar tu cupo, confirma tu asistencia desde tu perfil de SCENCE.</p>${dueLabel ? `<p><b>Fecha límite:</b> ${dueLabel}</p>` : ''}<a href="${APP_URL}/inf-campaign/${campaignId}" style="display:block;padding:14px;border-radius:10px;background:#7c3aed;color:#fff;text-align:center;font-weight:700;text-decoration:none">Confirmar asistencia</a></div></div></body></html>`
+}
+
 type Params = { params: { id: string } }
 
 // ── GET /api/campaigns/[id]/influencers ───────────────────────────────────────
@@ -171,11 +180,25 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     // Preasignación en draft: no enviar email todavía; se avisa al activar.
     if (isNewAssignment && inf?.email && camp?.name && camp.status !== 'draft') {
+      // Cuando la campaña tiene asistencia pendiente, el alta manual ya es una
+      // aceptación. El único paso que queda para la influencer es confirmar
+      // desde su perfil; por eso se envía ese email específico, no una invitación.
+      const { data: attendance } = await admin
+        .from('campaign_deliverables')
+        .select('due_date')
+        .eq('campaign_id', params.id)
+        .eq('influencer_id', influencer_id as string)
+        .eq('type', 'event_attendance')
+        .eq('status', 'pending')
+        .is('attendance_response', null)
+        .maybeSingle()
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: inf.email,
-        subject: invite ? `Tienes una invitación privada: ${camp.name}` : `Fuiste asignada a la campaña "${camp.name}"`,
-        html: invite
+        subject: attendance ? `Confirma tu asistencia: ${camp.name}` : invite ? `Tienes una invitación privada: ${camp.name}` : `Fuiste asignada a la campaña "${camp.name}"`,
+        html: attendance
+          ? attendanceConfirmationEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, campaignId: params.id, dueDate: attendance.due_date })
+          : invite
           ? influencerInviteEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, brandName: (camp.brand as { name?: string } | null)?.name ?? 'Scence', inviteUrl: `${APP_URL}/inf-campaigns` })
           : campaignAssignedEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, campaignType: camp.type, campaignUrl: `${APP_URL}/inf-campaign/${params.id}` }),
       })

@@ -15,10 +15,24 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, organization_id, display_name')
+    .select('id, organization_id, display_name, address, commune, metadata, influencer_social_profiles (platform, username)')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
+
+  // Las creadoras registradas desde el flujo nuevo deben completar el perfil
+  // antes de postular, incluso si intentan saltarse la pantalla llamando la API.
+  if (influencer.metadata?.self_registered === true) {
+    const hasInstagram = (influencer.influencer_social_profiles ?? []).some(
+      (profile: { platform: string; username: string | null }) => profile.platform === 'instagram' && Boolean(profile.username?.trim())
+    )
+    if (!influencer.display_name?.trim() || !influencer.address?.trim() || !influencer.commune?.trim() || !hasInstagram) {
+      return NextResponse.json(
+        { error: 'Completa tu perfil (nombre, Instagram, comuna y dirección) antes de postular.', code: 'PROFILE_INCOMPLETE' },
+        { status: 422 }
+      )
+    }
+  }
 
   // Verificar que la campaña existe, es open y está activa o en pending_approval
   const { data: campaign } = await admin

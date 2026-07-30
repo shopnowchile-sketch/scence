@@ -1,9 +1,25 @@
 'use client'
 
-// Un perfil con datos pendientes se guía a completar desde "Mi perfil", pero
-// no se redirige ni se bloquea la navegación. El bloqueo anterior podía quedar
-// activado por datos legacy y llevaba cada opción del menú de vuelta al perfil.
-// La validación del PATCH sigue impidiendo guardar un perfil incompleto.
-export function ProfileCompletionGate({ children }: { complete: boolean; children: React.ReactNode }) {
+import { useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+
+// Solo se aplica a cuentas creadas con el registro nuevo. Los perfiles legacy
+// permanecen navegables para no bloquear a la base histórica por datos que no
+// se les pidieron al registrarse.
+export function ProfileCompletionGate({ children, complete, required }: {
+  complete: boolean
+  required: boolean
+  children: React.ReactNode
+}) {
+  const pathname = usePathname()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (required && !complete && pathname !== '/inf-profile') {
+      router.replace('/inf-profile')
+    }
+  }, [complete, pathname, required, router])
+
+  if (required && !complete && pathname !== '/inf-profile') return null
   return <>{children}</>
 }

@@ -146,7 +146,12 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
   const awaitingReview = items.filter(d => d.status === 'in_review').length
   const rejected = items.filter(d => d.status === 'rejected').length
   const approved = items.filter(d => ['approved', 'published', 'completed'].includes(d.status)).length
-  const pending = total - submitted
+  const isAttendanceExpired = (deliverable: Deliverable) => {
+    if (deliverable.type !== 'event_attendance' || deliverable.attendance_response || !deliverable.due_date) return false
+    return new Date(`${deliverable.due_date}T23:59:59`).getTime() < Date.now()
+  }
+  const expiredAttendance = items.filter(isAttendanceExpired).length
+  const pending = total - submitted - expiredAttendance
   const pct = total ? Math.round((submitted / total) * 100) : 0
   const reviewState = awaitingReview > 0
     ? { label: `${submitted} de ${total} entregado${submitted === 1 ? '' : 's'} · En revisión`, color: 'text-blue-600', bar: 'bg-blue-500' }
@@ -154,7 +159,7 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
     ? { label: `${rejected} corrección pendiente${rejected === 1 ? '' : 's'}`, color: 'text-amber-600', bar: 'bg-amber-400' }
     : approved === total
     ? { label: `${total} de ${total} completado${total === 1 ? '' : 's'}`, color: 'text-green-600', bar: 'bg-green-500' }
-    : { label: `${pending} pendiente${pending === 1 ? '' : 's'}`, color: 'text-violet-600', bar: 'bg-violet-500' }
+    : { label: `${pending} pendiente${pending === 1 ? '' : 's'}${expiredAttendance ? ` · ${expiredAttendance} plazo vencido` : ''}`, color: expiredAttendance ? 'text-amber-700' : 'text-violet-600', bar: expiredAttendance ? 'bg-amber-400' : 'bg-violet-500' }
 
   async function submit(d: Deliverable) {
     if (!url.trim()) return toast.error('Agrega el link del contenido')
@@ -174,6 +179,7 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
   }
 
   async function respondAttendance(d: Deliverable, response: 'confirmed' | 'declined') {
+    if (isAttendanceExpired(d)) return toast.error('El plazo para confirmar esta asistencia ya venció.')
     setAttendanceSaving(d.id)
     try {
       const res = await fetch(`/api/influencer/deliverables/${d.id}/attendance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response }) })
@@ -201,14 +207,16 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
       <div className="space-y-3">
         {items.map(d => {
           const isAttendance = d.type === 'event_attendance'
+          const attendanceExpired = isAttendanceExpired(d)
           const canSubmit = d.status === 'pending' || d.status === 'rejected'
           const isReview = d.status === 'in_review'
           const complete = isDeliverableComplete(d) && !isReview
           const isRejected = d.status === 'rejected'
           const opened = openId === d.id
           const attendanceLabel = d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
-          return <div key={d.id} className={cn('rounded-xl border p-3', isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
-            <div className="flex items-start gap-3">
+          return <div key={d.id} className={cn('rounded-xl border p-3 sm:p-4', attendanceExpired ? 'border-amber-200 bg-amber-50/60' : isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
                 {complete ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
               </div>
@@ -216,14 +224,17 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
                 <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
                 <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
                   <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                    {isAttendance && attendanceLabel ? attendanceLabel : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
+                    {isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
                   </span>
                   {d.due_date && <span className="text-gray-400">Vence: {fmtDate(d.due_date)}</span>}
                 </div>
-                {isAttendance && !d.attendance_response && <p className="mt-2 text-xs leading-relaxed text-amber-700">Confirma antes de la fecha límite. Si no respondes, tu cupo se liberará para otra creadora.</p>}
+                {isAttendance && !d.attendance_response && (attendanceExpired
+                  ? <p className="mt-2 text-xs leading-relaxed text-amber-800">El plazo de confirmación venció. Si necesitas ayuda, contacta al equipo de SCENCE.</p>
+                  : <p className="mt-2 text-xs leading-relaxed text-amber-700">Confirma antes de la fecha límite para asegurar tu cupo.</p>)}
                 {d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
               </div>
-              {isAttendance && !d.attendance_response ? <button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Aceptar asistencia'}</button> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700">
+              </div>
+              {isAttendance && !d.attendance_response && !attendanceExpired ? <button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 sm:w-auto">{attendanceSaving === d.id ? 'Guardando…' : 'Aceptar asistencia'}</button> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
                 {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
               </button>}
             </div>

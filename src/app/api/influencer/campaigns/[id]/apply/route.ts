@@ -117,7 +117,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true, id: data.id })
 }
 
-// DELETE /api/influencer/campaigns/[id]/apply — cancel application
+// DELETE /api/influencer/campaigns/[id]/apply — cancel application.
+// No borra la fila: conserva el historial de la influencer y permite al
+// equipo distinguir una postulación retirada de una que nunca existió.
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authErr } = await supabase.auth.getUser()
@@ -129,15 +131,26 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     .from('influencers').select('id').eq('user_id', user.id).single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
 
-  await admin
+  const { data: application, error: applicationError } = await admin
     .from('campaign_influencers')
-    .delete()
+    .select('id')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .eq('application_status', 'pending')
     .eq('origin', 'application')
+    .maybeSingle()
 
-  return NextResponse.json({ ok: true })
+  if (applicationError) return NextResponse.json({ error: applicationError.message }, { status: 500 })
+  if (!application) return NextResponse.json({ error: 'Solo puedes retirar una postulación pendiente' }, { status: 422 })
+
+  const { error: updateError } = await admin
+    .from('campaign_influencers')
+    .update({ application_status: 'withdrawn', updated_at: new Date().toISOString() })
+    .eq('id', application.id)
+
+  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true, status: 'withdrawn' })
 }
 
 // PATCH /api/influencer/campaigns/[id]/apply

@@ -12,12 +12,6 @@ type Attendance = {
   influencer?: { id?: string; display_name?: string | null; instagram_username?: string | null } | null
 }
 
-function status(response?: string | null) {
-  if (response === 'confirmed') return { label: 'Confirmada', className: 'bg-emerald-50 text-emerald-700' }
-  if (response === 'declined') return { label: 'No asistirá', className: 'bg-rose-50 text-rose-700' }
-  return { label: 'Pendiente', className: 'bg-amber-50 text-amber-700' }
-}
-
 type Props = {
   campaignId: string
   acceptedCount: number
@@ -138,8 +132,6 @@ export function AttendanceConfirmationPanel({
           </div>
         </div>
       )}
-
-      {confirmedRows.length > 0 && <div className="mt-4"><p className="mb-2 text-sm font-semibold text-gray-700">Confirmadas</p><div className="divide-y divide-gray-100 rounded-lg border border-gray-100">{confirmedRows.map((row, index) => { const person = row.influencer; const handle = person?.instagram_username?.replace(/^@/, ''); return <div key={row.id ?? index} className="flex items-center gap-3 px-3 py-2.5"><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-gray-800">{person?.display_name ?? 'Influencer'}</span>{handle && <span className="block truncate text-xs text-violet-600">@{handle}</span>}</span><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${status(row.attendance_response).className}`}>Confirmada</span></div> })}</div></div>}
 
       {canManage && <button type="button" onClick={() => { setDueDate(rows[0]?.due_date ?? defaultDueDate ?? ''); setOpen(true) }} className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white"><CheckCircle2 className="h-4 w-4" />{rows.length ? 'Editar confirmación' : `Enviar confirmación a ${acceptedCount} influencer${acceptedCount === 1 ? '' : 's'}`}</button>}
       {open && <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-[1fr_2fr_auto]"><label className="text-xs font-medium text-gray-600">Fecha límite<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="input-base mt-1 w-full" /></label><label className="text-xs font-medium text-gray-600">Mensaje opcional<textarea value={message} onChange={e => setMessage(e.target.value)} rows={2} className="input-base mt-1 w-full resize-none" /></label><div className="flex flex-col justify-end gap-2"><label className="text-xs text-gray-600"><input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} /> Avisar por email</label><button type="button" disabled={saving} onClick={send} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Guardando…' : rows.length ? 'Guardar plazo' : 'Enviar solicitud'}</button></div></div>}

@@ -50,7 +50,7 @@ export async function PATCH(req: Request) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, address, commune, birth_date')
+    .select('id, display_name, address, commune, birth_date')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
@@ -62,7 +62,7 @@ export async function PATCH(req: Request) {
     if (key in body) profileUpdate[key] = body[key]
   }
 
-  // Perfil obligatorio (portal influencer): Instagram + comuna + dirección +
+  // Perfil obligatorio (portal influencer): nombre + Instagram + comuna + dirección +
   // fecha de nacimiento. Se valida el estado FINAL resultante (existente + lo
   // que llega en este PATCH) antes de escribir nada, para que no se pueda
   // vaciar estos campos ni saltarse el requisito llamando el endpoint
@@ -75,6 +75,7 @@ export async function PATCH(req: Request) {
   const finalAddress = 'address' in profileUpdate ? String(profileUpdate.address ?? '').trim() : String(influencer.address ?? '').trim()
   const finalCommune = 'commune' in profileUpdate ? String(profileUpdate.commune ?? '').trim() : String(influencer.commune ?? '').trim()
   const finalBirthDate = 'birth_date' in profileUpdate ? String(profileUpdate.birth_date ?? '').trim() : String(influencer.birth_date ?? '').trim()
+  const finalDisplayName = 'display_name' in profileUpdate ? String(profileUpdate.display_name ?? '').trim() : String(influencer.display_name ?? '').trim()
 
   let finalHasInstagram: boolean
   if (Array.isArray(body.social_profiles)) {
@@ -105,6 +106,7 @@ export async function PATCH(req: Request) {
   }
 
   const missing: string[] = []
+  if (!finalDisplayName) missing.push('nombre')
   if (!finalAddress) missing.push('dirección')
   if (!finalCommune) missing.push('comuna')
   if (!finalBirthDate) missing.push('fecha de nacimiento')
@@ -164,3 +166,4 @@ export async function PATCH(req: Request) {
 
   return NextResponse.json({ data: updated })
 }
+4EӀ

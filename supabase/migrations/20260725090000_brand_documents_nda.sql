@@ -48,6 +48,7 @@ ALTER TABLE public.brand_documents ENABLE ROW LEVEL SECURITY;
 
 -- Las rutas de API usan service role y validan el acceso a la marca. Esta
 -- política permite además lectura al owner de la marca en consultas directas.
+DROP POLICY IF EXISTS "brand_documents_owner_read" ON public.brand_documents;
 CREATE POLICY "brand_documents_owner_read" ON public.brand_documents
   FOR SELECT USING (
     EXISTS (

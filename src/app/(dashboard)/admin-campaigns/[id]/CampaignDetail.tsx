@@ -60,6 +60,7 @@ const GRADIENTS = [
 ]
 
 type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'history'
+const VALID_TABS: Tab[] = ['overview', 'influencers', 'deliverables', 'barters', 'assets', 'locations', 'billing', 'history']
 
 // ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
 // admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
@@ -961,6 +962,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const apiBase = isBrandPortal ? '/api/brand/campaigns' : '/api/campaigns'
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'overview')
   const [editingOverview, setEditingOverview] = useState(searchParams.get('mode') === 'edit')
+
+  function selectTab(nextTab: Tab) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('tab', nextTab)
+    if (nextTab !== 'overview') params.delete('mode')
+    setTab(nextTab)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
   const [overviewEditSection, setOverviewEditSection] = useState<OverviewEditSection>('content')
   const [editingEvent, setEditingEvent] = useState(false)
   const [eventSaving, setEventSaving] = useState(false)
@@ -1092,10 +1101,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   useEffect(() => {
+    const requestedTab = searchParams.get('tab')
     const requested = searchParams.get('mode') === 'edit'
     setEditingOverview(requested)
-    if (requested) setOverviewEditSection('content')
-    if (requested) setTab('overview')
+    if (requested) {
+      setOverviewEditSection('content')
+      setTab('overview')
+    } else if (requestedTab && VALID_TABS.includes(requestedTab as Tab)) {
+      setTab(requestedTab as Tab)
+    }
   }, [searchParams])
 
   useEffect(() => {
@@ -2057,7 +2071,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       <div className="border-b border-gray-200">
         <div className="flex gap-1 overflow-x-auto">
           {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => selectTab(t.id)}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 transition-all -mb-px whitespace-nowrap',
                 tab === t.id ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

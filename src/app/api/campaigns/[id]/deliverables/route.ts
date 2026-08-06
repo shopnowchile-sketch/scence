@@ -122,7 +122,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { deliverable_id, action, review_notes, submitted_url, progress, rating } = body as {
     deliverable_id: string
-    action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate'
+    action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate' | 'mark_no_show'
     review_notes?: string
     submitted_url?: string
     progress?: number
@@ -178,6 +178,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       }
       updatePayload.content_rating = rating
       break
+    case 'mark_no_show':
+      updatePayload.attendance_outcome = 'no_show'
+      updatePayload.attendance_outcome_at = now
+      break
     default:
       return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 422 })
   }
@@ -189,6 +193,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .from('campaign_deliverables')
     .select(`
       id, campaign_id, influencer_id, type, title, due_date,
+      attendance_response,
       campaign:campaigns (id, name),
       influencer:influencers (display_name, email)
     `)
@@ -198,6 +203,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   if (fetchErr || !existing) {
     return NextResponse.json({ error: 'Deliverable not found in this campaign' }, { status: 404 })
+  }
+
+  if (action === 'mark_no_show' && (existing.type !== 'event_attendance' || existing.attendance_response !== 'confirmed')) {
+    return NextResponse.json({ error: 'Solo puedes marcar como no asistió una asistencia previamente confirmada.' }, { status: 422 })
   }
 
   const { data, error } = await admin

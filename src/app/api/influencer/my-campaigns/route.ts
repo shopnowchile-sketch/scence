@@ -47,7 +47,8 @@ export async function GET() {
       ),
       campaign_deliverables (
         id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags,
-        attendance_response, attendance_responded_at, attendance_note
+        attendance_response, attendance_responded_at, attendance_note,
+        attendance_outcome, attendance_outcome_at
       )
     `)
     .eq('influencer_id', influencer.id)
@@ -67,7 +68,8 @@ export async function GET() {
       ),
       campaign_deliverables (
         id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags,
-        attendance_response, attendance_responded_at, attendance_note
+        attendance_response, attendance_responded_at, attendance_note,
+        attendance_outcome, attendance_outcome_at
       )
     `)
     .eq('created_by', user.id)

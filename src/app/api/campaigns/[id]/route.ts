@@ -117,6 +117,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         published_at, published_url, content_url, submitted_at, review_notes, progress, content_rating,
         performance, metrics_provider, metrics_updated_at, engagement_rate,
         attendance_response, attendance_responded_at, attendance_note,
+        attendance_outcome, attendance_outcome_at,
         influencer:influencers (id, display_name, avatar_url)
       )
     `)

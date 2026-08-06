@@ -101,7 +101,14 @@ function DeliverableContent({
   if (d.type === 'event_attendance') {
     const confirmed = d.attendance_response === 'confirmed'
     const declined = d.attendance_response === 'declined'
-    return <div className="flex items-center justify-between gap-3 py-1"><div><p className="text-sm font-semibold text-gray-800">Confirmación de asistencia</p><p className="text-xs text-gray-400">{d.due_date ? `Plazo: ${formatDate(d.due_date)}` : 'Sin fecha límite'}</p></div><span className={cn('badge text-[11px]', confirmed ? 'badge-green' : declined ? 'badge-red' : 'badge-gray')}>{confirmed ? 'Confirmada' : declined ? 'No asistirá' : 'Pendiente'}</span></div>
+    const noShow = d.attendance_outcome === 'no_show'
+    const markNoShow = async () => {
+      try {
+        await action.mutateAsync({ deliverable_id: d.id, action: 'mark_no_show' })
+        toast.success('Marcada como no asistió. Sus métricas ya no cuentan en el resultado.')
+      } catch { /* handled in hook */ }
+    }
+    return <div className="flex items-center justify-between gap-3 py-1"><div><p className="text-sm font-semibold text-gray-800">Confirmación de asistencia</p><p className="text-xs text-gray-400">{d.due_date ? `Plazo: ${formatDate(d.due_date)}` : 'Sin fecha límite'}</p></div><div className="flex items-center gap-2"><span className={cn('badge text-[11px]', noShow ? 'badge-red' : confirmed ? 'badge-green' : declined ? 'badge-red' : 'badge-gray')}>{noShow ? 'No asistió' : confirmed ? 'Confirmada' : declined ? 'No asistirá' : 'Pendiente'}</span>{confirmed && !noShow && <button type="button" onClick={() => void markNoShow()} disabled={action.isPending} title="Marcar que confirmó pero no asistió; se excluirá de los KPI" className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"><ChevronDown className="h-3.5 w-3.5" /> No asistió</button>}</div></div>
   }
 
   async function handle(act: 'approve' | 'reject') {
@@ -1429,7 +1436,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // suma deliverables ya sincronizados (performance != null). No incluye
   // reach/impresiones/guardados/compartidos porque no existen (ver
   // src/lib/deliverables/apify-metrics.ts). Engagement siempre "calculado".
-  const deliverablesWithMetrics = campaignDeliverables.filter(d => d.performance != null)
+  // El resultado de campaña representa únicamente contenido válido: aprobado
+  // o publicado. Si una influencer confirmó pero no asistió, se excluyen todos
+  // sus entregables del resultado para no inflar engagement ni visualizaciones.
+  const noShowInfluencerIds = new Set(campaignDeliverables
+    .filter(d => d.type === 'event_attendance' && d.attendance_outcome === 'no_show' && d.influencer?.id)
+    .map(d => d.influencer!.id))
+  const isEligibleCampaignResult = (d: CampaignDeliverableDetail) =>
+    !d.influencer?.id || !noShowInfluencerIds.has(d.influencer.id)
+  const deliverablesWithMetrics = campaignDeliverables.filter(d =>
+    d.performance != null && isEligibleCampaignResult(d) && (d.status === 'approved' || d.status === 'published')
+  )
   const hasCampaignMetrics = deliverablesWithMetrics.length > 0
   const totalViews    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
   const totalLikes    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
@@ -3096,7 +3113,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               deliverable => Boolean(
                 deliverable.content_url ||
                 deliverable.published_url ||
-                (deliverable.type === 'event_attendance' && deliverable.attendance_response === 'confirmed')
+                (deliverable.type === 'event_attendance' && (deliverable.attendance_response === 'confirmed' || deliverable.attendance_outcome === 'no_show'))
               )
             )
 
@@ -3198,7 +3215,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       // Métricas reales (Apify) por influencer — solo suma
                       // deliverables ya sincronizados. Sin reach/impressions/
                       // saves/shares (no existen). Engagement = promedio calculado.
-                      const ownWithMetrics = own.filter(d => d.performance != null)
+                      const ownWithMetrics = own.filter(d =>
+                        d.performance != null && isEligibleCampaignResult(d) && (d.status === 'approved' || d.status === 'published')
+                      )
                       const views = ownWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
                       const likes = ownWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
                       const comments = ownWithMetrics.reduce((s, d) => s + (d.performance?.comments ?? 0), 0)

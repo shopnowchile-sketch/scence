@@ -212,6 +212,11 @@ export interface CampaignDeliverableDetail {
   attendance_response?: 'confirmed' | 'declined' | null
   attendance_responded_at?: string | null
   attendance_note?: string | null
+  // Resultado registrado después del evento por marca/admin. No reemplaza la
+  // confirmación previa de la influencer: permite distinguir no show de quien
+  // sí avisó que no podía asistir.
+  attendance_outcome?: 'attended' | 'excused_absence' | 'no_show' | null
+  attendance_outcome_at?: string | null
   influencer: {
     id: string
     display_name: string

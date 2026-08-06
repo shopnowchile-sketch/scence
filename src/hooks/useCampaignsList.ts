@@ -147,7 +147,7 @@ export function useDeliverableAction(campaignId: string) {
 
   type DeliverableActionPayload = {
     deliverable_id: string
-    action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate'
+    action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate' | 'mark_no_show'
     review_notes?: string
     progress?: number
     rating?: number
@@ -170,6 +170,7 @@ export function useDeliverableAction(campaignId: string) {
           if (payload.action === 'submit') return { ...deliverable, status: 'in_review' as const }
           if (payload.action === 'publish') return { ...deliverable, status: 'published' as const }
           if (payload.action === 'update_progress') return { ...deliverable, progress: payload.progress ?? deliverable.progress }
+          if (payload.action === 'mark_no_show') return { ...deliverable, attendance_outcome: 'no_show' as const, attendance_outcome_at: new Date().toISOString() }
           return deliverable
         }),
       },

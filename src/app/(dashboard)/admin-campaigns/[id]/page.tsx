@@ -10,7 +10,7 @@ export default function CampaignDetailPage({
   params: { id: string }
   searchParams?: { tab?: string }
 }) {
-  const validTabs = ['overview', 'influencers', 'deliverables', 'canjes', 'history'] as const
+  const validTabs = ['overview', 'influencers', 'deliverables', 'barters', 'assets', 'locations', 'billing', 'history'] as const
   type Tab = typeof validTabs[number]
   const defaultTab = validTabs.includes(searchParams?.tab as Tab)
     ? (searchParams!.tab as Tab)

@@ -138,8 +138,10 @@ export function useRemoveCampaignInfluencer(campaignId: string) {
 }
 
 // ── Deliverable action ────────────────────────────────────────────────────────
-export function useDeliverableAction(campaignId: string) {
+export function useDeliverableAction(campaignId: string, apiBase = '/api/campaigns') {
   const qc = useQueryClient()
+  const queryKey = ['campaign', apiBase, campaignId] as const
+
   return useMutation({
     mutationFn: async (payload: {
       deliverable_id: string
@@ -148,7 +150,7 @@ export function useDeliverableAction(campaignId: string) {
       progress?: number
       rating?: number
     }) => {
-      const res = await fetch(`/api/campaigns/${campaignId}/deliverables`, {
+      const res = await fetch(`${apiBase}/${campaignId}/deliverables`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -159,10 +161,40 @@ export function useDeliverableAction(campaignId: string) {
       }
       return res.json()
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['campaign', campaignId] })
+    onMutate: async (payload) => {
+      await qc.cancelQueries({ queryKey })
+      const previous = qc.getQueryData<{ data: CampaignDetail }>(queryKey)
+
+      qc.setQueryData<{ data: CampaignDetail }>(queryKey, current => {
+        if (!current) return current
+        const nextStatus = payload.action === 'approve' ? 'approved'
+          : payload.action === 'reject' ? 'rejected'
+          : undefined
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            campaign_deliverables: current.data.campaign_deliverables?.map(deliverable =>
+              deliverable.id !== payload.deliverable_id ? deliverable : {
+                ...deliverable,
+                ...(payload.action === 'rate' ? { content_rating: payload.rating } : {}),
+                ...(nextStatus ? { status: nextStatus } : {}),
+                ...(payload.review_notes !== undefined ? { review_notes: payload.review_notes } : {}),
+              }
+            ),
+          },
+        }
+      })
+      return { previous }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error, _payload, context) => {
+      if (context?.previous) qc.setQueryData(queryKey, context.previous)
+      toast.error(err.message)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey })
+      qc.invalidateQueries({ queryKey: ['campaigns'] })
+    },
   })
 }
 

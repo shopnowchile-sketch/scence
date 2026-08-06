@@ -34,5 +34,8 @@ export async function POST(request: NextRequest) {
   const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)
   if (error) return NextResponse.json({ error: 'Unable to sync subscription' }, { status: 500 })
   await admin.from('organizations').update({ subscription_plan: status === 'active' ? ref.tier : 'basic' }).eq('id', ref.organizationId)
+  if (status === 'active') {
+    await admin.from('brands').update({ status: 'approved' }).eq('organization_id', ref.organizationId).eq('status', 'suspended')
+  }
   return NextResponse.json({ received: true })
 }

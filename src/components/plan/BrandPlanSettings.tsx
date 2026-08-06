@@ -176,7 +176,7 @@ export function BrandPlanSettings() {
       <div className={cn('rounded-2xl border p-4 flex items-center gap-3', hasActiveSubscription ? 'bg-violet-50 border-violet-100' : 'bg-amber-50 border-amber-200')}>
         <Sparkles className="h-5 w-5 text-violet-500 flex-shrink-0" />
         <p className={cn('text-sm', hasActiveSubscription ? 'text-violet-700' : 'text-amber-900')}>
-          {hasActiveSubscription ? <>Tu plan actual: <span className="font-bold">{currentInfo.label}</span>{' · '}{currentTier === 'basic' ? 'Acceso básico a SCENCE' : currentTier === 'growth' ? 'Más creadoras, marcas y reportería' : 'Acceso ilimitado a todo'}</> : <>Tu acceso comercial fue suspendido. Elige un plan para reactivar tu cuenta.</>}
+          {hasActiveSubscription ? <>Tu plan actual: <span className="font-bold">{currentInfo.label}</span>{' · '}{currentTier === 'basic' ? 'Acceso básico a SCENCE' : currentTier === 'growth' ? 'Más creadoras, marcas y reportería' : 'Acceso ilimitado a todo'}</> : <>Tu período de acceso gratuito ha finalizado. Elige el plan que mejor se adapte a tu marca para continuar creando campañas en SCENCE.</>}
         </p>
       </div>
 

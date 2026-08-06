@@ -585,7 +585,13 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     if (!res.ok) return toast.error(json.error ?? 'No se pudo actualizar')
 
     setBrand({ ...brand, status, subscription_plan_override: status === 'suspended' ? null : brand.subscription_plan_override })
-    toast.success(status === 'approved' ? 'Marca aprobada' : status === 'suspended' ? 'Marca suspendida: deberá suscribirse para reactivar su acceso' : 'Marca pendiente')
+    toast.success(
+      status === 'approved'
+        ? 'Acceso de la marca habilitado'
+        : status === 'suspended'
+          ? 'Acceso actualizado. La marca verá las opciones de plan para continuar en SCENCE.'
+          : 'Marca pendiente de revisión'
+    )
   }
 
   async function deleteBrand() {

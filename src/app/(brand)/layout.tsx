@@ -172,6 +172,14 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
     if (hasActiveSubscription === false && !isPlanPage) router.replace('/brand-settings/plan')
   }, [hasActiveSubscription, isPlanPage, router])
 
+  // La suspensión comercial representa el fin del acceso gratuito. Aunque el
+  // usuario sea owner, finance o member, solo puede entrar a Planes para
+  // contratar/reactivar; el checkout ya resuelve el acceso de cualquier
+  // miembro activo de la marca.
+  useEffect(() => {
+    if (brandStatus === 'suspended' && !isPlanPage) router.replace('/brand-settings/plan')
+  }, [brandStatus, isPlanPage, router])
+
   // Marca autorregistrada sin aprobar todavía por un admin → sin acceso al
   // portal operativo (regla de producto explícita). Prioridad sobre el gate
   // de Instagram: si no está aprobada, ni siquiera importa si falta Instagram.
@@ -200,7 +208,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
                     : brandStatus === 'rejected'
                       ? 'Cuenta no aprobada'
                       : brandStatus === 'suspended'
-                        ? 'Cuenta suspendida'
+                        ? 'Sigamos creando juntos en SCENCE'
                         : 'No pudimos cargar tu cuenta'}
                 </h2>
                 <p className="text-sm text-gray-500">
@@ -209,7 +217,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
                     : brandStatus === 'rejected'
                       ? 'Tu solicitud de marca no fue aprobada. Si crees que es un error, contáctanos.'
                       : brandStatus === 'suspended'
-                        ? 'Tu cuenta está suspendida. Contáctanos para revisar el acceso.'
+                        ? 'Tu período de acceso gratuito ha finalizado. Elige el plan que mejor se adapte a tu marca para continuar creando campañas en SCENCE.'
                         : 'No pudimos preparar tu cuenta. Usa el botón de reintento o contáctanos.'}
                 </p>
               </div>

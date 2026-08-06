@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, Download, FileText, Loader2, PenLine, X } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { downloadDocumentPdf } from '@/lib/document-pdf'
 
 type Document = {
   id: string; title: string; document_type: string; language: string; status: 'pending' | 'signed' | 'voided' | 'superseded'
@@ -25,20 +26,7 @@ function DocumentModal({ document, canSign, legalProfileComplete, missingLegalFi
     } catch (e) { toast.error((e as Error).message) } finally { setSaving(false) }
   }
   const downloadPdf = async () => {
-    const { jsPDF } = await import('jspdf')
-    const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
-    const margin = 48; const width = pdf.internal.pageSize.getWidth() - margin * 2
-    let y = 56
-    const add = (text: string, size = 10, bold = false) => {
-      pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size)
-      const lines = pdf.splitTextToSize(text, width)
-      for (const line of lines) { if (y > 780) { pdf.addPage(); y = 56 }; pdf.text(line, margin, y); y += size + 5 }
-    }
-    add('SCENCE · DOCUMENTO ELECTRÓNICO', 9, true); y += 12
-    add(document.title, 16, true); y += 10; add(document.content_snapshot, 10)
-    y += 14; add('EVIDENCIA DE FIRMA', 11, true)
-    add(document.status === 'signed' ? `Firmado por: ${document.signer_name}\nRUT: ${document.signer_rut}\nCargo: ${document.signer_role}\nFecha: ${new Date(document.signed_at!).toLocaleString('es-CL')}` : 'Documento pendiente de firma.', 10)
-    pdf.save(`${document.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`)
+    await downloadDocumentPdf(document)
   }
   return <div className="fixed inset-0 z-50 bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
     <div className="max-w-3xl mx-auto my-8 bg-white rounded-2xl shadow-xl" onClick={e => e.stopPropagation()}>

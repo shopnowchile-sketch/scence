@@ -689,8 +689,8 @@ export default function BrandsPage() {
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ status: 'suspended' }),
                     })
-                    if (!res.ok) return toast.error('No se pudo suspender')
-                    toast.success('Marca suspendida')
+                    if (!res.ok) return toast.error('No se pudo actualizar el acceso de la marca')
+                    toast.success('Acceso actualizado. La marca verá las opciones de plan para continuar en SCENCE.')
                     load(search)
                     setSelected({ ...selected, status: 'suspended' })
                   }}

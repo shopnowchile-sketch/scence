@@ -50,7 +50,20 @@ async function upsertSubscription(
     ? await admin.from('subscriptions').update(row).eq('id', existing.id)
     : await admin.from('subscriptions').insert(row)
 
-  if (error) console.error('[webhook] upsertSubscription error:', error.message)
+  if (error) {
+    console.error('[webhook] upsertSubscription error:', error.message)
+    return
+  }
+
+  // Una suscripción activa reactiva solo las marcas bloqueadas por fin de
+  // acceso comercial; no altera marcas rechazadas ni pendientes de revisión.
+  if (params.status === 'active' || params.status === 'trialing') {
+    await admin
+      .from('brands')
+      .update({ status: 'approved' })
+      .eq('organization_id', params.organizationId)
+      .eq('status', 'suspended')
+  }
 }
 
 export async function POST(request: NextRequest) {

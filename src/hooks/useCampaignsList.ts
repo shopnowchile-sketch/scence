@@ -130,7 +130,11 @@ export function useRemoveCampaignInfluencer(campaignId: string) {
       return res.json()
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['campaign', campaignId] })
+      // La consulta de detalle usa ['campaign', apiBase, campaignId]. Antes se
+      // invalidaba ['campaign', campaignId], que no coincide con esa clave, por
+      // lo que rating/aprobación se guardaban en BD pero la vista seguía mostrando
+      // datos antiguos hasta salir y volver a entrar.
+      qc.invalidateQueries({ queryKey: ['campaign'] })
       toast.success('Influencer eliminado de la campaña')
     },
     onError: (err: Error) => toast.error(err.message),
@@ -138,19 +142,43 @@ export function useRemoveCampaignInfluencer(campaignId: string) {
 }
 
 // ── Deliverable action ────────────────────────────────────────────────────────
-export function useDeliverableAction(campaignId: string, apiBase = '/api/campaigns') {
+export function useDeliverableAction(campaignId: string) {
   const qc = useQueryClient()
-  const queryKey = ['campaign', apiBase, campaignId] as const
+
+  type DeliverableActionPayload = {
+    deliverable_id: string
+    action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate'
+    review_notes?: string
+    progress?: number
+    rating?: number
+  }
+
+  type CampaignCache = { data: CampaignDetail }
+
+  const patchDeliverable = (current: CampaignCache | undefined, payload: DeliverableActionPayload) => {
+    if (!current?.data?.campaign_deliverables) return current
+
+    return {
+      ...current,
+      data: {
+        ...current.data,
+        campaign_deliverables: current.data.campaign_deliverables.map(deliverable => {
+          if (deliverable.id !== payload.deliverable_id) return deliverable
+          if (payload.action === 'rate') return { ...deliverable, content_rating: payload.rating ?? null }
+          if (payload.action === 'approve') return { ...deliverable, status: 'approved' as const, review_notes: payload.review_notes ?? deliverable.review_notes }
+          if (payload.action === 'reject') return { ...deliverable, status: 'rejected' as const, review_notes: payload.review_notes ?? deliverable.review_notes }
+          if (payload.action === 'submit') return { ...deliverable, status: 'in_review' as const }
+          if (payload.action === 'publish') return { ...deliverable, status: 'published' as const }
+          if (payload.action === 'update_progress') return { ...deliverable, progress: payload.progress ?? deliverable.progress }
+          return deliverable
+        }),
+      },
+    }
+  }
 
   return useMutation({
-    mutationFn: async (payload: {
-      deliverable_id: string
-      action: 'approve' | 'reject' | 'submit' | 'publish' | 'update_progress' | 'rate'
-      review_notes?: string
-      progress?: number
-      rating?: number
-    }) => {
-      const res = await fetch(`${apiBase}/${campaignId}/deliverables`, {
+    mutationFn: async (payload: DeliverableActionPayload) => {
+      const res = await fetch(`/api/campaigns/${campaignId}/deliverables`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -161,39 +189,44 @@ export function useDeliverableAction(campaignId: string, apiBase = '/api/campaig
       }
       return res.json()
     },
-    onMutate: async (payload) => {
-      await qc.cancelQueries({ queryKey })
-      const previous = qc.getQueryData<{ data: CampaignDetail }>(queryKey)
-
-      qc.setQueryData<{ data: CampaignDetail }>(queryKey, current => {
-        if (!current) return current
-        const nextStatus = payload.action === 'approve' ? 'approved'
-          : payload.action === 'reject' ? 'rejected'
-          : undefined
+    onMutate: async payload => {
+      // Actualiza la única fuente de datos que renderiza la pantalla ANTES de
+      // esperar la red. Así estrellas, aprobación y progreso no dependen de
+      // estados locales que puedan quedar desfasados.
+      await qc.cancelQueries({ queryKey: ['campaign'] })
+      const previous = qc.getQueriesData<CampaignCache>({ queryKey: ['campaign'] })
+      qc.setQueriesData<CampaignCache>({ queryKey: ['campaign'] }, current => patchDeliverable(current, payload))
+      return { previous }
+    },
+    onSuccess: (response) => {
+      // Reemplaza el valor optimista por la fila exacta confirmada por la API.
+      qc.setQueriesData<CampaignCache>({ queryKey: ['campaign'] }, current => {
+        if (!current?.data?.campaign_deliverables) return current
         return {
           ...current,
           data: {
             ...current.data,
-            campaign_deliverables: current.data.campaign_deliverables?.map(deliverable =>
-              deliverable.id !== payload.deliverable_id ? deliverable : {
-                ...deliverable,
-                ...(payload.action === 'rate' ? { content_rating: payload.rating } : {}),
-                ...(nextStatus ? { status: nextStatus } : {}),
-                ...(payload.review_notes !== undefined ? { review_notes: payload.review_notes } : {}),
-              }
+            campaign_deliverables: current.data.campaign_deliverables.map(deliverable =>
+              deliverable.id === response.data.id
+                ? { ...deliverable, ...response.data }
+                : deliverable
             ),
           },
         }
       })
-      return { previous }
     },
     onError: (err: Error, _payload, context) => {
-      if (context?.previous) qc.setQueryData(queryKey, context.previous)
+      // Si la API rechaza la acción, vuelve exactamente al estado previo para
+      // que la interfaz nunca muestre un cambio que no se guardó.
+      context?.previous.forEach(([queryKey, data]) => qc.setQueryData(queryKey, data))
       toast.error(err.message)
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey })
-      qc.invalidateQueries({ queryKey: ['campaigns'] })
+      // El refetch final confirma el resto de datos derivados (promedio,
+      // timestamps), sin borrar el cambio optimista durante el clic.
+      qc.invalidateQueries({
+        predicate: query => query.queryKey[0] === 'campaign' && query.queryKey[2] === campaignId,
+      })
     },
   })
 }
@@ -211,8 +244,9 @@ export function useSyncDeliverableMetrics(campaignId: string) {
       return json
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['campaign', campaignId] })
-      qc.invalidateQueries({ queryKey: ['campaign', '/api/campaigns', campaignId] })
+      // Releer el detalle activo tanto en Admin como en Marca después de traer
+      // métricas, usando el mismo prefijo con que se registra la consulta.
+      qc.invalidateQueries({ queryKey: ['campaign'] })
       toast.success('Métricas actualizadas')
     },
     onError: (err: Error) => toast.error(err.message),

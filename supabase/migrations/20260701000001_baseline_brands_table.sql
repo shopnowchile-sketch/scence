@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.brands (
   address2_region       TEXT,
   address2_country      TEXT,
   status                TEXT NOT NULL DEFAULT 'pending_approval'
-                          CHECK (status IN ('pending_approval', 'approved', 'rejected')),
+                          CHECK (status IN ('pending_approval', 'approved', 'rejected', 'suspended')),
   metadata              JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()

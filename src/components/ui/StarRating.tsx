@@ -21,6 +21,9 @@ export function StarRating({
   disabled?: boolean
 }) {
   const [hover, setHover] = useState<number | null>(null)
+  // La campaña es la única fuente de verdad. `useDeliverableAction` actualiza
+  // esa caché de forma optimista antes de enviar el PATCH, por lo que el valor
+  // cambia inmediatamente y queda sincronizado con el dato que se guarda.
   const display = hover ?? value ?? 0
   const dim = size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5'
 
@@ -31,7 +34,10 @@ export function StarRating({
           key={n}
           type="button"
           disabled={disabled}
-          onClick={e => { e.stopPropagation(); onChange(n) }}
+          onClick={e => {
+            e.stopPropagation()
+            onChange(n)
+          }}
           onMouseEnter={() => setHover(n)}
           className="disabled:cursor-not-allowed"
           title={`${n} estrella${n !== 1 ? 's' : ''}`}

@@ -245,14 +245,16 @@ function TagInput({ value = [], onChange, placeholder = 'Agregar tag' }: { value
   )
 }
 
-function CollaboratorSelector({ campaignId, value = [], onChange }: { campaignId: string; value?: string[]; onChange: (ids: string[]) => void }) {
+function CollaboratorSelector({ campaignId, ensureDraft, value = [], onChange }: { campaignId?: string | null; ensureDraft: () => Promise<string | null>; value?: string[]; onChange: (ids: string[]) => void }) {
   const [instagram, setInstagram] = useState('')
   const [busy, setBusy] = useState(false)
   async function add() {
     if (!instagram.trim()) return
     setBusy(true)
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/brands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instagram, name: instagram.replace(/^@/, '') }) })
+      const id = campaignId ?? await ensureDraft()
+      if (!id) throw new Error('Completa nombre, tipo y plataforma para agregar una marca colaboradora')
+      const res = await fetch(`/api/campaigns/${id}/brands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instagram, name: instagram.replace(/^@/, '') }) })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'No se pudo agregar la marca')
       if (!value.includes(json.data.brand_id)) onChange([...value, json.data.brand_id])
@@ -349,6 +351,8 @@ function Step1({ register, control, errors, planGating = false, canOpen = true, 
       </div>
 
       <BriefFileUpload campaignId={campaignId} ensureDraft={ensureDraft} />
+
+      <Controller control={control} name="collaborator_ids" render={({ field }) => <CollaboratorSelector campaignId={campaignId} ensureDraft={ensureDraft} value={field.value ?? []} onChange={field.onChange} />} />
 
       {watchedType === 'event_appearance' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-violet-100 bg-violet-50 p-4">
@@ -593,13 +597,14 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
 // ── Step 3 — Contenido ────────────────────────────────────────────────────────
 function Step3({ register, control, setValue, campaignType, campaignId }: StepProps & { campaignId?: string | null }) {
   const currentTemplates = useWatch({ control, name: 'deliverable_templates' }) ?? []
+  const requiredTags = useWatch({ control, name: 'social_tags' }) ?? []
   const suggested = campaignType ? (CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []) : []
   const typeLabel = CAMPAIGN_TYPES.find(t => t.value === campaignType)?.label
 
   // Auto-fill on first entry to this step (when templates still empty)
   useEffect(() => {
     if (suggested.length > 0 && currentTemplates.length === 0 && setValue) {
-      setValue('deliverable_templates', suggested.map(s => ({ ...s, due_date: '' })))
+      setValue('deliverable_templates', suggested.map(s => ({ ...s, due_date: '', tag_handles: requiredTags })))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -624,7 +629,7 @@ function Step3({ register, control, setValue, campaignType, campaignId }: StepPr
             {currentTemplates.length === 0 && (
               <button
                 type="button"
-                onClick={() => setValue?.('deliverable_templates', suggested.map(s => ({ ...s, due_date: '' })))}
+                onClick={() => setValue?.('deliverable_templates', suggested.map(s => ({ ...s, due_date: '', tag_handles: requiredTags })))}
                 className="text-xs text-violet-600 font-semibold hover:underline whitespace-nowrap"
               >
                 Restaurar
@@ -636,44 +641,10 @@ function Step3({ register, control, setValue, campaignType, campaignId }: StepPr
         <p className="text-xs text-gray-400 mb-2">Selecciona los tipos y agrega detalles. Se asignarán a cada influencer en la campaña.</p>
         <Controller control={control} name="deliverable_templates"
           render={({ field }) => (
-            <DeliverableTemplateBuilder value={field.value} onChange={field.onChange} />
+            <DeliverableTemplateBuilder value={field.value} onChange={field.onChange} defaultTagHandles={requiredTags} />
           )} />
       </div>
 
-      {campaignId && <Controller control={control} name="collaborator_ids" render={({ field }) => <CollaboratorSelector campaignId={campaignId} value={field.value ?? []} onChange={field.onChange} />} />}
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Tags obligatorios en publicaciones
-        </label>
-        <p className="text-xs text-gray-400 mb-2">Se muestran al influencer como requisito en cada post/historia</p>
-        <Controller control={control} name="social_tags"
-          render={({ field }) => (
-            <TagInput value={field.value} onChange={field.onChange} placeholder="@influencers.snc o @marca" />
-          )} />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Hashtags</label>
-        <Controller control={control} name="hashtags"
-          render={({ field }) => <HashtagInput value={field.value} onChange={field.onChange} />} />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Link de referencia o instrucciones</label>
-          <input type="url" {...register('reference_url')} className="input-base w-full" placeholder="https://drive.google.com/..." />
-          <p className="text-xs text-gray-400 mt-1">Disponible también para Stories.</p>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Tags internos <span className="text-gray-400 text-xs">(opcional)</span>
-        </label>
-        <Controller control={control} name="tags"
-          render={({ field }) => <TagInput value={field.value} onChange={field.onChange} placeholder="Ej. q2, verano, nike" />} />
-      </div>
 
       <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
         <Controller control={control} name="approval_required"

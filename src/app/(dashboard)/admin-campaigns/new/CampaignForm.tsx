@@ -80,6 +80,7 @@ const schema = z.object({
   approval_submission_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
   reference_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
   brief_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
+  collaborator_ids: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   deliverable_templates: z.array(deliverableSchema).optional(),
   campaign_benefits: z.array(campaignBenefitSchema).optional(),
@@ -238,6 +239,35 @@ function TagInput({ value = [], onChange, placeholder = 'Agregar tag' }: { value
           </span>
         ))}
       </div>
+    </div>
+  )
+}
+
+function CollaboratorSelector({ campaignId, value = [], onChange }: { campaignId: string; value?: string[]; onChange: (ids: string[]) => void }) {
+  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([])
+  const [busy, setBusy] = useState<string | null>(null)
+  useEffect(() => {
+    fetch('/api/brands').then(r => r.ok ? r.json() : null).then(json => setBrands(json?.data ?? [])).catch(() => undefined)
+  }, [])
+  async function add(brandId: string) {
+    if (value.includes(brandId)) return
+    setBusy(brandId)
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/brands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brand_id: brandId }) })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo agregar la marca')
+      onChange([...value, brandId])
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo agregar la marca') }
+    finally { setBusy(null) }
+  }
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">Marcas colaboradoras <span className="text-gray-400 text-xs">(opcional)</span></label>
+      <p className="text-xs text-gray-400 mb-2">Se agregan a esta campaña y podrán aparecer en las instrucciones de tag.</p>
+      <div className="flex flex-wrap gap-2">
+        {brands.filter(brand => !value.includes(brand.id)).map(brand => <button key={brand.id} type="button" disabled={busy === brand.id} onClick={() => add(brand.id)} className="px-3 py-1.5 rounded-full border border-gray-200 text-sm text-gray-700 hover:border-violet-400 hover:text-violet-700 disabled:opacity-50">+ {brand.name}</button>)}
+      </div>
+      {value.length > 0 && <p className="text-xs text-emerald-600 mt-2">{value.length} marca{value.length === 1 ? '' : 's'} colaboradora{value.length === 1 ? '' : 's'} agregada{value.length === 1 ? '' : 's'}.</p>}
     </div>
   )
 }
@@ -577,7 +607,7 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
 // DeliverableTemplateBuilder now imported from @/components/campaigns/DeliverableTemplateBuilder
 
 // ── Step 3 — Contenido ────────────────────────────────────────────────────────
-function Step3({ register, control, setValue, campaignType }: StepProps) {
+function Step3({ register, control, setValue, campaignType, campaignId }: StepProps & { campaignId?: string | null }) {
   const currentTemplates = useWatch({ control, name: 'deliverable_templates' }) ?? []
   const suggested = campaignType ? (CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []) : []
   const typeLabel = CAMPAIGN_TYPES.find(t => t.value === campaignType)?.label
@@ -625,6 +655,8 @@ function Step3({ register, control, setValue, campaignType }: StepProps) {
             <DeliverableTemplateBuilder value={field.value} onChange={field.onChange} />
           )} />
       </div>
+
+      {campaignId && <Controller control={control} name="collaborator_ids" render={({ field }) => <CollaboratorSelector campaignId={campaignId} value={field.value ?? []} onChange={field.onChange} />} />}
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -822,6 +854,7 @@ export function CampaignForm({
       approval_submission_url: '',
       reference_url: '',
       brief_url: '',
+      collaborator_ids: [],
     },
   })
 
@@ -1028,7 +1061,7 @@ export function CampaignForm({
         <div className="card p-6">
           {step === 1 && <Step1 register={register} control={control} errors={errors} planGating={planGating} canOpen={canOpen} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
-          {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} />}
+          {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} campaignId={campaignId} />}
         </div>
 
         {/* Navigation */}

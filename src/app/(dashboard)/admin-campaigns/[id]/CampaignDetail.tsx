@@ -393,6 +393,7 @@ function DeliverableInfluencerGroup({
   attendanceReminder?: { selected: boolean; sending: boolean; onSelected: (selected: boolean) => void; onSend: () => void }
 }) {
   const [open, setOpen] = useState(false)
+  const noShow = items.some(item => item.type === 'event_attendance' && item.attendance_outcome === 'no_show')
 
   // Estado por deliverable del grupo — para que el header diga "en revisión"
   // / "aprobado" en vez de solo el conteo, y se sepa sin abrir cuál necesita
@@ -402,7 +403,9 @@ function DeliverableInfluencerGroup({
     return acc
   }, {})
   const STATUS_ORDER: DeliverableStatus[] = ['in_review', 'rejected', 'pending', 'approved', 'published']
-  const statusBadges = (
+  const statusBadges = noShow ? (
+    <span className="badge bg-gray-200 text-gray-600 text-[11px]">No asistió</span>
+  ) : (
     <div className="flex items-center gap-1.5 flex-wrap justify-end">
       {STATUS_ORDER.filter(s => statusCounts[s]).map(s => (
         <span key={s} className={cn('badge text-[11px]', DEL_CONFIG[s].cls)}>
@@ -429,7 +432,7 @@ function DeliverableInfluencerGroup({
   // que completaron". Al desplegar, solo se listan los links ya entregados
   // (items ya viene filtrado a solo eso — nunca los pendientes).
   return (
-    <div className="card p-2 space-y-1.5">
+    <div className={cn('card p-2 space-y-1.5', noShow && 'bg-gray-100 opacity-70 grayscale')}>
       <div className="flex items-center justify-between gap-3 cursor-pointer" onClick={() => setOpen(v => !v)}>
         <div className="flex items-center gap-3 flex-wrap">
           <InfluencerBadge influencer={influencer} igUsername={igUsername} />
@@ -961,6 +964,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [infSearch, setInfSearch] = useState('')
   const [infPlatform, setInfPlatform] = useState('')
   const [infStatus, setInfStatus] = useState('')
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'confirmed' | 'no_show' | 'unconfirmed'>('all')
   const [ciVisibleColumns, setCiVisibleColumns] = useLocalStorageState<Record<CiColumnKey, boolean>>(
     'scence:campaign-detail:approved-influencers:visibleColumns', DEFAULT_CI_COLUMNS
   )
@@ -1312,12 +1316,29 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   })
   const infFiltersActive = !!(infSearch || infPlatform || infStatus)
   const campaignDeliverables = c.campaign_deliverables ?? []
-  const noShowInfluencerIds = new Set(campaignDeliverables.filter(d => d.type === 'event_attendance' && d.attendance_outcome === 'no_show').map(d => d.influencer?.id).filter((id): id is string => Boolean(id)))
+  const attendanceFor = (ci: typeof confirmedInfluencers[number]) => campaignDeliverables.find(d => {
+    const campaignInfluencerId = (d as CampaignDeliverableDetail & { campaign_influencer_id?: string | null }).campaign_influencer_id
+    return d.type === 'event_attendance' && (campaignInfluencerId === ci.id || d.influencer?.id === ci.influencer?.id)
+  })
+  const attendanceConfirmedInfluencers = confirmedInfluencers.filter(ci => attendanceFor(ci)?.attendance_response === 'confirmed' && attendanceFor(ci)?.attendance_outcome !== 'no_show')
+  const noShowInfluencers = confirmedInfluencers.filter(ci => attendanceFor(ci)?.attendance_outcome === 'no_show')
+  const unconfirmedInfluencers = confirmedInfluencers.filter(ci => {
+    const attendance = attendanceFor(ci)
+    return attendance && attendance.attendance_response !== 'confirmed' && attendance.attendance_outcome !== 'no_show'
+  })
+  const noShowInfluencerIds = new Set(noShowInfluencers.map(ci => ci.influencer?.id).filter((id): id is string => Boolean(id)))
   const activeConfirmedInfluencers = confirmedInfluencers.filter(ci => !noShowInfluencerIds.has(ci.influencer?.id ?? ''))
+  const attendanceFilteredInfluencers = filteredInfluencers.filter(ci => {
+    if (attendanceFilter === 'all') return true
+    if (attendanceFilter === 'confirmed') return attendanceConfirmedInfluencers.some(candidate => candidate.id === ci.id)
+    if (attendanceFilter === 'no_show') return noShowInfluencers.some(candidate => candidate.id === ci.id)
+    return unconfirmedInfluencers.some(candidate => candidate.id === ci.id)
+  })
   const pendingAttendanceInfluencerIds = Array.from(new Set(campaignDeliverables
     .filter(d => d.type === 'event_attendance' && d.status === 'pending' && !d.attendance_response && !!d.influencer?.id)
     .map(d => d.influencer!.id)))
   const visiblePendingAttendanceInfluencerIds = filteredInfluencers
+    .filter(ci => attendanceFilteredInfluencers.some(candidate => candidate.id === ci.id))
     .map(ci => ci.influencer?.id)
     .filter((influencerId): influencerId is string => !!influencerId && pendingAttendanceInfluencerIds.includes(influencerId))
 
@@ -1383,12 +1404,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
            ['in_review','approved','rejected','published'].includes(d.status)
   })
 
-  const submittedForCount = visibleDeliverables
-  const deliverableCount = submittedForCount.length
-  const deliverableDone  = submittedForCount.filter(d => d.status === 'published').length
+  const reelDeliverables = campaignDeliverables.filter(d => d.type === 'reel')
+  const deliverableCount = reelDeliverables.length
+  const deliverableDone  = reelDeliverables.filter(d => d.status === 'published').length
   // Average progress: published=100, others use progress field
   const avgProgress = deliverableCount > 0
-    ? Math.round(submittedForCount.reduce((sum, d) => {
+    ? Math.round(reelDeliverables.reduce((sum, d) => {
         if (d.status === 'published') return sum + 100
         return sum + (d.progress ?? 0)
       }, 0) / deliverableCount)
@@ -1405,7 +1426,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const isEligibleCampaignResult = (d: CampaignDeliverableDetail) =>
     !d.influencer?.id || !noShowInfluencerIds.has(d.influencer.id)
   const deliverablesWithMetrics = campaignDeliverables.filter(d =>
-    d.performance != null && isEligibleCampaignResult(d) && (d.status === 'approved' || d.status === 'published')
+    d.type === 'reel' && d.performance != null && isEligibleCampaignResult(d) && (d.status === 'approved' || d.status === 'published')
   )
   const hasCampaignMetrics = deliverablesWithMetrics.length > 0
   const totalViews    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
@@ -1493,8 +1514,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       if (!response.ok) throw new Error(json.error ?? 'No se pudo guardar el evento')
       await patchCampaign.mutateAsync({
         name: eventForm.name.trim(),
-        start_date: eventForm.starts_at.slice(0, 10),
-        end_date: eventForm.ends_at.slice(0, 10),
         address: eventForm.location.trim(),
       })
       await refetch()
@@ -1714,6 +1733,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   function goToKpiSection(target: Tab, openPendingApplications = false) {
     setTab(target)
     if (openPendingApplications) setPendingApplicationsOpen(true)
+  }
+
+  function showAttendanceKpi(filter: 'confirmed' | 'no_show' | 'unconfirmed') {
+    setAttendanceFilter(filter)
+    setTab('influencers')
   }
 
   async function handleStatusAction(action: string) {
@@ -1960,15 +1984,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
       {/* Resumen del evento: la hora y el lugar son la información principal. */}
       <div className="card overflow-hidden p-4 sm:p-5">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-          <div className="flex h-20 flex-shrink-0 gap-2">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+          <div className="flex-shrink-0">
+            <div className="flex h-20 gap-2">
             {eventDateDay && <div className="flex w-14 flex-col items-center justify-center rounded-xl border border-gray-200 bg-white text-center"><span className="text-[10px] font-bold tracking-wide text-violet-700">{eventDateWeekday}</span><span className="text-2xl font-bold leading-none text-gray-950">{eventDateDay}</span><span className="text-[10px] font-semibold text-gray-500">{eventDateMonth}</span></div>}
             <div className="relative w-28 overflow-hidden rounded-xl border border-violet-100 bg-violet-50 shadow-sm">
               {coverAsset?.signed_url ? <img src={String(coverAsset.signed_url)} alt="Banner de campaña" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Target className="h-7 w-7 text-violet-500" /></div>}
               {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} title={coverAsset ? 'Cambiar banner' : 'Subir banner'} aria-label={coverAsset ? 'Cambiar banner' : 'Subir banner'} className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-violet-700 shadow-md transition hover:bg-violet-700 hover:text-white disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5" /></button></>}
             </div>
+            </div>
+            {!editingEvent && (c.start_date || c.end_date) && <div className="mt-2 flex max-w-48 items-start gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] font-medium leading-tight text-gray-600"><Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" /><span>Campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}</span></div>}
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1 lg:min-w-[260px]">
             <div className="mb-1 flex items-center gap-1.5">
               {Boolean(campaignBrands[0]?.name) && (
                 <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-gray-500">{String(campaignBrands[0].name)}</p>
@@ -2001,13 +2028,20 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
               {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
-            {!editingEvent && (c.start_date || c.end_date) && <div className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-gray-600"><Calendar className="h-4 w-4 text-violet-600" />Duración de campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}</div>}
             {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><>{eventDateLabel && <span className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}</span>}{eventTime && <span className="inline-flex items-center gap-2 font-semibold text-gray-900"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</span>}<span className="inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" /><span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span></span><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
           </div>
-          <div className="grid w-full grid-cols-3 gap-2 sm:w-[360px] sm:flex-none">
-            <button type="button" onClick={() => goToKpiSection('influencers')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver influencers seleccionadas">
-              <div className="text-sm font-bold text-gray-900">{noShowInfluencerIds.size > 0 ? noShowInfluencerIds.size : activeConfirmedInfluencers.length}</div>
-              <div className="text-[10px] font-medium text-gray-500">{noShowInfluencerIds.size > 0 ? 'No asistió' : 'Aprobadas'}</div>
+          <div className="grid w-full grid-cols-3 gap-2 lg:w-[360px] lg:flex-none">
+            <button type="button" onClick={() => showAttendanceKpi('confirmed')} className="rounded-lg bg-emerald-50 px-2 py-1.5 text-center transition hover:bg-emerald-100 hover:ring-1 hover:ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300" title="Ver confirmadas que asistieron">
+              <div className="text-sm font-bold text-emerald-700">{attendanceConfirmedInfluencers.length}</div>
+              <div className="text-[10px] font-medium text-emerald-700">Confirmaron</div>
+            </button>
+            <button type="button" onClick={() => showAttendanceKpi('no_show')} className="rounded-lg bg-gray-100 px-2 py-1.5 text-center transition hover:bg-gray-200 hover:ring-1 hover:ring-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400" title="Ver confirmadas que no asistieron">
+              <div className="text-sm font-bold text-gray-700">{noShowInfluencers.length}</div>
+              <div className="text-[10px] font-medium text-gray-600">No asistieron</div>
+            </button>
+            <button type="button" onClick={() => showAttendanceKpi('unconfirmed')} className="rounded-lg bg-amber-50 px-2 py-1.5 text-center transition hover:bg-amber-100 hover:ring-1 hover:ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300" title="Ver aprobadas que no confirmaron asistencia">
+              <div className="text-sm font-bold text-amber-700">{unconfirmedInfluencers.length}</div>
+              <div className="text-[10px] font-medium text-amber-700">No confirmaron</div>
             </button>
             <button type="button" onClick={() => goToKpiSection('influencers', true)} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver solicitudes pendientes">
               <div className="text-sm font-bold text-gray-900">{pendingApplications.length}</div>
@@ -2492,7 +2526,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           />
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">
-              {infFiltersActive ? `${filteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
+              {(infFiltersActive || attendanceFilter !== 'all') ? `${attendanceFilteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
             </p>
             <div className="flex items-center gap-2">
               {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
@@ -2648,6 +2682,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
               </div>
 
+              <div className="relative">
+                <select value={attendanceFilter} onChange={e => setAttendanceFilter(e.target.value as typeof attendanceFilter)} className={cn('input-base appearance-none pr-8 cursor-pointer', attendanceFilter !== 'all' && 'border-violet-400 text-violet-700')}>
+                  <option value="all">Toda la asistencia</option>
+                  <option value="confirmed">Confirmaron</option>
+                  <option value="no_show">No asistieron</option>
+                  <option value="unconfirmed">No confirmaron</option>
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+              </div>
+
               <ColumnVisibilityMenu
                 columns={CI_COLUMNS}
                 visible={ciVisibleColumns}
@@ -2655,9 +2699,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 onReset={() => setCiVisibleColumns(DEFAULT_CI_COLUMNS)}
               />
 
-              {infFiltersActive && (
+              {(infFiltersActive || attendanceFilter !== 'all') && (
                 <button
-                  onClick={() => { setInfSearch(''); setInfPlatform(''); setInfStatus('') }}
+                  onClick={() => { setInfSearch(''); setInfPlatform(''); setInfStatus(''); setAttendanceFilter('all') }}
                   className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700 px-3 py-2 rounded-lg hover:bg-violet-50 transition-colors"
                 >
                   <X className="h-3.5 w-3.5" /> Limpiar
@@ -2679,7 +2723,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </Link>
               </div>
             )
-          ) : filteredInfluencers.length === 0 ? (
+          ) : attendanceFilteredInfluencers.length === 0 ? (
             <div className="card p-12 text-center">
               <Search className="h-10 w-10 text-gray-200 mx-auto mb-3" />
               <p className="text-sm text-gray-400">No se encontraron influencers con esos filtros.</p>
@@ -2741,7 +2785,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredInfluencers.map((ci, i) => {
+                  {attendanceFilteredInfluencers.map((ci, i) => {
                     const inf = ci.influencer
                     if (!inf) return null
                     const primarySP = inf.influencer_social_profiles?.[0]

@@ -134,9 +134,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ('social_tags' in body) updates.mention_handles = body.social_tags
 
   const statusByAction: Record<string, string> = {
-    draft: 'draft',
     submit_for_approval: 'pending_approval',
-    activate: 'pending_approval',
     pause: 'paused',
     complete: 'completed',
   }
@@ -145,8 +143,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     updates.status = statusByAction[body.action]
   }
 
-  // Una marca nunca puede activar directamente, aunque manipule el frontend.
-  if (updates.status === 'active') updates.status = 'pending_approval'
+  // La marca nunca publica por su cuenta. Su única transición hacia
+  // publicación es enviar a revisión; un administrador decide la activación.
+  if (body.action === 'activate' || body.status === 'active') {
+    return NextResponse.json({ error: 'La campaña debe ser aprobada por un administrador antes de activarse' }, { status: 403 })
+  }
 
   if (body.action === 'close_applications') {
     updates.applications_closed_at = new Date().toISOString()

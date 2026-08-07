@@ -756,6 +756,7 @@ export function CampaignForm({
   const [draftSaving, setDraftSaving] = useState(false)
   const [campaignId, setCampaignId] = useState<string | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
+  const [brandInstagramTag, setBrandInstagramTag] = useState<string | null>(null)
 
   // ── Plan gating (solo cuando planGating=true, portal marca) ──────────────
   const [orgPlan, setOrgPlan] = useState<string>('free')
@@ -835,6 +836,7 @@ export function CampaignForm({
       const handle = raw.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/\/.*/, '')
       if (!handle) return
       const tag = `@${handle}`.toLowerCase()
+      setBrandInstagramTag(tag)
       const current = getValues('social_tags') ?? []
       setValue('social_tags', Array.from(new Set(['@influencers.snc', tag, ...current])))
     }).catch(() => undefined)
@@ -848,7 +850,11 @@ export function CampaignForm({
       end_date: data.end_date || null,
       budget_total: (data.budget_total !== undefined && !isNaN(data.budget_total as number)) ? data.budget_total : (data.type === 'commission' ? 0 : null),
       goals: data.goals ?? {},
-      social_tags: data.social_tags ?? [],
+      social_tags: Array.from(new Set([
+        '@influencers.snc',
+        ...(brandInstagramTag ? [brandInstagramTag] : []),
+        ...(data.social_tags ?? []),
+      ])),
       deliverable_templates: data.deliverable_templates ?? [],
       campaign_benefits: data.campaign_benefits ?? [],
       commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,

@@ -294,7 +294,7 @@ function BriefFileUpload({ campaignId, ensureDraft }: { campaignId?: string | nu
   return <div>
     <label className="block text-sm font-medium text-gray-700 mb-1.5">Brief para influencers</label>
     <input type="file" accept=".pdf,.doc,.docx,image/*" disabled={uploading} onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void upload(file) }} className="input-base w-full bg-white" />
-    <p className="text-xs text-gray-400 mt-1">PDF, Word o imagen. Es el mismo documento que verá la influencer al ser aprobada.</p>
+    <p className="text-xs text-gray-400 mt-1">PDF, Word o imagen. Se habilita solo al aprobar a la influencer. Úsalo para los detalles adicionales de la campaña.</p>
     {filename && <p className="text-xs font-medium text-emerald-600 mt-1">✓ {filename}</p>}
   </div>
 }
@@ -344,7 +344,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true, 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">Guía de contenido</label>
         <textarea {...register('content_guidelines')} rows={5} className="input-base w-full resize-none" placeholder="Qué debe incluir el contenido, tono, referencias y restricciones…" />
-        <p className="text-xs text-gray-400 mt-1">Las influencers la verán cuando sean aprobadas.</p>
+        <p className="text-xs text-gray-400 mt-1">Esto es lo único que las influencers verán junto con la fecha antes de postular. Resume lo necesario para decidir; los detalles adicionales van en el Brief.</p>
       </div>
 
       <BriefFileUpload campaignId={campaignId} ensureDraft={ensureDraft} />

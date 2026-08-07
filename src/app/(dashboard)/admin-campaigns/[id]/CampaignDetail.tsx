@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 51477)
-Total output lines: 3623
+Warning: truncated output (original token count: 51574)
+Total output lines: 3625
 
 'use client'
 
@@ -30,6 +30,7 @@ import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
 import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceConfirmationPanel'
+import { CollaborationOpportunitySettings } from '@/components/campaigns/CollaborationOpportunitySettings'
 import { createClient } from '@/lib/supabase/client'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
@@ -1994,7 +1995,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {canEditCampaign && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={() => openEventEditor('name')} title="Editar nombre" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {editingEvent && eventEditTarget === 'name' ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.targe…1477 tokens truncated…ter gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span>
+              {editingEvent && eventEditTarget === '…1574 tokens truncated…:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span>
             </div>}
           </div>
           <div className="grid w-full grid-cols-3 gap-2 sm:w-[360px] sm:flex-none">
@@ -2072,6 +2073,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           />
         )}
         <div className="space-y-4">
+            <CollaborationOpportunitySettings campaignId={id} initial={((c as CampaignDetail & { metadata?: Record<string, unknown> }).metadata?.collaboration_opportunity as Record<string, unknown> | undefined)} canEdit={!isBrandPortal || c._brand_permissions?.canEdit === true} />
             {/* Guías de contenido — movida arriba (antes al final de la columna,
                 casi invisible después de scrollear). Pri: "necesito que al abrir
                 el overview lo entienda por completo las marcas... las guías de

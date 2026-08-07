@@ -76,6 +76,7 @@ type PreviewCampaign = {
   max_influencers: number | null
   accepted_count: number
   brand: { id: string; name: string; logo_url: string | null; website: string | null } | null
+  campaign_brands?: Array<{ id: string; brand: { id: string; name: string; instagram?: string | null } | null }>
   _applied: boolean
   application_status: string | null
   campaign_benefits: CampaignBenefitOffer[]
@@ -500,6 +501,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
           {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, title: null, location: null, status: null }} showLocation={false} />}
 
+          {(p.campaign_brands?.length ?? 0) > 0 && <div className="mt-3 rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{p.campaign_brands?.map(row => row.brand && (row.brand.instagram ? <a key={row.id} href={`https://instagram.com/${row.brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700"><Instagram className="h-3.5 w-3.5" />@{row.brand.instagram.replace(/^@/, '')}</a> : <span key={row.id} className="inline-flex items-center rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-sm font-semibold text-gray-700">{row.brand.name}</span>))}</div></div>}
+
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
             <div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
@@ -788,7 +791,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         {!isPending && (
           <div className="mt-4 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              {isAccepted && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas que debes mencionar</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
+              {participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
               <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
                 <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>

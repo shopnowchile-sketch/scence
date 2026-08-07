@@ -53,7 +53,7 @@ export function Sidebar() {
       title: 'Principal',
       items: [
         { href: '/admin-dash',        label: 'Dashboard',   icon: LayoutDashboard, exact: true },
-        { href: '/admin-campaigns',   label: 'Campañas',    icon: Target,          badge: reviewCount, badgeColor: 'bg-red-500' },
+        { href: reviewCount ? '/admin-campaigns?status=pending_approval' : '/admin-campaigns', label: 'Campañas', icon: Target, badge: reviewCount, badgeColor: 'bg-red-500' },
         ...(isAdmin ? [
           { href: '/admin-influencers', label: 'Influencers', icon: Users },
           { href: '/admin-influencers/ranking', label: 'Ranking', icon: Trophy },

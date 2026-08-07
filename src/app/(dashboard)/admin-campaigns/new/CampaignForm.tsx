@@ -870,7 +870,7 @@ export function CampaignForm({
 
   // Auto-guardado: crea (o actualiza) la campaña como 'draft' al avanzar de paso,
   // para que quede guardada aunque el usuario no llegue a "Crear campaña".
-  async function saveDraft(): Promise<string | null> {
+  async function saveDraft(options: { showError?: boolean } = {}): Promise<string | null> {
     if (draftSaving) return campaignId
     let savedId = campaignId
     setDraftSaving(true)
@@ -882,23 +882,26 @@ export function CampaignForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (res.ok) {
-          const { data: campaign } = await res.json()
-          setCampaignId(campaign.id)
-          savedId = campaign.id
-          setDraftSavedAt(new Date())
-        }
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json.error ?? 'No se pudo crear el borrador')
+        const { data: campaign } = json
+        setCampaignId(campaign.id)
+        savedId = campaign.id
+        setDraftSavedAt(new Date())
       } else {
         const res = await fetch(`${apiEndpoint}/${campaignId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (res.ok) setDraftSavedAt(new Date())
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json.error ?? 'No se pudo guardar el borrador')
+        setDraftSavedAt(new Date())
       }
-    } catch {
+    } catch (error) {
       // Silencioso: el auto-guardado no debe bloquear el flujo del wizard.
       savedId = null
+      if (options.showError) throw error
     } finally {
       setDraftSaving(false)
     }
@@ -1038,7 +1041,14 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-6">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} planGating={planGating} canOpen={canOpen} campaignId={campaignId} ensureDraft={saveDraft} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} planGating={planGating} canOpen={canOpen} campaignId={campaignId} ensureDraft={async () => {
+            const valid = await trigger(['name', 'type', 'platforms'])
+            if (!valid) {
+              toast.error('Para subir el brief, completa nombre, tipo y plataforma.')
+              return null
+            }
+            return saveDraft({ showError: true })
+          }} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
           {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} campaignId={campaignId} />}
         </div>

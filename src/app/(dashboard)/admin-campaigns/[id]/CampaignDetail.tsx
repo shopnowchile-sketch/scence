@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 51574)
-Total output lines: 3625
-
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -701,6 +698,7 @@ function PrimaryBrandManager({
 }: {
   campaignId: string
   brands: Array<{ id?: string; name?: string; _role?: string }>
+
   canManage: boolean
   onChanged: () => void
 }) {
@@ -1401,6 +1399,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // suma deliverables ya sincronizados (performance != null). No incluye
   // reach/impresiones/guardados/compartidos porque no existen (ver
   // src/lib/deliverables/apify-metrics.ts). Engagement siempre "calculado".
+
   // El resultado de campaña representa únicamente contenido válido: aprobado
   // o publicado. Si una influencer confirmó pero no asistió, se excluyen todos
   // sus entregables del resultado para no inflar engagement ni visualizaciones.
@@ -1995,7 +1994,50 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {canEditCampaign && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={() => openEventEditor('name')} title="Editar nombre" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {editingEvent && eventEditTarget === '…1574 tokens truncated…:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span>
+              {editingEvent && eventEditTarget === 'name' ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
+              {isBrandPortal ? (
+                <CampaignStatusBadge status={c.status} />
+              ) : (
+                <div className="relative inline-flex">
+                  <select
+                    value={c.status}
+                    disabled={patchCampaign.isPending}
+                    onChange={e => handleStatusChange(e.target.value as CampaignStatus)}
+                    title="Cambiar estado de la campaña"
+                    className={cn(
+                      'badge appearance-none cursor-pointer pr-5 border-0 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50 disabled:cursor-not-allowed',
+                      campaignStatusBadgeClass(c.status)
+                    )}
+                  >
+                    {CAMPAIGN_STATUS_OPTIONS.map(s => (
+                      <option key={s} value={s}>{campaignStatusLabel(s)}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="h-3 w-3 pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-60" />
+                </div>
+              )}
+              <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
+              {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
+            </div>
+            {editingEvent && eventEditTarget === 'details' ? (
+              <div className="mt-3 max-w-3xl space-y-2">
+                {eventForm.schedule.map((slot, index) => <div key={index} className="flex flex-wrap items-center gap-2">
+                  <Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" />
+                  <input type="datetime-local" aria-label={`Inicio día ${index + 1}`} value={slot.starts_at} onChange={e => setEventForm(previous => ({ ...previous, schedule: previous.schedule.map((item, itemIndex) => itemIndex === index ? { ...item, starts_at: e.target.value } : item) }))} className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" />
+                  <input type="datetime-local" aria-label={`Fin día ${index + 1}`} value={slot.ends_at} onChange={e => setEventForm(previous => ({ ...previous, schedule: previous.schedule.map((item, itemIndex) => itemIndex === index ? { ...item, ends_at: e.target.value } : item) }))} className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" />
+                  <button type="button" onClick={() => setEventForm(previous => ({ ...previous, schedule: previous.schedule.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600" title="Quitar día"><X className="h-4 w-4" /></button>
+                </div>)}
+                <button type="button" onClick={() => setEventForm(previous => ({ ...previous, schedule: [...previous.schedule, { starts_at: '', ends_at: '' }] }))} className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 hover:underline"><Plus className="h-3.5 w-3.5" /> Agregar día y horario</button>
+                <label className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" />
+                  <input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" />
+                </label>
+              </div>
+            ) : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+              {eventDateLabel ? <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex items-center gap-2 font-medium text-gray-800 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}{eventSchedule.length > 1 ? ` + ${eventSchedule.length - 1} día${eventSchedule.length === 2 ? '' : 's'}` : ''}</button> : <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex items-center gap-2 font-medium text-gray-500 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><Calendar className="h-4 w-4 text-violet-600" />Fecha y hora por confirmar</button>}
+              {eventTime && <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex items-center gap-2 font-semibold text-gray-900 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</button>}
+              <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex min-w-0 items-center gap-2 text-gray-800 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><MapPin className="h-4 w-4 shrink-0 text-violet-600" /><span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span></button>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span>
             </div>}
           </div>
           <div className="grid w-full grid-cols-3 gap-2 sm:w-[360px] sm:flex-none">
@@ -2058,6 +2100,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {tab === 'overview' && (
         <>
         {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
+
           <CampaignBrandsPanel
             campaignId={id}
             brands={campaignBrands.map(brand => ({
@@ -2758,6 +2801,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       >
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                           {attendancePending && (
+
                             <input
                               type="checkbox"
                               checked={attendanceReminderSelection.has(inf.id)}
@@ -3458,6 +3502,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <button type="button" onClick={() => setShowCampaignInvoiceModal(true)}
                   className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-lg hover:bg-violet-700">
                   <Plus className="h-4 w-4" /> Crear factura
+
                 </button>
               )}
               <Link href={isBrandPortal ? '/brand-billing' : `/admin-billing?campaign_id=${id}`} className="text-sm font-semibold text-violet-600 hover:underline">

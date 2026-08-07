@@ -527,7 +527,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           )}
 
-          {(p.description || p.content_guidelines) && <div className="mt-3 rounded-xl bg-gray-50 px-3 py-3"><p className="text-xs font-bold text-gray-700">Sobre esta campaña</p>{p.description && <p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">{p.description}</p>}{p.content_guidelines && <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">{p.content_guidelines}</p>}</div>}
+          {p.content_guidelines && <div className="mt-3 rounded-xl bg-gray-50 px-3 py-3"><p className="text-xs font-bold text-gray-700">Guía de contenido</p><p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">{p.content_guidelines}</p></div>}
         </div>
 
         {(p.campaign_benefits?.length ?? 0) > 0 && (
@@ -763,7 +763,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
           return uploadedBrief
             ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />
-            : <CollapsibleBrief text={c.description} guidelines={c.content_guidelines} briefUrl={c.brief_url} />
+            : <CollapsibleBrief text={null} guidelines={c.content_guidelines} briefUrl={c.brief_url} />
         })()}
 
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">

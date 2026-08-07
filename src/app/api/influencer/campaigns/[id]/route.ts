@@ -32,7 +32,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       start_date, end_date, budget_total, currency, hashtags, platforms,
       deliverable_templates, application_deadline, applications_closed_at, max_influencers, application_questions,
       campaign_benefits,
-      brand:brands!brand_id (id, name, logo_url, website)
+      brand:brands!brand_id (id, name, logo_url, website),
+      campaign_brands (id, brand:brands!brand_id (id, name, instagram))
     `)
     .eq('id', params.id)
     .eq('organization_id', influencer.organization_id)
@@ -79,7 +80,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Control de acceso por estado (opción A): solo una postulación/invitación
   // ACEPTADA desbloquea el detalle privado. Antes de aceptar (pending o no
   // postulada) se entrega un DTO público limitado: se ocultan las instrucciones
-  // detalladas (content_guidelines) y el brief privado (brief_url). Los datos
+  // de ubicación y el brief privado (brief_url). Los datos
   // necesarios para decidir (nombre, marca, descripción pública, tipo, fechas,
   // presupuesto/remuneración, entregables generales, plazo) quedan visibles.
   const isAccepted = existing?.application_status === 'accepted'
@@ -87,8 +88,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const covers = await getCampaignCoverUrls(admin, [campaign.id])
   payload.cover_url = covers.get(campaign.id) ?? null
   if (!isAccepted) {
-    // Campos privados: solo tras aceptación.
-    delete payload.content_guidelines
+    // El brief y el lugar son privados hasta la aceptación; la descripción,
+    // requisitos y entregables siguen visibles para decidir si postular.
     delete payload.brief_url
   }
 

@@ -189,8 +189,11 @@ export async function POST(req: NextRequest) {
     max_influencers?: number
     content_guidelines?: string
     hashtags?: string[]
+    social_tags?: string[]
     platforms?: string[]
     address?: string
+    brief_url?: string
+    metadata?: Record<string, unknown>
     deliverable_templates?: DeliverableTemplateInput[]
     application_questions?: string[]
     campaign_benefits?: unknown[]
@@ -202,7 +205,7 @@ export async function POST(req: NextRequest) {
 
   const { name, type, visibility, description, start_date, end_date,
           budget_total, application_deadline, max_influencers,
-          content_guidelines, hashtags, platforms, address, deliverable_templates,
+          content_guidelines, hashtags, social_tags, platforms, address, brief_url, metadata, deliverable_templates,
           application_questions } = body
   const campaignBenefits = normalizeCampaignBenefits(body.campaign_benefits)
 
@@ -253,8 +256,11 @@ export async function POST(req: NextRequest) {
       application_questions: (application_questions ?? []).map(q => String(q ?? '').trim()).filter(Boolean),
       content_guidelines:   content_guidelines ?? null,
       hashtags:             hashtags ?? [],
+      mention_handles:      (social_tags ?? []).map(tag => String(tag).trim()).filter(Boolean),
       platforms:            platforms ?? [],
+      brief_url:            brief_url ?? null,
       metadata: {
+        ...(metadata ?? {}),
         address: (address && String(address).trim()) ? String(address).trim() : null,
       },
       currency:             'CLP',

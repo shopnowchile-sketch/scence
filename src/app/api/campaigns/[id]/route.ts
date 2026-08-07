@@ -145,7 +145,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const campaignWithEvent = { ...data, event_booking: eventBooking ?? null }
 
-  if (user.user_metadata?.is_brand) {
+  const isBrandUser = Boolean(user.user_metadata?.is_brand)
+
+  if (isBrandUser) {
     const access = await getBrandAccess(admin, user.id, params.id)
     if (!access.canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     return NextResponse.json({ data: { ...campaignWithEvent, _brand_permissions: access } })
@@ -173,8 +175,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const isBrandUser = Boolean(user.user_metadata?.is_brand)
 
-  if (user.user_metadata?.is_brand) {
+  if (isBrandUser) {
     const access = await getBrandAccess(admin, user.id, params.id)
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
@@ -291,8 +294,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const isBrandUser = Boolean(user.user_metadata?.is_brand)
 
-  if (user.user_metadata?.is_brand) {
+  if (isBrandUser) {
     const access = await getBrandAccess(admin, user.id, params.id)
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
@@ -331,6 +335,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     fields.applications_closed_at = new Date().toISOString()
   } else if (action === 'reopen_applications') {
     fields.applications_closed_at = null
+  }
+
+  // La marca puede guardar o volver a borrador, pero jamás activar por sí
+  // sola. Cualquier intento de enviar "active" queda en revisión.
+  if (isBrandUser && fields.status === 'active') {
+    fields.status = 'pending_approval'
   }
 
   if ('address' in body) {

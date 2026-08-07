@@ -244,28 +244,27 @@ function TagInput({ value = [], onChange, placeholder = 'Agregar tag' }: { value
 }
 
 function CollaboratorSelector({ campaignId, value = [], onChange }: { campaignId: string; value?: string[]; onChange: (ids: string[]) => void }) {
-  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([])
-  const [busy, setBusy] = useState<string | null>(null)
-  useEffect(() => {
-    fetch('/api/brands').then(r => r.ok ? r.json() : null).then(json => setBrands(json?.data ?? [])).catch(() => undefined)
-  }, [])
-  async function add(brandId: string) {
-    if (value.includes(brandId)) return
-    setBusy(brandId)
+  const [instagram, setInstagram] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function add() {
+    if (!instagram.trim()) return
+    setBusy(true)
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/brands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brand_id: brandId }) })
+      const res = await fetch(`/api/campaigns/${campaignId}/brands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instagram, name: instagram.replace(/^@/, '') }) })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'No se pudo agregar la marca')
-      onChange([...value, brandId])
+      if (!value.includes(json.data.brand_id)) onChange([...value, json.data.brand_id])
+      setInstagram('')
     } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo agregar la marca') }
-    finally { setBusy(null) }
+    finally { setBusy(false) }
   }
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">Marcas colaboradoras <span className="text-gray-400 text-xs">(opcional)</span></label>
-      <p className="text-xs text-gray-400 mb-2">Se agregan a esta campaña y podrán aparecer en las instrucciones de tag.</p>
-      <div className="flex flex-wrap gap-2">
-        {brands.filter(brand => !value.includes(brand.id)).map(brand => <button key={brand.id} type="button" disabled={busy === brand.id} onClick={() => add(brand.id)} className="px-3 py-1.5 rounded-full border border-gray-200 text-sm text-gray-700 hover:border-violet-400 hover:text-violet-700 disabled:opacity-50">+ {brand.name}</button>)}
+      <p className="text-xs text-gray-400 mb-2">Agrega su Instagram para que las influencers sepan qué marca participa.</p>
+      <div className="flex gap-2">
+        <input value={instagram} onChange={e => setInstagram(e.target.value)} className="input-base" placeholder="@marca" />
+        <button type="button" disabled={busy || !instagram.trim()} onClick={add} className="px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold disabled:opacity-50">Agregar</button>
       </div>
       {value.length > 0 && <p className="text-xs text-emerald-600 mt-2">{value.length} marca{value.length === 1 ? '' : 's'} colaboradora{value.length === 1 ? '' : 's'} agregada{value.length === 1 ? '' : 's'}.</p>}
     </div>

@@ -945,6 +945,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [editingEvent, setEditingEvent] = useState(false)
   const [eventSaving, setEventSaving] = useState(false)
   const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', commune: '', location_instructions: '', visibility: 'private' })
+  const [summaryEditOpen, setSummaryEditOpen] = useState(false)
+  const [summaryEditSaving, setSummaryEditSaving] = useState(false)
+  const [summaryEditForm, setSummaryEditForm] = useState({ name: '', start_date: '', end_date: '', visibility: 'private' })
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [duplicatingCampaign, setDuplicatingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
@@ -1494,6 +1497,37 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     setEditingEvent(true)
   }
 
+  function openSummaryEditor() {
+    setEditingEvent(false)
+    setSummaryEditForm({
+      name: c.name ?? '',
+      start_date: c.start_date ?? '',
+      end_date: c.end_date ?? '',
+      visibility: c.visibility === 'open' ? 'open' : 'private',
+    })
+    setSummaryEditOpen(true)
+  }
+
+  async function saveSummaryEditor() {
+    if (!summaryEditForm.name.trim()) return toast.error('Completa el nombre de la campaña')
+    setSummaryEditSaving(true)
+    try {
+      await patchCampaign.mutateAsync({
+        name: summaryEditForm.name.trim(),
+        start_date: summaryEditForm.start_date || null,
+        end_date: summaryEditForm.end_date || null,
+        visibility: summaryEditForm.visibility,
+      })
+      await refetch()
+      setSummaryEditOpen(false)
+      toast.success('Resumen de campaña actualizado')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la campaña')
+    } finally {
+      setSummaryEditSaving(false)
+    }
+  }
+
   async function saveEvent() {
     if (!eventForm.name.trim() || !eventForm.starts_at || !eventForm.ends_at || !eventForm.location.trim()) {
       toast.error('Completa nombre, fecha, hora y ubicación del evento')
@@ -1880,15 +1914,28 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
         <div className="flex items-center gap-2">
           {canEditCampaign && (
-            <button
-              type="button"
-              onClick={openEventEditor}
-              title="Editar campaña: nombre, evento y visibilidad"
-              aria-label="Editar campaña: nombre, evento y visibilidad"
-              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={openSummaryEditor}
+                title="Editar resumen de campaña"
+                aria-label="Editar resumen de campaña"
+                className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              {summaryEditOpen && (
+                <div className="absolute right-0 top-11 z-50 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl">
+                  <p className="mb-2 text-sm font-semibold text-gray-900">Editar campaña</p>
+                  <div className="space-y-2">
+                    <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} placeholder="Nombre de campaña" className="input-base w-full" />
+                    <div className="grid grid-cols-2 gap-2"><input type="date" value={summaryEditForm.start_date} onChange={event => setSummaryEditForm(previous => ({ ...previous, start_date: event.target.value }))} className="input-base w-full text-xs" /><input type="date" value={summaryEditForm.end_date} onChange={event => setSummaryEditForm(previous => ({ ...previous, end_date: event.target.value }))} className="input-base w-full text-xs" /></div>
+                    <select value={summaryEditForm.visibility} onChange={event => setSummaryEditForm(previous => ({ ...previous, visibility: event.target.value }))} className="input-base w-full"><option value="private">Privada</option><option value="open">Pública</option></select>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => setSummaryEditOpen(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div>
+                </div>
+              )}
+            </div>
           )}
           {canEditCampaign && (
             <button
@@ -2002,7 +2049,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {Boolean(campaignBrands[0]?.name) && (
                 <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-gray-500">{String(campaignBrands[0].name)}</p>
               )}
-              {canEditCampaign && (editingEvent ? <><button type="button" onClick={() => void saveEvent()} disabled={eventSaving} title="Guardar" className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"><Check className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setEditingEvent(false)} disabled={eventSaving} title="Cancelar" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-3.5 w-3.5" /></button></> : <button type="button" onClick={openEventEditor} title="Editar nombre, fecha y lugar" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
+              {canEditCampaign && <button type="button" onClick={openSummaryEditor} title="Editar resumen de campaña" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}

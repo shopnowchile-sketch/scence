@@ -22,6 +22,7 @@ export interface DeliverableTemplate {
   scheduled_at?: string
   items?: DeliverableTemplateItem[]
   tag_brand_ids?: string[]
+  tag_handles?: string[]
 }
 
 // ── Deliverable types ─────────────────────────────────────────────────────────
@@ -238,6 +239,16 @@ export function DeliverableTemplateBuilder({
                   <input type="number" min="1" max="50" value={d.quantity}
                     onChange={e => update(d.type, 'quantity', parseInt(e.target.value) || 1)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />
+                </div>
+                <div>
+                  <label className="text-xs text-violet-700 font-semibold mb-1 block">En este {dt?.label ?? d.type} debes colaborar con</label>
+                  <input
+                    value={(d.tag_handles ?? []).join(', ')}
+                    onChange={e => update(d.type, 'tag_handles', e.target.value.split(',').map(handle => handle.trim()).filter(Boolean))}
+                    className="w-full border border-violet-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white"
+                    placeholder="@marca1, @marca2"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">Estos tags quedarán visibles para la influencer en este entregable.</p>
                 </div>
 
                 <div className="space-y-3">

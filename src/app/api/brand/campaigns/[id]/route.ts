@@ -134,8 +134,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ('social_tags' in body) updates.mention_handles = body.social_tags
 
   const statusByAction: Record<string, string> = {
-    submit_for_approval: 'active',
-    activate: 'active',
+    submit_for_approval: 'pending_approval',
+    activate: 'pending_approval',
     pause: 'paused',
     complete: 'completed',
   }
@@ -143,6 +143,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (typeof body.action === 'string' && statusByAction[body.action]) {
     updates.status = statusByAction[body.action]
   }
+
+  // Una marca nunca puede activar directamente, aunque manipule el frontend.
+  if (updates.status === 'active') updates.status = 'pending_approval'
 
   if (body.action === 'close_applications') {
     updates.applications_closed_at = new Date().toISOString()

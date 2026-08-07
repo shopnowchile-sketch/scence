@@ -1,6 +1,6 @@
 -- Solicitudes antes de crear la relación activa campaign_brands.
 CREATE TABLE IF NOT EXISTS public.campaign_brand_applications (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id uuid NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved_for_payment', 'active', 'rejected')),

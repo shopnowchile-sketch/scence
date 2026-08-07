@@ -1482,6 +1482,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const eventDateWeekday = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'EEE', { locale: es }).replace('.', '').toUpperCase() : null
   const campaignSummaryName = c.name.replace(/\s*\([^)]*\d{1,2}:\d{2}[^)]*\)\s*$/i, '') || c.name
   const attendanceSuggestedDueDate = eventBooking?.starts_at ? format(new Date(new Date(eventBooking.starts_at).getTime() - 3 * 86400000), 'yyyy-MM-dd') : ''
+  const campaignDurationLabel = (() => {
+    if (!c.start_date || !c.end_date) return null
+    const start = new Date(`${c.start_date}T00:00:00`)
+    const end = new Date(`${c.end_date}T00:00:00`)
+    const days = Math.round((end.getTime() - start.getTime()) / 86400000)
+    if (days <= 0) return 'Mismo día'
+    return `${days} día${days === 1 ? '' : 's'}`
+  })()
 
   function openEventEditor() {
     setOverviewEditMode(false)
@@ -1790,7 +1798,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
     try {
       await patchCampaign.mutateAsync(payload)
-      toast.success(action === 'activate' ? 'Campaña activada' : 'Estado actualizado')
+      toast.success(action === 'submit_for_approval' ? 'Campaña enviada a revisión' : action === 'activate' ? 'Campaña activada' : 'Estado actualizado')
     } catch {
       // El hook muestra el error.
     }
@@ -1957,13 +1965,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {c.status === 'draft' && (
             isBrandPortal ? (
               <button
-                onClick={() => handleStatusAction('activate')}
+                onClick={() => handleStatusAction('submit_for_approval')}
                 disabled={patchCampaign.isPending}
-                title="Activar campaña"
-                className="flex items-center gap-1.5 px-3 py-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+                title="Enviar campaña a revisión"
+                className="flex items-center gap-1.5 px-3 py-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
               >
-                <Play className="h-3.5 w-3.5" />
-                <span className="text-xs font-semibold">Activar</span>
+                <Check className="h-3.5 w-3.5" />
+                <span className="text-xs font-semibold">Enviar a revisión</span>
               </button>
             ) : (
               <button
@@ -1976,7 +1984,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </button>
             )
           )}
-          {(c.status === 'pending_approval' || c.status === 'paused') && (
+          {!isBrandPortal && (c.status === 'pending_approval' || c.status === 'paused') && (
             <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
               title={c.status === 'paused' ? 'Reactivar' : 'Activar'}
               className="flex items-center justify-center p-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors">
@@ -2042,7 +2050,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} title={coverAsset ? 'Cambiar banner' : 'Subir banner'} aria-label={coverAsset ? 'Cambiar banner' : 'Subir banner'} className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-violet-700 shadow-md transition hover:bg-violet-700 hover:text-white disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5" /></button></>}
             </div>
             </div>
-            {!editingEvent && (c.start_date || c.end_date) && <div className="mt-2 flex max-w-48 items-start gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] font-medium leading-tight text-gray-600"><Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" /><span>Campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}</span></div>}
+            {!editingEvent && (c.start_date || c.end_date) && <div className="mt-2 flex max-w-48 items-start gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] font-medium leading-tight text-gray-600"><Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" /><span>Campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}{campaignDurationLabel ? ` · ${campaignDurationLabel}` : ''}</span></div>}
           </div>
           <div className="min-w-0 flex-1 lg:min-w-[260px]">
             <div className="mb-1 flex items-center gap-1.5">

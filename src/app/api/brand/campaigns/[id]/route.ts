@@ -115,13 +115,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'commission_rate',
     'currency',
     'content_guidelines',
-    'social_tags',
+    'mention_handles',
     'hashtags',
     'deliverable_templates',
     'approval_required',
     'visibility',
     'application_deadline',
     'max_influencers',
+    'brief_url',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -129,6 +130,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
   }
+
+  if ('social_tags' in body) updates.mention_handles = body.social_tags
 
   const statusByAction: Record<string, string> = {
     submit_for_approval: 'active',
@@ -183,6 +186,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       { error: 'Solo la marca creadora puede editar esta campaña' },
       { status: 403 },
     )
+  }
+
+  if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {
+    updates.metadata = {
+      ...((campaignBase.metadata as Record<string, unknown> | null) ?? {}),
+      ...(body.metadata as Record<string, unknown>),
+    }
   }
 
   const orgPlan = await resolveBrandPlan(admin, campaignBase.organization_id, brand.id)

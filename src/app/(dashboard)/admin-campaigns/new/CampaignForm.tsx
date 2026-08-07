@@ -302,7 +302,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Descripción <span className="text-gray-400 text-xs">(solo para uso interno)</span>
+          Descripción de la campaña <span className="text-gray-400 text-xs">(visible antes de postular)</span>
         </label>
         <textarea
           {...register('description')}
@@ -310,6 +310,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
           className="input-base w-full resize-none"
           placeholder="Breve descripción de los objetivos de la campaña…"
         />
+        <p className="text-xs text-gray-400 mt-1">Explica de qué trata la campaña. Las influencers verán este texto junto con el canje antes de postular.</p>
       </div>
 
       {watchedType === 'event_appearance' && (

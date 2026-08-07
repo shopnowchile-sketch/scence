@@ -89,6 +89,7 @@ interface Props {
   /** Compact configuration used from a campaign overview. */
   compact?: boolean
   taggableBrands?: Array<{ id: string; name: string; instagram?: string | null }>
+  defaultTagHandles?: string[]
 }
 
 export function DeliverableTemplateBuilder({
@@ -98,12 +99,13 @@ export function DeliverableTemplateBuilder({
   showSuggestions = true,
   compact = false,
   taggableBrands = [],
+  defaultTagHandles = [],
 }: Props) {
   const suggested = campaignType ? (CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []) : []
 
   function addType(type: string) {
     if (value.find(d => d.type === type)) return
-    onChange([...value, { type, quantity: 1, description: '' }])
+    onChange([...value, { type, quantity: 1, description: '', tag_handles: defaultTagHandles }])
   }
 
   function remove(type: string) {
@@ -149,7 +151,7 @@ export function DeliverableTemplateBuilder({
   }
 
   function applySuggested() {
-    onChange(suggested.map(s => ({ ...s, due_date: '' })))
+    onChange(suggested.map(s => ({ ...s, due_date: '', tag_handles: defaultTagHandles })))
   }
 
   return (

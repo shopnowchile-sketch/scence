@@ -64,6 +64,7 @@ const schema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   event_date: z.string().optional(),
+  event_end_date: z.string().optional(),
   budget_total: nanToUndef,
   commission_rate: nanToUndefClamped,
   currency: z.enum(['USD', 'EUR', 'MXN', 'CLP', 'COP', 'ARS', 'BRL', 'GBP']),
@@ -342,9 +343,9 @@ function Step1({ register, control, errors, planGating = false, canOpen = true, 
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Guía de contenido</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Guía de contenido para postular</label>
         <textarea {...register('content_guidelines')} rows={5} className="input-base w-full resize-none" placeholder="Qué debe incluir el contenido, tono, referencias y restricciones…" />
-        <p className="text-xs text-gray-400 mt-1">Esto es lo único que las influencers verán junto con la fecha antes de postular. Resume lo necesario para decidir; los detalles adicionales van en el Brief.</p>
+        <p className="text-xs text-gray-400 mt-1">Esto es lo único que las influencers verán junto con la fecha antes de postular. Escribe solo lo necesario para que decidan si postular; los detalles adicionales van en el Brief.</p>
       </div>
 
       <BriefFileUpload campaignId={campaignId} ensureDraft={ensureDraft} />
@@ -352,8 +353,12 @@ function Step1({ register, control, errors, planGating = false, canOpen = true, 
       {watchedType === 'event_appearance' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-violet-100 bg-violet-50 p-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha del evento</label>
-            <input type="date" {...register('event_date')} className="input-base w-full" />
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Inicio del evento</label>
+            <input type="datetime-local" {...register('event_date')} className="input-base w-full" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Fin del evento</label>
+            <input type="datetime-local" {...register('event_end_date')} className="input-base w-full" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección del evento</label>
@@ -817,6 +822,7 @@ export function CampaignForm({
       application_deadline: '',
       max_influencers: undefined,
       event_date: '',
+      event_end_date: '',
       approval_submission_url: '',
       reference_url: '',
       brief_url: '',
@@ -858,6 +864,7 @@ export function CampaignForm({
       brief_url: data.brief_url || null,
       metadata: {
         event_date: data.event_date || null,
+        event_end_date: data.event_end_date || null,
         reference_url: data.reference_url || null,
         approval_submission_url: data.approval_submission_url || null,
       },
@@ -942,6 +949,26 @@ export function CampaignForm({
         throw new Error(err.error ?? 'Error al crear campaña')
       }
       const { data: campaign } = await res.json()
+      if (data.type === 'event_appearance' && data.event_date && data.event_end_date) {
+        const eventResponse = await fetch('/api/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            campaign_id: campaign?.id ?? campaignId,
+            title: data.name.trim(),
+            description: '',
+            event_type: 'event',
+            location: data.address?.trim() || null,
+            starts_at: new Date(data.event_date).toISOString(),
+            ends_at: new Date(data.event_end_date).toISOString(),
+            timezone: 'America/Santiago',
+          }),
+        })
+        if (!eventResponse.ok) {
+          const eventError = await eventResponse.json().catch(() => ({}))
+          throw new Error(eventError.error ?? 'La campaña se creó, pero no se pudo agendar el evento')
+        }
+      }
       toast.success('Campaña creada correctamente')
       router.push(`${redirectBase}/${campaign?.id ?? campaignId}`)
     } catch (err) {
@@ -955,7 +982,7 @@ export function CampaignForm({
   // devolver al usuario al paso correcto cuando falla la validación final.
   const STEP_BY_FIELD: Record<string, number> = {
     name: 1, type: 1, platforms: 1, visibility: 1,
-    start_date: 1, end_date: 1, event_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
+    start_date: 1, end_date: 1, event_date: 1, event_end_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
     hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
     application_questions: 1, application_deadline: 2, max_influencers: 2, brief_url: 1,
   }

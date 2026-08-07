@@ -936,7 +936,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [editingEvent, setEditingEvent] = useState(false)
   const [eventEditTarget, setEventEditTarget] = useState<'name' | 'details'>('name')
   const [eventSaving, setEventSaving] = useState(false)
-  const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', commune: '', location_instructions: '' })
+  const [eventForm, setEventForm] = useState({ name: '', schedule: [] as Array<{ starts_at: string; ends_at: string }>, location: '', commune: '', location_instructions: '' })
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [duplicatingCampaign, setDuplicatingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
@@ -1429,38 +1429,41 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   })
   const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
   const eventBooking = (c as unknown as {
-    event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string; commune?: string } | null } | null
+    event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string; commune?: string; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null } | null
   }).event_booking ?? null
   const eventLocation = eventBooking?.location || c.address || null
   const eventCommune = eventBooking?.location_details?.commune?.trim() || null
+  const eventSchedule = eventBooking?.location_details?.schedule
+    ? eventBooking.location_details.schedule.filter(slot => slot.starts_at && slot.ends_at).map(slot => ({ starts_at: String(slot.starts_at), ends_at: String(slot.ends_at) }))
+    : eventBooking?.starts_at && eventBooking?.ends_at ? [{ starts_at: eventBooking.starts_at, ends_at: eventBooking.ends_at }] : []
   const formatEventTime = (value: string) => {
     const date = new Date(value)
     return `${format(date, 'hh:mm')} ${date.getHours() >= 12 ? 'PM' : 'AM'}`
   }
-  const eventStartTime = eventBooking?.starts_at ? formatEventTime(eventBooking.starts_at) : null
-  const eventDateLabel = eventBooking?.starts_at
+  const primaryEventSlot = eventSchedule[0] ?? null
+  const eventStartTime = primaryEventSlot?.starts_at ? formatEventTime(primaryEventSlot.starts_at) : null
+  const eventDateLabel = primaryEventSlot?.starts_at
     ? (() => {
-        const date = new Date(eventBooking.starts_at)
+        const date = new Date(primaryEventSlot.starts_at)
         const weekday = format(date, 'EEEE', { locale: es }).replace(/^./, letter => letter.toUpperCase())
         const month = format(date, 'MMMM', { locale: es }).replace(/^./, letter => letter.toUpperCase())
         return `${weekday} ${format(date, 'd')} de ${month}`
       })()
     : null
-  const eventEndTime = eventBooking?.ends_at ? formatEventTime(eventBooking.ends_at) : null
+  const eventEndTime = primaryEventSlot?.ends_at ? formatEventTime(primaryEventSlot.ends_at) : null
   const eventTime = eventStartTime ? (eventEndTime ? `${eventStartTime}–${eventEndTime}` : eventStartTime) : null
   const eventEndLabel = null
-  const eventDateDay = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'dd') : null
-  const eventDateMonth = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'MMM', { locale: es }).replace('.', '').toUpperCase() : null
-  const eventDateWeekday = eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), 'EEE', { locale: es }).replace('.', '').toUpperCase() : null
+  const eventDateDay = primaryEventSlot?.starts_at ? format(new Date(primaryEventSlot.starts_at), 'dd') : null
+  const eventDateMonth = primaryEventSlot?.starts_at ? format(new Date(primaryEventSlot.starts_at), 'MMM', { locale: es }).replace('.', '').toUpperCase() : null
+  const eventDateWeekday = primaryEventSlot?.starts_at ? format(new Date(primaryEventSlot.starts_at), 'EEE', { locale: es }).replace('.', '').toUpperCase() : null
   const campaignSummaryName = c.name.replace(/\s*\([^)]*\d{1,2}:\d{2}[^)]*\)\s*$/i, '') || c.name
-  const attendanceSuggestedDueDate = eventBooking?.starts_at ? format(new Date(new Date(eventBooking.starts_at).getTime() - 3 * 86400000), 'yyyy-MM-dd') : ''
+  const attendanceSuggestedDueDate = primaryEventSlot?.starts_at ? format(new Date(new Date(primaryEventSlot.starts_at).getTime() - 3 * 86400000), 'yyyy-MM-dd') : ''
 
   function openEventEditor(target: 'name' | 'details') {
     setOverviewEditMode(false)
     setEventForm({
       name: c.name ?? '',
-      starts_at: eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), "yyyy-MM-dd'T'HH:mm") : '',
-      ends_at: eventBooking?.ends_at ? format(new Date(eventBooking.ends_at), "yyyy-MM-dd'T'HH:mm") : '',
+      schedule: eventSchedule.map(slot => ({ starts_at: format(new Date(slot.starts_at), "yyyy-MM-dd'T'HH:mm"), ends_at: format(new Date(slot.ends_at), "yyyy-MM-dd'T'HH:mm") })),
       location: eventLocation ?? '',
       commune: eventCommune ?? '',
       location_instructions: eventBooking?.location_details?.instructions ?? '',
@@ -1470,33 +1473,44 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   async function saveEvent() {
-    if (!eventForm.name.trim() || !eventForm.starts_at || !eventForm.ends_at || !eventForm.location.trim()) {
-      toast.error('Completa nombre, fecha, hora y ubicación del evento')
+    if (!eventForm.name.trim()) {
+      toast.error('Completa el nombre de la campaña')
       return
     }
+    const incompleteSlot = eventForm.schedule.some(slot => Boolean(slot.starts_at) !== Boolean(slot.ends_at))
+    if (incompleteSlot) {
+      toast.error('Completa inicio y fin de cada día del evento')
+      return
+    }
+    const schedule = eventForm.schedule
+      .filter(slot => slot.starts_at && slot.ends_at)
+      .map(slot => ({ starts_at: new Date(slot.starts_at).toISOString(), ends_at: new Date(slot.ends_at).toISOString() }))
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
     setEventSaving(true)
     try {
-      const startsAt = new Date(eventForm.starts_at).toISOString()
-      const endsAt = new Date(eventForm.ends_at).toISOString()
-      const bookingPayload = eventBooking?.id
-        ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
-        : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
-      const response = await fetch('/api/bookings', {
-        method: eventBooking?.id ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bookingPayload),
-      })
-      const json = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(json.error ?? 'No se pudo guardar el evento')
+      if (schedule.length || eventBooking?.id) {
+        const firstSlot = schedule[0]
+        const lastSlot = schedule[schedule.length - 1]
+        const bookingPayload = eventBooking?.id
+          ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim() || null, location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim(), schedule }, starts_at: firstSlot?.starts_at ?? eventBooking.starts_at, ends_at: lastSlot?.ends_at ?? eventBooking.ends_at, timezone: 'America/Santiago' }
+          : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim() || null, location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim(), schedule }, starts_at: firstSlot?.starts_at, ends_at: lastSlot?.ends_at, timezone: 'America/Santiago' }
+        const response = await fetch('/api/bookings', {
+          method: eventBooking?.id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bookingPayload),
+        })
+        const json = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(json.error ?? 'No se pudo guardar el evento')
+      }
       await patchCampaign.mutateAsync({
         name: eventForm.name.trim(),
-        start_date: eventForm.starts_at.slice(0, 10),
-        end_date: eventForm.ends_at.slice(0, 10),
-        address: eventForm.location.trim(),
+        start_date: schedule[0]?.starts_at.slice(0, 10) ?? null,
+        end_date: schedule[schedule.length - 1]?.ends_at.slice(0, 10) ?? null,
+        address: eventForm.location.trim() || null,
       })
       await refetch()
       setEditingEvent(false)
-      toast.success('Fecha y ubicación actualizadas')
+      toast.success(schedule.length ? 'Horario del evento actualizado' : 'Evento guardado como por confirmar')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar el evento')
     } finally {
@@ -1988,21 +2002,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
             {editingEvent && eventEditTarget === 'details' ? (
-              <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2">
-                <div className="flex items-center gap-2">
+              <div className="mt-3 max-w-3xl space-y-2">
+                {eventForm.schedule.map((slot, index) => <div key={index} className="flex flex-wrap items-center gap-2">
                   <Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" />
-                  <div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2">
-                    <input type="datetime-local" aria-label="Inicio del evento" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" />
-                    <input type="datetime-local" aria-label="Fin del evento" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" />
-                  </div>
-                </div>
+                  <input type="datetime-local" aria-label={`Inicio día ${index + 1}`} value={slot.starts_at} onChange={e => setEventForm(previous => ({ ...previous, schedule: previous.schedule.map((item, itemIndex) => itemIndex === index ? { ...item, starts_at: e.target.value } : item) }))} className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" />
+                  <input type="datetime-local" aria-label={`Fin día ${index + 1}`} value={slot.ends_at} onChange={e => setEventForm(previous => ({ ...previous, schedule: previous.schedule.map((item, itemIndex) => itemIndex === index ? { ...item, ends_at: e.target.value } : item) }))} className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" />
+                  <button type="button" onClick={() => setEventForm(previous => ({ ...previous, schedule: previous.schedule.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600" title="Quitar día"><X className="h-4 w-4" /></button>
+                </div>)}
+                <button type="button" onClick={() => setEventForm(previous => ({ ...previous, schedule: [...previous.schedule, { starts_at: '', ends_at: '' }] }))} className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 hover:underline"><Plus className="h-3.5 w-3.5" /> Agregar día y horario</button>
                 <label className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" />
                   <input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" />
                 </label>
               </div>
             ) : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
-              {eventDateLabel && <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex items-center gap-2 font-medium text-gray-800 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}</button>}
+              {eventDateLabel ? <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex items-center gap-2 font-medium text-gray-800 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}{eventSchedule.length > 1 ? ` + ${eventSchedule.length - 1} día${eventSchedule.length === 2 ? '' : 's'}` : ''}</button> : <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex items-center gap-2 font-medium text-gray-500 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><Calendar className="h-4 w-4 text-violet-600" />Fecha y hora por confirmar</button>}
               {eventTime && <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex items-center gap-2 font-semibold text-gray-900 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</button>}
               <button type="button" disabled={!canEditCampaign} onClick={() => openEventEditor('details')} className="inline-flex min-w-0 items-center gap-2 text-gray-800 enabled:rounded-lg enabled:hover:bg-violet-50 enabled:hover:text-violet-700"><MapPin className="h-4 w-4 shrink-0 text-violet-600" /><span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span></button>
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span>

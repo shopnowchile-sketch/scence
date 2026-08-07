@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
 
   const { data: brand } = await admin
     .from('brands')
-    .select('id, organization_id, status')
+    .select('id, organization_id, status, subscription_plan_override')
     .eq('id', access.brandId)
     .single()
 
@@ -154,12 +154,9 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Crear campañas es una funcionalidad disponible solo después del pago.
-  // Los límites del plan se evalúan más abajo; este chequeo evita que una
-  // marca recién registrada pueda usar incluso la campaña Basic antes de que
-  // PayPal confirme su suscripción. Una PYME puede pagar Basic y luego recibir
-  // permisos Pro mediante el override administrativo, pero el pago activo
-  // sigue siendo requisito para ambas modalidades.
+  // Misma regla comercial que /api/brand/me:
+  // una suscripción active/trialing O un override administrativo válido
+  // habilitan la creación de campañas.
   const { data: activeSubscription } = await admin
     .from('subscriptions')
     .select('id')
@@ -168,7 +165,7 @@ export async function POST(req: NextRequest) {
     .limit(1)
     .maybeSingle()
 
-  if (!activeSubscription) {
+  if (!activeSubscription && !brand.subscription_plan_override) {
     return NextResponse.json({
       error: 'Para crear tu primera campaña, primero debes activar un plan de SCENCE.',
       code: 'SUBSCRIPTION_REQUIRED',
@@ -176,7 +173,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Plan gating ───────────────────────────────────────────────────────────
-  // Resolver plan efectivo: subscriptions activa/trialing → fallback organizations.subscription_plan
+  // Resolver plan efectivo: override manual → suscripción activa/trialing → organización.
   const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const limits  = getPlanLimits(orgPlan)
 

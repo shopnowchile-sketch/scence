@@ -809,11 +809,14 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           </div>
           <div className="space-y-2">
             {assets.filter(asset => asset.metadata?.asset_type !== 'brief').map(asset => (
-              <a key={asset.id} href={asset.signed_url ?? asset.storage_path} target="_blank" rel="noopener noreferrer"
+              <a key={asset.id} href={asset.signed_url ?? asset.storage_path} target="_blank" rel="noopener noreferrer" download={asset.filename}
                 className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:border-violet-200 hover:bg-violet-50/30 transition-colors">
-                <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-3">
+                  {asset.mime_type?.startsWith('image/') && <img src={asset.signed_url ?? asset.storage_path} alt="" className="h-12 w-12 rounded-lg object-cover border border-gray-100" />}
+                  <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-800 truncate">{asset.filename}</p>
                   <p className="text-[10px] text-gray-400">{asset.metadata?.asset_type === 'brief' ? 'Brief' : asset.mime_type ?? 'Archivo'}</p>
+                  </div>
                 </div>
                 <span className="text-xs font-bold text-violet-600 flex-shrink-0">Descargar</span>
               </a>

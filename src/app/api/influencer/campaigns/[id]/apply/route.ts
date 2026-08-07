@@ -34,7 +34,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Verificar que la campaña existe, es open y está activa o en pending_approval
+  // Solo una campaña ya aprobada y activa puede recibir postulaciones. La
+  // comprobación de UI no basta: este endpoint también debe impedir solicitudes
+  // directas a borradores o campañas todavía en revisión.
   const { data: campaign } = await admin
     .from('campaigns')
     .select('id, name, status, visibility, organization_id, application_deadline, applications_closed_at, max_influencers, brand_id, application_questions')
@@ -44,7 +46,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   if (campaign.visibility !== 'open') return NextResponse.json({ error: 'Esta campaña no está abierta a postulaciones' }, { status: 422 })
-  if (!['active', 'pending_approval', 'draft'].includes(campaign.status)) {
+  if (campaign.status !== 'active') {
     return NextResponse.json({ error: 'Esta campaña no acepta postulaciones en este momento' }, { status: 422 })
   }
   if (campaign.application_deadline && new Date(campaign.application_deadline) < new Date()) {

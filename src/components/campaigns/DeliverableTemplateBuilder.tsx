@@ -169,7 +169,7 @@ export function DeliverableTemplateBuilder({
       )}
 
       {/* Selector de tipos */}
-      <div className="flex flex-wrap gap-2">
+      {!compact && <div className="flex flex-wrap gap-2">
         {DELIVERABLE_TYPES.map(dt => {
           const active = value.some(d => d.type === dt.value)
           return (
@@ -185,19 +185,22 @@ export function DeliverableTemplateBuilder({
             </button>
           )
         })}
-      </div>
+      </div>}
 
-      {/* Configuración compacta del Overview: tipo, cantidad y etiquetas. */}
+      {/* Edición compacta del Overview: conserva los entregables existentes. */}
       {compact && value.length > 0 && (
         <div className="space-y-2">
           {value.map(deliverable => {
             const type = DELIVERABLE_TYPES.find(item => item.value === deliverable.type)
             const selectedBrandIds = new Set(deliverable.tag_brand_ids ?? [])
             return <div key={deliverable.type} className="rounded-xl border border-gray-200 bg-white p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-gray-900">{type?.emoji} {type?.label ?? deliverable.type}</p>
-                <label className="flex items-center gap-2 text-xs font-medium text-gray-500">Cantidad
-                  <input type="number" min="1" max="50" value={deliverable.quantity} onChange={event => update(deliverable.type, 'quantity', parseInt(event.target.value) || 1)} className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-800 outline-none focus:border-violet-400" />
+              <p className="text-sm font-semibold text-gray-900">{type?.emoji} {type?.label ?? deliverable.type}</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-gray-600">Descripción
+                  <textarea value={deliverable.description ?? ''} onChange={event => update(deliverable.type, 'description', event.target.value)} rows={2} placeholder="Instrucciones para este contenido" className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-violet-400" />
+                </label>
+                <label className="text-xs font-semibold text-gray-600">Fecha límite de publicación
+                  <input type="date" value={deliverable.due_date?.split('T')[0] ?? ''} onChange={event => update(deliverable.type, 'due_date', event.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-violet-400" />
                 </label>
               </div>
               <div className="mt-3 border-t border-gray-100 pt-3">

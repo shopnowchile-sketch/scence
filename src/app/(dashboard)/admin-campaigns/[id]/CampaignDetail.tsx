@@ -1851,17 +1851,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {canEditCampaign && (
             <button
               type="button"
-              onClick={openEventEditor}
-              title="Editar fecha, hora, lugar y nombre de la campaña"
-              aria-label="Editar fecha, hora, lugar y nombre de la campaña"
-              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {canEditCampaign && (
-            <button
-              type="button"
               onClick={() => void handleDuplicateCampaign()}
               disabled={duplicatingCampaign}
               title="Duplicar campaña como borrador"

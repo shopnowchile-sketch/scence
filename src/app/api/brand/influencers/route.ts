@@ -69,25 +69,23 @@ export async function GET(req: NextRequest) {
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
-  // Pro ve el catálogo completo. Basic/Growth ven únicamente su roster privado:
-  // asignadas directamente desde Admin/marca + participantes aceptadas.
+  // La marca nunca ve el catálogo global: solo creadoras que ya fueron
+  // aprobadas y participaron en campañas propias o colaborativas.
   const orgPlan    = await resolveBrandPlan(admin, brand.organization_id, brand.id)
   const fullAccess = canViewFullInfluencerBase(orgPlan)
 
   let restrictedInfluencerIds: string[] | null = null
 
-  if (!fullAccess || scope === 'roster') {
+  {
     const [
       { data: primaryCampaigns, error: primaryError },
       { data: collaboratorRows, error: collaboratorError },
-      { data: directRows, error: directError },
     ] = await Promise.all([
       admin.from('campaigns').select('id').eq('brand_id', brand.id),
       admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
-      admin.from('brand_influencers').select('influencer_id').eq('brand_id', brand.id),
     ])
 
-    const relationError = primaryError ?? collaboratorError ?? directError
+    const relationError = primaryError ?? collaboratorError
     if (relationError) {
       return NextResponse.json({ error: relationError.message }, { status: 500 })
     }
@@ -117,7 +115,6 @@ export async function GET(req: NextRequest) {
 
     restrictedInfluencerIds = Array.from(new Set([
       ...acceptedInfluencerIds,
-      ...(directRows ?? []).map(row => row.influencer_id).filter(Boolean),
     ]))
 
     if (restrictedInfluencerIds.length === 0) {

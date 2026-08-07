@@ -134,6 +134,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ('social_tags' in body) updates.mention_handles = body.social_tags
 
   const statusByAction: Record<string, string> = {
+    draft: 'draft',
     submit_for_approval: 'pending_approval',
     activate: 'pending_approval',
     pause: 'paused',

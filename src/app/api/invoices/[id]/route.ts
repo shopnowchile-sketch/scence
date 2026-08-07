@@ -134,6 +134,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Confirmar una factura de colaboración activa automáticamente la relación
+  // existente campaign_brands: recién aquí la marca aparece como participante.
+  if (action === 'mark_paid' && invoiceMeta.kind === 'campaign_brand_collaboration' && typeof invoiceMeta.application_id === 'string') {
+    const { data: application } = await admin.from('campaign_brand_applications')
+      .select('id,campaign_id,brand_id').eq('id', invoiceMeta.application_id).single()
+    if (application) {
+      await admin.from('campaign_brand_applications').update({ status: 'active', updated_at: now }).eq('id', application.id)
+      await admin.from('campaign_brands').upsert({ campaign_id: application.campaign_id, brand_id: application.brand_id, role: 'collaborator', assigned_by: user.id }, { onConflict: 'campaign_id,brand_id' })
+    }
+  }
+
   return NextResponse.json({ data })
 }
 

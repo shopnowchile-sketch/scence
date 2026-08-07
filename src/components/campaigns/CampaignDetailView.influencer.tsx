@@ -43,7 +43,7 @@ type CampaignRow = {
   campaign_deliverables: Deliverable[]
   event_booking?: {
     id: string; title: string | null; starts_at: string | null; ends_at: string | null
-    location: string | null; location_details?: { instructions?: string } | null; status: string | null
+    location: string | null; location_details?: { instructions?: string; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null; status: string | null
   } | null
   campaign: {
     id: string; name: string; status: string
@@ -103,14 +103,17 @@ function activationText(benefit: CampaignBenefitOffer) {
 }
 
 function EventBookingCard({ booking, showLocation }: { booking: NonNullable<CampaignRow['event_booking']>; showLocation: boolean }) {
-  const startsAt = booking.starts_at ? new Date(booking.starts_at) : null
-  const endsAt = booking.ends_at ? new Date(booking.ends_at) : null
-  const when = startsAt && !Number.isNaN(startsAt.getTime())
-    ? startsAt.toLocaleString('es-CL', { dateStyle: 'full', timeStyle: 'short', timeZone: 'America/Santiago' })
-    : 'Fecha y hora por confirmar'
-  const endTime = endsAt && !Number.isNaN(endsAt.getTime())
-    ? endsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })
-    : null
+  const schedule = booking.location_details?.schedule?.filter(slot => slot.starts_at && slot.ends_at)
+    ?? (booking.starts_at && booking.ends_at ? [{ starts_at: booking.starts_at, ends_at: booking.ends_at }] : [])
+  const scheduleLabel = schedule.length ? schedule.map(slot => {
+    const startsAt = new Date(String(slot.starts_at))
+    const endsAt = new Date(String(slot.ends_at))
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return null
+    const day = startsAt.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Santiago' })
+    const start = startsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })
+    const end = endsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })
+    return `${day} · ${start}–${end}`
+  }).filter(Boolean) : ['Fecha y hora por confirmar']
 
   return (
     <section className="mt-4 rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
@@ -119,7 +122,7 @@ function EventBookingCard({ booking, showLocation }: { booking: NonNullable<Camp
         <h3 className="text-sm font-extrabold text-violet-950">Información del evento</h3>
       </div>
       <div className="mt-3 space-y-2 text-sm">
-        <div className="flex gap-2.5 text-violet-950"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {when}{endTime ? ` · hasta las ${endTime}` : ''}</span></div>
+        <div className="flex gap-2.5 text-violet-950"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {scheduleLabel.map((label, index) => <span key={index} className={index ? 'block mt-1' : ''}>{label}</span>)}</span></div>
         {showLocation && <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Lugar:</b> {booking.location || 'La marca confirmará la dirección pronto.'}</span></div>}
         {showLocation && booking.location_details?.instructions?.trim() && <div className="ml-6 rounded-lg bg-white/70 px-3 py-2 text-xs leading-relaxed text-violet-900"><b>Cómo llegar:</b> {booking.location_details.instructions}</div>}
       </div>

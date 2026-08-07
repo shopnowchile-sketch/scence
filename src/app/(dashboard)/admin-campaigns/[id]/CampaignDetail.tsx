@@ -1055,8 +1055,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   function setOverviewEditMode(editing: boolean, section: OverviewEditSection = 'content') {
     const params = new URLSearchParams(searchParams.toString())
     params.set('tab', 'overview')
-    if (editing) params.set('mode', 'edit')
-    else params.delete('mode')
+    if (editing) {
+      params.set('mode', 'edit')
+      params.set('section', section)
+    } else {
+      params.delete('mode')
+      params.delete('section')
+    }
     setTab('overview')
     setOverviewEditSection(section)
     setEditingOverview(editing)
@@ -1068,7 +1073,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     const requested = searchParams.get('mode') === 'edit'
     setEditingOverview(requested)
     if (requested) {
-      setOverviewEditSection('content')
+      setOverviewEditSection(searchParams.get('section') === 'deliverables' ? 'deliverables' : 'content')
       setTab('overview')
     } else if (requestedTab && VALID_TABS.includes(requestedTab as Tab)) {
       setTab(requestedTab as Tab)

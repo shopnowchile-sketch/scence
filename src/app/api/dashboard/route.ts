@@ -44,6 +44,8 @@ export async function GET() {
     pendingDeliverablesRes,
     recentActivityRes,
     pendingApplicationsRes,
+    pendingCampaignsRes,
+    pendingBrandsRes,
   ] = await Promise.all([
     // Solo el CONTEO de campañas activas (no se descargan las filas).
     db.from('campaigns')
@@ -99,7 +101,7 @@ export async function GET() {
         influencer:influencers (id, display_name, avatar_url),
         campaign:campaigns (id, name)
       `)
-      .in('status', ['pending', 'in_review'])
+      .in('status', ['in_review'])
       .order('due_date', { ascending: true })
       .limit(5),
 
@@ -114,6 +116,8 @@ export async function GET() {
       .select('id, campaign:campaigns!inner(organization_id)', { count: 'exact', head: true })
       .eq('application_status', 'pending')
       .eq('campaign.organization_id', orgId),
+    db.from('campaigns').select('id,name,status,updated_at', { count: 'exact' }).eq('status', 'pending_approval').order('updated_at', { ascending: false }).limit(5),
+    db.from('brands').select('id,name,instagram,created_at,status', { count: 'exact' }).eq('status', 'pending_approval').order('created_at', { ascending: false }).limit(5),
   ])
 
   // Revenue chart — las mismas dos consultas cubren los seis meses. Antes se
@@ -236,7 +240,12 @@ export async function GET() {
     live_influencers: liveInfluencersPreview,
     live_influencers_count: liveInfluencersCount,
     pending_deliverables: pendingDeliverablesRes.data ?? [],
-    pending_applications_count: pendingApplicationsRes.count ?? 0,
+      pending_applications_count: pendingApplicationsRes.count ?? 0,
+      pending_deliverables_count: pendingDeliverablesRes.count ?? (pendingDeliverablesRes.data ?? []).length,
+      pending_campaigns_count: pendingCampaignsRes.count ?? 0,
+      pending_brands_count: pendingBrandsRes.count ?? 0,
+      pending_campaigns: pendingCampaignsRes.data ?? [],
+      pending_brands: pendingBrandsRes.data ?? [],
     recent_activity:      recentActivityRes.data ?? [],
     revenue_chart:        revenueChart,
   })

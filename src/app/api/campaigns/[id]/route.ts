@@ -145,9 +145,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const campaignWithEvent = { ...data, event_booking: eventBooking ?? null }
 
-  const isBrandUser = Boolean(user.user_metadata?.is_brand)
-
-  if (isBrandUser) {
+  if (user.user_metadata?.is_brand) {
     const access = await getBrandAccess(admin, user.id, params.id)
     if (!access.canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     return NextResponse.json({ data: { ...campaignWithEvent, _brand_permissions: access } })
@@ -175,9 +173,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const isBrandUser = Boolean(user.user_metadata?.is_brand)
 
-  if (isBrandUser) {
+  if (user.user_metadata?.is_brand) {
     const access = await getBrandAccess(admin, user.id, params.id)
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
@@ -196,6 +193,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // propia campaña, aunque el formulario ya no muestre ese campo.
   if (user.user_metadata?.is_brand) {
     delete rest.brand_id
+    // La activación siempre requiere aprobación administrativa. Este endpoint
+    // genérico también puede ser llamado directamente, por lo que no basta con
+    // proteger la UI ni la ruta /api/brand/campaigns.
+    if (rest.status === 'active') {
+      return NextResponse.json(
+        { error: 'La campaña debe ser aprobada por Scence antes de activarse' },
+        { status: 403 },
+      )
+    }
   }
 
   // Una marca principal es una marca real existente. La organización de la
@@ -294,9 +300,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const isBrandUser = Boolean(user.user_metadata?.is_brand)
 
-  if (isBrandUser) {
+  if (user.user_metadata?.is_brand) {
     const access = await getBrandAccess(admin, user.id, params.id)
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
@@ -318,6 +323,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // propia campaña vía PATCH, aunque el formulario ya no muestre ese campo.
   if (user.user_metadata?.is_brand) {
     delete fields.brand_id
+    // Esta ruta es una alternativa a /api/brand/campaigns/[id]. Bloquear aquí
+    // evita que una marca active una campaña manipulando la petición directa.
+    if (action === 'activate' || fields.status === 'active') {
+      return NextResponse.json(
+        { error: 'La campaña debe ser aprobada por Scence antes de activarse' },
+        { status: 403 },
+      )
+    }
   }
 
   // Handle named actions
@@ -335,12 +348,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     fields.applications_closed_at = new Date().toISOString()
   } else if (action === 'reopen_applications') {
     fields.applications_closed_at = null
-  }
-
-  // La marca puede guardar o volver a borrador, pero jamás activar por sí
-  // sola. Cualquier intento de enviar "active" queda en revisión.
-  if (isBrandUser && fields.status === 'active') {
-    fields.status = 'pending_approval'
   }
 
   if ('address' in body) {

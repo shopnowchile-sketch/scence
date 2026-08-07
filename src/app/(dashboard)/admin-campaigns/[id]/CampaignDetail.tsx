@@ -1739,14 +1739,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       complete: 'completed',
     }
 
-    const payload =
-      isBrandPortal && brandStatusByAction[action]
-        ? { status: brandStatusByAction[action] }
-        : { action }
+    const payload = isBrandPortal && brandStatusByAction[action]
+      ? { action: action === 'activate' ? 'submit_for_approval' : action, status: brandStatusByAction[action] }
+      : { action }
 
     try {
       await patchCampaign.mutateAsync(payload)
-      toast.success(action === 'activate' ? 'Campaña activada' : 'Estado actualizado')
+      toast.success(isBrandPortal && action === 'activate' ? 'Campaña enviada a revisión' : action === 'activate' ? 'Campaña activada' : 'Estado actualizado')
     } catch {
       // El hook muestra el error.
     }
@@ -1891,11 +1890,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <button
                 onClick={() => handleStatusAction('activate')}
                 disabled={patchCampaign.isPending}
-                title="Activar campaña"
+                title="Enviar campaña a revisión"
                 className="flex items-center gap-1.5 px-3 py-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors"
               >
                 <Play className="h-3.5 w-3.5" />
-                <span className="text-xs font-semibold">Activar</span>
+                <span className="text-xs font-semibold">Enviar a revisión</span>
               </button>
             ) : (
               <button
@@ -1908,7 +1907,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </button>
             )
           )}
-          {(c.status === 'pending_approval' || c.status === 'paused') && (
+          {!isBrandPortal && (c.status === 'pending_approval' || c.status === 'paused') && (
             <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
               title={c.status === 'paused' ? 'Reactivar' : 'Activar'}
               className="flex items-center justify-center p-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors">

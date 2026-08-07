@@ -821,13 +821,14 @@ function CoBrandManager({
 
 type OverviewEditSection = 'content' | 'deliverables'
 
-function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel, onSave }: {
+function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel, onSave, embedded = false }: {
   campaign: CampaignDetail
   saving: boolean
   isBrandPortal: boolean
   section: OverviewEditSection
   onCancel: () => void
   onSave: (values: Record<string, unknown>) => Promise<void>
+  embedded?: boolean
 }) {
   const [form, setForm] = useState({
     name: campaign.name ?? '',
@@ -895,7 +896,7 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      {!embedded && <div className="flex items-center justify-between gap-3">
         <div><h2 className="text-base font-bold text-gray-900">{sectionTitle[section]}</h2><p className="text-xs text-gray-500 mt-0.5">Solo estás editando esta sección.</p></div>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} disabled={saving} className="px-3 py-2 text-sm font-medium border border-gray-200 bg-white rounded-xl hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
@@ -903,20 +904,13 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </div>
-      </div>
+      </div>}
       {section === 'content' && <div className="card p-5 space-y-4">
-        <label className="text-xs font-semibold text-gray-600">Guías de contenido<textarea value={form.content_guidelines} maxLength={3000} rows={5} onChange={e => field('content_guidelines', e.target.value)} className={`${inputClass} mt-1 resize-y`} /></label>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <label className="text-xs font-semibold text-gray-600">Hashtags, separados por coma<input value={form.hashtags} onChange={e => field('hashtags', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          <label className="text-xs font-semibold text-gray-600">Tags, separados por coma<input value={form.social_tags} onChange={e => field('social_tags', e.target.value)} className={`${inputClass} mt-1`} /></label>
-        </div>
-        <div className="grid sm:grid-cols-3 gap-3">{goalFields.map(([key, label]) => (
-          <label key={key} className="text-xs font-semibold text-gray-600">{label}<input type="number" min="0" step={key === 'engagement_rate' ? '0.1' : '1'} value={form.goals[key] ?? ''}
-            onChange={e => setForm(previous => ({ ...previous, goals: { ...previous.goals, [key]: Number(e.target.value) || 0 } }))} className={`${inputClass} mt-1`} /></label>
-        ))}</div>
+        <label className="text-xs font-semibold text-gray-600">Descripción de la campaña<textarea value={form.content_guidelines} maxLength={3000} rows={5} onChange={e => field('content_guidelines', e.target.value)} className={`${inputClass} mt-1 resize-y`} /></label>
+        <div className="flex justify-end gap-2"><button type="button" onClick={onCancel} disabled={saving} className="px-3 py-2 text-sm font-medium border border-gray-200 bg-white rounded-xl">Cancelar</button><button type="submit" disabled={saving} className="px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-xl">{saving ? 'Guardando…' : 'Guardar cambios'}</button></div>
       </div>}
 
-      {section === 'deliverables' && <div className="card p-5"><DeliverableTemplateBuilder value={form.deliverable_templates} onChange={value => field('deliverable_templates', value)} showSuggestions={false} compact taggableBrands={taggableBrands} /></div>}
+      {section === 'deliverables' && <div className="card p-5"><DeliverableTemplateBuilder value={form.deliverable_templates} onChange={value => field('deliverable_templates', value)} showSuggestions={false} compact taggableBrands={taggableBrands} /><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={onCancel} disabled={saving} className="px-3 py-2 text-sm font-medium border border-gray-200 bg-white rounded-xl">Cancelar</button><button type="submit" disabled={saving} className="px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-xl">{saving ? 'Guardando…' : 'Guardar cambios'}</button></div></div>}
 
     </form>
   )
@@ -2062,17 +2056,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
       {/* ── OVERVIEW ───────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
-        editingOverview ? (
-          <OverviewEditPanel
-            key={c.updated_at}
-            campaign={c}
-            saving={patchCampaign.isPending}
-            isBrandPortal={isBrandPortal}
-            section={overviewEditSection}
-            onCancel={() => setOverviewEditMode(false)}
-            onSave={saveOverview}
-          />
-        ) : <>
+        <>
         {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
           <CampaignBrandsPanel
             campaignId={id}
@@ -2100,7 +2084,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <h3 className="text-sm font-semibold text-violet-800 flex items-center gap-2"><FileText className="h-4 w-4" /> Guías de contenido</h3>
                   {(!isBrandPortal || c._brand_permissions?.canEdit) && <button type="button" onClick={() => setOverviewEditMode(true, 'content')} className="text-xs font-semibold text-violet-700 hover:underline">Editar</button>}
                 </div>
-                {c.content_guidelines ? <>
+                {editingOverview && overviewEditSection === 'content' ? <OverviewEditPanel key={c.updated_at} campaign={c} saving={patchCampaign.isPending} isBrandPortal={isBrandPortal} section="content" embedded onCancel={() => setOverviewEditMode(false)} onSave={saveOverview} /> : c.content_guidelines ? <>
                   <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap line-clamp-4">{c.content_guidelines}</p>
                   {c.content_guidelines.length > 420 && <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold text-violet-700">Ver guía completa</summary><p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{c.content_guidelines}</p></details>}
                 </> : <p className="text-sm text-gray-400">Aún no hay guías de contenido.</p>}
@@ -2111,7 +2095,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             {(
               <div className="card p-5">
                 <div className="flex items-center justify-between gap-3 mb-3"><h3 className="text-sm font-semibold text-gray-700">Deliverables requeridos por campaña</h3>{(!isBrandPortal || c._brand_permissions?.canEdit) && <button type="button" onClick={() => setOverviewEditMode(true, 'deliverables')} className="text-xs font-semibold text-violet-700 hover:underline">Editar</button>}</div>
-                {(c.deliverable_templates?.length ?? 0) > 0 ? <div className="space-y-2">
+                {editingOverview && overviewEditSection === 'deliverables' ? <OverviewEditPanel key={c.updated_at} campaign={c} saving={patchCampaign.isPending} isBrandPortal={isBrandPortal} section="deliverables" embedded onCancel={() => setOverviewEditMode(false)} onSave={saveOverview} /> : (c.deliverable_templates?.length ?? 0) > 0 ? <div className="space-y-2">
                   {c.deliverable_templates!.map(dt => (
                     <div key={dt.type} className="flex items-start gap-3 rounded-xl bg-gray-50 p-3">
                       <div className="flex-1">

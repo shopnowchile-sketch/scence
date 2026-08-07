@@ -28,7 +28,7 @@ export async function GET() {
   let ticketsQuery = admin
     .from('tickets')
     .select('id', { count: 'exact', head: true })
-    .eq('status', 'open')
+    .in('status', ['open', 'in_progress'])
 
   if (!access.isAdmin) {
     brandsQuery = brandsQuery.eq('organization_id', orgId)

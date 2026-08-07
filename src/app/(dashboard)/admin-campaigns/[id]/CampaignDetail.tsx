@@ -3465,9 +3465,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="space-y-3">
               {campaignAssets.map(asset => (
                 <div key={String(asset.id)} className="flex items-center justify-between rounded-xl border border-gray-100 p-4 gap-4">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-3">
+                    {String(asset.mime_type ?? '').startsWith('image/') && <img src={String(asset.signed_url ?? asset.storage_path)} alt="" className="h-14 w-14 rounded-lg border border-gray-100 object-cover" />}
+                    <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{String(asset.filename ?? 'Asset')}</p>
                     <p className="text-xs text-gray-400 truncate">{String(asset.mime_type ?? 'Enlace externo')}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <a
@@ -3499,10 +3502,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <h3 className="text-sm font-semibold text-gray-700">Facturas de esta campaña</h3>
             <div className="flex items-center gap-3">
               {(!isBrandPortal || c._brand_permissions?.canEdit) && (
+
                 <button type="button" onClick={() => setShowCampaignInvoiceModal(true)}
                   className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-lg hover:bg-violet-700">
                   <Plus className="h-4 w-4" /> Crear factura
-
                 </button>
               )}
               <Link href={isBrandPortal ? '/brand-billing' : `/admin-billing?campaign_id=${id}`} className="text-sm font-semibold text-violet-600 hover:underline">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
 import { useCampaignsList, useCampaignsSummary, type CampaignSummary } from '@/hooks/useCampaignsList'
 import { AICampaignBuilder } from '@/components/campaigns/AICampaignBuilder'
@@ -177,7 +178,8 @@ function loadBrandOptions() {
 
 export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   const isBrandPortal = portal === 'brand'
-  const [filters, setFilters]   = useState<Partial<CampaignFiltersType>>({})
+  const searchParams = useSearchParams()
+  const [filters, setFilters]   = useState<Partial<CampaignFiltersType>>(() => ({ status: (searchParams.get('status') ?? undefined) as CampaignFiltersType['status'] }))
   const [showAIBuilder, setShowAIBuilder] = useState(false)
   const [showColumns, setShowColumns] = useState(false)
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<Record<CampaignColumnKey, boolean>>(

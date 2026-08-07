@@ -631,11 +631,13 @@ function CampaignBrandsPanel({
   campaignId,
   brands,
   canManage,
+  canChangePrimary,
   onChanged,
 }: {
   campaignId: string
   brands: Array<{ id?: string; name?: string; logo_url?: string | null; instagram?: string | null; _role?: string }>
   canManage: boolean
+  canChangePrimary: boolean
   onChanged: () => void
 }) {
   if (brands.length === 0 && !canManage) return null
@@ -681,7 +683,7 @@ function CampaignBrandsPanel({
           ))}
         </div>
       )}
-      <PrimaryBrandManager campaignId={campaignId} brands={brands} canManage={canManage} onChanged={onChanged} />
+      <PrimaryBrandManager campaignId={campaignId} brands={brands} canManage={canChangePrimary} onChanged={onChanged} />
       <CoBrandManager campaignId={campaignId} canManage={canManage} onChanged={onChanged} />
     </div>
   )
@@ -767,31 +769,25 @@ function CoBrandManager({
 }) {
   const [open, setOpen] = useState(false)
   const [instagram, setInstagram] = useState('')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
 
   const instagramValid = /^(?:@?[a-z0-9._]{1,30}|https?:\/\/(?:www\.)?instagram\.com\/[a-z0-9._]{1,30}\/?)/i.test(instagram.trim())
 
   async function submit() {
-    if (!instagramValid || !name.trim()) return
+    if (!instagramValid) return
     setSaving(true)
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/brands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instagram: instagram.trim(), name: name.trim(), email: email.trim() || undefined }),
+        body: JSON.stringify({ instagram: instagram.trim(), name: instagram.trim().replace(/^@/, '') }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      toast.success(json.pending
-        ? 'Marca agregada a la campaña. Queda pendiente solo para acceder a su portal.'
-        : 'Marca agregada como colaboradora')
+      toast.success('Marca agregada como colaboradora')
       onChanged()
       setOpen(false)
       setInstagram('')
-      setName('')
-      setEmail('')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error agregando marca')
     }
@@ -808,49 +804,14 @@ function CoBrandManager({
           <Plus className="h-3.5 w-3.5" /> Agregar marca colaboradora
         </button>
       ) : (
-        <div className="space-y-2 bg-gray-50 rounded-xl p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500">Agregar marca colaboradora</span>
-            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Instagram de la marca *</label>
-            <input
-              value={instagram}
-              onChange={e => setInstagram(e.target.value)}
-              placeholder="@marca o instagram.com/marca"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre de la marca *</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Nombre de la marca"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Email de contacto <span className="font-normal text-gray-400">(opcional)</span></label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="contacto@marca.cl"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-violet-400 bg-white"
-            />
-          </div>
-          <p className="text-[11px] text-gray-400">
-            Sin email se crea y agrega de inmediato. Si agregas email, quedará pendiente solo para habilitar su portal, pero aparecerá igual en esta campaña para que las influencers la etiqueten.
-          </p>
-          <button type="button" onClick={submit} disabled={saving || !instagramValid || !name.trim()}
-            className="w-full py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
+        <div className="flex items-center gap-2 rounded-xl bg-gray-50 p-3">
+          <input value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="@instagram de la marca" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 bg-white" />
+          <button type="button" onClick={submit} disabled={saving || !instagramValid}
+            className="px-3 py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             {saving ? 'Guardando…' : 'Agregar'}
           </button>
+          <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar"><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -2123,6 +2084,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               _role: String(brand._role ?? ''),
             }))}
             canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
+            canChangePrimary={!isBrandPortal}
             onChanged={() => void refetch()}
           />
         )}

@@ -37,6 +37,7 @@ const deliverableSchema = z.object({
   description: z.string().max(3000).optional(),
   due_date:    z.string().optional(),
   scheduled_at: z.string().optional(),
+  tag_handles: z.array(z.string()).optional(),
   items: z.array(z.object({
     description: z.string().max(3000).optional(),
     due_date: z.string().optional(),
@@ -271,6 +272,33 @@ function CollaboratorSelector({ campaignId, value = [], onChange }: { campaignId
   )
 }
 
+function BriefFileUpload({ campaignId, ensureDraft }: { campaignId?: string | null; ensureDraft: () => Promise<string | null> }) {
+  const [uploading, setUploading] = useState(false)
+  const [filename, setFilename] = useState('')
+  async function upload(file: File) {
+    setUploading(true)
+    try {
+      const id = campaignId ?? await ensureDraft()
+      if (!id) throw new Error('No se pudo preparar el borrador para subir el brief')
+      const body = new FormData()
+      body.append('file', file)
+      body.append('asset_type', 'brief')
+      const response = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudo subir el brief')
+      setFilename(file.name)
+      toast.success('Brief subido')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo subir el brief') }
+    finally { setUploading(false) }
+  }
+  return <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1.5">Brief para influencers</label>
+    <input type="file" accept=".pdf,.doc,.docx,image/*" disabled={uploading} onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void upload(file) }} className="input-base w-full bg-white" />
+    <p className="text-xs text-gray-400 mt-1">PDF, Word o imagen. Es el mismo documento que verá la influencer al ser aprobada.</p>
+    {filename && <p className="text-xs font-medium text-emerald-600 mt-1">✓ {filename}</p>}
+  </div>
+}
+
 // ── Step props ────────────────────────────────────────────────────────────────
 interface StepProps {
   register: UseFormRegister<FormValues>
@@ -281,7 +309,7 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, planGating = false, canOpen = true }: StepProps & { planGating?: boolean; canOpen?: boolean }) {
+function Step1({ register, control, errors, planGating = false, canOpen = true, campaignId, ensureDraft }: StepProps & { planGating?: boolean; canOpen?: boolean; campaignId?: string | null; ensureDraft: () => Promise<string | null> }) {
   // En Basic, la primera campaña pública está incluida. Las siguientes requieren Growth.
   const openLocked = planGating && !canOpen
   const watchedVisibility = useWatch({ control, name: 'visibility' })
@@ -302,7 +330,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Descripción de la campaña <span className="text-gray-400 text-xs">(visible antes de postular)</span>
+          Descripción de la campaña <span className="text-gray-400 text-xs">(uso interno)</span>
         </label>
         <textarea
           {...register('description')}
@@ -310,8 +338,16 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
           className="input-base w-full resize-none"
           placeholder="Breve descripción de los objetivos de la campaña…"
         />
-        <p className="text-xs text-gray-400 mt-1">Explica de qué trata la campaña. Las influencers verán este texto junto con el canje antes de postular.</p>
+        <p className="text-xs text-gray-400 mt-1">Esta nota es solo para tu equipo; las influencers no la verán.</p>
       </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Guía de contenido</label>
+        <textarea {...register('content_guidelines')} rows={5} className="input-base w-full resize-none" placeholder="Qué debe incluir el contenido, tono, referencias y restricciones…" />
+        <p className="text-xs text-gray-400 mt-1">Las influencers la verán cuando sean aprobadas.</p>
+      </div>
+
+      <BriefFileUpload campaignId={campaignId} ensureDraft={ensureDraft} />
 
       {watchedType === 'event_appearance' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-violet-100 bg-violet-50 p-4">
@@ -517,7 +553,7 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
         <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
           <div>
             <p className="text-sm font-semibold text-violet-900">Postulaciones y cupos</p>
-            <p className="text-xs text-violet-600 mt-0.5">La campaña mostrará “Cupos limitados” y cerrará automáticamente en la fecha indicada.</p>
+            <p className="text-xs text-violet-600 mt-0.5">Puedes completar esta información después. Si la dejas vacía, no se mostrarán cupos ni fecha límite.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -540,66 +576,9 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
         )} />
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Budget total</label>
-          <input type="number" step="1000" min="0"
-            {...register('budget_total', { valueAsNumber: true })}
-            className="input-base w-full" placeholder="0" />
-          <p className="text-xs text-gray-400 mt-1">Ingresa 0 si es canje o sin presupuesto definido</p>
-          {errors.budget_total && <p className="text-xs text-red-500 mt-1">{errors.budget_total.message}</p>}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Moneda</label>
-          <select {...register('currency')} className="input-base w-full">
-            {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <Controller control={control} name="type" render={({ field }) => (
-        field.value === 'commission' ? (
-          <div className="p-4 rounded-xl border-2 border-violet-200 bg-violet-50">
-            <label className="block text-sm font-semibold text-violet-800 mb-1.5">
-              💰 Comisión por ventas (%)
-            </label>
-            <input type="number" step="0.5" min="0" max="100"
-              {...register('commission_rate', { valueAsNumber: true })}
-              className="input-base w-full" placeholder="Ej. 10" />
-            <p className="text-xs text-violet-600 mt-1">Porcentaje del total de ventas que recibirá cada influencer</p>
-          </div>
-        ) : <></>
-      )} />
-
       <Controller control={control} name="campaign_benefits" render={({ field }) => (
         <CampaignBenefitsInput value={field.value ?? []} onChange={field.onChange} />
       )} />
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">
-          Metas <span className="text-gray-400 text-xs">(opcional)</span>
-        </label>
-        <div className="grid grid-cols-2 gap-4">
-          {[
-            { name: 'goals.impressions' as const, label: 'Impresiones',         placeholder: 'Ej. 1,000,000' },
-            { name: 'goals.reach' as const,       label: 'Alcance (Reach)',      placeholder: 'Ej. 500,000' },
-            { name: 'goals.clicks' as const,      label: 'Clicks',               placeholder: 'Ej. 10,000' },
-            { name: 'goals.conversions' as const, label: 'Conversiones',         placeholder: 'Ej. 500' },
-          ].map(f => (
-            <div key={f.name}>
-              <label className="block text-xs text-gray-500 mb-1">{f.label}</label>
-              <input type="number" {...register(f.name, { valueAsNumber: true })}
-                className="input-base w-full" placeholder={f.placeholder} />
-            </div>
-          ))}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Engagement rate (%)</label>
-            <input type="number" step="0.1" min="0" max="100"
-              {...register('goals.engagement_rate', { valueAsNumber: true })}
-              className="input-base w-full" placeholder="Ej. 5.0" />
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
@@ -675,24 +654,11 @@ function Step3({ register, control, setValue, campaignType, campaignId }: StepPr
           render={({ field }) => <HashtagInput value={field.value} onChange={field.onChange} />} />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Guía de contenido</label>
-        <textarea {...register('content_guidelines')} rows={5}
-          className="input-base w-full resize-none"
-          placeholder="Instrucciones de estilo, qué incluir/excluir, tono de voz, colores, referencias de marca…" />
-        <p className="text-xs text-gray-400 mt-1">Máx. 2000 caracteres. Se compartirá con los influencers.</p>
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Link de referencia o instrucciones</label>
           <input type="url" {...register('reference_url')} className="input-base w-full" placeholder="https://drive.google.com/..." />
           <p className="text-xs text-gray-400 mt-1">Disponible también para Stories.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Brief</label>
-          <input type="url" {...register('brief_url')} className="input-base w-full" placeholder="Enlace al brief compartido" />
-          <p className="text-xs text-gray-400 mt-1">Pega el enlace del brief para que sea visible desde la campaña.</p>
         </div>
       </div>
 
@@ -904,8 +870,9 @@ export function CampaignForm({
 
   // Auto-guardado: crea (o actualiza) la campaña como 'draft' al avanzar de paso,
   // para que quede guardada aunque el usuario no llegue a "Crear campaña".
-  async function saveDraft() {
-    if (draftSaving) return
+  async function saveDraft(): Promise<string | null> {
+    if (draftSaving) return campaignId
+    let savedId = campaignId
     setDraftSaving(true)
     try {
       const payload = buildPayload(getValues())
@@ -918,6 +885,7 @@ export function CampaignForm({
         if (res.ok) {
           const { data: campaign } = await res.json()
           setCampaignId(campaign.id)
+          savedId = campaign.id
           setDraftSavedAt(new Date())
         }
       } else {
@@ -930,9 +898,11 @@ export function CampaignForm({
       }
     } catch {
       // Silencioso: el auto-guardado no debe bloquear el flujo del wizard.
+      savedId = null
     } finally {
       setDraftSaving(false)
     }
+    return savedId
   }
 
   async function goNext() {
@@ -984,19 +954,28 @@ export function CampaignForm({
     name: 1, type: 1, platforms: 1, visibility: 1,
     start_date: 1, end_date: 1, event_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
     hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
-    application_questions: 1, application_deadline: 2, max_influencers: 2,
+    application_questions: 1, application_deadline: 2, max_influencers: 2, brief_url: 1,
   }
 
   function onInvalid(formErrors: FieldErrors<FormValues>) {
     console.error('[CampaignForm] validación falló:', formErrors)
     const firstField = Object.keys(formErrors)[0]
-    const firstError = firstField ? (formErrors as Record<string, { message?: string }>)[firstField] : undefined
+    const findMessage = (value: unknown): string | undefined => {
+      if (!value || typeof value !== 'object') return undefined
+      const record = value as { message?: unknown }
+      if (typeof record.message === 'string') return record.message
+      for (const nested of Object.values(value as Record<string, unknown>)) {
+        const message = findMessage(nested)
+        if (message) return message
+      }
+      return undefined
+    }
     const targetStep = firstField ? (STEP_BY_FIELD[firstField] ?? 1) : 1
     setStep(targetStep)
     toast.error(
-      firstError?.message
-        ? `Paso ${targetStep}: ${firstError.message}`
-        : 'Revisa los campos marcados en rojo antes de crear la campaña'
+      findMessage(firstField ? (formErrors as Record<string, unknown>)[firstField] : undefined)
+        ? `Paso ${targetStep}: ${findMessage((formErrors as Record<string, unknown>)[firstField!])}`
+        : 'Revisa el campo indicado antes de crear la campaña'
     )
   }
 
@@ -1059,7 +1038,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-6">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} planGating={planGating} canOpen={canOpen} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} planGating={planGating} canOpen={canOpen} campaignId={campaignId} ensureDraft={saveDraft} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
           {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} campaignId={campaignId} />}
         </div>

@@ -9,6 +9,7 @@ import {
   Building2,
   Bug,
   FileText,
+  Sparkles,
 } from 'lucide-react'
 import { AppSidebar, type NavSection } from '@/components/layout/AppSidebar'
 
@@ -18,6 +19,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/brand-dash',        label: 'Dashboard',   icon: LayoutDashboard, exact: true },
       { href: '/brand-campaigns',   label: 'Campañas',    icon: Target },
+      { href: '/brand-opportunities', label: 'Oportunidades', icon: Sparkles },
       { href: '/brand-influencers', label: 'Influencers', icon: Users, exact: true },
       { href: '/brand-influencers/ranking', label: 'Ranking', icon: Trophy },
     ],

@@ -587,6 +587,8 @@ export function DashboardClient() {
     const brandsWithAccess = brandsTotal
 
     const pendingDeliverables = state.deliverables.filter(isPendingDeliverable).slice(0, 4)
+    const pendingCampaigns = pickArray(state.dashboard, ['pending_campaigns']).slice(0, 5)
+    const pendingBrands = pickArray(state.dashboard, ['pending_brands']).slice(0, 5)
     const campaignsForList = (activeCampaigns.length ? activeCampaigns : state.campaigns).slice(0, 3)
 
     const activityFromDashboard = pickArray(state.dashboard, ['recentActivity', 'activity', 'recent_activity'])
@@ -615,6 +617,11 @@ export function DashboardClient() {
       brandsPending: Math.max(0, brandsWithAccess - brandsEntered),
       campaignsForList,
       pendingDeliverables,
+      pendingCampaigns,
+      pendingBrands,
+      pendingCampaignsCount: deepNumber(state.dashboard, ['pending_campaigns_count'], pendingCampaigns.length),
+      pendingBrandsCount: deepNumber(state.dashboard, ['pending_brands_count'], pendingBrands.length),
+      pendingDeliverablesCount: deepNumber(state.dashboard, ['pending_deliverables_count'], pendingDeliverables.length),
       activity,
     }
   }, [state])
@@ -666,6 +673,15 @@ export function DashboardClient() {
               tone="gray"
               href="/admin-brands"
             />
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Pendiente de revisión</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <KpiCard icon={<Building2 className="h-5 w-5" />} value={String(computed.pendingBrandsCount)} title="Marcas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-brands?status=pending_approval" />
+            <KpiCard icon={<CalendarDays className="h-5 w-5" />} value={String(computed.pendingCampaignsCount)} title="Campañas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-campaigns?status=pending_approval" />
+            <KpiCard icon={<UserCheck className="h-5 w-5" />} value={String(computed.pendingDeliverablesCount)} title="Contenido por revisar" subtitle="entregables enviados" tone="purple" href="/admin-campaigns" />
           </div>
         </section>
 
@@ -739,6 +755,14 @@ export function DashboardClient() {
         </section>
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between"><h3 className="text-base font-bold text-gray-950">Campañas pendientes</h3><Link href="/admin-campaigns?status=pending_approval" className="text-xs font-semibold text-purple-600">Ver todas ›</Link></div>
+            <div className="space-y-3">{computed.pendingCampaigns.length ? computed.pendingCampaigns.map((campaign, index) => <Link key={readText(campaign, ['id'], String(index))} href={`/admin-campaigns/${readText(campaign, ['id'])}`} className="block rounded-lg px-3 py-2 hover:bg-violet-50"><p className="text-sm font-semibold text-gray-900">{readText(campaign, ['name'], 'Campaña')}</p><p className="text-xs text-amber-600">Pendiente de aprobación</p></Link>) : <p className="py-5 text-sm text-gray-400">No hay campañas pendientes.</p>}</div>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between"><h3 className="text-base font-bold text-gray-950">Marcas pendientes</h3><Link href="/admin-brands?status=pending_approval" className="text-xs font-semibold text-purple-600">Ver todas ›</Link></div>
+            <div className="space-y-3">{computed.pendingBrands.length ? computed.pendingBrands.map((brand, index) => <Link key={readText(brand, ['id'], String(index))} href={`/admin-brands/${readText(brand, ['id'])}`} className="block rounded-lg px-3 py-2 hover:bg-violet-50"><p className="text-sm font-semibold text-gray-900">{readText(brand, ['name'], 'Marca')}</p><p className="text-xs text-amber-600">Pendiente de aprobación</p></Link>) : <p className="py-5 text-sm text-gray-400">No hay marcas pendientes.</p>}</div>
+          </div>
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-950">Campañas activas</h3>

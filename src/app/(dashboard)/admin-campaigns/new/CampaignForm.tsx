@@ -62,6 +62,7 @@ const schema = z.object({
   platforms: z.array(z.string()).min(1, 'Selecciona al menos una plataforma'),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
+  event_date: z.string().optional(),
   budget_total: nanToUndef,
   commission_rate: nanToUndefClamped,
   currency: z.enum(['USD', 'EUR', 'MXN', 'CLP', 'COP', 'ARS', 'BRL', 'GBP']),
@@ -76,6 +77,9 @@ const schema = z.object({
   social_tags: z.array(z.string()).optional(),
   content_guidelines: z.string().max(2000).optional(),
   approval_required: z.boolean(),
+  approval_submission_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
+  reference_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
+  brief_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
   tags: z.array(z.string()).optional(),
   deliverable_templates: z.array(deliverableSchema).optional(),
   campaign_benefits: z.array(campaignBenefitSchema).optional(),
@@ -133,9 +137,8 @@ const ACTIVATION_RULES = [
 
 const STEPS = [
   { id: 1, label: 'Información', icon: Target },
-  { id: 2, label: 'Budget',      icon: Calendar },
+  { id: 2, label: 'Condiciones', icon: Calendar },
   { id: 3, label: 'Contenido',   icon: FileText },
-  { id: 4, label: 'Confirmar',   icon: Sparkles },
 ]
 
 // ── Hashtag input ─────────────────────────────────────────────────────────────
@@ -253,6 +256,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
   // En Basic, la primera campaña pública está incluida. Las siguientes requieren Growth.
   const openLocked = planGating && !canOpen
   const watchedVisibility = useWatch({ control, name: 'visibility' })
+  const watchedType = useWatch({ control, name: 'type' })
   return (
     <div className="space-y-6">
       <div>
@@ -269,7 +273,7 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Descripción <span className="text-gray-400 text-xs">(opcional)</span>
+          Descripción <span className="text-gray-400 text-xs">(solo para uso interno)</span>
         </label>
         <textarea
           {...register('description')}
@@ -277,6 +281,28 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
           className="input-base w-full resize-none"
           placeholder="Breve descripción de los objetivos de la campaña…"
         />
+      </div>
+
+      {watchedType === 'event_appearance' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-violet-100 bg-violet-50 p-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha del evento</label>
+            <input type="date" {...register('event_date')} className="input-base w-full" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección del evento</label>
+            <input {...register('address')} className="input-base w-full" placeholder="Dónde se realizará el evento" />
+          </div>
+        </div>
+      )}
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Duración de la campaña</label>
+        <p className="text-xs text-gray-400 mb-2">Corresponde al período completo en que la campaña estará activa.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label className="block text-xs text-gray-500 mb-1">Fecha inicio</label><input type="date" {...register('start_date')} className="input-base w-full" /></div>
+          <div><label className="block text-xs text-gray-500 mb-1">Fecha fin</label><input type="date" {...register('end_date')} className="input-base w-full" /></div>
+        </div>
       </div>
 
       <div>
@@ -457,17 +483,6 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
   const visibility = useWatch({ control, name: 'visibility' })
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha inicio</label>
-          <input type="date" {...register('start_date')} className="input-base w-full" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha fin</label>
-          <input type="date" {...register('end_date')} className="input-base w-full" />
-        </div>
-      </div>
-
       {visibility === 'open' && (
         <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
           <div>
@@ -488,14 +503,6 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
           </div>
         </div>
       )}
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Dirección / ubicación <span className="text-gray-400 text-xs">(opcional)</span>
-        </label>
-        <input {...register('address')} className="input-base w-full"
-          placeholder="Dónde se realizará (evento, activación, tienda…)" />
-      </div>
 
       {portal === 'admin' && (
         <Controller control={control} name="brand_id" render={({ field }) => (
@@ -644,6 +651,19 @@ function Step3({ register, control, setValue, campaignType }: StepProps) {
         <p className="text-xs text-gray-400 mt-1">Máx. 2000 caracteres. Se compartirá con los influencers.</p>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Link de referencia o instrucciones</label>
+          <input type="url" {...register('reference_url')} className="input-base w-full" placeholder="https://drive.google.com/..." />
+          <p className="text-xs text-gray-400 mt-1">Disponible también para Stories.</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Brief</label>
+          <input type="url" {...register('brief_url')} className="input-base w-full" placeholder="Enlace al brief compartido" />
+          <p className="text-xs text-gray-400 mt-1">Pega el enlace del brief para que sea visible desde la campaña.</p>
+        </div>
+      </div>
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
           Tags internos <span className="text-gray-400 text-xs">(opcional)</span>
@@ -669,9 +689,15 @@ function Step3({ register, control, setValue, campaignType }: StepProps) {
           )} />
         <div>
           <div className="text-sm font-medium text-gray-800">Requerir aprobación de contenido</div>
-          <div className="text-xs text-gray-400">Los deliverables deben aprobarse antes de publicarse</div>
+          <div className="text-xs text-gray-400">La influencer deberá subir su contenido al enlace compartido antes de publicarlo.</div>
         </div>
       </div>
+      <Controller control={control} name="approval_required" render={({ field }) => field.value ? (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Enlace para revisión de contenido</label>
+          <input type="url" {...register('approval_submission_url')} className="input-base w-full" placeholder="Drive, Dropbox u otro enlace compartido" />
+        </div>
+      ) : <></>} />
     </div>
   )
 }
@@ -792,11 +818,27 @@ export function CampaignForm({
       application_questions: [],
       application_deadline: '',
       max_influencers: undefined,
+      event_date: '',
+      approval_submission_url: '',
+      reference_url: '',
+      brief_url: '',
     },
   })
 
   // Must be after useForm so control is defined
   const campaignType = useWatch({ control, name: 'type' })
+
+  useEffect(() => {
+    if (portal !== 'brand') return
+    fetch('/api/brand/me').then(r => r.ok ? r.json() : null).then(json => {
+      const raw = String(json?.data?.instagram ?? '').trim()
+      const handle = raw.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/\/.*/, '')
+      if (!handle) return
+      const tag = `@${handle}`.toLowerCase()
+      const current = getValues('social_tags') ?? []
+      setValue('social_tags', Array.from(new Set(['@influencers.snc', tag, ...current])))
+    }).catch(() => undefined)
+  }, [portal, getValues, setValue])
 
   // Arma el payload de campaña a partir de los valores actuales del form
   function buildPayload(data: FormValues) {
@@ -814,6 +856,12 @@ export function CampaignForm({
       visibility: data.visibility || 'private',
       address: data.address?.trim() || null,
       application_questions: data.application_questions ?? [],
+      brief_url: data.brief_url || null,
+      metadata: {
+        event_date: data.event_date || null,
+        reference_url: data.reference_url || null,
+        approval_submission_url: data.approval_submission_url || null,
+      },
       application_deadline: data.visibility === 'open' && data.application_deadline
         ? new Date(data.application_deadline).toISOString()
         : null,
@@ -901,7 +949,7 @@ export function CampaignForm({
   // devolver al usuario al paso correcto cuando falla la validación final.
   const STEP_BY_FIELD: Record<string, number> = {
     name: 1, type: 1, platforms: 1, visibility: 1,
-    start_date: 2, end_date: 2, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
+    start_date: 1, end_date: 1, event_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
     hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
     application_questions: 1, application_deadline: 2, max_influencers: 2,
   }
@@ -981,7 +1029,6 @@ export function CampaignForm({
           {step === 1 && <Step1 register={register} control={control} errors={errors} planGating={planGating} canOpen={canOpen} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
           {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} />}
-          {step === 4 && <Step4 values={getValues()} />}
         </div>
 
         {/* Navigation */}

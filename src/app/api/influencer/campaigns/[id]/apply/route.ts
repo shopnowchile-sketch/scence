@@ -41,7 +41,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     .from('campaigns')
     .select('id, name, status, visibility, organization_id, application_deadline, applications_closed_at, max_influencers, brand_id, application_questions')
     .eq('id', params.id)
-    .eq('organization_id', influencer.organization_id)
     .single()
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })

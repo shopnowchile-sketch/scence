@@ -6,11 +6,9 @@ type Params = { params: { id: string } }
 
 // GET /api/influencer/campaigns/[id]
 // Preview de una campaña ANTES de postular (botón "Ver detalles" desde
-// "Campañas Disponibles"). Reutiliza la misma regla de visibilidad que
-// /api/influencer/campaigns/open y /apply: visibility='open' + misma org,
-// o bien la influencer ya tiene una fila en campaign_influencers (invitada
-// o ya postulando) — en ese caso puede ver el detalle igual aunque la
-// campaña sea privada.
+// "Campañas Disponibles"). Una campaña activa y pública pertenece al
+// marketplace y puede verla cualquier influencer; una privada exige una fila
+// existente en campaign_influencers.
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authErr } = await supabase.auth.getUser()
@@ -36,7 +34,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_brands (id, brand:brands!brand_id (id, name, instagram))
     `)
     .eq('id', params.id)
-    .eq('organization_id', influencer.organization_id)
     .single()
 
   if (error || !campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })

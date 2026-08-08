@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Target, CheckCircle2, Clock, AlertCircle,
-  TrendingUp, Users, Calendar, ChevronRight, RefreshCw, PlusCircle, ClipboardCheck, FileCheck2, BarChart3,
+  TrendingUp, Users, Calendar, ChevronRight, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
@@ -72,6 +72,7 @@ export default function BrandDashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading]     = useState(true)
   const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
+  const [campaignTab, setCampaignTab] = useState<'current' | 'completed'>('current')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -91,6 +92,19 @@ export default function BrandDashboard() {
   useEffect(() => { load() }, [load])
 
   const activeCampaigns   = campaigns.filter(c => c.status === 'active')
+  const isCompletedCampaign = useCallback((campaign: Campaign) => {
+    const total = campaign.campaign_deliverables.length
+    const completed = campaign.campaign_deliverables.filter(isDeliverableComplete).length
+    return campaign.status === 'completed' || (total > 0 && completed === total)
+  }, [])
+  const completedCampaigns = useMemo(
+    () => campaigns.filter(isCompletedCampaign),
+    [campaigns, isCompletedCampaign],
+  )
+  const currentCampaigns = useMemo(
+    () => campaigns.filter(campaign => !isCompletedCampaign(campaign)),
+    [campaigns, isCompletedCampaign],
+  )
   const pendingDeliverables = campaigns.flatMap(c =>
     c.campaign_deliverables.filter(d => d.status === 'in_review')
   )
@@ -136,34 +150,8 @@ export default function BrandDashboard() {
         </div>
       )}
 
-      {campaigns.length === 0 && (
-        <section className="rounded-2xl border border-violet-100 bg-white p-5 sm:p-7">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-violet-600">Tu primer recorrido</p>
-              <h2 className="mt-1 text-xl font-bold text-gray-950">Así funciona tu primera campaña</h2>
-              <p className="mt-1 text-sm text-gray-500">Te acompañamos paso a paso. Comienza creando tu campaña.</p>
-            </div>
-            <Link href="/brand-campaigns/new" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700"><PlusCircle className="h-4 w-4" /> Crear campaña</Link>
-          </div>
-          <div className="mt-6 space-y-3">
-            {[
-              { icon: Target, title: '1. Crea tu campaña', text: 'Define qué necesitas y publícala para recibir postulaciones.' },
-              { icon: Users, title: '2. Revisa postulaciones', text: 'Las influencers postulan; tú apruebas o rechazas cada solicitud.' },
-              { icon: Calendar, title: '3. Confirma a las seleccionadas', text: 'Al aprobarlas podrán ver el brief y, si aplica, la dirección del evento.' },
-              { icon: ClipboardCheck, title: '4. Revisa entregables', text: 'Verás las fechas límite y podrás aprobar o pedir correcciones al contenido.' },
-              { icon: FileCheck2, title: '5. Guarda tus referencias', text: 'El ranking y la asistencia son internos para decidir con quién trabajar después.' },
-              { icon: BarChart3, title: '6. Descarga tu reporte', text: 'Al finalizar, tendrás el resumen de resultados de la campaña.' },
-            ].map(({ icon: Icon, title, text }) => <div key={title} className="flex gap-3 rounded-xl bg-gray-50 px-4 py-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700"><Icon className="h-4 w-4" /></div>
-              <div><p className="text-sm font-bold text-gray-900">{title}</p><p className="mt-0.5 text-xs leading-relaxed text-gray-500">{text}</p></div>
-            </div>)}
-          </div>
-        </section>
-      )}
-
       {/* KPIs */}
-      {campaigns.length > 0 && <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {[
           { label: 'Campañas activas', value: activeCampaigns.length, icon: Target, color: 'text-violet-600', bg: 'bg-violet-50' },
           { label: 'Influencers',      value: totalInfluencers,        icon: Users,  color: 'text-blue-600',   bg: 'bg-blue-50' },
@@ -177,7 +165,7 @@ export default function BrandDashboard() {
             <div className="text-sm text-gray-500 mt-0.5">{label}</div>
           </div>
         ))}
-      </div>}
+      </div>
 
       {/* Contenido para revisar */}
       {pendingDeliverables.length > 0 && (
@@ -219,16 +207,25 @@ export default function BrandDashboard() {
       )}
 
       {/* Lista de campañas */}
-      {campaigns.length > 0 && <div>
-        <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Tus Campañas</h2>
-        {campaigns.length === 0 ? (
+      <div>
+        <div className="mb-3 flex items-center gap-4 border-b border-gray-100">
+          <button type="button" onClick={() => setCampaignTab('current')}
+            className={cn('border-b-2 px-1 pb-2 text-sm font-bold transition-colors', campaignTab === 'current' ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-400')}>
+            Tus campañas ({currentCampaigns.length})
+          </button>
+          <button type="button" onClick={() => setCampaignTab('completed')}
+            className={cn('border-b-2 px-1 pb-2 text-sm font-bold transition-colors', campaignTab === 'completed' ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-400')}>
+            Completadas ({completedCampaigns.length})
+          </button>
+        </div>
+        {(campaignTab === 'current' ? currentCampaigns : completedCampaigns).length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 flex flex-col items-center py-16">
             <Target className="h-10 w-10 text-gray-200 mb-3" />
-            <p className="text-sm text-gray-400">No tienes campañas asignadas aún.</p>
+            <p className="text-sm text-gray-400">{campaignTab === 'completed' ? 'Aún no tienes campañas completadas.' : 'No tienes campañas en curso.'}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {campaigns.map(c => {
+            {(campaignTab === 'current' ? currentCampaigns : completedCampaigns).map(c => {
               const cfg = STATUS_CONFIG[c.status] ?? STATUS_CONFIG.draft
               const StatusIcon = cfg.icon
               const delTotal  = c.campaign_deliverables.length
@@ -282,7 +279,7 @@ export default function BrandDashboard() {
             })}
           </div>
         )}
-      </div>}
+      </div>
     </div>
   )
 }

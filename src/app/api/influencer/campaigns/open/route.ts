@@ -38,7 +38,8 @@ export async function GET() {
     .filter(r => r.application_status !== 'pending')
     .map(r => r.campaign_id as string)
 
-  // Campañas open de la misma org — activas o buscando influencers, sin deadline vencida
+  // Marketplace público: una campaña abierta y activa puede ser descubierta por
+  // cualquier influencer. No se restringe a la organización de la marca.
   let query = admin
     .from('campaigns')
     .select(`
@@ -47,7 +48,6 @@ export async function GET() {
       brand:brands!brand_id (id, name, logo_url, instagram),
       campaign_influencers (id, application_status)
     `)
-    .eq('organization_id', influencer.organization_id)
     .eq('visibility', 'open')
     .eq('status', 'active')
     .order('start_date', { ascending: true })

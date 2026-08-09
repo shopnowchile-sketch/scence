@@ -24,7 +24,7 @@ import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { COMUNAS_CHILE, groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
-import { DeliverableTemplateBuilder, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
+import { DeliverableTemplateBuilder, CAMPAIGN_DELIVERABLE_DEFAULTS, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
 import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceConfirmationPanel'
 import { createClient } from '@/lib/supabase/client'
@@ -852,7 +852,11 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
     hashtags: (campaign.hashtags ?? []).join(', '),
     social_tags: (campaign.social_tags ?? []).join(', '),
     goals: { ...(campaign.goals ?? {}) } as Record<string, number>,
-    deliverable_templates: (campaign.deliverable_templates ?? []) as DeliverableTemplate[],
+    deliverable_templates: (
+      campaign.deliverable_templates?.length
+        ? campaign.deliverable_templates
+        : CAMPAIGN_DELIVERABLE_DEFAULTS[campaign.type ?? ''] ?? []
+    ).map(template => ({ ...template })) as DeliverableTemplate[],
   })
 
   function field<K extends keyof typeof form>(key: K, value: typeof form[K]) {
@@ -3749,8 +3753,3 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {campaignDeliverables.length === 0 && (
             <p className="text-xs text-gray-400 text-center py-4">Sin actividad de deliverables aún.</p>
           )}
-        </div>
-      )}
-    </div>
-  )
-}

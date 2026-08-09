@@ -66,10 +66,8 @@ export const CAMPAIGN_DELIVERABLE_DEFAULTS: Record<string, DeliverableTemplate[]
   ],
   event_appearance: [
     { type: 'event_attendance', quantity: 1, description: 'Confirmar asistencia al evento' },
-    { type: 'event_checkin',    quantity: 1, description: 'Check-in presencial en el evento' },
-    { type: 'story',            quantity: 3, description: 'Stories en vivo desde el evento' },
-    { type: 'reel',             quantity: 1, description: 'Reel del evento (antes/durante/después)' },
-    { type: 'send_content',     quantity: 1, description: 'Enviar contenido post-evento para aprobación' },
+    { type: 'reel',             quantity: 1, description: 'Reel del evento' },
+    { type: 'story',            quantity: 1, description: 'Story del evento' },
   ],
   product_seeding: [
     { type: 'send_content', quantity: 1, description: 'Enviar unboxing / reseña para aprobación' },

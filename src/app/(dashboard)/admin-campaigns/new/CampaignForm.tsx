@@ -950,6 +950,16 @@ export function CampaignForm({
     }
     const ok = await trigger(fieldsPerStep[step] ?? [])
     if (!ok) return
+
+    // El autosave ocurre al avanzar. Cuando se entra a Contenido, deja los
+    // entregables sugeridos dentro del mismo snapshot que se persiste, en vez
+    // de cargarlos recién después de crear el borrador.
+    if (step === 2 && campaignType && (getValues('deliverable_templates') ?? []).length === 0) {
+      const suggested = CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []
+      if (suggested.length > 0) {
+        setValue('deliverable_templates', suggested.map(template => ({ ...template, due_date: '' })))
+      }
+    }
     await saveDraft()
     setStep(s => s + 1)
   }

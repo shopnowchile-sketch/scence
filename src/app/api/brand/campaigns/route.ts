@@ -259,6 +259,10 @@ export async function POST(req: NextRequest) {
       mention_handles:      (social_tags ?? []).map(tag => String(tag).trim()).filter(Boolean),
       platforms:            platforms ?? [],
       brief_url:            brief_url ?? null,
+      // El wizard crea un borrador antes de llegar al último paso. Persistir
+      // las plantillas en ese primer POST mantiene Reel/Story/asistencia en la
+      // misma fuente que usa Overview, las aprobaciones y las deliverables.
+      deliverable_templates: Array.isArray(deliverable_templates) ? deliverable_templates : [],
       metadata: {
         ...(metadata ?? {}),
         address: (address && String(address).trim()) ? String(address).trim() : null,

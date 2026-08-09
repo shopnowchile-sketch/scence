@@ -187,7 +187,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   // Strip server-managed fields
-  const { id: _id, created_at: _ca, created_by: _cb, organization_id: _oi, budget_spent: _bs, address, ...rest } = body
+  const {
+    id: _id,
+    created_at: _ca,
+    created_by: _cb,
+    organization_id: _oi,
+    budget_spent: _bs,
+    address,
+    approval_submission_url,
+    reference_url,
+    event_date,
+    collaborator_ids: _collaboratorIds,
+    ...rest
+  } = body
 
   // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
   // propia campaña, aunque el formulario ya no muestre ese campo.
@@ -256,6 +268,22 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
+  // Campos del formulario que pertenecen a metadata, no a columnas de
+  // campaigns. Esto también repara borradores antiguos que los enviaban al
+  // nivel superior y gatillaban un error del schema cache de Supabase.
+  if (approval_submission_url !== undefined || reference_url !== undefined || event_date !== undefined) {
+    const metadata =
+      rest.metadata && typeof rest.metadata === 'object' && !Array.isArray(rest.metadata)
+        ? rest.metadata as Record<string, unknown>
+        : {}
+    rest.metadata = {
+      ...metadata,
+      ...(approval_submission_url !== undefined ? { approval_submission_url: approval_submission_url || null } : {}),
+      ...(reference_url !== undefined ? { reference_url: reference_url || null } : {}),
+      ...(event_date !== undefined ? { event_date: event_date || null } : {}),
+    }
+  }
+
   // Scope update to the user's own org — salvo admin/super_admin/owner de
   // Scence, que puede editar cualquier campaña (mismo criterio que GET).
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
@@ -313,7 +341,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { action, address, ...fields } = body
+  const { action, address, approval_submission_url, reference_url, event_date, collaborator_ids: _collaboratorIds, ...fields } = body
 
   if ('campaign_benefits' in fields) {
     fields.campaign_benefits = normalizeCampaignBenefits(fields.campaign_benefits)
@@ -380,6 +408,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         String(address).trim() !== ''
           ? String(address).trim()
           : null,
+    }
+  }
+
+  if (approval_submission_url !== undefined || reference_url !== undefined || event_date !== undefined) {
+    const metadata =
+      fields.metadata && typeof fields.metadata === 'object' && !Array.isArray(fields.metadata)
+        ? fields.metadata as Record<string, unknown>
+        : {}
+    fields.metadata = {
+      ...metadata,
+      ...(approval_submission_url !== undefined ? { approval_submission_url: approval_submission_url || null } : {}),
+      ...(reference_url !== undefined ? { reference_url: reference_url || null } : {}),
+      ...(event_date !== undefined ? { event_date: event_date || null } : {}),
     }
   }
 

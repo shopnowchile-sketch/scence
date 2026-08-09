@@ -875,8 +875,15 @@ export function CampaignForm({
 
   // Arma el payload de campaña a partir de los valores actuales del form
   function buildPayload(data: FormValues) {
+    const {
+      event_date,
+      reference_url,
+      approval_submission_url,
+      collaborator_ids: _collaboratorIds,
+      ...campaignFields
+    } = data
     return {
-      ...data,
+      ...campaignFields,
       start_date: data.start_date || null,
       end_date: data.end_date || null,
       budget_total: (data.budget_total !== undefined && !isNaN(data.budget_total as number)) ? data.budget_total : (data.type === 'commission' ? 0 : null),
@@ -891,9 +898,9 @@ export function CampaignForm({
       application_questions: data.application_questions ?? [],
       brief_url: data.brief_url || null,
       metadata: {
-        event_date: data.event_date || null,
-        reference_url: data.reference_url || null,
-        approval_submission_url: data.approval_submission_url || null,
+        event_date: event_date || null,
+        reference_url: reference_url || null,
+        approval_submission_url: approval_submission_url || null,
       },
       application_deadline: data.visibility === 'open' && data.application_deadline
         ? new Date(data.application_deadline).toISOString()

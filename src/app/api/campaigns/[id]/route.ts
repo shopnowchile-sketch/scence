@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { notifyAllInfluencersOfOpenCampaign, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 
 type Params = { params: { id: string } }
 
@@ -449,6 +450,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (error.code === 'PGRST116') return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     console.error('[PATCH /api/campaigns/[id]]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // La activación administrativa es el único momento en que se anuncia una
+  // campaña. Las funciones usan una tabla de idempotencia, por lo que no
+  // duplican envíos si la campaña se reactiva.
+  if (action === 'activate' && data?.status === 'active') {
+    await Promise.all([
+      notifyPreassignedInfluencersOnActivation(params.id, admin),
+      notifyAllInfluencersOfOpenCampaign(params.id, admin),
+    ])
   }
 
   // ── Auto-generate draft invoice when campaign is completed ────────────────

@@ -48,7 +48,7 @@ export async function notifyAllInfluencersOfOpenCampaign(
 
     const { data: candidates, error: infErr } = await admin
       .from('influencers')
-      .select('id, display_name, email')
+      .select('id, user_id, display_name, email')
       .eq('is_active', true)
       .not('email', 'is', null)
 
@@ -57,7 +57,25 @@ export async function notifyAllInfluencersOfOpenCampaign(
       return { sent: 0, failed: 0, skipped: 'query_error' }
     }
 
-    const eligible = candidates.filter(inf => !excludeIds.has(inf.id))
+    const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
+    const { data: profiles } = userIds.length
+      ? await admin.from('profiles').select('id, metadata').in('id', userIds)
+      : { data: [] }
+    const acceptsPublicCampaignEmails = new Map(
+      (profiles ?? []).map(profile => {
+        const metadata = profile.metadata && typeof profile.metadata === 'object'
+          ? profile.metadata as Record<string, unknown>
+          : {}
+        const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
+          ? metadata.notification_preferences as Record<string, unknown>
+          : {}
+        return [profile.id, preferences.public_campaigns_email !== false]
+      })
+    )
+
+    const eligible = candidates
+      .filter(inf => !excludeIds.has(inf.id))
+      .filter(inf => !inf.user_id || acceptsPublicCampaignEmails.get(inf.user_id) !== false)
     if (eligible.length === 0) return { sent: 0, failed: 0 }
 
     let sent = 0

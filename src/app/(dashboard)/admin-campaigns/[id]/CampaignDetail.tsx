@@ -3753,3 +3753,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {campaignDeliverables.length === 0 && (
             <p className="text-xs text-gray-400 text-center py-4">Sin actividad de deliverables aún.</p>
           )}
+        </div>
+      )}
+    </div>
+  )
+}

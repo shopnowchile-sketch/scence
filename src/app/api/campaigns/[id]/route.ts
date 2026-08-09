@@ -143,7 +143,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .limit(1)
     .maybeSingle()
 
-  const campaignWithEvent = { ...data, event_booking: eventBooking ?? null }
+  const campaignMetadata =
+    data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
+      ? data.metadata as Record<string, unknown>
+      : {}
+  // La dirección creada para la campaña es el fallback cuando todavía no hay booking.
+  const campaignWithEvent = {
+    ...data,
+    address: typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null,
+    event_booking: eventBooking ?? null,
+  }
 
   if (user.user_metadata?.is_brand) {
     const access = await getBrandAccess(admin, user.id, params.id)

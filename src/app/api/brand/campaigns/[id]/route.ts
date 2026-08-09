@@ -69,9 +69,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const metadata =
+    data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
+      ? data.metadata as Record<string, unknown>
+      : {}
+
   return NextResponse.json({
     data: {
       ...data,
+      address: typeof metadata.address === 'string' ? metadata.address : null,
       _brand_permissions: {
         isBrand: true,
         canView: true,

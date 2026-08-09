@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data: campaign, error } = await admin
     .from('campaigns')
     .select(`
-      id, name, description, content_guidelines, brief_url, type, status, visibility,
+      id, name, description, content_guidelines, brief_url, type, status, visibility, metadata,
       start_date, end_date, budget_total, currency, hashtags, platforms,
       deliverable_templates, application_deadline, applications_closed_at, max_influencers, application_questions,
       campaign_benefits,
@@ -94,7 +94,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // pero nunca dirección ni instrucciones antes de ser aceptada.
   const { data: eventBooking } = await admin
     .from('bookings')
-    .select('id, starts_at, ends_at')
+    .select('id, starts_at, ends_at, location, location_details')
     .eq('campaign_id', params.id)
     .is('influencer_id', null)
     .order('starts_at', { ascending: true })
@@ -107,13 +107,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .eq('campaign_id', params.id)
     .eq('application_status', 'accepted')
 
+  const campaignMetadata =
+    campaign.metadata && typeof campaign.metadata === 'object' && !Array.isArray(campaign.metadata)
+      ? campaign.metadata as Record<string, unknown>
+      : {}
+  const fallbackLocation = typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null
+  // La dirección se muestra antes de postular; el brief sigue reservado hasta aceptación.
+  const visibleEventBooking = eventBooking
+    ?? (fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
+
   return NextResponse.json({
     data: {
       ...payload,
       accepted_count: acceptedCount ?? 0,
       _applied: !!existing,
       application_status: existing?.application_status ?? null,
-      event_booking: eventBooking ?? null,
+      event_booking: visibleEventBooking,
     },
   })
 }

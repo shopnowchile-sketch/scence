@@ -751,7 +751,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
         {/* Fecha y hora se informan desde el inicio. Lugar e instrucciones solo
             aparecen cuando la influencer ya fue aceptada. */}
-        {data.event_booking && <EventBookingCard booking={data.event_booking} showLocation={isAccepted} />}
+        {data.event_booking && <EventBookingCard booking={data.event_booking} showLocation />}
 
       {/* El brief es la primera acción disponible luego del resumen del evento. */}
         {/* Un brief cargado como archivo es la versión operativa más reciente.

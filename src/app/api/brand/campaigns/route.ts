@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import {
-  resolveBrandPlan,
-  getPlanLimits,
-  visibilityLimitMessage,
-  PLAN_ERROR_CODES,
-} from '@/lib/plan-limits'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
@@ -18,7 +12,6 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!user.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const sp         = req.nextUrl.searchParams
   const status     = sp.get('status')
@@ -133,7 +126,6 @@ export async function POST(req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!user.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
 
@@ -153,29 +145,6 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     )
   }
-
-  // Misma regla comercial que /api/brand/me:
-  // una suscripción active/trialing O un override administrativo válido
-  // habilitan la creación de campañas.
-  const { data: activeSubscription } = await admin
-    .from('subscriptions')
-    .select('id')
-    .eq('organization_id', brand.organization_id)
-    .in('status', ['active', 'trialing'])
-    .limit(1)
-    .maybeSingle()
-
-  if (!activeSubscription && !brand.subscription_plan_override) {
-    return NextResponse.json({
-      error: 'Para crear tu primera campaña, primero debes activar un plan de SCENCE.',
-      code: 'SUBSCRIPTION_REQUIRED',
-    }, { status: 402 })
-  }
-
-  // ── Plan gating ───────────────────────────────────────────────────────────
-  // Resolver plan efectivo: override manual → suscripción activa/trialing → organización.
-  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
-  const limits  = getPlanLimits(orgPlan)
 
   let body: {
     name: string
@@ -213,24 +182,6 @@ export async function POST(req: NextRequest) {
   if (!type) return NextResponse.json({ error: 'El tipo es requerido' }, { status: 422 })
   if (!['private', 'open'].includes(visibility)) {
     return NextResponse.json({ error: 'visibility debe ser private u open' }, { status: 422 })
-  }
-
-  // Primera campaña pública incluida en todos los planes.
-  // Después de la primera, solo planes con marketplace/open campaigns pueden seguir creando públicas.
-  const { count: openCampaignCount } = await admin
-    .from('campaigns')
-    .select('id', { count: 'exact', head: true })
-    .eq('brand_id', brand.id)
-    .eq('visibility', 'open')
-
-  const canUseFirstPublicCampaign = (openCampaignCount ?? 0) === 0
-
-  if (visibility === 'open' && !limits.can_create_open_campaigns && !canUseFirstPublicCampaign) {
-    return NextResponse.json({
-      error: visibilityLimitMessage(orgPlan),
-      code:  PLAN_ERROR_CODES.VISIBILITY_LIMIT,
-      plan:  orgPlan,
-    }, { status: 403 })
   }
 
   const { data, error } = await admin

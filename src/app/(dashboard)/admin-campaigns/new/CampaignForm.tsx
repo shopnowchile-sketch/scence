@@ -14,8 +14,6 @@ import { cn } from '@/lib/utils'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
 import { DeliverableTemplateBuilder, DELIVERABLE_TYPES, CAMPAIGN_DELIVERABLE_DEFAULTS } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
-import { PlanUpgradeWall } from '@/components/plan/PlanUpgradeWall'
-import { getPlanLimits, getPlanTier } from '@/lib/plan-limits'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const nanToUndef = z.preprocess(
@@ -281,9 +279,7 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, planGating = false, canOpen = true }: StepProps & { planGating?: boolean; canOpen?: boolean }) {
-  // En Basic, la primera campaña pública está incluida. Las siguientes requieren Growth.
-  const openLocked = planGating && !canOpen
+function Step1({ register, control, errors }: StepProps) {
   const watchedVisibility = useWatch({ control, name: 'visibility' })
   const watchedType = useWatch({ control, name: 'type' })
   return (
@@ -403,20 +399,12 @@ function Step1({ register, control, errors, planGating = false, canOpen = true }
             </div>
           </label>
 
-          <label className={cn(
-            'flex items-start gap-3 p-4 rounded-xl border transition-colors relative',
-            openLocked
-              ? 'border-gray-100 bg-gray-50 cursor-not-allowed opacity-70'
-              : 'border-gray-200 cursor-pointer hover:border-violet-300'
-          )}>
-            <input type="radio" value="open" {...register('visibility')} className="mt-1" disabled={openLocked} />
+          <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-violet-300 transition-colors">
+            <input type="radio" value="open" {...register('visibility')} className="mt-1" />
             <div>
               <div className="text-sm font-semibold text-gray-900">Pública</div>
               <div className="text-xs text-gray-500 mt-0.5">Las influencers pueden postular desde su portal.</div>
             </div>
-            {openLocked && (
-              <span className="absolute top-2 right-2 text-[10px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">Growth</span>
-            )}
           </label>
         </div>
       </div>
@@ -772,15 +760,12 @@ interface CampaignFormProps {
   apiEndpoint?: string
   redirectBase?: string
   portal?: 'admin' | 'brand'
-  /** Activa gating por plan (portal marca): límite de campañas + visibilidad Pro. */
-  planGating?: boolean
 }
 
 export function CampaignForm({
   apiEndpoint = '/api/campaigns',
   redirectBase = '/admin-campaigns',
   portal = 'admin',
-  planGating = false,
 }: CampaignFormProps = {}) {
   const router = useRouter()
   const [step, setStep] = useState(1)
@@ -788,50 +773,6 @@ export function CampaignForm({
   const [draftSaving, setDraftSaving] = useState(false)
   const [campaignId, setCampaignId] = useState<string | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
-
-  // ── Plan gating (solo cuando planGating=true, portal marca) ──────────────
-  const [orgPlan, setOrgPlan] = useState<string>('free')
-  const [atCampaignLimit, setAtCampaignLimit] = useState(false)
-  const [hasUsedFirstPublicCampaign, setHasUsedFirstPublicCampaign] = useState(false)
-  const [planReady, setPlanReady] = useState(!planGating)
-
-  useEffect(() => {
-    if (!planGating) return
-    let cancelled = false
-    async function checkPlan() {
-      try {
-        const [meRes, camsRes] = await Promise.all([
-          fetch('/api/brand/me'),
-          fetch('/api/brand/campaigns'),
-        ])
-        const meJson   = meRes.ok  ? await meRes.json()  : null
-        const camsJson = camsRes.ok ? await camsRes.json() : null
-        const plan   = meJson?.data?.org_plan ?? 'free'
-        const limits = getPlanLimits(plan)
-        const campaigns = camsJson?.data ?? []
-        const active = campaigns.filter(
-          (c: { status: string }) => c.status === 'active'
-        ).length
-        const openCampaigns = campaigns.filter(
-          (c: { visibility?: string }) => c.visibility === 'open'
-        ).length
-        if (cancelled) return
-        setOrgPlan(plan)
-        setHasUsedFirstPublicCampaign(openCampaigns > 0)
-        setAtCampaignLimit(active >= limits.max_active_campaigns)
-      } catch {
-        // No-fatal: el backend igual valida el límite al enviar.
-      } finally {
-        if (!cancelled) setPlanReady(true)
-      }
-    }
-    checkPlan()
-    return () => { cancelled = true }
-  }, [planGating])
-
-  const planLimits = getPlanLimits(orgPlan)
-  const canOpen    = !planGating || planLimits.can_create_open_campaigns || !hasUsedFirstPublicCampaign
-  const planTier   = getPlanTier(orgPlan)
 
   const { register, control, handleSubmit, getValues, setValue, trigger, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -860,6 +801,9 @@ export function CampaignForm({
 
   // Must be after useForm so control is defined
   const campaignType = useWatch({ control, name: 'type' })
+  // A diferencia del autosave anterior (solo al avanzar), esta firma observa
+  // todas las ediciones del borrador, incluida la guía de contenido.
+  const autosaveSignature = JSON.stringify(useWatch({ control }))
 
   useEffect(() => {
     if (portal !== 'brand') return
@@ -919,6 +863,7 @@ export function CampaignForm({
       if (!campaignId) {
         const res = await fetch(apiEndpoint, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
@@ -930,6 +875,7 @@ export function CampaignForm({
       } else {
         const res = await fetch(`${apiEndpoint}/${campaignId}`, {
           method: 'PUT',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
@@ -941,6 +887,30 @@ export function CampaignForm({
       setDraftSaving(false)
     }
   }
+
+  // Una vez creado el borrador, cada cambio se persiste con debounce. Así la
+  // guía no depende de alcanzar el botón final para quedar guardada.
+  useEffect(() => {
+    if (!campaignId) return
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`${apiEndpoint}/${campaignId}`, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildPayload(getValues())),
+        })
+        if (res.ok) setDraftSavedAt(new Date())
+      } catch {
+        // Conserva el contenido local; el guardado final sigue disponible.
+      }
+    }, 700)
+
+    return () => window.clearTimeout(timer)
+    // buildPayload y getValues no dependen de estado mutable del componente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId, apiEndpoint, autosaveSignature])
 
   async function goNext() {
     const fieldsPerStep: Record<number, (keyof FormValues)[]> = {
@@ -971,18 +941,12 @@ export function CampaignForm({
       const isUpdate = !!campaignId
       const res = await fetch(isUpdate ? `${apiEndpoint}/${campaignId}` : apiEndpoint, {
         method: isUpdate ? 'PUT' : 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const err = await res.json()
-        // Límite de plan (portal marca): ofrecer acción de subir de plan.
-        if (planGating && (err.code === 'SUBSCRIPTION_REQUIRED' || (err.code && String(err.code).startsWith('PLAN_LIMIT_')))) {
-          toast.error(err.error, {
-            action: { label: err.code === 'SUBSCRIPTION_REQUIRED' ? 'Ver planes' : 'Subir de plan', onClick: () => router.push('/brand-settings/plan') },
-          })
-          return
-        }
         throw new Error(err.error ?? 'Error al crear campaña')
       }
       const { data: campaign } = await res.json()
@@ -995,6 +959,7 @@ export function CampaignForm({
       if (portal === 'brand') {
         const reviewRes = await fetch(`${apiEndpoint}/${savedCampaignId}`, {
           method: 'PATCH',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'submit_for_approval' }),
         })
@@ -1032,24 +997,6 @@ export function CampaignForm({
       firstError?.message
         ? `Paso ${targetStep}: ${firstError.message}`
         : 'Revisa los campos marcados en rojo antes de crear la campaña'
-    )
-  }
-
-  // Muro de plan: solo portal marca al alcanzar el límite de campañas activas.
-  if (planGating && planReady && atCampaignLimit) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <button type="button" onClick={() => router.back()}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
-          <ChevronLeft className="h-4 w-4" /> Volver
-        </button>
-        <PlanUpgradeWall
-          title="Límite de campañas alcanzado"
-          description={`Tu plan ${planLimits.label} permite máximo ${planLimits.max_active_campaigns} campaña${planLimits.max_active_campaigns !== 1 ? 's' : ''} activa${planLimits.max_active_campaigns !== 1 ? 's' : ''}. Cancela una o sube de plan para crear más.`}
-          currentPlan={orgPlan}
-          requiredPlan={planTier === 'basic' ? 'growth' : 'pro'}
-        />
-      </div>
     )
   }
 
@@ -1094,7 +1041,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-6">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} planGating={planGating} canOpen={canOpen} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
           {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} campaignId={campaignId} />}
         </div>

@@ -12,6 +12,7 @@ import { SortableTH } from '@/components/ui/SortableTH'
 import { formatCurrency, formatDate, formatDatetime, PLATFORM_ICONS } from '@/lib/utils'
 import type { Campaign, CampaignFilters as CampaignFiltersType } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { useColumnWidths } from '@/hooks/useColumnWidths'
 
 // ── KPI summary ───────────────────────────────────────
 function KPIs({ summary }: { summary: CampaignSummary }) {
@@ -139,6 +140,26 @@ const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
   { key: 'status',      label: 'Estado' },
 ]
 
+const DEFAULT_COLUMN_WIDTHS: Record<CampaignColumnKey, number> = {
+  campaign: 330,
+  brand: 180,
+  type: 150,
+  visibility: 160,
+  platforms: 140,
+  influencers: 180,
+  progress: 190,
+  budget: 170,
+  dates: 160,
+  createdAt: 190,
+  status: 130,
+}
+
+function normalizeColumnOrder(order: CampaignColumnKey[]) {
+  const known = new Set(CAMPAIGN_COLUMNS.map(column => column.key))
+  const unique = order.filter((key, index) => known.has(key) && order.indexOf(key) === index)
+  return [...unique, ...CAMPAIGN_COLUMNS.map(column => column.key).filter(key => !unique.includes(key))]
+}
+
 // Color estable por marca: la misma marca conserva siempre su color en Admin
 // y Portal Marca, sin depender del orden en que lleguen las campañas.
 const BRAND_COLORS = [
@@ -200,6 +221,15 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   )
   const [sortKey, setSortKey] = useLocalStorageState<SortKey>(`scence:${portal}:campaigns:sortKey`, 'dates')
   const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>(`scence:${portal}:campaigns:sortOrder`, 'desc')
+  const [columnOrder, setColumnOrder] = useLocalStorageState<CampaignColumnKey[]>(
+    `scence:${portal}:campaigns:columnOrder`,
+    CAMPAIGN_COLUMNS.map(column => column.key),
+  )
+  const { widths, startResize, resetWidths } = useColumnWidths<CampaignColumnKey>(
+    `scence:${portal}:campaigns:widths`,
+    DEFAULT_COLUMN_WIDTHS,
+  )
+  const [draggedColumn, setDraggedColumn] = useState<CampaignColumnKey | null>(null)
 
   const { data, isLoading, error } = useCampaignsList({
     status:     filters.status,
@@ -297,8 +327,23 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
     return sorted
   }, [rawCampaigns, sortKey, sortOrder])
 
-  const visibleColumnList = CAMPAIGN_COLUMNS.filter(c => visibleColumns[c.key])
+  const orderedColumns = normalizeColumnOrder(columnOrder)
+  const visibleColumnList = orderedColumns
+    .map(key => CAMPAIGN_COLUMNS.find(column => column.key === key)!)
+    .filter(column => visibleColumns[column.key])
   const visibleColSpan = visibleColumnList.length + 1
+
+  function moveColumn(from: CampaignColumnKey, to: CampaignColumnKey) {
+    if (from === to) return
+    setColumnOrder(previous => {
+      const next = normalizeColumnOrder(previous)
+      const fromIndex = next.indexOf(from)
+      const toIndex = next.indexOf(to)
+      next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, from)
+      return next
+    })
+  }
 
   function setFilter(f: Partial<CampaignFiltersType>) {
     setFilters((prev: Partial<CampaignFiltersType>) => ({ ...prev, ...f }))
@@ -387,7 +432,8 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
             />
             {/* Selector integrado al bloque de filtros para evitar el espacio
                 vacío que antes quedaba entre filtros y tabla. */}
-            <div className="relative flex justify-end mt-3 pt-3 border-t border-gray-100">
+            <div className="relative flex items-center justify-end gap-3 mt-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-400">Arrastra encabezados para ordenar · arrastra su borde para ajustar ancho</span>
               <button
                 type="button"
                 onClick={() => setShowColumns(v => !v)}
@@ -399,6 +445,16 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
               {showColumns && (
                 <div className="absolute right-0 top-14 z-20 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-3">
                   <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Mostrar columnas</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setColumnOrder(CAMPAIGN_COLUMNS.map(column => column.key))
+                      resetWidths()
+                    }}
+                    className="mb-2 text-xs font-semibold text-violet-600 hover:text-violet-700"
+                  >
+                    Restablecer orden y tamaños
+                  </button>
                   <div className="space-y-2">
                     {CAMPAIGN_COLUMNS.map(col => (
                       <label key={col.key} className="flex items-center gap-2 text-sm text-gray-700">
@@ -419,11 +475,39 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
           {/* Tabla */}
           {isLoading ? <Skeleton /> : (
             <div className="card overflow-x-auto">
-              <table className="w-full min-w-[640px]">
+              <table className="min-w-[640px]" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
+                <colgroup>
+                  {visibleColumnList.map(column => <col key={column.key} style={{ width: widths[column.key] }} />)}
+                  <col style={{ width: 68 }} />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-gray-100">
                     {visibleColumnList.map(col => (
-                      <SortableTH key={col.key} col={col.key} sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort}>
+                      <SortableTH
+                        key={col.key}
+                        col={col.key}
+                        sortBy={sortKey}
+                        sortDir={sortOrder}
+                        onSort={toggleSort}
+                        onResizeStart={event => startResize(col.key, event)}
+                        dragProps={{
+                          draggable: true,
+                          onDragStart: event => {
+                            event.dataTransfer.effectAllowed = 'move'
+                            event.dataTransfer.setData('text/plain', col.key)
+                            setDraggedColumn(col.key)
+                          },
+                          onDragOver: event => event.preventDefault(),
+                          onDrop: event => {
+                            event.preventDefault()
+                            const source = (event.dataTransfer.getData('text/plain') || draggedColumn) as CampaignColumnKey | null
+                            if (source) moveColumn(source, col.key)
+                            setDraggedColumn(null)
+                          },
+                          onDragEnd: () => setDraggedColumn(null),
+                          title: `${col.label}: arrastra para ordenar`,
+                        }}
+                      >
                         {col.label}
                       </SortableTH>
                     ))}
@@ -446,7 +530,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                     return (
                       <tr key={c.id} className="hover:bg-gray-50/70 transition-colors group">
                         {visibleColumns.campaign && (
-                          <td className="px-4 py-3 max-w-[260px]">
+                          <td className="px-4 py-3 overflow-hidden">
                             <Link href={`${isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'}/${c.id}`} className="block">
                               <div className="flex min-w-0 items-center gap-3">
                                 <div className="h-11 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gradient-to-br from-violet-100 via-fuchsia-50 to-amber-50">
@@ -497,7 +581,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
                           </td>
                         )}
                         {visibleColumns.progress && (
-                          <td className="px-4 py-3 min-w-[140px]">
+                          <td className="px-4 py-3 overflow-hidden">
                             {(c.deliverable_count ?? 0) > 0
                               ? <ProgressBar done={c.deliverable_done ?? 0} total={c.deliverable_count ?? 0} pct={pct} />
                               : <span className="text-xs text-gray-300">Sin deliverables</span>}

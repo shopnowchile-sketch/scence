@@ -30,6 +30,7 @@ export function SortableTH<T extends string>({
   sortDir,
   onSort,
   onResizeStart,
+  dragProps,
   align = 'left',
   className,
 }: {
@@ -39,6 +40,7 @@ export function SortableTH<T extends string>({
   sortDir?: 'asc' | 'desc'
   onSort?: (col: T) => void
   onResizeStart?: (e: React.MouseEvent) => void
+  dragProps?: React.HTMLAttributes<HTMLTableCellElement>
   align?: 'left' | 'right'
   className?: string
 }) {
@@ -52,6 +54,7 @@ export function SortableTH<T extends string>({
         className
       )}
       onClick={() => sortable && onSort(col as T)}
+      {...dragProps}
     >
       <div className={cn('flex items-center gap-1', align === 'right' && 'justify-end')}>
         {children}

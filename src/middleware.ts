@@ -15,6 +15,16 @@ const PUBLIC_ROUTES = [
 ]
 
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname
+  const isPublic = PUBLIC_ROUTES.some(route => path.startsWith(route))
+
+  // Las páginas y webhooks públicos no necesitan renovar ni verificar una sesión.
+  // Evitar esta llamada es importante cuando una campaña genera muchas visitas
+  // simultáneas desde un correo o enlace compartido.
+  if (isPublic) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -34,12 +44,14 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const path = request.nextUrl.pathname
-  const isPublic = PUBLIC_ROUTES.some(r => path.startsWith(r))
+  // getUser() hace una petición a Auth en cada navegación. getClaims() verifica
+  // el JWT firmado (con JWKS cacheado) y evita que el middleware se convierta en
+  // un cuello de botella durante aperturas masivas de campañas.
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const claims = claimsData?.claims
   const isApiRoute = path.startsWith('/api/')
 
-  if (!user && !isPublic) {
+  if (!claims) {
     // API routes → return JSON 401 instead of HTML redirect
     if (isApiRoute) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -52,8 +64,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Determinar rol del usuario autenticado
-  const isInfluencer = user?.user_metadata?.is_influencer === true
-  const isBrand      = user?.user_metadata?.is_brand === true
+  const isInfluencer = claims.user_metadata?.is_influencer === true
+  const isBrand      = claims.user_metadata?.is_brand === true
 
   // Rutas exclusivas de admin (inaccesibles para influencers y marcas)
   const ADMIN_ONLY = [
@@ -78,7 +90,7 @@ export async function middleware(request: NextRequest) {
     '/brand',
   ]
 
-  if (user) {
+  if (claims) {
     if (isBrand) {
       // Marca → solo puede acceder al portal de marcas
       if (path === '/login' || path === '/' || path === '/brand/dashboard') {
@@ -116,5 +128,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // Las APIs verifican su propia sesión y autorización. Excluirlas evita una
+  // segunda verificación de Auth por cada carga de datos de la pantalla.
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }

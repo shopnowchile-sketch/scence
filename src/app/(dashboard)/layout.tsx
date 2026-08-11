@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { ensureOrg } from '@/lib/supabase/ensureOrg'
+import { ensureOrg, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { Sidebar } from '@/components/layout/Sidebar'
 
 export const dynamic = 'force-dynamic'
@@ -9,6 +9,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  // Defensa en servidor: el middleware sólo conoce el JWT. Cuentas antiguas
+  // pueden tener is_brand ausente o desactualizado; la membresía real de
+  // brands/brand_members es la que decide si puede entrar a Admin.
+  if (await resolveBrandAccess(user.id)) redirect('/brand-dash')
 
   // Auto-provision org on first login (no-op if org already exists)
   await ensureOrg(user)

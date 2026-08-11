@@ -1,62 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 
 type Params = { params: { id: string } }
 
-async function getBrandCampaignAccess(admin: any, userId: string, campaignId: string) {
-  const { data: brand } = await admin
-    .from('brands')
-    .select('id')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (!brand?.id) return { isBrand: false, canView: false, canEdit: false, brandId: null }
+async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient>, userId: string, campaignId: string) {
+  // La relación de marca vive en brands/brand_members, no en user_metadata.
+  // Esto protege miembros antiguos cuyo JWT no tenga is_brand actualizado.
+  const brandAccess = await resolveBrandAccess(userId)
+  if (!brandAccess) return { isBrand: false, canView: false, canEdit: false, brandId: null }
 
   const { data: campaign } = await admin
     .from('campaigns')
     .select('id, brand_id, created_by_brand_id')
     .eq('id', campaignId)
     .maybeSingle()
+  if (!campaign) return { isBrand: true, canView: false, canEdit: false, brandId: brandAccess.brandId }
 
-  if (!campaign) return { isBrand: true, canView: false, canEdit: false, brandId: brand.id }
-
-  const isMainBrand = campaign.brand_id === brand.id
-  const isCreatorBrand = campaign.created_by_brand_id === brand.id
-
-  return {
-    isBrand: true,
-    canView: isMainBrand || isCreatorBrand,
-    canEdit: isMainBrand || isCreatorBrand,
-    brandId: brand.id,
-  }
-}
-
-async function getBrandAccess(admin: ReturnType<typeof createAdminClient>, userId: string, campaignId: string) {
-  const { data: profileBrand } = await admin
-    .from('brands')
+  const isMain = campaign.brand_id === brandAccess.brandId
+  const isCreator = campaign.created_by_brand_id === brandAccess.brandId
+  const { data: collaboration } = await admin
+    .from('campaign_brands')
     .select('id')
-    .eq('user_id', userId)
+    .eq('campaign_id', campaignId)
+    .eq('brand_id', brandAccess.brandId)
     .maybeSingle()
-
-  if (!profileBrand?.id) return { isBrand: false, canView: false, canEdit: false }
-
-  const { data: campaign } = await admin
-    .from('campaigns')
-    .select('id, brand_id, created_by_brand_id')
-    .eq('id', campaignId)
-    .maybeSingle()
-
-  if (!campaign) return { isBrand: true, canView: false, canEdit: false }
-
-  const isMain = campaign.brand_id === profileBrand.id
-  const isCreator = campaign.created_by_brand_id === profileBrand.id || campaign.brand_id === profileBrand.id
 
   return {
     isBrand: true,
-    canView: isMain || isCreator,
-    canEdit: isCreator,
+    canView: isMain || isCreator || Boolean(collaboration),
+    canEdit: isMain || isCreator,
+    brandId: brandAccess.brandId,
   }
 }
 
@@ -158,8 +133,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     event_bookings: eventBookings ?? [],
   }
 
-  if (user.user_metadata?.is_brand) {
-    const access = await getBrandAccess(admin, user.id, params.id)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
+  if (access?.isBrand) {
     if (!access.canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     return NextResponse.json({ data: { ...campaignWithEvent, _brand_permissions: access } })
   }
@@ -168,7 +144,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // de Scence puede abrir cualquier campaña, sin filtrar por organization_id
   // — las marcas quedan con su propia organization_id aislada. Antes esto
   // bloqueaba el detalle con 404 aunque la campaña sí apareciera en la lista.
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   if (!isAdmin && orgId && data.organization_id !== orgId) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
@@ -186,9 +161,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
 
-  if (user.user_metadata?.is_brand) {
-    const access = await getBrandAccess(admin, user.id, params.id)
+  if (access?.isBrand) {
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
 
@@ -216,7 +192,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
   // propia campaña, aunque el formulario ya no muestre ese campo.
-  if (user.user_metadata?.is_brand) {
+  if (access?.isBrand) {
     delete rest.brand_id
     // La activación siempre requiere aprobación administrativa. Este endpoint
     // genérico también puede ser llamado directamente, por lo que no basta con
@@ -232,7 +208,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // Una marca principal es una marca real existente. La organización de la
   // campaña no cambia: `brand_id` sólo define quién se presenta como anfitriona
   // y evita que una campaña creada por SCENCE se transfiera entre tenants.
-  if (!user.user_metadata?.is_brand && Object.prototype.hasOwnProperty.call(rest, 'brand_id')) {
+  if (!access?.isBrand && Object.prototype.hasOwnProperty.call(rest, 'brand_id')) {
     if (rest.brand_id === '' || rest.brand_id === null) {
       rest.brand_id = null
     } else if (typeof rest.brand_id !== 'string') {
@@ -299,13 +275,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   // Scope update to the user's own org — salvo admin/super_admin/owner de
   // Scence, que puede editar cualquier campaña (mismo criterio que GET).
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   let query = admin
     .from('campaigns')
     .update({ ...rest, updated_at: new Date().toISOString() })
     .eq('id', params.id)
 
-  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
+  if (!access?.isBrand && !isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data, error } = await query.select().single()
 
@@ -317,7 +292,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   // Si la marca elegida ya era colaboradora, deja de serlo para que se muestre
   // una sola vez con el rol correcto en la campaña.
-  if (!user.user_metadata?.is_brand && typeof rest.brand_id === 'string') {
+  if (!access?.isBrand && typeof rest.brand_id === 'string') {
     const { error: collaboratorCleanupError } = await admin
       .from('campaign_brands')
       .delete()
@@ -341,9 +316,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
 
-  if (user.user_metadata?.is_brand) {
-    const access = await getBrandAccess(admin, user.id, params.id)
+  if (access?.isBrand) {
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
 
@@ -362,7 +338,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
   // propia campaña vía PATCH, aunque el formulario ya no muestre ese campo.
-  if (user.user_metadata?.is_brand) {
+  if (access?.isBrand) {
     delete fields.brand_id
     // Esta ruta es una alternativa a /api/brand/campaigns/[id]. Bloquear aquí
     // evita que una marca active una campaña manipulando la petición directa.
@@ -439,13 +415,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // Scope update to the user's own org — salvo admin/super_admin/owner de
   // Scence, que puede cambiar el estado de cualquier campaña.
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   let query = admin
     .from('campaigns')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', params.id)
 
-  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
+  if (!access?.isBrand && !isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { data, error } = await query.select().single()
 
@@ -542,13 +517,12 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
 
-  if (user.user_metadata?.is_brand) {
-    const access = await getBrandAccess(admin, user.id, params.id)
+  if (access?.isBrand) {
     if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
   }
-
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
 
   const hard = new URL(req.url).searchParams.get('hard') === '1'
 
@@ -594,7 +568,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     .update({ status: 'canceled', updated_at: new Date().toISOString() })
     .eq('id', params.id)
 
-  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
+  if (!access?.isBrand && !isAdmin && orgId) query = query.eq('organization_id', orgId)
 
   const { error } = await query
 

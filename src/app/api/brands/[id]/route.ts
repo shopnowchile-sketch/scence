@@ -3,9 +3,16 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+
+async function requirePlatformAdmin(user: { id: string; user_metadata: Record<string, unknown> }, admin: ReturnType<typeof createAdminClient>) {
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const role = orgId ? await getUserRole(user.id, orgId, admin) : null
+  return Boolean(role?.isAdmin)
+}
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
@@ -13,6 +20,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  if (!await requirePlatformAdmin(user, admin)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { data: brand, error: brandError } = await admin
     .from('brands')
@@ -94,6 +104,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  if (!await requirePlatformAdmin(user, admin)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
@@ -415,6 +428,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  if (!await requirePlatformAdmin(user, admin)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { error } = await admin
     .from('brands')

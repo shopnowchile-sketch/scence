@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+
+async function requirePlatformAdmin(user: { id: string; user_metadata: Record<string, unknown> }, admin: ReturnType<typeof createAdminClient>) {
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const role = orgId ? await getUserRole(user.id, orgId, admin) : null
+  return Boolean(role?.isAdmin)
+}
 
 function brandInviteEmail({ name, actionLink, isResend }: { name: string; actionLink: string; isResend: boolean }) {
   return `<!DOCTYPE html>
@@ -50,6 +57,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  if (!await requirePlatformAdmin(user, admin)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { data: brand, error: brandErr } = await admin
     .from('brands')

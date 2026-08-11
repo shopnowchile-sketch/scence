@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -11,10 +12,15 @@ type Params = { params: { id: string } }
  * existían; lo único que faltaba era este endpoint de escritura y el botón
  * en la UI (ver GET /api/brands/[id], que ya lee brand_influencers).
  *
- * Mismo patrón de auth que el resto de /api/brands/[id]: solo exige usuario
- * autenticado (no hay chequeo explícito de rol admin todavía en ese
- * recurso) — se mantiene consistente, no se endurece acá.
+ * Es una ruta administrativa: nunca debe quedar disponible desde un portal
+ * de marca, aunque esa cuenta tenga metadata JWT antigua.
  */
+async function requirePlatformAdmin(user: { id: string; user_metadata: Record<string, unknown> }, admin: ReturnType<typeof createAdminClient>) {
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const role = orgId ? await getUserRole(user.id, orgId, admin) : null
+  return Boolean(role?.isAdmin)
+}
+
 export async function POST(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -32,6 +38,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  if (!await requirePlatformAdmin(user, admin)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand, error: brandError } = await admin
     .from('brands')
@@ -67,6 +74,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!influencerId) return NextResponse.json({ error: 'Falta influencer_id' }, { status: 400 })
 
   const admin = createAdminClient()
+  if (!await requirePlatformAdmin(user, admin)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { error } = await admin
     .from('brand_influencers')

@@ -73,11 +73,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
     data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
       ? data.metadata as Record<string, unknown>
       : {}
+  const { data: eventBookings } = await admin
+    .from('bookings')
+    .select('id, title, starts_at, ends_at, location, location_details, status')
+    .eq('campaign_id', params.id)
+    .order('starts_at', { ascending: true })
 
   return NextResponse.json({
     data: {
       ...data,
       address: typeof metadata.address === 'string' ? metadata.address : null,
+      // Misma agenda que el detalle admin: una campaña de varios días tiene
+      // múltiples bookings de campaña, no un rango sintético.
+      event_booking: eventBookings?.[0] ?? null,
+      event_bookings: eventBookings ?? [],
       _brand_permissions: {
         isBrand: true,
         canView: true,

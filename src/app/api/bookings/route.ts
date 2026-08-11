@@ -263,10 +263,15 @@ export async function DELETE(req: NextRequest) {
 
   const { data: existing } = await admin
     .from('bookings')
-    .select('calendar_event_id')
+    .select('calendar_event_id, campaign_id, organization_id')
     .eq('id', id)
-    .eq('organization_id', orgId)
-    .single()
+    .maybeSingle()
+
+  if (!existing) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
+  const writeOrgId = existing.campaign_id
+    ? await resolveCampaignWriteOrg(admin, user, existing.campaign_id, orgId)
+    : (existing.organization_id === orgId ? orgId : null)
+  if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para quitar este evento' }, { status: 403 })
 
   if (existing?.calendar_event_id) {
     try { await deleteCalendarEvent(existing.calendar_event_id) } catch {}
@@ -276,7 +281,7 @@ export async function DELETE(req: NextRequest) {
     .from('bookings')
     .update({ status: 'canceled', canceled_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('organization_id', orgId)
+    .eq('organization_id', writeOrgId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })

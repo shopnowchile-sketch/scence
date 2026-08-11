@@ -136,13 +136,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // El horario y lugar del evento se guardan en bookings (no en campaigns).
   // Se incluyen en el resumen para que Admin y Marca vean la información real
   // del evento, en vez del rango general de duración de la campaña.
-  const { data: eventBooking } = await admin
+  const { data: eventBookings } = await admin
     .from('bookings')
     .select('id, title, starts_at, ends_at, location, location_details, status')
     .eq('campaign_id', params.id)
     .order('starts_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+  const eventBooking = eventBookings?.[0] ?? null
 
   const campaignMetadata =
     data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
@@ -153,6 +152,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     ...data,
     address: typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null,
     event_booking: eventBooking ?? null,
+    // Una campaña de varios días usa varios bookings de campaña. Se mantiene
+    // event_booking para consumidores existentes y se expone la agenda completa
+    // para que el Summary no pierda los demás días ni sus horarios.
+    event_bookings: eventBookings ?? [],
   }
 
   if (user.user_metadata?.is_brand) {

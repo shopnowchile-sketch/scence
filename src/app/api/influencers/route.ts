@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getPrimarySocial } from '@/lib/influencers/ranking'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 // 'followers' / 'engagement_rate' viven en la tabla join (influencer_social_profiles),
 // no son columnas de `influencers` — Postgres/PostgREST no puede hacer .order() por
@@ -31,9 +32,10 @@ export async function GET(request: NextRequest) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (user.user_metadata?.is_brand || user.user_metadata?.is_influencer) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const admin = createAdminClient()
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const search     = searchParams.get('search')
@@ -60,7 +62,6 @@ export async function GET(request: NextRequest) {
   const limit      = parseInt(searchParams.get('limit') ?? '100', 10)
   const summaryOnly = searchParams.get('summary') === '1'
 
-  const admin = createAdminClient()
   // Roster global admin: sin filtro de organization_id — a diferencia de
   // /api/brand/influencers (que sí filtra por la marca), acá el caller ya
   // está garantizado admin/staff por el guard de arriba, y el objetivo es

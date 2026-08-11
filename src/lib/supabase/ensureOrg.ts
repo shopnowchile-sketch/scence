@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type OrgRole = 'super_admin' | 'brand_manager' | 'finance' | 'influencer'
 
-/** Roles con acceso completo (billing, payroll, eliminación, settings de team) */
+/** Roles con acceso global de plataforma (SCENCE). */
 export const ADMIN_ROLES: OrgRole[] = ['super_admin']
 
 /**
@@ -26,7 +26,10 @@ export async function getUserRole(
   if (!data) return { role: null, isOwner: false, isAdmin: false }
   const role = data.role as OrgRole
   const isOwner = data.is_owner === true
-  const isAdmin = isOwner || ADMIN_ROLES.includes(role)
+  // Ser owner solo otorga administración de SU organización; no concede
+  // acceso global a campañas, CRM, marcas ni datos de SCENCE. Antes esta
+  // mezcla hacía que el owner de cualquier marca fuera tratado como admin.
+  const isAdmin = ADMIN_ROLES.includes(role)
   return { role, isOwner, isAdmin }
 }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { PLAN_TIERS } from '@/lib/plan-limits'
 
 // ── GET /api/brands ───────────────────────────────────────────────────────────
@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+  const { isAdmin } = await getUserRole(user.id, orgId, admin)
+  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const sp     = req.nextUrl.searchParams
   const search = sp.get('search')

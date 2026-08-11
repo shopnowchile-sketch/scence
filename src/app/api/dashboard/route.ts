@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
@@ -28,6 +28,11 @@ export async function GET() {
       revenue_chart: [],
     })
   }
+
+  // Este dashboard agrega datos globales de operación. Las marcas usan su
+  // propio dashboard y nunca deben poder consultar esta vista por API.
+  const { isAdmin } = await getUserRole(user.id, orgId, db)
+  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const monthStart = format(startOfMonth(now), 'yyyy-MM-dd')
   const monthEnd   = format(endOfMonth(now), 'yyyy-MM-dd')

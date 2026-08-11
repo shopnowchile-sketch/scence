@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
@@ -37,17 +37,35 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range((page - 1) * limit, page * limit - 1)
 
-  // Scope: admin/super_admin/owner de Scence ve todas las campañas, sin
-  // filtrar por organization_id — necesario porque las marcas auto-registradas
-  // quedan con su propia organization_id aislada (distinta a la de Scence),
-  // y sus campañas quedaban invisibles para admin. Fix 2026-07-02.
+  // Scope: admin/super_admin/owner de Scence ve todas las campañas. Una marca
+  // jamás hereda la vista global solo por compartir organization_id con otra
+  // marca o con Scence: se limita a su marca principal y a colaboraciones
+  // reales. Esto protege también llamadas directas a esta API, no solo la UI.
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   if (isAdmin) {
     // sin filtro de organization_id: vista global
-  } else if (orgId) {
-    query = query.eq('organization_id', orgId)
   } else {
-    query = query.eq('created_by', user.id)
+    const brandAccess = await resolveBrandAccess(user.id)
+    if (brandAccess) {
+      const { data: collaboratorRows, error: collaboratorError } = await admin
+        .from('campaign_brands')
+        .select('campaign_id')
+        .eq('brand_id', brandAccess.brandId)
+      if (collaboratorError) {
+        return NextResponse.json({ error: collaboratorError.message }, { status: 500 })
+      }
+      const collaboratorCampaignIds = (collaboratorRows ?? [])
+        .map(row => row.campaign_id)
+        .filter(Boolean)
+      const brandFilter = collaboratorCampaignIds.length
+        ? `brand_id.eq.${brandAccess.brandId},id.in.(${collaboratorCampaignIds.join(',')})`
+        : `brand_id.eq.${brandAccess.brandId}`
+      query = query.or(brandFilter)
+    } else if (orgId) {
+      query = query.eq('organization_id', orgId)
+    } else {
+      query = query.eq('created_by', user.id)
+    }
   }
 
   if (status)     query = query.eq('status', status)

@@ -422,12 +422,12 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
 }
 
 /**
- * resolveBrandAccess — resuelve el acceso de un usuario a una marca: owner
- * directo (`brands.user_id`) o miembro activo (`brand_members.user_id` +
- * `is_active=true`). Fuente única de verdad para el portal de marca desde
- * el multiusuario por marca (spec Pri 2026-07-10, "Opción A" — reutiliza
- * `brand_members`, NO usa `organization_members` ni el patrón legacy
- * `user_metadata.brand_id`).
+ * resolveBrandAccess — fuente canónica de acceso del portal Marca.
+ *
+ * Primero lee `organization_members` y resuelve la marca de esa organización.
+ * Para no expulsar equipos ya existentes, `brands.user_id` y `brand_members`
+ * se aceptan solo como compatibilidad y se sincronizan inmediatamente hacia
+ * `organization_members`. Ninguna decisión depende de user_metadata.
  *
  * Asume una marca por usuario (owner de una O miembro de una), igual que el
  * resto del portal de marca hoy. Si el usuario es owner Y tiene además una
@@ -444,6 +444,41 @@ export type BrandAccess = {
 export async function resolveBrandAccess(userId: string): Promise<BrandAccess | null> {
   const admin = createAdminClient()
 
+  const { data: orgMemberships } = await admin
+    .from('organization_members')
+    .select('organization_id, role, is_owner')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+
+  for (const membership of orgMemberships ?? []) {
+    const { data: brand } = await admin
+      .from('brands')
+      .select('id, organization_id')
+      .eq('organization_id', membership.organization_id)
+      .maybeSingle()
+    if (brand) {
+      return {
+        brandId: brand.id,
+        organizationId: brand.organization_id,
+        role: membership.is_owner ? 'owner' : ((membership.role as BrandAccess['role']) ?? 'brand_manager'),
+        isOwner: membership.is_owner === true,
+      }
+    }
+  }
+
+  const syncLegacyMembership = async (brand: { id: string; organization_id: string }, role: BrandAccess['role'], isOwner: boolean) => {
+    const orgRole: OrgRole = role === 'finance' ? 'finance' : 'brand_manager'
+    const { error } = await admin.from('organization_members').upsert({
+      organization_id: brand.organization_id,
+      user_id: userId,
+      role: orgRole,
+      is_owner: isOwner,
+      is_active: true,
+      joined_at: new Date().toISOString(),
+    }, { onConflict: 'organization_id,user_id' })
+    if (error) console.error('[resolveBrandAccess] legacy membership sync failed:', error.message)
+  }
+
   const { data: owned } = await admin
     .from('brands')
     .select('id, organization_id')
@@ -451,6 +486,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
     .maybeSingle()
 
   if (owned) {
+    await syncLegacyMembership(owned, 'owner', true)
     return { brandId: owned.id, organizationId: owned.organization_id, role: 'owner', isOwner: true }
   }
 
@@ -471,10 +507,13 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
 
   if (!brand) return null
 
+  const legacyRole = (membership.role as BrandAccess['role']) ?? 'member'
+  await syncLegacyMembership({ id: membership.brand_id, organization_id: brand.organization_id }, legacyRole, false)
+
   return {
     brandId: membership.brand_id,
     organizationId: brand.organization_id,
-    role: (membership.role as BrandAccess['role']) ?? 'member',
+    role: legacyRole,
     isOwner: false,
   }
 }

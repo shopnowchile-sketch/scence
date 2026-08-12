@@ -72,7 +72,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       agreed_date, completed_at, cancelled_at, cancellation_reason, created_at, updated_at,
       benefits:barter_benefits (
         id, benefit_type, description, fixed_value, currency,
-        commission_rate, affiliate_link_id, position
+        commission_rate, affiliate_link_id, delivery_method, status, delivered_at,
+        completed_at, status_note, position
       ),
       influencer:influencers (id, display_name, avatar_url),
       history:barter_status_history (id, barter_id, from_status, to_status, note, created_at)

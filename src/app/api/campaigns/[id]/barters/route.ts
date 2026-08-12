@@ -17,7 +17,8 @@ const SELECT = `
   responsible:profiles!barters_responsible_id_fkey (id, full_name),
   benefits:barter_benefits (
     id, organization_id, barter_id, benefit_type, description, fixed_value,
-    currency, commission_rate, affiliate_link_id, position, created_at, updated_at
+    currency, commission_rate, affiliate_link_id, delivery_method, status, delivered_at,
+    completed_at, status_note, position, created_at, updated_at
   ),
   history:barter_status_history (
     id, barter_id, from_status, to_status, changed_by, note, created_at,
@@ -221,18 +222,39 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { barter_id, status, note, evidence_url, patch, bulk_benefit_updates } = body as {
+  const { barter_id, status, note, evidence_url, patch, benefit_id, benefit_patch, bulk_benefit_updates } = body as {
     barter_id?: string
     status?: BarterStatus
     note?: string
     evidence_url?: string
     patch?: Record<string, unknown>  // edición de campos no-status
+    benefit_id?: string
+    benefit_patch?: Record<string, unknown>
     bulk_benefit_updates?: Array<{ barter_id?: string; benefit_index?: number; status?: string }>
   }
 
   const admin = createAdminClient()
   const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
   if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  if (benefit_id && benefit_patch) {
+    const allowedStatuses = ['pending', 'ready', 'delivered', 'completed', 'problem', 'cancelled']
+    const allowedDelivery = ['event', 'store_pickup', 'shipping', 'digital', 'manual']
+    if ('status' in benefit_patch && !allowedStatuses.includes(String(benefit_patch.status))) return NextResponse.json({ error: 'Estado de beneficio inválido' }, { status: 422 })
+    if ('delivery_method' in benefit_patch && !allowedDelivery.includes(String(benefit_patch.delivery_method))) return NextResponse.json({ error: 'Método de entrega inválido' }, { status: 422 })
+    const { data: benefit } = await admin.from('barter_benefits').select('id, barter_id').eq('id', benefit_id).maybeSingle()
+    if (!benefit) return NextResponse.json({ error: 'Beneficio no encontrado' }, { status: 404 })
+    const { data: benefitBarter } = await admin.from('barters').select('id').eq('id', benefit.barter_id).eq('campaign_id', params.id).maybeSingle()
+    if (!benefitBarter) return NextResponse.json({ error: 'Beneficio no pertenece a esta campaña' }, { status: 403 })
+    const clean: Record<string, unknown> = {}
+    for (const key of ['description', 'fixed_value', 'currency', 'commission_rate', 'delivery_method', 'status', 'status_note']) if (key in benefit_patch) clean[key] = benefit_patch[key]
+    if (benefit_patch.status === 'delivered') clean.delivered_at = new Date().toISOString()
+    if (benefit_patch.status === 'completed') clean.completed_at = new Date().toISOString()
+    clean.updated_at = new Date().toISOString()
+    const { data, error } = await admin.from('barter_benefits').update(clean).eq('id', benefit_id).select().single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ data })
+  }
 
   if (bulk_benefit_updates) {
     if (!Array.isArray(bulk_benefit_updates) || bulk_benefit_updates.length === 0 || bulk_benefit_updates.length > 100) {
@@ -483,6 +505,9 @@ type BenefitInput = {
   currency?: unknown
   commission_rate?: unknown
   affiliate_link_id?: unknown
+  delivery_method?: unknown
+  status?: unknown
+  status_note?: unknown
 }
 
 const BENEFIT_TYPES = new Set([
@@ -504,6 +529,10 @@ function buildBenefitRows(
     }
 
     const isCommission = type === 'sales_commission'
+    const deliveryMethod = String(benefit.delivery_method ?? 'manual')
+    const status = String(benefit.status ?? 'pending')
+    if (!['event', 'store_pickup', 'shipping', 'digital', 'manual'].includes(deliveryMethod)) return { error: `Método de entrega inválido en la posición ${index + 1}` }
+    if (!['pending', 'ready', 'delivered', 'completed', 'problem', 'cancelled'].includes(status)) return { error: `Estado inválido en la posición ${index + 1}` }
     const fixedValue = benefit.fixed_value == null || benefit.fixed_value === ''
       ? null
       : Number(benefit.fixed_value)
@@ -529,6 +558,9 @@ function buildBenefitRows(
       affiliate_link_id: isCommission && typeof benefit.affiliate_link_id === 'string'
         ? benefit.affiliate_link_id
         : null,
+      delivery_method: deliveryMethod,
+      status,
+      status_note: typeof benefit.status_note === 'string' ? benefit.status_note.trim() || null : null,
       position: index,
     })
   }

@@ -215,6 +215,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
+  // La dirección es el fallback de campaña cuando todavía no existe un
+  // booking. Mantiene la misma lectura/escritura que el detalle admin y no
+  // crea un segundo campo para el portal de marca.
+  if ('address' in body) {
+    updates.metadata = {
+      ...((campaignBase.metadata as Record<string, unknown> | null) ?? {}),
+      ...((updates.metadata as Record<string, unknown> | undefined) ?? {}),
+      address: body.address == null || String(body.address).trim() === ''
+        ? null
+        : String(body.address).trim(),
+    }
+  }
+
   const orgPlan = await resolveBrandPlan(admin, campaignBase.organization_id, brand.id)
   const limits = getPlanLimits(orgPlan)
 

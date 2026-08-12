@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import { PLAN_TIERS } from '@/lib/plan-limits'
 
 // ── GET /api/brands ───────────────────────────────────────────────────────────
@@ -179,11 +180,16 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { name, logo_url, website, industry, contact_name, contact_email, contact_phone, notes } = body
-  const instagram = typeof body.instagram === 'string'
-    ? body.instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') || null
-    : null
+  const instagram = normalizeInstagramHandle(body.instagram)
 
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 422 })
+  if (body.instagram && !instagram) return NextResponse.json({ error: 'Instagram inválido' }, { status: 422 })
+
+  if (instagram) {
+    const { data: existing } = await admin.from('brands').select('id, name, organization_id')
+      .eq('instagram_handle_normalized', instagram).limit(1).maybeSingle()
+    if (existing) return NextResponse.json({ data: existing, reused: true }, { status: 200 })
+  }
 
   // NOTA (2026-07-12): este endpoint NUNCA acepta `status` del body — cae
   // siempre en el default de la columna ('pending_approval'). Pedido explícito
@@ -199,6 +205,7 @@ export async function POST(req: NextRequest) {
       logo_url:      logo_url ?? null,
       website:       website ?? null,
       instagram,
+      instagram_handle_normalized: instagram,
       industry:      industry ?? null,
       contact_name:  contact_name ?? null,
       contact_email: contact_email ?? null,

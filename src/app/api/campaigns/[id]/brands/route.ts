@@ -1,24 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, provisionOrgForBrand, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 
 type Params = { params: { id: string } }
-
-function normalizeInstagram(value: unknown) {
-  let instagram = String(value ?? '').trim()
-  if (!instagram) return null
-  try {
-    if (/^https?:\/\//i.test(instagram)) {
-      const url = new URL(instagram)
-      if (!/(^|\.)instagram\.com$/i.test(url.hostname)) return null
-      instagram = url.pathname.split('/').filter(Boolean)[0] ?? ''
-    }
-  } catch {
-    return null
-  }
-  instagram = instagram.replace(/^@/, '').replace(/\/$/, '')
-  return /^[a-z0-9._]{1,30}$/i.test(instagram) ? instagram.toLowerCase() : null
-}
 
 // POST /api/campaigns/[id]/brands
 // Alta de marca colaboradora. Tres modos de body:
@@ -78,7 +63,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // ── Modo principal: por Instagram ───────────────────────────────────────
   if (body.instagram) {
-    const instagram = normalizeInstagram(body.instagram)
+    const instagram = normalizeInstagramHandle(body.instagram)
     const name = (body.name ?? '').trim()
     const email = body.email?.trim().toLowerCase() || null
     if (!instagram) return NextResponse.json({ error: 'Instagram inválido. Usa @usuario o una URL de Instagram.' }, { status: 422 })
@@ -88,7 +73,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { data: existingBrand } = await admin
       .from('brands')
       .select('id, name, status, instagram')
-      .ilike('instagram', instagram)
+      .eq('instagram_handle_normalized', instagram)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle()
 
     if (existingBrand) {
@@ -110,6 +97,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         organization_id: newOrgId,
         name,
         instagram,
+        instagram_handle_normalized: instagram,
         contact_email: email,
         status: email ? 'pending_approval' : 'approved',
         created_by: user.id,

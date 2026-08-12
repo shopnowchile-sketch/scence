@@ -97,6 +97,7 @@ function DeliverableContent({
   const cfg = DEL_CONFIG[d.status] ?? DEL_CONFIG.pending
   const url = d.published_url || d.content_url
   const typeLabel = d.type ? d.type.replace(/_/g, ' ') : (d.platform ?? 'Contenido')
+  const supportsPerformanceMetrics = d.type === 'reel' || d.type === 'post'
 
   if (d.type === 'event_attendance') {
     const confirmed = d.attendance_response === 'confirmed'
@@ -193,7 +194,7 @@ function DeliverableContent({
       {/* Métricas reales de publicación (Apify) — solo views/likes/comments.
           reach/impresiones/guardados/compartidos no existen, no se inventan.
           Engagement siempre etiquetado como calculado. */}
-      <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+      {supportsPerformanceMetrics ? <div className="mt-1.5 flex items-center gap-3 flex-wrap">
         {!url ? (
           <span className="text-[11px] text-gray-300">Falta link para traer métricas</span>
         ) : d.performance ? (
@@ -238,7 +239,7 @@ function DeliverableContent({
             Actualizar métricas
           </button>
         )}
-      </div>
+      </div> : <p className="mt-1.5 text-[11px] text-gray-400">Story: entregable de cumplimiento; no se mide en el reporte.</p>}
     </div>
   )
 }

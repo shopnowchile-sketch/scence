@@ -35,12 +35,16 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: deliverable, error: fetchErr } = await admin
     .from('campaign_deliverables')
-    .select('id, campaign_id, influencer_id, published_url, content_url, campaign:campaigns(id, brand_id)')
+    .select('id, type, campaign_id, influencer_id, published_url, content_url, campaign:campaigns(id, brand_id)')
     .eq('id', params.id)
     .single()
 
   if (fetchErr || !deliverable) {
     return NextResponse.json({ error: 'Deliverable no encontrado' }, { status: 404 })
+  }
+
+  if (!['reel', 'post'].includes(deliverable.type)) {
+    return NextResponse.json({ error: 'Las Stories y entregables de cumplimiento no usan métricas de rendimiento.' }, { status: 422 })
   }
 
   // ── Permisos por portal ──────────────────────────────────────────────────

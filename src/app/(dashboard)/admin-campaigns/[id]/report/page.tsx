@@ -200,7 +200,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
   // Métricas reales de contenido (Apify) — solo se suman deliverables que ya
   // tienen una sync guardada en `performance`. reach/impressions/saves/shares
   // NO se muestran porque no existen (ver src/lib/deliverables/apify-metrics.ts).
-  const deliverablesWithMetrics = deliverables.filter(d => d.performance != null)
+  const deliverablesWithMetrics = deliverables.filter(d => d.type != null && ['reel', 'post'].includes(d.type) && d.performance != null)
   const hasMetrics = deliverablesWithMetrics.length > 0
   const totalViews = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
   const totalLikes = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
@@ -519,7 +519,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                               ) : (
                                 <span className="deliverable-pending">Pendiente</span>
                               )}
-                              {perf && (
+                              {d.type !== 'story' && perf && (
                                 <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>
                                   ({perf.views != null ? `${formatFollowers(perf.views)} vistas · ` : ''}
                                   {formatFollowers(perf.likes ?? 0)} likes · {formatFollowers(perf.comments ?? 0)} comentarios

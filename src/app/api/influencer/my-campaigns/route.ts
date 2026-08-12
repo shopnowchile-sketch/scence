@@ -46,7 +46,7 @@ export async function GET() {
         )
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags,
+        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags, tag_brand_ids, tag_handles,
         attendance_response, attendance_responded_at, attendance_note,
         attendance_outcome, attendance_outcome_at
       )
@@ -67,7 +67,7 @@ export async function GET() {
         brand:brands (id, name, logo_url, website, instagram)
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags,
+        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags, tag_brand_ids, tag_handles,
         attendance_response, attendance_responded_at, attendance_note,
         attendance_outcome, attendance_outcome_at
       )
@@ -382,7 +382,7 @@ export async function PATCH(req: NextRequest) {
     .select(`
       id, name, status, description, start_date, end_date, currency, created_by,
       brand:brands!brand_id(id, name, logo_url, website, contact_name, contact_email),
-      campaign_deliverables(id, title, type, status, due_date, scheduled_at, sequence_number, platform, content_url, description, hashtags)
+      campaign_deliverables(id, title, type, status, due_date, scheduled_at, sequence_number, platform, content_url, description, hashtags, tag_brand_ids, tag_handles)
     `)
     .eq('id', id)
     .single()

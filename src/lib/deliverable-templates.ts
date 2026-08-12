@@ -4,6 +4,8 @@ export type DeliverableTemplateItem = {
   description?: string
   due_date?: string
   scheduled_at?: string
+  tag_brand_ids?: string[]
+  tag_handles?: string[]
 }
 
 export type DeliverableTemplateInput = {
@@ -15,6 +17,8 @@ export type DeliverableTemplateInput = {
   scheduled_at?: string
   platform?: string
   items?: DeliverableTemplateItem[]
+  tag_brand_ids?: string[]
+  tag_handles?: string[]
 }
 
 export type ExpandedDeliverableTemplate = {
@@ -24,6 +28,8 @@ export type ExpandedDeliverableTemplate = {
   due_date: string | null
   scheduled_at: string | null
   platform: string | null
+  tag_brand_ids: string[]
+  tag_handles: string[]
   sequence_number: number
   quantity: 1
 }
@@ -47,6 +53,8 @@ export function expandDeliverableTemplates(
         due_date: normalizeDate(item?.due_date ?? template.due_date),
         scheduled_at: normalizeDateTime(item?.scheduled_at ?? template.scheduled_at),
         platform: template.platform ?? null,
+        tag_brand_ids: item?.tag_brand_ids ?? template.tag_brand_ids ?? [],
+        tag_handles: item?.tag_handles ?? template.tag_handles ?? [],
         sequence_number: sequenceNumber,
         quantity: 1 as const,
       }

@@ -43,7 +43,7 @@ type CampaignRow = {
   campaign_deliverables: Deliverable[]
   event_booking?: {
     id: string; title: string | null; starts_at: string | null; ends_at: string | null
-    location: string | null; location_details?: { instructions?: string; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null; status: string | null
+    location: string | null; location_details?: { venue_name?: string; instructions?: string; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null; status: string | null
   } | null
   campaign: {
     id: string; name: string; status: string
@@ -66,7 +66,7 @@ type PreviewCampaign = {
   description: string | null; content_guidelines: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
   cover_url?: string | null
-  event_booking?: { id: string; starts_at: string | null; ends_at: string | null } | null
+  event_booking?: { id: string; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; instructions?: string } | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
   deliverable_templates: Array<{ type: string; quantity?: number; description?: string }> | null
@@ -123,7 +123,7 @@ function EventBookingCard({ booking, showLocation }: { booking: NonNullable<Camp
       </div>
       <div className="mt-3 space-y-2 text-sm">
         <div className="flex gap-2.5 text-violet-950"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {scheduleLabel.map((label, index) => <span key={index} className={index ? 'block mt-1' : ''}>{label}</span>)}</span></div>
-        {showLocation && <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Lugar:</b> {booking.location || 'La marca confirmará la dirección pronto.'}</span></div>}
+        {showLocation && <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Lugar:</b> {booking.location_details?.venue_name && <span className="block font-semibold">{booking.location_details.venue_name}</span>}{booking.location ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location)}`} target="_blank" rel="noopener noreferrer" className="block text-violet-700 underline underline-offset-2">{booking.location}</a> : 'La marca confirmará la dirección pronto.'}</span></div>}
         {showLocation && booking.location_details?.instructions?.trim() && <div className="ml-6 rounded-lg bg-white/70 px-3 py-2 text-xs leading-relaxed text-violet-900"><b>Cómo llegar:</b> {booking.location_details.instructions}</div>}
       </div>
       <p className="mt-3 border-t border-violet-200 pt-3 text-xs font-medium leading-relaxed text-violet-800">Tu entrada o confirmación llegará por correo cuando la marca la envíe y, como máximo, el día anterior al evento.</p>
@@ -502,7 +502,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', pStatus.color)}>{pStatus.label}</span>
           </div>
 
-          {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, title: null, location: null, status: null }} showLocation={false} />}
+  {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, location: p.event_booking.location ?? null, title: null, status: null }} showLocation />}
 
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
             <div>

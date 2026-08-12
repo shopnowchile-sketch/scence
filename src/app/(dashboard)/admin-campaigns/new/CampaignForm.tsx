@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import {
   ChevronRight, ChevronLeft, Check,
-  Target, Calendar, FileText, Sparkles,
+  Target, Calendar, FileText, Sparkles, Plus, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
@@ -279,7 +279,15 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors }: StepProps) {
+function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, arrivalInstructions, setArrivalInstructions, setRemovedEventBookingIds }: StepProps & {
+  eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
+  setEventDays: (updater: (days: Array<{ id?: string; starts_at: string; ends_at: string }>) => Array<{ id?: string; starts_at: string; ends_at: string }>) => void
+  venueName: string
+  setVenueName: (value: string) => void
+  arrivalInstructions: string
+  setArrivalInstructions: (value: string) => void
+  setRemovedEventBookingIds: (updater: (ids: string[]) => string[]) => void
+}) {
   const watchedVisibility = useWatch({ control, name: 'visibility' })
   const watchedType = useWatch({ control, name: 'type' })
   return (
@@ -310,15 +318,30 @@ function Step1({ register, control, errors }: StepProps) {
       </div>
 
       {watchedType === 'event_appearance' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-violet-100 bg-violet-50 p-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha del evento</label>
-            <input type="date" {...register('event_date')} className="input-base w-full" />
+        <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Fechas y horas del evento</p>
+              <p className="text-xs text-gray-500">Agrega cada día del evento. Esto es distinto de la duración total de la campaña.</p>
+            </div>
+            <button type="button" onClick={() => setEventDays(days => [...days, { starts_at: '', ends_at: '' }])} className="inline-flex items-center gap-1 text-sm font-semibold text-violet-700 hover:text-violet-800">
+              <Plus className="h-4 w-4" /> Agregar día
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección del evento</label>
-            <input {...register('address')} className="input-base w-full" placeholder="Dónde se realizará el evento" />
+          {eventDays.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-violet-200 bg-white/70 px-3 py-2 text-sm text-gray-500">Aún no agregas fechas del evento.</p>
+          ) : eventDays.map((day, index) => (
+            <div key={day.id ?? index} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end rounded-lg bg-white p-3 border border-violet-100">
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Inicio</label><input type="datetime-local" value={day.starts_at} onChange={e => setEventDays(days => days.map((item, itemIndex) => itemIndex === index ? { ...item, starts_at: e.target.value } : item))} className="input-base w-full" /></div>
+              <div><label className="block text-xs font-medium text-gray-600 mb-1">Término</label><input type="datetime-local" value={day.ends_at} onChange={e => setEventDays(days => days.map((item, itemIndex) => itemIndex === index ? { ...item, ends_at: e.target.value } : item))} className="input-base w-full" /></div>
+              <button type="button" aria-label="Quitar día" onClick={() => { if (day.id) setRemovedEventBookingIds(ids => [...ids, day.id!]); setEventDays(days => days.filter((_, itemIndex) => itemIndex !== index)) }} className="h-10 w-10 inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
+            </div>
+          ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre del lugar</label><input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full" placeholder="Ej. Hotel Marriott Santiago" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label><input {...register('address')} className="input-base w-full" placeholder="Av., número, comuna" /></div>
           </div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Indicaciones para llegar <span className="text-gray-400 font-normal">(opcional)</span></label><input value={arrivalInstructions} onChange={e => setArrivalInstructions(e.target.value)} className="input-base w-full" placeholder="Ej. Entrada techada por atrás del hotel" /></div>
         </div>
       )}
 
@@ -773,6 +796,10 @@ export function CampaignForm({
   const [draftSaving, setDraftSaving] = useState(false)
   const [campaignId, setCampaignId] = useState<string | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
+  const [eventDays, setEventDays] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([])
+  const [removedEventBookingIds, setRemovedEventBookingIds] = useState<string[]>([])
+  const [venueName, setVenueName] = useState('')
+  const [arrivalInstructions, setArrivalInstructions] = useState('')
 
   const { register, control, handleSubmit, getValues, setValue, trigger, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -803,7 +830,7 @@ export function CampaignForm({
   const campaignType = useWatch({ control, name: 'type' })
   // A diferencia del autosave anterior (solo al avanzar), esta firma observa
   // todas las ediciones del borrador, incluida la guía de contenido.
-  const autosaveSignature = JSON.stringify(useWatch({ control }))
+  const autosaveSignature = JSON.stringify({ form: useWatch({ control }), eventDays, venueName, arrivalInstructions })
 
   useEffect(() => {
     if (portal !== 'brand') return
@@ -842,7 +869,7 @@ export function CampaignForm({
       application_questions: data.application_questions ?? [],
       brief_url: data.brief_url || null,
       metadata: {
-        event_date: event_date || null,
+        event_date: eventDays.find(day => day.starts_at)?.starts_at.slice(0, 10) || event_date || null,
         reference_url: reference_url || null,
         approval_submission_url: approval_submission_url || null,
       },
@@ -851,6 +878,39 @@ export function CampaignForm({
         : null,
       max_influencers: data.visibility === 'open' ? (data.max_influencers ?? null) : null,
     }
+  }
+
+  async function syncEventBookings(savedCampaignId: string, values: FormValues) {
+    if (values.type !== 'event_appearance') return
+    const address = values.address?.trim() || null
+    const completeDays = eventDays.filter(day => day.starts_at && day.ends_at)
+    const incomplete = eventDays.some(day => Boolean(day.starts_at) !== Boolean(day.ends_at))
+    if (incomplete) throw new Error('Completa inicio y término de cada día del evento')
+
+    for (const bookingId of removedEventBookingIds) {
+      const response = await fetch(`/api/bookings?id=${bookingId}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('No se pudo quitar un día del evento')
+    }
+
+    const nextDays = [...eventDays]
+    for (let index = 0; index < nextDays.length; index++) {
+      const day = nextDays[index]
+      if (!day.starts_at || !day.ends_at) continue
+      const payload = {
+        title: values.name.trim(), description: values.description ?? '',
+        location: address, location_details: { venue_name: venueName.trim() || null, instructions: arrivalInstructions.trim() || null },
+        starts_at: new Date(day.starts_at).toISOString(), ends_at: new Date(day.ends_at).toISOString(), timezone: 'America/Santiago',
+      }
+      const response = await fetch('/api/bookings', {
+        method: day.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(day.id ? { id: day.id, ...payload } : { campaign_id: savedCampaignId, event_type: 'event', ...payload }),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudo guardar una fecha del evento')
+      if (!day.id && json?.id) nextDays[index] = { ...day, id: json.id }
+    }
+    setEventDays(nextDays)
+    setRemovedEventBookingIds([])
   }
 
   // Auto-guardado: crea (o actualiza) la campaña como 'draft' al avanzar de paso,
@@ -870,6 +930,7 @@ export function CampaignForm({
         if (res.ok) {
           const { data: campaign } = await res.json()
           setCampaignId(campaign.id)
+          await syncEventBookings(campaign.id, getValues())
           setDraftSavedAt(new Date())
         }
       } else {
@@ -879,7 +940,10 @@ export function CampaignForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (res.ok) setDraftSavedAt(new Date())
+        if (res.ok) {
+          await syncEventBookings(campaignId, getValues())
+          setDraftSavedAt(new Date())
+        }
       }
     } catch {
       // Silencioso: el auto-guardado no debe bloquear el flujo del wizard.
@@ -901,7 +965,10 @@ export function CampaignForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildPayload(getValues())),
         })
-        if (res.ok) setDraftSavedAt(new Date())
+        if (res.ok) {
+          await syncEventBookings(campaignId, getValues())
+          setDraftSavedAt(new Date())
+        }
       } catch {
         // Conserva el contenido local; el guardado final sigue disponible.
       }
@@ -952,6 +1019,7 @@ export function CampaignForm({
       const { data: campaign } = await res.json()
       const savedCampaignId = campaign?.id ?? campaignId
       if (!savedCampaignId) throw new Error('No se pudo identificar la campaña creada')
+      await syncEventBookings(savedCampaignId, data)
 
       // La marca sigue trabajando sobre un borrador durante el autosave, pero
       // al terminar el formulario lo envía de inmediato a revisión. La API
@@ -1041,7 +1109,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-6">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
           {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} campaignId={campaignId} />}
         </div>

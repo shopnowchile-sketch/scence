@@ -949,14 +949,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [overviewEditSection, setOverviewEditSection] = useState<OverviewEditSection>('content')
   const [editingEvent, setEditingEvent] = useState(false)
   const [eventSaving, setEventSaving] = useState(false)
-  const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', commune: '', location_instructions: '', visibility: 'private' })
+  const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', venue_name: '', commune: '', location_instructions: '', visibility: 'private' })
   const [summaryEditOpen, setSummaryEditOpen] = useState(false)
   const [summaryEditSaving, setSummaryEditSaving] = useState(false)
-  const [summaryEditForm, setSummaryEditForm] = useState({ name: '', start_date: '', end_date: '', visibility: 'private' })
+  const [summaryEditForm, setSummaryEditForm] = useState({ name: '', start_date: '', end_date: '', visibility: 'private', venue_name: '', location: '', location_instructions: '' })
   const [eventScheduleForm, setEventScheduleForm] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([])
   const [locationEditOpen, setLocationEditOpen] = useState(false)
   const [locationEditSaving, setLocationEditSaving] = useState(false)
+  // Compatibilidad temporal: el bloque anterior no se vuelve a abrir; la
+  // edición de ubicación ocurre inline con openLocationEditor.
   const [locationEditValue, setLocationEditValue] = useState('')
+  const [locationEditForm, setLocationEditForm] = useState({ venueName: '', address: '', instructions: '' })
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [duplicatingCampaign, setDuplicatingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
@@ -1470,13 +1473,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return metadata?.asset_type === 'campaign_cover'
   })
   const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
-  type CampaignEventBooking = { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string; commune?: string } | null }
+  type CampaignEventBooking = { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { venue_name?: string; instructions?: string; commune?: string } | null }
   const eventBookings = (c as unknown as {
     event_bookings?: CampaignEventBooking[]
     event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string; commune?: string } | null } | null
   }).event_bookings ?? []
   const eventBooking = eventBookings[0] ?? (c as unknown as { event_booking?: CampaignEventBooking | null }).event_booking ?? null
   const eventLocation = eventBooking?.location || c.address || null
+  const eventVenueName = eventBooking?.location_details?.venue_name?.trim() || null
   const eventCommune = eventBooking?.location_details?.commune?.trim() || null
   const formatEventTime = (value: string) => {
     const date = new Date(value)
@@ -1515,6 +1519,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       starts_at: eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), "yyyy-MM-dd'T'HH:mm") : '',
       ends_at: eventBooking?.ends_at ? format(new Date(eventBooking.ends_at), "yyyy-MM-dd'T'HH:mm") : '',
       location: eventLocation ?? '',
+      venue_name: eventVenueName ?? '',
       commune: eventCommune ?? '',
       location_instructions: eventBooking?.location_details?.instructions ?? '',
       visibility: c.visibility === 'open' ? 'open' : 'private',
@@ -1529,6 +1534,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       start_date: c.start_date ?? '',
       end_date: c.end_date ?? '',
       visibility: c.visibility === 'open' ? 'open' : 'private',
+      venue_name: eventVenueName ?? '',
+      location: eventLocation ?? c.address ?? '',
+      location_instructions: eventBooking?.location_details?.instructions ?? '',
     })
     setEventScheduleForm(eventBookings.map(booking => ({
       id: booking.id,
@@ -1565,6 +1573,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         start_date: summaryEditForm.start_date || null,
         end_date: summaryEditForm.end_date || null,
         visibility: summaryEditForm.visibility,
+        address: summaryEditForm.location.trim() || null,
       })
       const savedIds = new Set(eventScheduleForm.flatMap(day => day.id ? [day.id] : []))
       const daysToRemove = eventBookings.filter(day => day.id && !savedIds.has(day.id))
@@ -1578,8 +1587,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         const payload = {
           title: summaryEditForm.name.trim(),
           description: c.description ?? '',
-          location: eventLocation ?? c.address ?? null,
-          location_details: eventBooking?.location_details ?? null,
+          location: summaryEditForm.location.trim() || null,
+          location_details: {
+            ...(eventBooking?.location_details ?? {}),
+            venue_name: summaryEditForm.venue_name.trim() || null,
+            instructions: summaryEditForm.location_instructions.trim() || null,
+          },
           starts_at: new Date(day.starts_at).toISOString(),
           ends_at: new Date(day.ends_at).toISOString(),
           timezone: 'America/Santiago',
@@ -1602,35 +1615,35 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   function openLocationEditor() {
-    setLocationEditValue(eventLocation ?? '')
-    setLocationEditOpen(true)
+    const address = eventLocation ?? c.address
+    if (address) window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`, '_blank', 'noopener,noreferrer')
   }
 
   async function saveLocation() {
     setLocationEditSaving(true)
     try {
-      const location = locationEditValue.trim()
-      // Si la campaña ya tiene evento, actualizamos también su ubicación real.
-      // Si todavía no hay evento, queda guardada como ubicación de campaña y
-      // se mostrará cuando se agregue fecha/hora después.
-      if (eventBooking?.id) {
+      const address = locationEditForm.address.trim()
+      const locationDetails = {
+        ...(eventBooking?.location_details ?? {}),
+        venue_name: locationEditForm.venueName.trim() || null,
+        instructions: locationEditForm.instructions.trim() || null,
+      }
+      // Todos los días del mismo evento comparten la misma ubicación.
+      for (const booking of eventBookings) {
+        if (!booking.id) continue
         const response = await fetch('/api/bookings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            id: eventBooking.id,
-            title: c.name,
-            description: c.description ?? '',
-            location: location || null,
-            starts_at: eventBooking.starts_at ?? undefined,
-            ends_at: eventBooking.ends_at ?? undefined,
+            id: booking.id, title: c.name, description: c.description ?? '',
+            location: address || null, location_details: locationDetails,
+            starts_at: booking.starts_at ?? undefined, ends_at: booking.ends_at ?? undefined,
             timezone: 'America/Santiago',
           }),
         })
         const json = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(json.error ?? 'No se pudo actualizar la ubicación')
       }
-      await patchCampaign.mutateAsync({ address: location || null })
+      await patchCampaign.mutateAsync({ address: address || null })
       await refetch()
       setLocationEditOpen(false)
       toast.success('Ubicación actualizada')
@@ -1650,9 +1663,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     try {
       const startsAt = new Date(eventForm.starts_at).toISOString()
       const endsAt = new Date(eventForm.ends_at).toISOString()
+      const locationDetails = { venue_name: eventForm.venue_name.trim(), instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }
       const bookingPayload = eventBooking?.id
-        ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
-        : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim(), location_details: { instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
+        ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim(), location_details: locationDetails, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
+        : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim(), location_details: locationDetails, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
       const response = await fetch('/api/bookings', {
         method: eventBooking?.id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2028,34 +2042,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
         <div className="flex items-center gap-2">
           {canEditCampaign && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={openSummaryEditor}
-                title="Editar resumen de campaña"
-                aria-label="Editar resumen de campaña"
-                className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              {summaryEditOpen && (
-                <div className="absolute right-0 top-11 z-50 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl">
-                  <p className="mb-2 text-sm font-semibold text-gray-900">Editar campaña</p>
-                  <div className="space-y-2">
-                    <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} placeholder="Nombre de campaña" className="input-base w-full" />
-                    <div className="grid grid-cols-2 gap-2"><input type="date" value={summaryEditForm.start_date} onChange={event => setSummaryEditForm(previous => ({ ...previous, start_date: event.target.value }))} className="input-base w-full text-xs" /><input type="date" value={summaryEditForm.end_date} onChange={event => setSummaryEditForm(previous => ({ ...previous, end_date: event.target.value }))} className="input-base w-full text-xs" /></div>
-                    <select value={summaryEditForm.visibility} onChange={event => setSummaryEditForm(previous => ({ ...previous, visibility: event.target.value }))} className="input-base w-full"><option value="private">Privada</option><option value="open">Pública</option></select>
-                    <div className="border-t border-gray-100 pt-2">
-                      <div className="mb-1.5 flex items-center justify-between"><span className="text-xs font-semibold text-gray-700">Fechas y horas del evento</span><button type="button" onClick={addEventDay} className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 hover:text-violet-800"><Plus className="h-3.5 w-3.5" /> Agregar día</button></div>
-                      {eventScheduleForm.length === 0 ? <p className="text-[11px] text-gray-400">Agrega una fecha si esta campaña incluye evento.</p> : <div className="space-y-1.5">{eventScheduleForm.map((day, index) => <div key={day.id ?? `new-${index}`} className="flex items-center gap-1"><input type="datetime-local" value={day.starts_at} onChange={event => setEventScheduleForm(previous => previous.map((item, itemIndex) => itemIndex === index ? { ...item, starts_at: event.target.value } : item))} className="input-base min-w-0 flex-1 px-2 py-1.5 text-[11px]" aria-label={`Inicio día ${index + 1}`} /><input type="datetime-local" value={day.ends_at} onChange={event => setEventScheduleForm(previous => previous.map((item, itemIndex) => itemIndex === index ? { ...item, ends_at: event.target.value } : item))} className="input-base min-w-0 flex-1 px-2 py-1.5 text-[11px]" aria-label={`Término día ${index + 1}`} /><button type="button" onClick={() => setEventScheduleForm(previous => previous.filter((_, itemIndex) => itemIndex !== index))} title="Quitar día" className="rounded p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button></div>)}</div>}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => setSummaryEditOpen(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div>
-                </div>
-              )}
-            </div>
-          )}
-          {canEditCampaign && (
             <button
               type="button"
               onClick={() => void handleDuplicateCampaign()}
@@ -2195,6 +2181,23 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>
               {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
+            {summaryEditOpen && <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/50 p-3">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-gray-700 sm:col-span-2">Nombre<input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} className="input-base mt-1 w-full" /></label>
+                <label className="text-xs font-semibold text-gray-700">Inicio campaña<input type="date" value={summaryEditForm.start_date} onChange={event => setSummaryEditForm(previous => ({ ...previous, start_date: event.target.value }))} className="input-base mt-1 w-full" /></label>
+                <label className="text-xs font-semibold text-gray-700">Término campaña<input type="date" value={summaryEditForm.end_date} onChange={event => setSummaryEditForm(previous => ({ ...previous, end_date: event.target.value }))} className="input-base mt-1 w-full" /></label>
+                <label className="text-xs font-semibold text-gray-700 sm:col-span-2">Visibilidad<select value={summaryEditForm.visibility} onChange={event => setSummaryEditForm(previous => ({ ...previous, visibility: event.target.value }))} className="input-base mt-1 w-full"><option value="private">Privada</option><option value="open">Pública</option></select></label>
+                <label className="text-xs font-semibold text-gray-700">Nombre del lugar<input value={summaryEditForm.venue_name} onChange={event => setSummaryEditForm(previous => ({ ...previous, venue_name: event.target.value }))} placeholder="Ej. Hotel Marriott Santiago" className="input-base mt-1 w-full" /></label>
+                <label className="text-xs font-semibold text-gray-700">Dirección<input value={summaryEditForm.location} onChange={event => setSummaryEditForm(previous => ({ ...previous, location: event.target.value }))} placeholder="Av., número, comuna" className="input-base mt-1 w-full" /></label>
+                <label className="text-xs font-semibold text-gray-700 sm:col-span-2">Indicaciones para llegar <span className="font-normal text-gray-400">(opcional)</span><input value={summaryEditForm.location_instructions} onChange={event => setSummaryEditForm(previous => ({ ...previous, location_instructions: event.target.value }))} placeholder="Ej. Entrada techada por atrás" className="input-base mt-1 w-full" /></label>
+              </div>
+              <div className="mt-3 border-t border-violet-100 pt-3">
+                <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold text-gray-700">Fechas y horas del evento</span><button type="button" onClick={addEventDay} className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700"><Plus className="h-3.5 w-3.5" />Agregar día</button></div>
+                <div className="space-y-2">{eventScheduleForm.map((day, index) => <div key={day.id ?? `new-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2"><input type="datetime-local" value={day.starts_at} onChange={event => setEventScheduleForm(previous => previous.map((item, itemIndex) => itemIndex === index ? { ...item, starts_at: event.target.value } : item))} className="input-base min-w-0" aria-label={`Inicio día ${index + 1}`} /><input type="datetime-local" value={day.ends_at} onChange={event => setEventScheduleForm(previous => previous.map((item, itemIndex) => itemIndex === index ? { ...item, ends_at: event.target.value } : item))} className="input-base min-w-0" aria-label={`Término día ${index + 1}`} /><button type="button" onClick={() => setEventScheduleForm(previous => previous.filter((_, itemIndex) => itemIndex !== index))} className="rounded p-1 text-gray-400 hover:text-rose-600"><X className="h-4 w-4" /></button></div>)}</div>
+              </div>
+              <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => setSummaryEditOpen(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500">Cancelar</button><button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div>
+            </div>}
+            {editingEvent && <label className="mt-3 block max-w-md text-xs font-semibold text-gray-600">Nombre del lugar<input value={eventForm.venue_name} onChange={e => setEventForm(previous => ({ ...previous, venue_name: e.target.value }))} placeholder="Ej. Hotel Marriott Santiago" className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></label>}
             {editingEvent && <div className="mt-3 flex items-center gap-2"><label className="text-xs font-semibold text-gray-600">Visibilidad</label><select value={eventForm.visibility} onChange={e => setEventForm(previous => ({ ...previous, visibility: e.target.value }))} className="rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none"><option value="private">Privada</option><option value="open">Pública</option></select></div>}
             {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><>{eventBookings.map((booking, index) => { const start = booking.starts_at ? format(new Date(booking.starts_at), "EEE d MMM", { locale: es }) : null; const startTime = booking.starts_at ? formatEventTime(booking.starts_at) : null; const endTime = booking.ends_at ? formatEventTime(booking.ends_at) : null; return start && startTime ? <span key={booking.id ?? index} className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{start.replace(/^./, letter => letter.toUpperCase())} <Clock className="ml-1 h-4 w-4 text-violet-600" />{endTime ? `${startTime}–${endTime}` : startTime}</span> : null })}{eventBookings.length === 0 && eventDateLabel && <><span className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{eventDateLabel}</span>{eventTime && <span className="inline-flex items-center gap-2 font-semibold text-gray-900"><Clock className="h-4 w-4 text-violet-600" />{eventTime}</span>}</>}<div className="relative inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" />{canEditCampaign ? <button type="button" onClick={openLocationEditor} className="truncate text-left hover:text-violet-700 hover:underline" title="Editar ubicación">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</button> : <span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span>}{locationEditOpen && <div className="absolute left-0 top-7 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><label className="block text-xs font-semibold text-gray-700">Ubicación del evento</label><input autoFocus value={locationEditValue} onChange={event => setLocationEditValue(event.target.value)} placeholder="Dirección o lugar" className="input-base mt-1 w-full" /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setLocationEditOpen(false)} disabled={locationEditSaving} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveLocation()} disabled={locationEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{locationEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
           </div>

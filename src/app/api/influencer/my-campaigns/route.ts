@@ -232,11 +232,9 @@ export async function GET() {
       if (!campaign?.id) continue
       const booking = byCampaign.get(campaign.id as string) ?? campaignEventByCampaign.get(campaign.id as string)
       if (!booking) continue
-      if (row.application_status === 'accepted') {
-        row.event_booking = booking
-      } else {
-        row.event_booking = { ...booking, location: null, location_details: null }
-      }
+      // La dirección permite a la influencer decidir si puede asistir. Brief y
+      // materiales privados continúan protegidos por el estado de aceptación.
+      row.event_booking = booking
     }
   }
 

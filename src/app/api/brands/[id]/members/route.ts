@@ -8,6 +8,10 @@ type Params = { params: { id: string } }
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const MEMBER_ROLES = ['brand_manager', 'finance', 'member'] as const
 
+function officialRole(role: string) {
+  return role === 'finance' ? 'finance' : 'brand_manager'
+}
+
 async function getAdminBrand(userId: string, brandId: string) {
   const admin = createAdminClient()
   const { data: brand } = await admin
@@ -157,13 +161,27 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     let emailSent = false
+    let officialMembershipReady = false
     try {
       const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-      const existing = users?.users?.find(u => u.email?.toLowerCase() === email)
+      let existing = users?.users?.find(u => u.email?.toLowerCase() === email) ?? null
       if (!existing) {
-        const { error: createError } = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { is_brand: true, full_name: email.split('@')[0] } })
-        if (createError) throw createError
+        const { data: created, error: createError } = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { is_brand: true, full_name: email.split('@')[0] } })
+        if (createError || !created.user) throw createError ?? new Error('No se pudo crear el usuario')
+        existing = created.user
       }
+      const { error: officialError } = await admin.from('organization_members').upsert({
+        organization_id: brand.organization_id,
+        brand_id: brand.id,
+        user_id: existing.id,
+        role: officialRole(role),
+        is_owner: false,
+        is_active: true,
+        joined_at: new Date().toISOString(),
+      }, { onConflict: 'organization_id,user_id' })
+      if (officialError) throw officialError
+      await admin.from('brand_members').update({ user_id: existing.id, joined_at: new Date().toISOString() }).eq('id', member.id)
+      officialMembershipReady = true
       const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email, options: { redirectTo: `${APP_URL}/brand-dash` } })
       if (!linkError && linkData?.properties?.hashed_token) {
         const actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
@@ -175,6 +193,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
     } catch (error) {
       console.error('[admin brand members] invite email failed:', error)
+    }
+    if (!officialMembershipReady) {
+      return NextResponse.json({ error: 'No se pudo crear la membresía oficial del usuario' }, { status: 500 })
     }
     return NextResponse.json({ data: { ...member, email_sent: emailSent } }, { status: 201 })
   }
@@ -188,7 +209,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   ] = await Promise.all([
     admin
       .from('brand_members')
-      .select('id, email, is_active')
+      .select('id, email, user_id, role, is_active')
       .eq('id', memberId)
       .eq('brand_id', params.id)
       .maybeSingle(),
@@ -206,15 +227,29 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Crear/reutilizar el usuario de Auth — mismo patrón que POST /api/brand/members.
   const { data: existingUsers } = await admin.auth.admin.listUsers()
-  const existingUser = existingUsers?.users?.find(u => u.email === member.email)
+  let existingUser = existingUsers?.users?.find(u => u.email === member.email) ?? null
 
   if (!existingUser) {
-    await admin.auth.admin.createUser({
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
       email: member.email,
       email_confirm: true,
       user_metadata: { is_brand: true, full_name: member.email.split('@')[0] },
     })
+    if (createError || !created.user) return NextResponse.json({ error: createError?.message ?? 'No se pudo crear el usuario' }, { status: 500 })
+    existingUser = created.user
   }
+
+  const { error: officialError } = await admin.from('organization_members').upsert({
+    organization_id: brand.organization_id,
+    brand_id: brand.id,
+    user_id: existingUser.id,
+    role: officialRole(member.role),
+    is_owner: false,
+    is_active: true,
+    joined_at: new Date().toISOString(),
+  }, { onConflict: 'organization_id,user_id' })
+  if (officialError) return NextResponse.json({ error: officialError.message }, { status: 500 })
+  await admin.from('brand_members').update({ user_id: existingUser.id, joined_at: new Date().toISOString() }).eq('id', member.id)
 
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: 'magiclink',
@@ -301,6 +336,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }).eq('id', params.id)
     if (brandUpdateError) return NextResponse.json({ error: brandUpdateError.message }, { status: 500 })
 
+    const { error: nextOwnerError } = await admin.from('organization_members').upsert({
+      organization_id: brand.organization_id,
+      brand_id: brand.id,
+      user_id: nextOwnerId,
+      role: 'brand_manager',
+      is_owner: true,
+      is_active: true,
+      joined_at: new Date().toISOString(),
+    }, { onConflict: 'organization_id,user_id' })
+    if (nextOwnerError) return NextResponse.json({ error: nextOwnerError.message }, { status: 500 })
+    if (currentBrand.user_id && currentBrand.user_id !== nextOwnerId) {
+      const { error: previousOwnerError } = await admin.from('organization_members')
+        .update({ is_owner: false, is_active: false })
+        .eq('organization_id', brand.organization_id)
+        .eq('user_id', currentBrand.user_id)
+      if (previousOwnerError) return NextResponse.json({ error: previousOwnerError.message }, { status: 500 })
+    }
+
     const { data: nextOwner } = await admin.auth.admin.getUserById(nextOwnerId)
     if (nextOwner?.user) {
       await admin.auth.admin.updateUserById(nextOwnerId, {
@@ -338,6 +391,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
+  if (targetMember.user_id) {
+    const { error: officialError } = await admin.from('organization_members')
+      .update({ role: officialRole(body.role) })
+      .eq('organization_id', brand.organization_id)
+      .eq('user_id', targetMember.user_id)
+    if (officialError) return NextResponse.json({ error: officialError.message }, { status: 500 })
+  }
   return NextResponse.json({ data })
 }
 
@@ -358,7 +418,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   const { data: member, error: memberError } = await admin
     .from('brand_members')
-    .select('id, email')
+    .select('id, email, user_id')
     .eq('id', memberId)
     .eq('brand_id', params.id)
     .maybeSingle()
@@ -367,5 +427,12 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   const { error: deleteError } = await admin.from('brand_members').delete().eq('id', member.id).eq('brand_id', params.id)
   if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  if (member.user_id) {
+    const { error: officialError } = await admin.from('organization_members')
+      .update({ is_active: false })
+      .eq('organization_id', brand.organization_id)
+      .eq('user_id', member.user_id)
+    if (officialError) return NextResponse.json({ error: officialError.message }, { status: 500 })
+  }
   return NextResponse.json({ success: true })
 }

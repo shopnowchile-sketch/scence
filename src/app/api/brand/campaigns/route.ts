@@ -38,23 +38,7 @@ export async function GET(req: NextRequest) {
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const { data: coBrandRows, error: coBrandError } = await admin
-    .from('campaign_brands')
-    .select('campaign_id')
-    .eq('brand_id', brand.id)
-
-  if (coBrandError) {
-    console.error('[GET /api/brand-campaigns] campaign_brands', coBrandError)
-    return NextResponse.json({ error: coBrandError.message }, { status: 500 })
-  }
-
-  const campaignIds = Array.from(new Set([
-    ...(coBrandRows ?? []).map(r => r.campaign_id),
-  ].filter(Boolean)))
-
-  const orFilter = campaignIds.length
-    ? `brand_id.eq.${brand.id},id.in.(${campaignIds.join(',')})`
-    : `brand_id.eq.${brand.id}`
+  const orFilter = `brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`
 
   let query = admin
     .from('campaigns')

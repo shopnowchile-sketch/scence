@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
   // El portal de marca usa /api/brand/campaigns, que siempre crea en draft y
   // aplica el control de plan. Bloquear la ruta administrativa genérica evita
   // que una marca la invoque directamente con status='active'.
-  if (user.user_metadata?.is_brand) {
+  if (await resolveBrandAccess(user.id)) {
     return NextResponse.json(
       { error: 'Las marcas deben crear campañas desde su portal' },
       { status: 403 },

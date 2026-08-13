@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const brandAccess = user.user_metadata?.is_brand ? await resolveBrandAccess(user.id) : null
+  const brandAccess = await resolveBrandAccess(user.id)
   const orgId = brandAccess?.organizationId ?? await getOrgId(user.id, user.user_metadata, admin)
 
   let body: { brand_id?: string; role?: string; email?: string; instagram?: string; name?: string } = {}
@@ -240,7 +240,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const brandAccess = user.user_metadata?.is_brand ? await resolveBrandAccess(user.id) : null
+  const brandAccess = await resolveBrandAccess(user.id)
   const orgId = brandAccess?.organizationId ?? await getOrgId(user.id, user.user_metadata, admin)
   const brandId = new URL(req.url).searchParams.get('brand_id')
 

@@ -3,10 +3,6 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
-import {
-  resolveBrandPlan,
-  canViewFullInfluencerBase,
-} from '@/lib/plan-limits'
 
 // GET /api/brand/influencers
 // Marca ve influencers relacionadas a SUS campañas/asignaciones.
@@ -17,10 +13,6 @@ export async function GET(req: NextRequest) {
 
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  if (!user.user_metadata?.is_brand) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const admin = createAdminClient()
@@ -71,29 +63,17 @@ export async function GET(req: NextRequest) {
 
   // La marca nunca ve el catálogo global: solo creadoras que ya fueron
   // aprobadas y participaron en campañas propias o colaborativas.
-  const orgPlan    = await resolveBrandPlan(admin, brand.organization_id, brand.id)
-  const fullAccess = canViewFullInfluencerBase(orgPlan)
-
   let restrictedInfluencerIds: string[] | null = null
 
   {
-    const [
-      { data: primaryCampaigns, error: primaryError },
-      { data: collaboratorRows, error: collaboratorError },
-    ] = await Promise.all([
-      admin.from('campaigns').select('id').eq('brand_id', brand.id),
-      admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
-    ])
+    const { data: primaryCampaigns, error: primaryError } = await admin
+      .from('campaigns')
+      .select('id')
+      .or(`brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`)
 
-    const relationError = primaryError ?? collaboratorError
-    if (relationError) {
-      return NextResponse.json({ error: relationError.message }, { status: 500 })
-    }
+    if (primaryError) return NextResponse.json({ error: primaryError.message }, { status: 500 })
 
-    const campaignIds = Array.from(new Set([
-      ...(primaryCampaigns ?? []).map(row => row.id),
-      ...(collaboratorRows ?? []).map(row => row.campaign_id),
-    ].filter(Boolean)))
+    const campaignIds = Array.from(new Set((primaryCampaigns ?? []).map(row => row.id).filter(Boolean)))
 
     let acceptedInfluencerIds: string[] = []
 
@@ -253,7 +233,7 @@ export async function GET(req: NextRequest) {
     total: count ?? filtered.length,
     page,
     limit,
-    full_access: fullAccess,
+    full_access: false,
   })
 }
 
@@ -276,10 +256,6 @@ export async function POST(req: NextRequest) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (!user.user_metadata?.is_brand) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const admin = createAdminClient()
 
   const access = await resolveBrandAccess(user.id)

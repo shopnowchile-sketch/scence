@@ -11,7 +11,7 @@ function opportunity(metadata: unknown) {
 export async function GET() {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   const admin = createAdminClient()
@@ -31,7 +31,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   const body = await req.json().catch(() => ({})) as { campaign_id?: string; sampling?: string; activation_details?: string; links?: string }

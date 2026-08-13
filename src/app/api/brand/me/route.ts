@@ -21,8 +21,6 @@ async function getBrandAccess(): Promise<
   const supabase = createServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return { access: null, error: 'Unauthorized' }
-  if (!user.user_metadata?.is_brand) return { access: null, error: 'Forbidden' }
-
   const access = await resolveBrandAccess(user.id)
   if (!access) return { access: null, error: 'Forbidden' }
 

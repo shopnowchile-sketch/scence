@@ -8,8 +8,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const admin = createAdminClient(); const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const { data: campaign } = await admin.from('campaigns').select('id,brand_id,organization_id,metadata').eq('id', params.id).single()
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
-  let allowed = false
-  if (user.user_metadata?.is_brand) { const access = await resolveBrandAccess(user.id); allowed = access?.brandId === campaign.brand_id } else { const org = await getOrgId(user.id, user.user_metadata, admin); allowed = Boolean(org && (await getUserRole(user.id, org, admin)).isAdmin) }
+  const access = await resolveBrandAccess(user.id)
+  const org = access ? null : await getOrgId(user.id, user.user_metadata, admin)
+  const allowed = access
+    ? access.brandId === campaign.brand_id
+    : Boolean(org && (await getUserRole(user.id, org, admin)).isAdmin)
   if (!allowed) return NextResponse.json({ error: 'Sin permiso para configurar esta campaña' }, { status: 403 })
   const current = campaign.metadata && typeof campaign.metadata === 'object' ? campaign.metadata as Record<string, unknown> : {}
   const config = { enabled: Boolean(body.enabled), benefits: String(body.benefits ?? '').trim(), participation_value: Math.max(0, Number(body.participation_value) || 0), currency: body.currency === 'USD' ? 'USD' : 'CLP', seats: Math.max(0, Math.trunc(Number(body.seats) || 0)), application_deadline: body.application_deadline || null }

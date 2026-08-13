@@ -20,9 +20,8 @@ export async function resolveCampaignAssetAccess(
   const { isAdmin } = orgId ? await getUserRole(userId, orgId, admin) : { isAdmin: false }
   if (isAdmin) return { admin, campaign, canView: true, canViewBrief: true, canManage: true }
 
-  if (userMetadata?.is_brand) {
-    const access = await resolveBrandAccess(userId)
-    if (!access) return { admin, campaign, canView: false, canViewBrief: false, canManage: false }
+  const access = await resolveBrandAccess(userId)
+  if (access) {
 
     const ownsCampaign = campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
     if (ownsCampaign) return { admin, campaign, canView: true, canViewBrief: true, canManage: true }

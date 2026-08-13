@@ -40,13 +40,16 @@ function brandMemberInviteEmail({ brandName, actionLink }: { brandName: string; 
 async function getOwnerBrand() {
   const supabase = createServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user || !user.user_metadata?.is_brand) return { user: null, brand: null }
+  if (error || !user) return { user: null, brand: null }
+
+  const access = await resolveBrandAccess(user.id)
+  if (!access?.isOwner) return { user: null, brand: null }
 
   const admin = createAdminClient()
   const { data: brand } = await admin
     .from('brands')
     .select('id, organization_id, name')
-    .eq('user_id', user.id)
+    .eq('id', access.brandId)
     .single()
 
   return { user, brand: brand ?? null }
@@ -57,7 +60,7 @@ async function getOwnerBrand() {
 async function getViewerAccess(): Promise<{ userId: string; access: BrandAccess } | null> {
   const supabase = createServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user || !user.user_metadata?.is_brand) return null
+  if (error || !user) return null
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return null
@@ -142,14 +145,31 @@ export async function POST(request: NextRequest) {
   const resendMemberId = body.member_id
   if (resendMemberId) {
     const admin = createAdminClient()
-    const { data: member, error: memberError } = await admin.from('brand_members').select('id, email, is_active').eq('id', resendMemberId).eq('brand_id', brand.id).maybeSingle()
+    const { data: member, error: memberError } = await admin.from('brand_members').select('id, email, user_id, role, is_active').eq('id', resendMemberId).eq('brand_id', brand.id).maybeSingle()
     if (memberError || !member) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
     if (!member.is_active) return NextResponse.json({ error: 'Este usuario está desactivado' }, { status: 422 })
     let actionLink: string | null = null
     let emailSent = false
     try {
       const { data: existingUsers } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-      if (!existingUsers?.users.find(existing => existing.email?.toLowerCase() === member.email.toLowerCase())) await admin.auth.admin.createUser({ email: member.email, email_confirm: true, user_metadata: { is_brand: true, full_name: member.email.split('@')[0] } })
+      let memberUser = existingUsers?.users.find(existing => existing.email?.toLowerCase() === member.email.toLowerCase()) ?? null
+      if (!memberUser) {
+        const { data: created } = await admin.auth.admin.createUser({ email: member.email, email_confirm: true, user_metadata: { is_brand: true, full_name: member.email.split('@')[0] } })
+        memberUser = created.user
+      }
+      if (!memberUser) throw new Error('No se pudo resolver el usuario invitado')
+      const orgRole = member.role === 'finance' ? 'finance' : 'brand_manager'
+      const { error: officialError } = await admin.from('organization_members').upsert({
+        organization_id: brand.organization_id,
+        brand_id: brand.id,
+        user_id: memberUser.id,
+        role: orgRole,
+        is_owner: false,
+        is_active: true,
+        joined_at: new Date().toISOString(),
+      }, { onConflict: 'organization_id,user_id' })
+      if (officialError) throw officialError
+      await admin.from('brand_members').update({ user_id: memberUser.id, joined_at: new Date().toISOString() }).eq('id', member.id)
       const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email: member.email, options: { redirectTo: `${APP_URL}/brand-dash` } })
       if (linkError || !linkData?.properties?.hashed_token) throw linkError ?? new Error('No se pudo generar el link')
       actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
@@ -186,17 +206,35 @@ export async function POST(request: NextRequest) {
   // invitación ya quedó creada — el owner puede reintentar reenviando (borra
   // y vuelve a invitar) o el admin puede resolverlo a mano.
   let emailSent = false
+  let officialMembershipReady = false
   try {
     const { data: existingUsers } = await admin.auth.admin.listUsers()
-    const existingUser = existingUsers?.users?.find(u => u.email === email)
+    let existingUser = existingUsers?.users?.find(u => u.email === email) ?? null
 
     if (!existingUser) {
-      await admin.auth.admin.createUser({
+      const { data: createdUser, error: createUserError } = await admin.auth.admin.createUser({
         email,
         email_confirm: true,
         user_metadata: { is_brand: true, full_name: email.split('@')[0] },
       })
+      if (createUserError) throw createUserError
+      existingUser = createdUser.user
     }
+
+    if (!existingUser) throw new Error('No se pudo resolver el usuario invitado')
+    const orgRole = role === 'finance' ? 'finance' : 'brand_manager'
+    const { error: officialError } = await admin.from('organization_members').upsert({
+      organization_id: brand.organization_id,
+      brand_id: brand.id,
+      user_id: existingUser.id,
+      role: orgRole,
+      is_owner: false,
+      is_active: true,
+      joined_at: new Date().toISOString(),
+    }, { onConflict: 'organization_id,user_id' })
+    if (officialError) throw officialError
+    await admin.from('brand_members').update({ user_id: existingUser.id, joined_at: new Date().toISOString() }).eq('id', data.id)
+    officialMembershipReady = true
 
     const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
       type: 'magiclink',
@@ -218,6 +256,10 @@ export async function POST(request: NextRequest) {
     console.error('[POST /api/brand/members] invite email error:', e)
   }
 
+  if (!officialMembershipReady) {
+    return NextResponse.json({ error: 'No se pudo crear la membresía oficial del usuario' }, { status: 500 })
+  }
+
   return NextResponse.json({ data: { ...data, email_sent: emailSent } }, { status: 201 })
 }
 
@@ -230,6 +272,12 @@ export async function DELETE(request: NextRequest) {
   if (!memberId) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
   const admin = createAdminClient()
+  const { data: member } = await admin
+    .from('brand_members')
+    .select('user_id')
+    .eq('id', memberId)
+    .eq('brand_id', brand.id)
+    .maybeSingle()
   const { error } = await admin
     .from('brand_members')
     .update({ is_active: false })
@@ -237,5 +285,13 @@ export async function DELETE(request: NextRequest) {
     .eq('brand_id', brand.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (member?.user_id) {
+    const { error: officialError } = await admin
+      .from('organization_members')
+      .update({ is_active: false })
+      .eq('organization_id', brand.organization_id)
+      .eq('user_id', member.user_id)
+    if (officialError) return NextResponse.json({ error: officialError.message }, { status: 500 })
+  }
   return NextResponse.json({ ok: true })
 }

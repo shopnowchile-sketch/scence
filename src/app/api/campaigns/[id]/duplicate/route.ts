@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -24,9 +24,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
   if (sourceError || !source) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  if (user.user_metadata?.is_brand) {
-    const { data: brand } = await admin.from('brands').select('id').eq('user_id', user.id).maybeSingle()
-    if (!brand || (source.brand_id !== brand.id && source.created_by_brand_id !== brand.id)) {
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess) {
+    if (source.brand_id !== brandAccess.brandId && source.created_by_brand_id !== brandAccess.brandId) {
       return NextResponse.json({ error: 'Solo la marca creadora puede duplicar esta campaña' }, { status: 403 })
     }
   } else if (!isAdmin && source.organization_id !== orgId) {

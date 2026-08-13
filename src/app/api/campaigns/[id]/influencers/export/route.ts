@@ -23,8 +23,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
   let authorized = false
-  if (user.user_metadata?.is_brand) {
-    const access = await resolveBrandAccess(user.id)
+  const access = await resolveBrandAccess(user.id)
+  if (access) {
     authorized = !!access && (
       campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
     )
@@ -36,7 +36,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (!authorized) return NextResponse.json({ error: 'No tienes permiso para descargar estos datos' }, { status: 403 })
 
-  const { data, error } = await admin
+  const { data: confirmedAttendance, error: attendanceError } = await admin
+    .from('campaign_deliverables')
+    .select('influencer_id')
+    .eq('campaign_id', params.id)
+    .eq('type', 'event_attendance')
+    .eq('attendance_response', 'confirmed')
+
+  if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 })
+  const confirmedInfluencerIds = Array.from(new Set((confirmedAttendance ?? []).map(row => row.influencer_id).filter(Boolean)))
+
+  let participantsQuery = admin
     .from('campaign_influencers')
     .select(`
       fee, currency, accepted_at, updated_at, application_status,
@@ -48,6 +58,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .eq('campaign_id', params.id)
     .eq('application_status', 'accepted')
     .order('updated_at', { ascending: true })
+
+  if (confirmedInfluencerIds.length > 0) participantsQuery = participantsQuery.in('influencer_id', confirmedInfluencerIds)
+  else participantsQuery = participantsQuery.in('influencer_id', ['00000000-0000-0000-0000-000000000000'])
+
+  const { data, error } = await participantsQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

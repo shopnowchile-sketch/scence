@@ -12,10 +12,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!user.user_metadata?.is_brand) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const admin = createAdminClient()
 
   const access = await resolveBrandAccess(user.id)
@@ -96,25 +92,9 @@ export async function GET(req: NextRequest) {
     }))
   }
 
-  let directInfluencerIds: string[] = []
-
-  try {
-    const { data: directRows } = await admin
-      .from('brand_influencers')
-      .select('influencer_id')
-      .eq('brand_id', brand.id)
-
-    directInfluencerIds = (directRows ?? [])
-      .map(r => r.influencer_id)
-      .filter(Boolean)
-  } catch {
-    directInfluencerIds = []
-  }
-
-  const influencerIds = Array.from(new Set([
-    ...campaignInfluencers.map(ci => ci.influencer_id).filter(Boolean),
-    ...directInfluencerIds,
-  ])) as string[]
+  const influencerIds = Array.from(new Set(
+    campaignInfluencers.map(ci => ci.influencer_id).filter(Boolean)
+  )) as string[]
 
   if (influencerIds.length === 0) {
     return NextResponse.json({ data: [], total: 0, sort_by: sortBy, sort_dir: sortDir })

@@ -20,16 +20,9 @@ async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient
 
   const isMain = campaign.brand_id === brandAccess.brandId
   const isCreator = campaign.created_by_brand_id === brandAccess.brandId
-  const { data: collaboration } = await admin
-    .from('campaign_brands')
-    .select('id')
-    .eq('campaign_id', campaignId)
-    .eq('brand_id', brandAccess.brandId)
-    .maybeSingle()
-
   return {
     isBrand: true,
-    canView: isMain || isCreator || Boolean(collaboration),
+    canView: isMain || isCreator,
     canEdit: isMain || isCreator,
     brandId: brandAccess.brandId,
   }
@@ -46,6 +39,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
+  if (!isAdmin && (!access?.isBrand || !access.canView)) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  }
 
   // Reparación idempotente de datos legacy: antes algunas relaciones quedaban
   // como "pending" aun cuando ya tenían entregables/contenido. Un entregable
@@ -133,10 +132,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     event_bookings: eventBookings ?? [],
   }
 
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
   if (access?.isBrand) {
-    if (!access.canView) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     return NextResponse.json({ data: { ...campaignWithEvent, _brand_permissions: access } })
   }
 
@@ -163,10 +159,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
-
-  if (access?.isBrand) {
-    if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
-  }
+  if (!isAdmin && (!access?.isBrand || !access.canEdit)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {
@@ -318,10 +311,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
-
-  if (access?.isBrand) {
-    if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
-  }
+  if (!isAdmin && (!access?.isBrand || !access.canEdit)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {
@@ -519,10 +509,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   const access = isAdmin ? null : await getBrandCampaignAccess(admin, user.id, params.id)
-
-  if (access?.isBrand) {
-    if (!access.canEdit) return NextResponse.json({ error: 'Solo la marca creadora puede editar esta campaña' }, { status: 403 })
-  }
+  if (!isAdmin && (!access?.isBrand || !access.canEdit)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const hard = new URL(req.url).searchParams.get('hard') === '1'
 

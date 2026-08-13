@@ -13,8 +13,8 @@ function mailHtml(name: string, campaign: string, campaignId: string, dueDate: s
 async function canManage(admin: ReturnType<typeof createAdminClient>, user: { id: string; user_metadata?: Record<string, unknown> }, campaignId: string) {
   const { data: campaign } = await admin.from('campaigns').select('id, organization_id, brand_id, created_by_brand_id').eq('id', campaignId).maybeSingle()
   if (!campaign) return { allowed: false, campaign: null }
-  if (user.user_metadata?.is_brand) {
-    const access = await resolveBrandAccess(user.id)
+  const access = await resolveBrandAccess(user.id)
+  if (access) {
     const allowed = !!access && (campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId)
     return { allowed, campaign }
   }

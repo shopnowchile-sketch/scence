@@ -16,7 +16,7 @@ function readState(metadata: unknown): OnboardingState {
 export async function GET() {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
@@ -49,7 +49,7 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json().catch(() => ({})) as { action?: 'skip' | 'complete_campaign_tour' | 'restart' }
   if (!body.action || !['skip', 'complete_campaign_tour', 'restart'].includes(body.action)) {

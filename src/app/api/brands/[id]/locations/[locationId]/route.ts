@@ -1,33 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string; locationId: string } }
 
-async function canManageBrand(user: any, brand: any, admin: any) {
-  const role = user?.user_metadata?.role ?? user?.app_metadata?.role
-  if (['super_admin', 'admin'].includes(role)) return true
-  if (brand.user_id === user.id) return true
+async function canEditBrand(user: { id: string; user_metadata?: Record<string, unknown> }, brandId: string, admin: ReturnType<typeof createAdminClient>) {
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess) {
+    return brandAccess.brandId === brandId && (brandAccess.isOwner || brandAccess.role === 'brand_manager')
+  }
 
-  const { data } = await admin
-    .from('organization_members')
-    .select('role, is_owner')
-    .eq('user_id', user.id)
-    .eq('organization_id', brand.organization_id ?? 'none')
-    .eq('is_active', true)
-
-  return (data ?? []).some((m: any) =>
-    m.is_owner || ['super_admin', 'brand_manager'].includes(m.role)
-  )
-}
-
-async function canEditBrand(user: any, brandId: string, admin: any) {
-  const { data: brand } = await admin
-    .from('brands')
-    .select('id, user_id, organization_id')
-    .eq('id', brandId)
-    .single()
-
-  return !!brand && await canManageBrand(user, brand, admin)
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  if (!orgId) return false
+  return (await getUserRole(user.id, orgId, admin)).isAdmin
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

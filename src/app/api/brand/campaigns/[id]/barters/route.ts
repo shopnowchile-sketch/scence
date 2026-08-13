@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -8,20 +9,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!user.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
 
-  // Marcas que el usuario posee o de las que es miembro activo
-  const { data: owned }   = await admin.from('brands').select('id').eq('user_id', user.id)
-  const { data: member }  = await admin.from('brand_members')
-    .select('brand_id').eq('user_id', user.id).eq('is_active', true)
-
-  const brandIds = [
-    ...(owned ?? []).map(b => b.id),
-    ...(member ?? []).map(m => m.brand_id),
-  ]
-  if (brandIds.length === 0) return NextResponse.json({ data: [] })
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await admin
     .from('barters')
@@ -37,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       history:barter_status_history (id, barter_id, from_status, to_status, note, created_at)
     `)
     .eq('campaign_id', params.id)
-    .in('brand_id', brandIds)   // seguridad: solo canjes de marcas del usuario
+    .eq('brand_id', access.brandId) // seguridad: solo canjes de la marca oficial
     .order('created_at', { ascending: false })
 
   if (error) {

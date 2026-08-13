@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return redirect(request, 'forbidden')
+  if (!user) return redirect(request, 'forbidden')
   const access = await resolveBrandAccess(user.id)
   if (!access || access.brandId !== payload.brandId || (!access.isOwner && access.role !== 'brand_manager')) return redirect(request, 'forbidden')
 

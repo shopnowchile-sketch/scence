@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { computeEngagementRate } from '@/lib/deliverables/apify-metrics'
 import { fetchMetricsWithFallback } from '@/lib/deliverables/fetch-metrics'
+import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -48,43 +49,38 @@ export async function POST(_req: NextRequest, { params }: Params) {
   }
 
   // ── Permisos por portal ──────────────────────────────────────────────────
-  if (user.user_metadata?.is_influencer) {
-    const { data: influencer } = await admin
-      .from('influencers')
-      .select('id')
-      .eq('user_id', user.id)
-      .single()
+  const [{ data: influencer }, brandAccess] = await Promise.all([
+    admin.from('influencers').select('id').eq('user_id', user.id).maybeSingle(),
+    resolveBrandAccess(user.id),
+  ])
 
-    if (!influencer || deliverable.influencer_id !== influencer.id) {
+  if (influencer) {
+    if (deliverable.influencer_id !== influencer.id) {
       return NextResponse.json({ error: 'No tienes acceso a este deliverable' }, { status: 403 })
     }
-  } else if (user.user_metadata?.is_brand) {
-    const metaBrandId = user.user_metadata?.brand_id as string | undefined
-    let brandQuery = admin.from('brands').select('id').limit(1)
-    brandQuery = metaBrandId ? brandQuery.eq('id', metaBrandId) : brandQuery.eq('user_id', user.id)
-    const { data: brand } = await brandQuery.maybeSingle()
-
-    if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-
+  } else if (brandAccess) {
     const campaignRaw = deliverable.campaign as unknown
     const campaign = (Array.isArray(campaignRaw) ? campaignRaw[0] : campaignRaw) as
       { id: string; brand_id: string | null } | null | undefined
-    const isOwner = campaign?.brand_id === brand.id
+    const isOwner = campaign?.brand_id === brandAccess.brandId
     let isCoBrand = false
     if (!isOwner && campaign) {
       const { data: coBrand } = await admin
         .from('campaign_brands')
         .select('campaign_id')
         .eq('campaign_id', campaign.id)
-        .eq('brand_id', brand.id)
+        .eq('brand_id', brandAccess.brandId)
         .maybeSingle()
       isCoBrand = !!coBrand
     }
     if (!isOwner && !isCoBrand) {
       return NextResponse.json({ error: 'No tienes acceso a este deliverable' }, { status: 403 })
     }
+  } else {
+    const orgId = await getOrgId(user.id, user.user_metadata, admin)
+    const isAdmin = orgId ? (await getUserRole(user.id, orgId, admin)).isAdmin : false
+    if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  // Admin (sin is_brand/is_influencer): sin restricción adicional.
 
   const url = deliverable.published_url || deliverable.content_url
   if (!url) {

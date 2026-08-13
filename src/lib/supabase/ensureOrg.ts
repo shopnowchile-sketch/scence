@@ -34,14 +34,13 @@ export async function getUserRole(
 }
 
 /**
- * getOrgId — get the organization_id for a user.
- * First checks JWT metadata (fast path), then falls back to organization_members table
- * in case the JWT hasn't been refreshed after org creation.
+ * getOrgId — obtiene la organización activa del usuario desde la fuente
+ * canónica de autorización: `organization_members`.
+ *
+ * `userMeta` se conserva temporalmente en la firma para no obligar a migrar
+ * todos los callers en el mismo commit, pero nunca se usa para autorizar.
  */
-export async function getOrgId(userId: string, userMeta: Record<string, unknown> | undefined, admin: SupabaseClient): Promise<string | null> {
-  const fromJwt = userMeta?.organization_id as string | undefined
-  if (fromJwt) return fromJwt
-  // Fallback: look up via organization_members
+export async function getOrgId(userId: string, _userMeta: Record<string, unknown> | undefined, admin: SupabaseClient): Promise<string | null> {
   const { data } = await admin
     .from('organization_members')
     .select('organization_id')
@@ -53,23 +52,29 @@ export async function getOrgId(userId: string, userMeta: Record<string, unknown>
 }
 
 /**
- * ensureOrg — auto-provision an organization for the user on first login.
- * If the user already has organization_id in metadata, returns it as-is.
- * If not, creates a new org using organization_name from metadata (set during registration),
- * then updates the user's metadata with the new organization_id.
+ * ensureOrg — aprovisiona una organización cuando el usuario todavía no
+ * tiene una membresía oficial. La pertenencia existente se resuelve siempre
+ * desde `organization_members`; metadata solo aporta datos de presentación
+ * para crear una organización nueva y nunca concede acceso.
  */
 import { createAdminClient } from './server'
 import type { User } from '@supabase/supabase-js'
 
 export async function ensureOrg(user: User): Promise<string | null> {
-  const existing = user.user_metadata?.organization_id as string | undefined
-  if (existing) return existing
+  const admin = createAdminClient()
+  const { data: existingMembership } = await admin
+    .from('organization_members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingMembership) return existingMembership.organization_id
 
   const orgName: string =
     (user.user_metadata?.organization_name as string | undefined) ??
     (user.email?.split('@')[1]?.split('.')[0] ?? 'My Organization')
-
-  const admin = createAdminClient()
 
   // FIX (2026-07-10, root cause de fmicchile@gmail.com/Empresa1 y probable
   // causa de más cuentas atascadas): `organizations.slug` es UNIQUE. Cuando
@@ -418,21 +423,21 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
     return null
   }
 
+  await admin.from('organization_members')
+    .update({ brand_id: brand.id })
+    .eq('organization_id', orgId)
+    .eq('user_id', user.id)
+
   return brand
 }
 
 /**
  * resolveBrandAccess — fuente canónica de acceso del portal Marca.
  *
- * Primero lee `organization_members` y resuelve la marca de esa organización.
- * Para no expulsar equipos ya existentes, `brands.user_id` y `brand_members`
- * se aceptan solo como compatibilidad y se sincronizan inmediatamente hacia
- * `organization_members`. Ninguna decisión depende de user_metadata.
- *
- * Asume una marca por usuario (owner de una O miembro de una), igual que el
- * resto del portal de marca hoy. Si el usuario es owner Y tiene además una
- * fila en `brand_members` (caso alexrabi91, ver backfill de la migración),
- * el rol 'owner' siempre gana.
+ * Lee exclusivamente `organization_members` y resuelve la marca mediante
+ * `brands.organization_id`. Si una organización tiene más de una marca,
+ * exige además `organization_members.brand_id`; nunca intenta adivinarla
+ * usando campos legacy.
  */
 export type BrandAccess = {
   brandId: string
@@ -446,16 +451,18 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
 
   const { data: orgMemberships } = await admin
     .from('organization_members')
-    .select('organization_id, role, is_owner')
+    .select('organization_id, brand_id, role, is_owner')
     .eq('user_id', userId)
     .eq('is_active', true)
+    .in('role', ['brand_manager', 'finance'])
 
   for (const membership of orgMemberships ?? []) {
-    const { data: brand } = await admin
+    let brandQuery = admin
       .from('brands')
       .select('id, organization_id')
       .eq('organization_id', membership.organization_id)
-      .maybeSingle()
+    if (membership.brand_id) brandQuery = brandQuery.eq('id', membership.brand_id)
+    const { data: brand } = await brandQuery.maybeSingle()
     if (brand) {
       return {
         brandId: brand.id,
@@ -466,68 +473,15 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
     }
   }
 
-  const syncLegacyMembership = async (brand: { id: string; organization_id: string }, role: BrandAccess['role'], isOwner: boolean) => {
-    const orgRole: OrgRole = role === 'finance' ? 'finance' : 'brand_manager'
-    const { error } = await admin.from('organization_members').upsert({
-      organization_id: brand.organization_id,
-      user_id: userId,
-      role: orgRole,
-      is_owner: isOwner,
-      is_active: true,
-      joined_at: new Date().toISOString(),
-    }, { onConflict: 'organization_id,user_id' })
-    if (error) console.error('[resolveBrandAccess] legacy membership sync failed:', error.message)
-  }
-
-  const { data: owned } = await admin
-    .from('brands')
-    .select('id, organization_id')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (owned) {
-    await syncLegacyMembership(owned, 'owner', true)
-    return { brandId: owned.id, organizationId: owned.organization_id, role: 'owner', isOwner: true }
-  }
-
-  const { data: membership } = await admin
-    .from('brand_members')
-    .select('brand_id, role')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .maybeSingle()
-
-  if (!membership) return null
-
-  const { data: brand } = await admin
-    .from('brands')
-    .select('organization_id')
-    .eq('id', membership.brand_id)
-    .maybeSingle()
-
-  if (!brand) return null
-
-  const legacyRole = (membership.role as BrandAccess['role']) ?? 'member'
-  await syncLegacyMembership({ id: membership.brand_id, organization_id: brand.organization_id }, legacyRole, false)
-
-  return {
-    brandId: membership.brand_id,
-    organizationId: brand.organization_id,
-    role: legacyRole,
-    isOwner: false,
-  }
+  return null
 }
 
 /**
  * linkPendingBrandMembership — vincula una invitación pendiente de
  * `brand_members` (email coincide, `user_id` todavía null) al usuario que
- * acaba de iniciar sesión por primera vez. Se llama ANTES de
- * `ensureBrandRow()` en el bootstrap del portal de marca
- * (`/api/brand/register`) para que un usuario invitado (ej. mateluna641)
- * nunca dispare la creación de una marca u organización propia — spec Pri
- * 2026-07-10, punto 3: "al aceptar: vincular user_id, completar joined_at,
- * activar is_active, no crear otra marca, no crear otra organización, no
- * cambiar brands.user_id".
+ * acaba de iniciar sesión por primera vez. Es bootstrap explícito: primero
+ * materializa `organization_members` y solo después una request puede ser
+ * autorizada por `resolveBrandAccess`. No crea otra marca u organización.
  *
  * Retorna true si vinculó algo (el caller debe volver a resolver el acceso
  * después de llamar esto).
@@ -538,7 +492,7 @@ export async function linkPendingBrandMembership(user: User): Promise<boolean> {
 
   const { data: pending } = await admin
     .from('brand_members')
-    .select('id')
+    .select('id, brand_id, role')
     .is('user_id', null)
     .ilike('email', user.email)
     .eq('is_active', true)
@@ -547,6 +501,14 @@ export async function linkPendingBrandMembership(user: User): Promise<boolean> {
 
   if (!pending) return false
 
+  const { data: brand } = await admin
+    .from('brands')
+    .select('organization_id')
+    .eq('id', pending.brand_id)
+    .maybeSingle()
+
+  if (!brand) return false
+
   const { error } = await admin
     .from('brand_members')
     .update({ user_id: user.id, joined_at: new Date().toISOString() })
@@ -554,6 +516,22 @@ export async function linkPendingBrandMembership(user: User): Promise<boolean> {
 
   if (error) {
     console.error('[linkPendingBrandMembership] failed to link:', error.message)
+    return false
+  }
+
+  const orgRole: OrgRole = pending.role === 'finance' ? 'finance' : 'brand_manager'
+  const { error: membershipError } = await admin.from('organization_members').upsert({
+    organization_id: brand.organization_id,
+    brand_id: pending.brand_id,
+    user_id: user.id,
+    role: orgRole,
+    is_owner: false,
+    is_active: true,
+    joined_at: new Date().toISOString(),
+  }, { onConflict: 'organization_id,user_id' })
+
+  if (membershipError) {
+    console.error('[linkPendingBrandMembership] official membership sync failed:', membershipError.message)
     return false
   }
 

@@ -6,6 +6,21 @@ import { isOrgAdmin } from '@/lib/influencers/authz'
 
 type Params = { params: { id: string } }
 
+async function canManageInfluencer(admin: ReturnType<typeof createAdminClient>, userId: string, influencerId: string) {
+  const { data: influencer } = await admin
+    .from('influencers')
+    .select('id, user_id, organization_id')
+    .eq('id', influencerId)
+    .maybeSingle()
+
+  if (!influencer) return { allowed: false, influencer: null }
+  if (influencer.user_id === userId) return { allowed: true, influencer }
+
+  const orgId = await getOrgId(userId, undefined, admin)
+  const allowed = !!orgId && influencer.organization_id === orgId && await isOrgAdmin(admin, userId, orgId)
+  return { allowed, influencer }
+}
+
 // ── GET /api/influencers/[id] ─────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
@@ -15,7 +30,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const access = await canManageInfluencer(admin, user.id, params.id)
+  if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const orgId = access.influencer.organization_id
   if (!orgId) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
   }
@@ -29,7 +47,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       rate_cards:influencer_rate_cards (*)
     `)
     .eq('id', params.id)
-    .eq('organization_id', orgId)
     .single()
 
   if (error) {
@@ -151,6 +168,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (influencerStatus   !== undefined) metaUpdate.status             = influencerStatus
 
   const admin = createAdminClient()
+  const access = await canManageInfluencer(admin, user.id, params.id)
+  if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Merge metadata with existing (don't overwrite)
   let mergedMeta = metaUpdate
@@ -236,6 +256,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const admin = createAdminClient()
+  const access = await canManageInfluencer(admin, user.id, params.id)
+  if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Campos que no son columnas reales → van dentro de metadata JSONB
   const META_FIELDS = ['deactivation_reason', 'first_name', 'last_name', 'status']
@@ -284,6 +307,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  const access = await canManageInfluencer(admin, user.id, params.id)
+  if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const hard = new URL(req.url).searchParams.get('hard') === 'true'
 
   // ── Borrado permanente ─────────────────────────────────────────────────────

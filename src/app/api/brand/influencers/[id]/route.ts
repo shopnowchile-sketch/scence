@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
-import { resolveBrandPlan, canViewFullInfluencerBase } from '@/lib/plan-limits'
 
 type Params = { params: { id: string } }
 
@@ -19,7 +18,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!user.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
 
@@ -40,34 +38,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
-  const fullAccess = canViewFullInfluencerBase(orgPlan)
-
   // Campañas donde la marca es principal o colaboradora
   const { data: primaryCampaigns, error: primaryErr } = await admin
     .from('campaigns')
     .select('id')
-    .eq('brand_id', brand.id)
+    .or(`brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`)
 
   if (primaryErr) {
     console.error('[GET /api/brand/influencers/[id]] campaigns:', primaryErr)
     return NextResponse.json({ error: primaryErr.message }, { status: 500 })
   }
 
-  const { data: collaboratorRows, error: cbErr } = await admin
-    .from('campaign_brands')
-    .select('campaign_id')
-    .eq('brand_id', brand.id)
-
-  if (cbErr) {
-    console.error('[GET /api/brand/influencers/[id]] campaign_brands:', cbErr)
-    return NextResponse.json({ error: cbErr.message }, { status: 500 })
-  }
-
-  const campaignIds = Array.from(new Set([
-    ...(primaryCampaigns ?? []).map(c => c.id),
-    ...(collaboratorRows ?? []).map(r => r.campaign_id),
-  ].filter(Boolean)))
+  const campaignIds = Array.from(new Set((primaryCampaigns ?? []).map(c => c.id).filter(Boolean)))
 
   let campaignInfluencerIds: string[] = []
   if (campaignIds.length > 0) {
@@ -85,21 +67,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     campaignInfluencerIds = (ciRows ?? []).map(r => r.influencer_id).filter(Boolean)
   }
 
-  let directInfluencerIds: string[] = []
-  try {
-    const { data: directRows } = await admin
-      .from('brand_influencers')
-      .select('influencer_id')
-      .eq('brand_id', brand.id)
+  const allowedIds = new Set(campaignInfluencerIds)
 
-    directInfluencerIds = (directRows ?? []).map(r => r.influencer_id).filter(Boolean)
-  } catch {
-    directInfluencerIds = []
-  }
-
-  const allowedIds = new Set([...campaignInfluencerIds, ...directInfluencerIds])
-
-  if (!fullAccess && !allowedIds.has(params.id)) {
+  if (!allowedIds.has(params.id)) {
     // Mismo mensaje que "no encontrado" real — no confirmar existencia del ID
     return NextResponse.json({ error: 'Influencer no encontrado' }, { status: 404 })
   }

@@ -6,7 +6,7 @@ import { renderDocument } from '@/lib/document-templates'
 export async function GET() {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const admin = createAdminClient()

@@ -9,7 +9,7 @@ const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 export async function POST(request: Request) {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.json({ error: 'No autorizada' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'No autorizada' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access || (!access.isOwner && access.role !== 'brand_manager')) return NextResponse.json({ error: 'No tienes permiso para cambiar el logo' }, { status: 403 })
   const form = await request.formData()

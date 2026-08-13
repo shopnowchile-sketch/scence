@@ -33,9 +33,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
   let reportPath = `/admin-campaigns/${params.id}/report`
-  if (user.user_metadata?.is_brand) {
-    const brandAccess = await resolveBrandAccess(user.id)
-    if (!brandAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess) {
     const directAccess = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
     const { data: coBrand } = directAccess ? { data: null } : await admin
       .from('campaign_brands')

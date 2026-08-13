@@ -13,7 +13,7 @@ function escapeHtml(value: string) {
 export async function PATCH(request: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access || (!access.isOwner && access.role !== 'brand_manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await request.json().catch(() => null) as { signer_name?: string; signer_rut?: string; signer_role?: string; accepted?: boolean } | null

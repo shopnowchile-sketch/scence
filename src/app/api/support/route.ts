@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifySupportOfNewTicket } from '@/lib/support-notifications'
 import { waitUntil } from '@vercel/functions'
 
@@ -42,22 +42,13 @@ export async function POST(request: NextRequest) {
   // Intentar obtener org_id — para influencers, buscar en influencers table como fallback
   let organizationId = await getOrgId(user.id, user.user_metadata, admin)
 
-  if (!organizationId && user.user_metadata?.is_influencer === true) {
+  if (!organizationId) {
     const { data: infRow } = await admin
       .from('influencers')
       .select('organization_id')
       .eq('user_id', user.id)
       .single()
     organizationId = (infRow?.organization_id as string | null) ?? null
-  }
-
-  if (!organizationId && user.user_metadata?.is_brand === true) {
-    const { data: brandRow } = await admin
-      .from('brands')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .single()
-    organizationId = (brandRow?.organization_id as string | null) ?? null
   }
 
   const { data: ticket, error: insertError } = await admin
@@ -79,9 +70,12 @@ export async function POST(request: NextRequest) {
 
   // El correo no debe impedir la creación del ticket si Resend falla.
   waitUntil((async () => {
+    const brandAccess = await resolveBrandAccess(user.id)
     const [{ data: influencer }, { data: brand }] = await Promise.all([
       admin.from('influencers').select('display_name, email').eq('user_id', user.id).maybeSingle(),
-      admin.from('brands').select('contact_name, contact_email, name').eq('user_id', user.id).maybeSingle(),
+      brandAccess
+        ? admin.from('brands').select('contact_name, contact_email, name').eq('id', brandAccess.brandId).maybeSingle()
+        : Promise.resolve({ data: null }),
     ])
     const submitterType = influencer ? 'Influencer' : brand ? 'Marca' : 'Usuario'
     const submitterName = influencer?.display_name ?? brand?.contact_name ?? brand?.name ?? user.user_metadata?.full_name ?? user.email ?? 'Usuario'

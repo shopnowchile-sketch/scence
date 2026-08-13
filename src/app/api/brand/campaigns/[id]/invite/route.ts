@@ -17,7 +17,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!user.user_metadata?.is_brand) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
 
@@ -95,11 +94,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Autorización por RELACIÓN (no por organization_id — modelo de org única).
-  // Se mantiene is_active. El acceso se decide igual que lista/detalle:
-  //   - Pro (base completa): puede invitar a cualquier influencer activa.
-  //   - Basic/Growth: solo su roster (brand_influencers) o influencers ya
-  //     relacionadas a alguna de sus campañas.
+  // Autorización por relación: una marca nunca obtiene catálogo global.
+  // Solo puede invitar perfiles ya relacionados con alguna campaña propia.
   const { data: influencer } = await admin
     .from('influencers')
     .select('id, display_name, email, is_active')
@@ -110,22 +106,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Influencer no encontrado o inactivo' }, { status: 404 })
   }
 
-  if (!limits.can_view_full_influencer_base) {
-    const [{ data: rosterRow }, { data: relatedRow }] = await Promise.all([
-      admin.from('brand_influencers').select('influencer_id')
-        .eq('brand_id', brand.id).eq('influencer_id', influencer_id).maybeSingle(),
-      campaignIds.length > 0
-        ? admin.from('campaign_influencers').select('id')
-            .in('campaign_id', campaignIds).eq('influencer_id', influencer_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ])
-    if (!rosterRow && !relatedRow) {
-      return NextResponse.json({
-        error: 'Tu plan solo permite invitar influencers de tu roster. Sube a Pro para invitar desde el catálogo completo.',
-        code:  PLAN_ERROR_CODES.INFLUENCER_BASE,
-        plan:  orgPlan,
-      }, { status: 403 })
-    }
+  const { data: relatedRow } = campaignIds.length > 0
+    ? await admin.from('campaign_influencers').select('id')
+        .in('campaign_id', campaignIds).eq('influencer_id', influencer_id).maybeSingle()
+    : { data: null }
+  if (!relatedRow) {
+    return NextResponse.json({
+      error: 'Solo puedes invitar influencers relacionadas con tus campañas.',
+      code: PLAN_ERROR_CODES.INFLUENCER_BASE,
+      plan: orgPlan,
+    }, { status: 403 })
   }
 
   // Verificar que no haya invitación previa

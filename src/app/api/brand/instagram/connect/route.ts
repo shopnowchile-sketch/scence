@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.user_metadata?.is_brand) return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'))
+  if (!user) return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'))
 
   const access = await resolveBrandAccess(user.id)
   if (!access || (!access.isOwner && access.role !== 'brand_manager')) {

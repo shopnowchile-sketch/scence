@@ -4,8 +4,8 @@ import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { groupCommunes } from '@/lib/communes-chile'
 
 // GET /api/brand/influencers/communes
-// Mismo alcance de influencers que /api/brand/influencers (campañas propias +
-// colaboradora + brand_influencers) — lista de comunas distintas para poblar
+// Mismo alcance de influencers que /api/brand/influencers: exclusivamente
+// relaciones en campaign_influencers — lista de comunas para poblar
 // el filtro "Comuna" en /brand-influencers.
 export async function GET() {
   const supabase = createServerClient()
@@ -13,10 +13,6 @@ export async function GET() {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (!user.user_metadata?.is_brand) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const admin = createAdminClient()
 
   const access = await resolveBrandAccess(user.id)
@@ -37,15 +33,7 @@ export async function GET() {
     campaignInfluencerIds = (ciRows ?? []).map(r => r.influencer_id).filter(Boolean)
   }
 
-  let directInfluencerIds: string[] = []
-  try {
-    const { data: directRows } = await admin.from('brand_influencers').select('influencer_id').eq('brand_id', brand.id)
-    directInfluencerIds = (directRows ?? []).map(r => r.influencer_id).filter(Boolean)
-  } catch {
-    directInfluencerIds = []
-  }
-
-  const influencerIds = Array.from(new Set([...campaignInfluencerIds, ...directInfluencerIds]))
+  const influencerIds = Array.from(new Set(campaignInfluencerIds))
   if (influencerIds.length === 0) return NextResponse.json({ data: [] })
 
   const { data, error } = await admin

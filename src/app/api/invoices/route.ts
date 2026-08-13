@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
     if (!isAdmin) {
-      const brandAccess = user.user_metadata?.is_brand ? await resolveBrandAccess(user.id) : null
+      const brandAccess = await resolveBrandAccess(user.id)
       const ownsCampaign = !!brandAccess && (
         campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
       )

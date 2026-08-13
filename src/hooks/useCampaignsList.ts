@@ -129,13 +129,17 @@ export function useRemoveCampaignInfluencer(campaignId: string) {
       }
       return res.json()
     },
-    onSuccess: () => {
+    onSuccess: (result: { outcome?: string }) => {
       // La consulta de detalle usa ['campaign', apiBase, campaignId]. Antes se
       // invalidaba ['campaign', campaignId], que no coincide con esa clave, por
       // lo que rating/aprobación se guardaban en BD pero la vista seguía mostrando
       // datos antiguos hasta salir y volver a entrar.
       qc.invalidateQueries({ queryKey: ['campaign'] })
-      toast.success('Influencer eliminado de la campaña')
+      toast.success(
+        result.outcome === 'attendance_deadline_closed'
+          ? 'Influencer removida: no confirmó antes del cierre de cupos'
+          : 'Influencer eliminado de la campaña'
+      )
     },
     onError: (err: Error) => toast.error(err.message),
   })

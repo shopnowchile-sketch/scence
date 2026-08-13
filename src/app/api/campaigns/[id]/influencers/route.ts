@@ -238,7 +238,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   // influencer de una eliminación accidental.
   const { data: relation } = await admin
     .from('campaign_influencers')
-    .select('id')
+    .select('id, application_status, metadata')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencerId)
     .maybeSingle()
@@ -246,7 +246,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (relation) {
     const { data: deliverables, error: deliverablesError } = await admin
       .from('campaign_deliverables')
-      .select('id, content_url, published_url')
+      .select('id, type, content_url, published_url, attendance_response, attendance_outcome')
       .eq('campaign_influencer_id', relation.id)
 
     if (deliverablesError) {
@@ -256,6 +256,46 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const hasSubmittedContent = (deliverables ?? []).some(deliverable =>
       Boolean(deliverable.content_url?.trim() || deliverable.published_url?.trim())
     )
+
+    // Una aceptada que todavía no respondió la confirmación sí puede perder el
+    // cupo aunque exista una URL histórica. No borramos la relación ni sus
+    // entregables: sale de "Aceptadas" al quedar rejected y la influencer puede
+    // ver el motivo en su historial. La URL se conserva como evidencia.
+    const hasUnconfirmedAttendance = (deliverables ?? []).some(deliverable =>
+      deliverable.type === 'event_attendance'
+      && !deliverable.attendance_response
+      && deliverable.attendance_outcome !== 'no_show'
+    )
+
+    if (relation.application_status === 'accepted' && hasUnconfirmedAttendance) {
+      const removedAt = new Date().toISOString()
+      const metadata = {
+        ...((relation.metadata as Record<string, unknown> | null) ?? {}),
+        removal_reason: 'attendance_deadline_closed',
+        removal_message: 'Sorry, no confirmaste antes de la fecha y los cupos se cerraron.',
+        removed_at: removedAt,
+      }
+      const { error: rejectError } = await admin
+        .from('campaign_influencers')
+        .update({
+          application_status: 'rejected',
+          status: 'canceled',
+          metadata,
+          updated_at: removedAt,
+        })
+        .eq('id', relation.id)
+
+      if (rejectError) {
+        console.error('[DELETE /api/campaigns/[id]/influencers] close unconfirmed slot', rejectError)
+        return NextResponse.json({ error: rejectError.message }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        outcome: 'attendance_deadline_closed',
+        content_preserved: hasSubmittedContent,
+      })
+    }
 
     if (hasSubmittedContent) {
       return NextResponse.json({

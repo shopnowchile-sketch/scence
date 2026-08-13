@@ -29,6 +29,7 @@ type Campaign = {
   next_due: string | null
   self_created: boolean
   cover_url?: string | null
+  removal_message?: string | null
 }
 
 type OpenCampaign = {
@@ -62,6 +63,7 @@ type ApiRow = {
   status: string
   application_status?: string | null
   origin?: string | null
+  metadata?: Record<string, unknown> | null
   _self_created?: boolean
   campaign: {
     id: string
@@ -118,6 +120,7 @@ function toRow(row: ApiRow): Campaign | null {
     status:             c.status ?? row.status,
     application_status: row.application_status ?? null,
     origin:             row.origin ?? null,
+    removal_message:    typeof row.metadata?.removal_message === 'string' ? row.metadata.removal_message : null,
     deliverables_total: total,
     deliverables_done:  done,
     next_due:           nextDue,
@@ -601,6 +604,7 @@ export default function MyCampaignsPage() {
 // ── Campaign card ─────────────────────────────────────────────────────────────
 function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   const router  = useRouter()
+  const removedForAttendanceDeadline = c.application_status === 'rejected' && !!c.removal_message
   // Si su relación con la campaña sigue pending (invitación o postulación a
   // una campaña privada que no se filtra arriba), el badge debe reflejar
   // eso en vez del status de la campaña ("Activa") — mismo fix que en el
@@ -627,8 +631,9 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
 
   return (
     <button
-      onClick={() => router.push(`/inf-campaign/${c.id}`)}
-      className={cn('w-full overflow-hidden rounded-2xl border text-left transition-all hover:shadow-md', c.status === 'completed' ? 'border-gray-100 bg-gray-50 opacity-65 grayscale-[0.35]' : 'border-gray-100 bg-white hover:border-violet-200')}
+      onClick={() => { if (!removedForAttendanceDeadline) router.push(`/inf-campaign/${c.id}`) }}
+      disabled={removedForAttendanceDeadline}
+      className={cn('w-full overflow-hidden rounded-2xl border text-left transition-all', removedForAttendanceDeadline ? 'cursor-default border-gray-100 bg-gray-50 opacity-70 grayscale-[0.25]' : 'hover:shadow-md', c.status === 'completed' ? 'border-gray-100 bg-gray-50 opacity-65 grayscale-[0.35]' : !removedForAttendanceDeadline && 'border-gray-100 bg-white hover:border-violet-200')}
     >
       <CampaignCover name={c.name} src={c.cover_url} className="h-32" />
       <div className="p-4">
@@ -636,7 +641,7 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
         <p className="text-base font-bold text-gray-900 mt-3 truncate">{c.name}</p>
         <div className="flex items-center gap-2 mt-1 text-xs text-gray-400"><Calendar className="h-3 w-3" />{fmt(c.start_date) ?? 'Sin fecha'}{c.end_date ? ` → ${fmt(c.end_date)}` : ''}</div>
         {isActive && c.next_due && <p className="text-sm font-semibold text-violet-700 mt-3">Próxima entrega: {fmt(c.next_due)}</p>}
-        {c.application_status === 'rejected' && <p className="text-xs text-gray-400 mt-3">Gracias por postular. Tendrás nuevas oportunidades pronto.</p>}
+        {c.application_status === 'rejected' && <p className="text-xs text-gray-400 mt-3">{c.removal_message ?? 'Gracias por postular. Tendrás nuevas oportunidades pronto.'}</p>}
         {c.deliverables_total > 0 && <div className="mt-4"><div className="flex justify-between text-[11px] text-gray-400 mb-1"><span>{c.deliverables_done}/{c.deliverables_total} entregables</span><span>{pct}%</span></div><div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={cn('h-full rounded-full', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} /></div></div>}
       </div>
     </button>

@@ -2508,7 +2508,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>{initials}</div>
                                 )}
                                 <div className="min-w-0">
-                                  <button type="button" onClick={() => setSelectedInfluencerId(inf.id)} className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700 whitespace-nowrap">{inf.display_name}</button>
+                                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{inf.display_name}</span>
                                   {primarySP?.username && (
                                     profileUrl ? <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="block text-xs text-violet-600 hover:underline">@{primarySP.username}</a> : <div className="text-xs text-gray-400">@{primarySP.username}</div>
                                   )}
@@ -2588,13 +2588,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedInfluencerId(inf.id)}
-                          className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700"
-                        >
+                        <span className="text-sm font-semibold text-gray-900">
                           {inf.display_name}
-                        </button>
+                        </span>
                         <p className="text-xs text-gray-400 truncate">
                           {[inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
                           {primarySP?.username && (
@@ -2773,7 +2769,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <p className="text-sm text-gray-400">No se encontraron influencers con esos filtros.</p>
             </div>
           ) : (
-            <div className={cn(isBrandPortal ? 'block' : 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start')}>
+            <div className="block">
               <div className="card overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>
@@ -2856,11 +2852,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     return (
                       <tr
                         key={ci.id}
-                        onClick={isBrandPortal ? undefined : () => setSelectedInfluencerId(inf.id)}
                         className={cn(
                           'hover:bg-gray-50/70 transition-colors',
-                          !isBrandPortal && 'cursor-pointer',
-                          noShow ? 'bg-gray-100 text-gray-400 opacity-70 grayscale' : !isBrandPortal && selectedInfluencer?.id === inf.id ? 'bg-violet-50/70' : ''
+                          noShow && 'bg-gray-100 text-gray-400 opacity-70 grayscale'
                         )}
                       >
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -3030,7 +3024,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </table>
               </div>
 
-              {!isBrandPortal && <div className="card p-4 xl:sticky xl:top-4">
+              {selectedInfluencer && selectedInfluencerCI && false && <div className="card p-4 xl:sticky xl:top-4">
                 {selectedInfluencer && selectedInfluencerCI ? (
                   <div className="space-y-4">
                     <div className="flex items-start justify-between gap-3">

@@ -3024,7 +3024,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </table>
               </div>
 
-              {selectedInfluencer && selectedInfluencerCI && false && <div className="card p-4 xl:sticky xl:top-4">
+              <div className="hidden">
                 {selectedInfluencer && selectedInfluencerCI ? (
                   <div className="space-y-4">
                     <div className="flex items-start justify-between gap-3">
@@ -3139,7 +3139,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <p className="text-sm text-gray-400">Selecciona una influencer para ver detalles.</p>
                   </div>
                 )}
-              </div>}
+              </div>
             </div>
           )}
         </div>

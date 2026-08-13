@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
   // brands.user_id).
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'campaign.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand } = await admin
     .from('brands')
@@ -115,6 +116,7 @@ export async function POST(req: NextRequest) {
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand } = await admin
     .from('brands')

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/influencers/ranking'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
   if (!access) {
     return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   }
+  if (!hasBrandPermission(access, 'influencer.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand, error: brandError } = await admin
     .from('brands')

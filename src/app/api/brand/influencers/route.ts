@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
 // GET /api/brand/influencers
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
   if (!access) {
     return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   }
+  if (!hasBrandPermission(access, 'influencer.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand, error: brandError } = await admin
     .from('brands')
@@ -262,6 +263,7 @@ export async function POST(req: NextRequest) {
   if (!access) {
     return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   }
+  if (!hasBrandPermission(access, 'influencer.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand, error: brandError } = await admin
     .from('brands')

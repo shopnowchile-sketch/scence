@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { BARTER_STATUS_CONFIG, type BarterStatus } from '@/types'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import type { BrandPermission } from '@/lib/supabase/ensureOrg'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 
 type Params = { params: { id: string } }
 
@@ -35,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  const campaign = await getAccessibleCampaign(admin, user.id, params.id, 'campaign.read')
   if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await admin
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const admin = createAdminClient()
 
   // Verifica pertenencia a la organización antes de usar el service role.
-  const camp = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  const camp = await getAccessibleCampaign(admin, user.id, params.id, 'campaign.manage')
   if (!camp) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   if (initialize_tracking === true) {
@@ -234,7 +235,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  const campaign = await getAccessibleCampaign(admin, user.id, params.id, 'campaign.manage')
   if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   if (benefit_id && benefit_patch) {
@@ -429,7 +430,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const campaign = await getAccessibleCampaign(admin, user.id, user.user_metadata, params.id)
+  const campaign = await getAccessibleCampaign(admin, user.id, params.id, 'campaign.manage')
   if (!campaign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { error } = await admin
@@ -481,17 +482,15 @@ async function notifyResponsible(
 async function getAccessibleCampaign(
   admin: ReturnType<typeof createAdminClient>,
   userId: string,
-  userMeta: Record<string, unknown> | undefined,
-  campaignId: string
+  campaignId: string,
+  permission: BrandPermission,
 ) {
-  const orgId = await getOrgId(userId, userMeta, admin)
-  if (!orgId) return null
+  if (!(await authorizeCampaignBrandAction(userId, campaignId, permission))) return null
 
   const { data } = await admin
     .from('campaigns')
     .select('id, organization_id, brand_id, name, currency, campaign_benefits')
     .eq('id', campaignId)
-    .eq('organization_id', orgId)
     .maybeSingle()
 
   return data

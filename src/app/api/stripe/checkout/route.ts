@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getStripe } from '@/lib/stripe'
 
 // POST /api/stripe/checkout — crea una Stripe Checkout session para el plan
@@ -12,8 +12,10 @@ export async function POST(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
+  const access = await resolveBrandAccess(user.id)
+  if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
+  if (!hasBrandPermission(access, 'billing.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const orgId = access.organizationId
 
   const body = await request.json().catch(() => ({}))
   const planId: string | undefined = body.plan_id

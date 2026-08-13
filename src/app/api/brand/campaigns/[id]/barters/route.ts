@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -14,6 +14,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!hasBrandPermission(access, 'campaign.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await admin
     .from('barters')

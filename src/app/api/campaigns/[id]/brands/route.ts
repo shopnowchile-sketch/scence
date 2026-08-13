@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, provisionOrgForBrand, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, provisionOrgForBrand, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 
 type Params = { params: { id: string } }
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // campaña) puede administrar marcas colaboradoras. Una co-marca (org propia
   // distinta) NO pasa este check — solo la principal o admin gestionan.
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  const ownsCampaign = brandAccess?.brandId === campaign?.brand_id
+  const ownsCampaign = brandAccess?.brandId === campaign?.brand_id && hasBrandPermission(brandAccess, 'campaign.manage')
   if (!campaign || (!isAdmin && !ownsCampaign && (!orgId || campaign.organization_id !== orgId))) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }

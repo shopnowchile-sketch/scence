@@ -9,7 +9,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.ap
 const MEMBER_ROLES = ['brand_manager', 'finance', 'member'] as const
 
 function officialRole(role: string) {
-  return role === 'finance' ? 'finance' : 'brand_manager'
+  return role === 'finance' ? 'finance' : role === 'member' ? 'member' : 'brand_manager'
 }
 
 async function getAdminBrand(userId: string, brandId: string) {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandPlan } from '@/lib/plan-limits'
-import { resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 
 const BRAND_FIELDS = `
   id, name, logo_url, logo_path, website, instagram, industry, rut,
@@ -31,6 +31,7 @@ async function getBrandAccess(): Promise<
 export async function GET() {
   const { access, error: authErr } = await getBrandAccess()
   if (!access) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
+  if (!hasBrandPermission(access, 'brand.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
   const { data, error } = await admin
@@ -72,7 +73,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   const { access, error: authErr } = await getBrandAccess()
   if (!access) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
-  if (!access.isOwner && access.role !== 'brand_manager') {
+  if (!hasBrandPermission(access, 'brand.manage')) {
     return NextResponse.json({ error: 'No tienes permiso para editar el perfil de la marca' }, { status: 403 })
   }
 

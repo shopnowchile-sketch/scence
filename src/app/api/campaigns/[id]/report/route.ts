@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -55,7 +55,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('campaign_id', params.id)
       .eq('brand_id', access.brandId)
       .maybeSingle()
-    authorized = isOwner || !!coBrand
+    authorized = hasBrandPermission(access, 'report.read') && (isOwner || !!coBrand)
   } else {
     const orgId = await getOrgId(user.id, user.user_metadata, admin)
     const role = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }

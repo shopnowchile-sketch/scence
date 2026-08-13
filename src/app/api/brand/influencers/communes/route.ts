@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { groupCommunes } from '@/lib/communes-chile'
 
 // GET /api/brand/influencers/communes
@@ -17,6 +17,7 @@ export async function GET() {
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'influencer.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const brand = { id: access.brandId }
 
   const { data: primaryCampaigns } = await admin.from('campaigns').select('id').eq('brand_id', brand.id)

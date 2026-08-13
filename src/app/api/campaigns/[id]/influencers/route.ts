@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -23,6 +24,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'influencer.read'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
   const { data, error } = await admin
@@ -53,6 +55,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'influencer.manage'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {
@@ -219,6 +222,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'influencer.manage'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const influencerId = searchParams.get('influencer_id')
@@ -294,6 +298,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'influencer.manage'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {

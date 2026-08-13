@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 
 export const runtime = 'nodejs'
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   let reportPath = `/admin-campaigns/${params.id}/report`
   const brandAccess = await resolveBrandAccess(user.id)
   if (brandAccess) {
+    if (!hasBrandPermission(brandAccess, 'report.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     const directAccess = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
     const { data: coBrand } = directAccess ? { data: null } : await admin
       .from('campaign_brands')

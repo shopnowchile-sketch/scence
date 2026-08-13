@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess, type BrandPermission } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
-async function canManageBrand(user: any, brand: any, admin: any) {
+async function canAccessBrand(user: any, brand: any, admin: any, permission: BrandPermission) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   const role = orgId ? await getUserRole(user.id, orgId, admin) : null
   if (role?.isAdmin) return true
   const brandAccess = await resolveBrandAccess(user.id)
-  return brandAccess?.brandId === brand.id
+  return brandAccess?.brandId === brand.id && hasBrandPermission(brandAccess, permission)
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -27,15 +27,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const canSeePrivate = await canManageBrand(user, brand, admin)
+  if (!(await canAccessBrand(user, brand, admin, 'location.read'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
-  let query = admin
+  const query = admin
     .from('brand_locations')
     .select('*')
     .eq('brand_id', params.id)
     .order('created_at', { ascending: false })
-
-  if (!canSeePrivate) query = query.eq('is_public', true)
 
   const { data, error } = await query
 
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
 
   if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!(await canManageBrand(user, brand, admin))) {
+  if (!(await canAccessBrand(user, brand, admin, 'location.manage'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

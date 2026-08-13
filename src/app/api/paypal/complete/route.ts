@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 
 function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
+  if (!hasBrandPermission(access, 'billing.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const clientId = process.env.PAYPAL_CLIENT_ID, secret = process.env.PAYPAL_CLIENT_SECRET
   if (!clientId || !secret) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
   const authorization = Buffer.from(`${clientId}:${secret}`).toString('base64')

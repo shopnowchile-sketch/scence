@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string; locationId: string } }
 
 async function canEditBrand(user: { id: string; user_metadata?: Record<string, unknown> }, brandId: string, admin: ReturnType<typeof createAdminClient>) {
   const brandAccess = await resolveBrandAccess(user.id)
   if (brandAccess) {
-    return brandAccess.brandId === brandId && (brandAccess.isOwner || brandAccess.role === 'brand_manager')
+    return brandAccess.brandId === brandId && hasBrandPermission(brandAccess, 'location.manage')
   }
 
   const orgId = await getOrgId(user.id, user.user_metadata, admin)

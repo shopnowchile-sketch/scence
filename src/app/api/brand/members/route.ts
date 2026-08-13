@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -43,7 +43,7 @@ async function getOwnerBrand() {
   if (error || !user) return { user: null, brand: null }
 
   const access = await resolveBrandAccess(user.id)
-  if (!access?.isOwner) return { user: null, brand: null }
+  if (!access || !hasBrandPermission(access, 'team.manage')) return { user: null, brand: null }
 
   const admin = createAdminClient()
   const { data: brand } = await admin
@@ -63,7 +63,7 @@ async function getViewerAccess(): Promise<{ userId: string; access: BrandAccess 
   if (error || !user) return null
 
   const access = await resolveBrandAccess(user.id)
-  if (!access) return null
+  if (!access || !hasBrandPermission(access, 'team.read')) return null
 
   return { userId: user.id, access }
 }
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
         memberUser = created.user
       }
       if (!memberUser) throw new Error('No se pudo resolver el usuario invitado')
-      const orgRole = member.role === 'finance' ? 'finance' : 'brand_manager'
+      const orgRole = member.role === 'finance' ? 'finance' : member.role === 'member' ? 'member' : 'brand_manager'
       const { error: officialError } = await admin.from('organization_members').upsert({
         organization_id: brand.organization_id,
         brand_id: brand.id,
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!existingUser) throw new Error('No se pudo resolver el usuario invitado')
-    const orgRole = role === 'finance' ? 'finance' : 'brand_manager'
+    const orgRole = role === 'finance' ? 'finance' : role === 'member' ? 'member' : 'brand_manager'
     const { error: officialError } = await admin.from('organization_members').upsert({
       organization_id: brand.organization_id,
       brand_id: brand.id,

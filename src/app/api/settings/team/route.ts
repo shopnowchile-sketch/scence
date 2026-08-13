@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 
 // GET /api/settings/team — list org members with profiles
@@ -10,6 +10,8 @@ export async function GET() {
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess && !hasBrandPermission(brandAccess, 'team.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 400 })
 
@@ -30,6 +32,8 @@ export async function PATCH(req: NextRequest) {
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess && !hasBrandPermission(brandAccess, 'team.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 400 })
 
@@ -38,7 +42,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   const { member_id, role } = await req.json()
-  const VALID_ROLES = ['super_admin', 'brand_manager', 'finance', 'influencer']
+  const VALID_ROLES = brandAccess
+    ? ['brand_manager', 'member', 'finance']
+    : ['super_admin', 'brand_manager', 'member', 'finance', 'influencer']
   if (!VALID_ROLES.includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
 
   const { error } = await admin

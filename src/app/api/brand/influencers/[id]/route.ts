@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -25,6 +25,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // user_metadata.brand_id — spec Pri 2026-07-10).
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'influencer.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand, error: brandError } = await admin
     .from('brands')

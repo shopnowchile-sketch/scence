@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { roleHasBrandPermission, type BrandPermission } from '@/lib/brand-permissions'
+export type { BrandPermission } from '@/lib/brand-permissions'
 
-export type OrgRole = 'super_admin' | 'brand_manager' | 'finance' | 'influencer'
+export type OrgRole = 'super_admin' | 'brand_manager' | 'member' | 'finance' | 'influencer'
 
 /** Roles con acceso global de plataforma (SCENCE). */
 export const ADMIN_ROLES: OrgRole[] = ['super_admin']
@@ -446,6 +448,10 @@ export type BrandAccess = {
   isOwner: boolean
 }
 
+export function hasBrandPermission(access: BrandAccess | null, permission: BrandPermission): boolean {
+  return access ? roleHasBrandPermission(access.role, permission) : false
+}
+
 export async function resolveBrandAccess(userId: string): Promise<BrandAccess | null> {
   const admin = createAdminClient()
 
@@ -454,7 +460,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
     .select('organization_id, brand_id, role, is_owner')
     .eq('user_id', userId)
     .eq('is_active', true)
-    .in('role', ['brand_manager', 'finance'])
+    .in('role', ['brand_manager', 'member', 'finance'])
 
   for (const membership of orgMemberships ?? []) {
     let brandQuery = admin
@@ -519,7 +525,11 @@ export async function linkPendingBrandMembership(user: User): Promise<boolean> {
     return false
   }
 
-  const orgRole: OrgRole = pending.role === 'finance' ? 'finance' : 'brand_manager'
+  const orgRole: OrgRole = pending.role === 'finance'
+    ? 'finance'
+    : pending.role === 'member'
+      ? 'member'
+      : 'brand_manager'
   const { error: membershipError } = await admin.from('organization_members').upsert({
     organization_id: brand.organization_id,
     brand_id: pending.brand_id,

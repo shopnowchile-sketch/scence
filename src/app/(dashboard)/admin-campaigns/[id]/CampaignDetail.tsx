@@ -966,19 +966,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [duplicatingCampaign, setDuplicatingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
-  const [brandRoster, setBrandRoster] = useState<Array<{
-    id: string
-    display_name: string
-    avatar_url?: string | null
-    city?: string | null
-    country?: string | null
-    social_profiles?: Array<{
-      platform: string
-      username: string | null
-      followers: number | null
-    }>
-  }>>([])
-  const [brandRosterLoading, setBrandRosterLoading] = useState(false)
   const [infSearch, setInfSearch] = useState('')
   const [infPlatform, setInfPlatform] = useState('')
   const [infStatus, setInfStatus] = useState('')
@@ -1032,7 +1019,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
   const [addingDeliverable, setAddingDeliverable] = useState(false)
-  const [addingInfluencerId, setAddingInfluencerId] = useState<string | null>(null)
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
   const [showCampaignInvoiceModal, setShowCampaignInvoiceModal] = useState(false)
   const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
@@ -1106,35 +1092,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       setTab(requestedTab as Tab)
     }
   }, [searchParams])
-
-  useEffect(() => {
-    if (!isBrandPortal) return
-
-    let cancelled = false
-    setBrandRosterLoading(true)
-
-    fetch('/api/brand/influencers?scope=roster&page=1&limit=5000')
-      .then(async response => {
-        const json = await response.json()
-        if (!response.ok) {
-          throw new Error(json.error ?? 'Error cargando influencers de la marca')
-        }
-
-        if (!cancelled) {
-          setBrandRoster(Array.isArray(json.data) ? json.data : [])
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setBrandRoster([])
-      })
-      .finally(() => {
-        if (!cancelled) setBrandRosterLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [isBrandPortal])
 
   const campaignForEffects = res?.data as (CampaignDetail & { brand?: { id?: string } | null }) | undefined
   const primaryBrandId = campaignForEffects?.brand?.id
@@ -1276,48 +1233,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Relaciones activas de la campaña (aceptadas + pendientes; excluye rechazadas)
   // para el contador del tab — así no muestra 0 cuando hay invitaciones pendientes.
   const activeRelations = campaignInfluencers.filter(ci => ci.application_status !== 'rejected')
-  const campaignInfluencerIds = new Set(
-    campaignInfluencers
-      .map(ci => ci.influencer?.id)
-      .filter((value): value is string => Boolean(value))
-  )
-  const availableBrandRoster = brandRoster.filter(
-    influencer => !campaignInfluencerIds.has(influencer.id)
-  )
-
-  // "Agregar" (preasignación): agrega la influencer a la campaña en UN paso,
-  // sin abrir el formulario de oferta. Crea la relación pending reutilizando el
-  // endpoint de invitación existente enviando SOLO influencer_id (sin fee,
-  // mensaje ni entregables — se toman de la config general de la campaña). En
-  // draft el email/notificación quedan diferidos (lógica del backend Batch 1).
-  // El formulario de oferta se conserva solo para "Invitar con oferta".
-  async function quickAddInfluencerToCampaign(influencerId: string) {
-    if (addingInfluencerId) return
-    setAddingInfluencerId(influencerId)
-    try {
-      const res = await fetch(`/api/brand/campaigns/${id}/invite`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ influencer_id: influencerId }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        if (json.code && String(json.code).startsWith('PLAN_LIMIT_')) {
-          toast.error(json.error, { action: { label: 'Subir de plan', onClick: () => router.push('/brand-settings/plan') } })
-        } else {
-          toast.error(json.error ?? 'No se pudo agregar la influencer')
-        }
-        return
-      }
-      toast.success('Influencer agregada a la campaña (pendiente)')
-      void refetch()
-    } catch {
-      toast.error('Error al agregar la influencer')
-    } finally {
-      setAddingInfluencerId(null)
-    }
-  }
-
   // Plataformas presentes entre las influencers confirmadas de esta campaña
   // (no una lista fija — evita mostrar opciones vacías en campañas con pocas plataformas).
   const infPlatformOptions = Array.from(new Set(
@@ -2059,7 +1974,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-3.5 w-3.5" /> },
-    { id: 'influencers',  label: `Influencers (${activeRelations.length})`, icon: <Users className="h-3.5 w-3.5" /> },
+    { id: 'influencers',  label: `Influencers (${isBrandPortal ? confirmedInfluencers.length : activeRelations.length})`, icon: <Users className="h-3.5 w-3.5" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
     { id: 'barters',      label: 'Canjes',        icon: <Gift className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
@@ -2445,7 +2360,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               aprobar y ver quién postuló" — ahora el panel completo (no solo los botones) se
               oculta en Marca si _brand_permissions.canEdit es false, y los botones pegan al
               endpoint correcto según el portal. */}
-          {pendingApplications.length > 0
+          {!isBrandPortal && pendingApplications.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card border-amber-200 bg-white shadow-sm">
               <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 border-l-4 border-amber-400 bg-amber-50 px-4 py-3.5 text-left hover:bg-amber-100/80">
@@ -2647,7 +2562,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               acepta/rechaza desde su portal. Admin puede retirarlas, incluso
               en campañas históricas/completadas; no se ofrece aceptar/rechazar
               porque la decisión corresponde a la influencer. */}
-          {pendingInvitations.length > 0
+          {!isBrandPortal && pendingInvitations.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card p-4 border-violet-200 bg-violet-50">
               <p className="text-xs font-bold text-violet-700 uppercase tracking-wider mb-1 flex items-center gap-2">
@@ -2740,7 +2655,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <FileDown className="h-4 w-4" /> Excel
                 </a>
               )}
-              {pendingAttendanceInfluencerIds.length > 0 && (
+              {pendingAttendanceInfluencerIds.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
                 <button
                   onClick={() => void sendAttendanceReminders(Array.from(attendanceReminderSelection))}
                   disabled={!attendanceReminderSelection.size || attendanceReminderSending}
@@ -2750,91 +2665,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   Enviar email ({attendanceReminderSelection.size})
                 </button>
               )}
-              <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
+              {(!isBrandPortal || c._brand_permissions?.canEdit) && <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors">
                 + Agregar influencer
-              </Link>
+              </Link>}
             </div>
           </div>
-
-          {isBrandPortal && (
-            <div className="card overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-800">
-                  Influencers de tu marca
-                </h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Agrega a esta campaña una influencer que ya pertenece a tu roster.
-                </p>
-              </div>
-
-              {brandRosterLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
-                </div>
-              ) : availableBrandRoster.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <p className="text-sm text-gray-400">
-                    No hay más influencers disponibles en tu roster.
-                  </p>
-                  <Link
-                    href="/brand-influencers/new"
-                    className="inline-block mt-3 text-sm font-semibold text-violet-600 hover:underline"
-                  >
-                    + Agregar influencer a mi marca
-                  </Link>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
-                  {availableBrandRoster.map(influencer => {
-                    const primary = influencer.social_profiles?.[0]
-
-                    return (
-                      <div
-                        key={influencer.id}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
-                      >
-                        {influencer.avatar_url ? (
-                          <img
-                            src={influencer.avatar_url}
-                            alt={influencer.display_name}
-                            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center font-bold flex-shrink-0">
-                            {influencer.display_name.charAt(0).toUpperCase()}
-
-                          </div>
-                        )}
-
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">
-                            {influencer.display_name}
-                          </p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {primary?.username
-                              ? `@${primary.username.replace(/^@/, '')}`
-                              : [influencer.city, influencer.country]
-                                  .filter(Boolean)
-                                  .join(', ') || 'Sin red registrada'}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => quickAddInfluencerToCampaign(influencer.id)}
-                          disabled={addingInfluencerId === influencer.id}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-60"
-                        >
-                          {addingInfluencerId === influencer.id ? 'Agregando…' : 'Agregar'}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
 
           {confirmedInfluencers.length > 0 && (
             <div className="flex items-center gap-3 flex-wrap">
@@ -2937,7 +2773,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <p className="text-sm text-gray-400">No se encontraron influencers con esos filtros.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start">
+            <div className={cn(isBrandPortal ? 'block' : 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start')}>
               <div className="card overflow-x-auto">
               <table className="w-full min-w-[640px]">
                 <thead>
@@ -2997,6 +2833,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const inf = ci.influencer
                     if (!inf) return null
                     const primarySP = inf.influencer_social_profiles?.[0]
+                    const instagramSP = inf.influencer_social_profiles?.find(profile => profile.platform === 'instagram' && profile.username)
+                    const instagramUrl = instagramSP?.username ? buildProfileUrl('instagram', instagramSP.username) : null
                     const myDelivs    = campaignDeliverables.filter(d => d.influencer?.id === inf.id)
                     const delivsDone  = myDelivs.filter(d => d.status === 'published').length
                     const delivsTotal = myDelivs.length
@@ -3018,10 +2856,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     return (
                       <tr
                         key={ci.id}
-                        onClick={() => setSelectedInfluencerId(inf.id)}
+                        onClick={isBrandPortal ? undefined : () => setSelectedInfluencerId(inf.id)}
                         className={cn(
-                          'hover:bg-gray-50/70 transition-colors cursor-pointer',
-                          noShow ? 'bg-gray-100 text-gray-400 opacity-70 grayscale' : selectedInfluencer?.id === inf.id ? 'bg-violet-50/70' : ''
+                          'hover:bg-gray-50/70 transition-colors',
+                          !isBrandPortal && 'cursor-pointer',
+                          noShow ? 'bg-gray-100 text-gray-400 opacity-70 grayscale' : !isBrandPortal && selectedInfluencer?.id === inf.id ? 'bg-violet-50/70' : ''
                         )}
                       >
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -3058,17 +2897,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               </div>
                             )}
                             <div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedInfluencerId(inf.id)
-                                }}
-                                className="text-left text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
-                              >
-                                {inf.display_name}
-                              </button>
-                              {primarySP?.username && <div className="text-xs text-gray-400">@{primarySP.username}</div>}
+                              <span className="text-left text-sm font-semibold text-gray-900">{inf.display_name}</span>
+                              {instagramSP?.username && instagramUrl && (
+                                <a href={instagramUrl} target="_blank" rel="noopener noreferrer" onClick={event => event.stopPropagation()} className="block text-xs text-violet-600 hover:underline">
+                                  @{instagramSP.username}
+                                </a>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -3196,7 +3030,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </table>
               </div>
 
-              <div className="card p-4 xl:sticky xl:top-4">
+              {!isBrandPortal && <div className="card p-4 xl:sticky xl:top-4">
                 {selectedInfluencer && selectedInfluencerCI ? (
                   <div className="space-y-4">
                     <div className="flex items-start justify-between gap-3">
@@ -3311,7 +3145,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <p className="text-sm text-gray-400">Selecciona una influencer para ver detalles.</p>
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 export async function resolveCampaignAssetAccess(
   userId: string,
@@ -24,7 +24,13 @@ export async function resolveCampaignAssetAccess(
   if (access) {
 
     const ownsCampaign = campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
-    if (ownsCampaign) return { admin, campaign, canView: true, canViewBrief: true, canManage: true }
+    if (ownsCampaign) return {
+      admin,
+      campaign,
+      canView: hasBrandPermission(access, 'campaign.read'),
+      canViewBrief: hasBrandPermission(access, 'campaign.read'),
+      canManage: hasBrandPermission(access, 'campaign.manage'),
+    }
 
     const { data: coBrand } = await admin
       .from('campaign_brands')
@@ -33,7 +39,8 @@ export async function resolveCampaignAssetAccess(
       .eq('brand_id', access.brandId)
       .maybeSingle()
 
-    return { admin, campaign, canView: !!coBrand, canViewBrief: !!coBrand, canManage: false }
+    const canRead = !!coBrand && hasBrandPermission(access, 'campaign.read')
+    return { admin, campaign, canView: canRead, canViewBrief: canRead, canManage: false }
   }
 
   const { data: influencer } = await admin

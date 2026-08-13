@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   let authorized = false
   const access = await resolveBrandAccess(user.id)
   if (access) {
-    authorized = !!access && (
+    authorized = hasBrandPermission(access, 'report.read') && (
       campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
     )
   } else {

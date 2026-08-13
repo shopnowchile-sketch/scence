@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -15,6 +15,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Resolver brand: owner o miembro activo
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const brand = { id: access.brandId }
 
   let body: { action: 'approve' | 'reject'; review_notes?: string }

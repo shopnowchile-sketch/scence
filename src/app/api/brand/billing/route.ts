@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getActivePlans, getOrgSubscription } from '@/lib/subscription-plans'
 import { resolveBrandPlan } from '@/lib/plan-limits'
 
@@ -22,6 +22,7 @@ export async function GET() {
   const admin = createAdminClient()
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
+  if (!hasBrandPermission(access, 'billing.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = access.organizationId
 
   const [plans, subscription, orgPlan, brand] = await Promise.all([

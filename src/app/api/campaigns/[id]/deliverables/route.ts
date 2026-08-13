@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { DELIVERABLE_DESCRIPTION_MAX, expandDeliverableTemplates } from '@/lib/deliverable-templates'
 import { deliverableStatusEmail, FROM_EMAIL, getResend } from '@/lib/resend'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 
 type Params = { params: { id: string } }
 
@@ -12,6 +13,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'campaign.read'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
   const { data, error } = await admin
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'campaign.manage'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {
@@ -112,6 +115,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'campaign.manage'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getMetaInstagramConfig, META_INSTAGRAM_CALLBACK_URL, signInstagramState } from '@/lib/meta-instagram'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +11,7 @@ export async function GET() {
   if (!user) return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'))
 
   const access = await resolveBrandAccess(user.id)
-  if (!access || (!access.isOwner && access.role !== 'brand_manager')) {
+  if (!access || !hasBrandPermission(access, 'brand.manage')) {
     return NextResponse.redirect(new URL('/brand-settings/organization?instagram=forbidden', process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'))
   }
 

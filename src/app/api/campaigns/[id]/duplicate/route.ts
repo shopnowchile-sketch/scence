@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -26,6 +26,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
   const brandAccess = await resolveBrandAccess(user.id)
   if (brandAccess) {
+    if (!hasBrandPermission(brandAccess, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (source.brand_id !== brandAccess.brandId && source.created_by_brand_id !== brandAccess.brandId) {
       return NextResponse.json({ error: 'Solo la marca creadora puede duplicar esta campaña' }, { status: 403 })
     }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchJsonCached } from '@/lib/client/requestCache'
 
-export type UserRole = 'super_admin' | 'brand_manager' | 'influencer' | 'finance' | null
+export type UserRole = 'super_admin' | 'brand_manager' | 'member' | 'influencer' | 'finance' | null
 
 export function useIsAdmin(): { isAdmin: boolean; role: UserRole; loading: boolean } {
   const [isAdmin, setIsAdmin] = useState(false)

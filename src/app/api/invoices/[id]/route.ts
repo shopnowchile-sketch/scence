@@ -2,8 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getResend, FROM_EMAIL, invoiceEmail } from '@/lib/resend'
 import { formatDate } from '@/lib/utils'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess, type BrandPermission } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
+
+async function canAccessInvoice(userId: string, organizationId: string, permission: BrandPermission) {
+  const admin = createAdminClient()
+  const orgId = await getOrgId(userId, undefined, admin)
+  const platformRole = orgId ? await getUserRole(userId, orgId, admin) : null
+  if (platformRole?.isAdmin) return true
+  const access = await resolveBrandAccess(userId)
+  return access?.organizationId === organizationId && hasBrandPermission(access, permission)
+}
 
 // ── GET /api/invoices/[id] ────────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -24,6 +34,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (error.code === 'PGRST116') return NextResponse.json({ error: 'Not found' }, { status: 404 })
     console.error('[GET /api/invoices/[id]]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  if (!(await canAccessInvoice(user.id, data.organization_id, 'billing.read'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Normalize: extract client_* from metadata
@@ -63,6 +76,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .eq('id', params.id)
     .single()
   const invoiceMeta = (invoiceData?.metadata as Record<string,unknown> ?? {})
+  if (!invoiceData) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!(await canAccessInvoice(user.id, invoiceData.organization_id, 'billing.manage'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   const invoice = {
     ...(invoiceData ?? {}),
     client_name:    String(invoiceMeta.client_name ?? invoiceData?.invoice_number ?? ''),
@@ -161,11 +178,14 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const admin = createAdminClient()
   const { data: existing } = await admin
     .from('invoices')
-    .select('status')
+    .select('status, organization_id')
     .eq('id', params.id)
     .single()
 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!(await canAccessInvoice(user.id, existing.organization_id, 'billing.manage'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   if (existing.status !== 'draft') {
     return NextResponse.json({ error: 'Solo se pueden eliminar facturas en borrador' }, { status: 409 })
   }

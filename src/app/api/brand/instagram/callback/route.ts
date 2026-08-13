@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getMetaInstagramConfig, isValidInstagramState, META_INSTAGRAM_CALLBACK_URL, normalizeInstagramHandle } from '@/lib/meta-instagram'
 
 export const dynamic = 'force-dynamic'
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return redirect(request, 'forbidden')
   const access = await resolveBrandAccess(user.id)
-  if (!access || access.brandId !== payload.brandId || (!access.isOwner && access.role !== 'brand_manager')) return redirect(request, 'forbidden')
+  if (!access || access.brandId !== payload.brandId || !hasBrandPermission(access, 'brand.manage')) return redirect(request, 'forbidden')
 
   try {
     const tokenResponse = await fetch('https://api.instagram.com/oauth/access_token', {

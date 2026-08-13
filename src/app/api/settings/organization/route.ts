@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 // ── GET /api/settings/organization ───────────────────────────────────────────
 export async function GET() {
@@ -9,6 +9,8 @@ export async function GET() {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess && !hasBrandPermission(brandAccess, 'brand.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
 
@@ -29,6 +31,8 @@ export async function PATCH(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess && !hasBrandPermission(brandAccess, 'brand.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
 

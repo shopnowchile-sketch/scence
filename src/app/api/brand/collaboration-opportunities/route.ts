@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 function opportunity(metadata: unknown) {
   const meta = metadata && typeof metadata === 'object' ? metadata as Record<string, unknown> : {}
@@ -14,6 +14,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'campaign.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const admin = createAdminClient()
   const { data: campaigns, error } = await admin.from('campaigns')
     .select('id,name,type,start_date,end_date,application_deadline,brand_id,metadata,brand:brands!brand_id(id,name,logo_url,instagram)')
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await req.json().catch(() => ({})) as { campaign_id?: string; sampling?: string; activation_details?: string; links?: string }
   if (!body.campaign_id) return NextResponse.json({ error: 'campaign_id requerido' }, { status: 422 })
   const admin = createAdminClient()

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { renderDocument } from '@/lib/document-templates'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 
@@ -15,7 +15,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
-  if (!access || (!access.isOwner && access.role !== 'brand_manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!access || !hasBrandPermission(access, 'legal_document.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const body = await request.json().catch(() => null) as { signer_name?: string; signer_rut?: string; signer_role?: string; accepted?: boolean } | null
   if (!body?.accepted || !body.signer_name?.trim() || !body.signer_rut?.trim() || !body.signer_role?.trim()) {
     return NextResponse.json({ error: 'Completa nombre, RUT, cargo y aceptación' }, { status: 422 })

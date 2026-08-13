@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 
 type Params = { params: { id: string } }
@@ -13,14 +13,8 @@ function mailHtml(name: string, campaign: string, campaignId: string, dueDate: s
 async function canManage(admin: ReturnType<typeof createAdminClient>, user: { id: string; user_metadata?: Record<string, unknown> }, campaignId: string) {
   const { data: campaign } = await admin.from('campaigns').select('id, organization_id, brand_id, created_by_brand_id').eq('id', campaignId).maybeSingle()
   if (!campaign) return { allowed: false, campaign: null }
-  const access = await resolveBrandAccess(user.id)
-  if (access) {
-    const allowed = !!access && (campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId)
-    return { allowed, campaign }
-  }
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  return { allowed: isAdmin || (!!orgId && campaign.organization_id === orgId), campaign }
+  const access = await authorizeCampaignBrandAction(user.id, campaignId, 'application.manage')
+  return { allowed: !!access, campaign }
 }
 
 export async function POST(request: NextRequest, { params }: Params) {

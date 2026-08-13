@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
 import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 
 type Params = { params: { id: string } }
@@ -23,6 +23,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que la campaña pertenece a esta marca (owner o miembro activo)
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (!hasBrandPermission(access, 'application.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand } = await admin
     .from('brands')

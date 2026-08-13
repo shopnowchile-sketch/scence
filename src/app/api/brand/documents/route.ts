@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { renderDocument } from '@/lib/document-templates'
 
 export async function GET() {
@@ -8,7 +8,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
-  if (!access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!access || !hasBrandPermission(access, 'legal_document.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const admin = createAdminClient()
   const [{ data, error }, { data: brand }, { data: signer }] = await Promise.all([
     admin.from('brand_documents')
@@ -29,5 +29,5 @@ export async function GET() {
   const hydrated = (data ?? []).map(document => document.status === 'pending' && document.template_id && byTemplate.has(document.template_id)
     ? { ...document, signer_name: signer?.full_name || signer?.display_name || '', signer_rut: signer?.signer_rut || '', signer_role: signer?.signer_role || '', signer_email: user.email ?? null, content_snapshot: renderDocument(byTemplate.get(document.template_id)!, { brand_name: brand?.name, brand_rut: brand?.rut, brand_address: address, signer_name: signer?.full_name || signer?.display_name || '', signer_rut: signer?.signer_rut || '', signer_role: signer?.signer_role || '' }) }
     : document)
-  return NextResponse.json({ data: hydrated, can_sign: access.isOwner || access.role === 'brand_manager', legal_profile_complete: missing.length === 0, missing_legal_fields: missing })
+  return NextResponse.json({ data: hydrated, can_sign: hasBrandPermission(access, 'legal_document.manage'), legal_profile_complete: missing.length === 0, missing_legal_fields: missing })
 }

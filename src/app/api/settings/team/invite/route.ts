@@ -6,18 +6,18 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-const VALID_ROLES = ['super_admin', 'brand_manager', 'finance', 'influencer']
+const VALID_ROLES = ['super_admin', 'brand_manager', 'member', 'finance', 'influencer']
 
 function inviteEmail({ name, role, actionLink }: { name: string; role: string; actionLink: string }) {
   const roleLabel: Record<string, string> = {
     super_admin: 'Super Admin',
-    brand_manager: 'Brand Manager', finance: 'Finanzas', influencer: 'Influencer',
+    brand_manager: 'Brand Manager', member: 'Miembro', finance: 'Finanzas', influencer: 'Influencer',
   }
   return `<!DOCTYPE html>
 <html>
@@ -60,6 +60,10 @@ export async function POST(req: NextRequest) {
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  const brandAccess = await resolveBrandAccess(user.id)
+  if (brandAccess && !hasBrandPermission(brandAccess, 'team.manage')) {
+    return NextResponse.json({ error: 'Solo el owner puede invitar miembros' }, { status: 403 })
+  }
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
@@ -72,6 +76,7 @@ export async function POST(req: NextRequest) {
 
   if (!email || !role) return NextResponse.json({ error: 'email y role son requeridos' }, { status: 422 })
   if (!VALID_ROLES.includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
+  if (brandAccess && !['brand_manager', 'member', 'finance'].includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
 
   const name = display_name?.trim() || email.split('@')[0]
 
@@ -119,7 +124,7 @@ export async function POST(req: NextRequest) {
   const { error: memberErr } = await admin
     .from('organization_members')
     .upsert(
-      { organization_id: orgId, user_id: authUserId, role, is_owner: false },
+      { organization_id: orgId, brand_id: brandAccess?.brandId ?? null, user_id: authUserId, role, is_owner: false, is_active: true },
       { onConflict: 'organization_id,user_id', ignoreDuplicates: false }
     )
 

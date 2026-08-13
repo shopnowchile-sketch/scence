@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 type Params = { params: { id: string } }
 export async function PUT(req: NextRequest, { params }: Params) {
   const supabase = createServerClient(); const { data: { user } } = await supabase.auth.getUser()
@@ -11,7 +11,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const access = await resolveBrandAccess(user.id)
   const org = access ? null : await getOrgId(user.id, user.user_metadata, admin)
   const allowed = access
-    ? access.brandId === campaign.brand_id
+    ? access.brandId === campaign.brand_id && hasBrandPermission(access, 'campaign.manage')
     : Boolean(org && (await getUserRole(user.id, org, admin)).isAdmin)
   if (!allowed) return NextResponse.json({ error: 'Sin permiso para configurar esta campaña' }, { status: 403 })
   const current = campaign.metadata && typeof campaign.metadata === 'object' ? campaign.metadata as Record<string, unknown> : {}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 const BUCKET = 'brand-logos'
 const MAX_BYTES = 5 * 1024 * 1024
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autorizada' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
-  if (!access || (!access.isOwner && access.role !== 'brand_manager')) return NextResponse.json({ error: 'No tienes permiso para cambiar el logo' }, { status: 403 })
+  if (!access || !hasBrandPermission(access, 'brand.manage')) return NextResponse.json({ error: 'No tienes permiso para cambiar el logo' }, { status: 403 })
   const form = await request.formData()
   const file = form.get('file')
   if (!(file instanceof File)) return NextResponse.json({ error: 'Selecciona una imagen.' }, { status: 400 })

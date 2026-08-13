@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 // ── GET /api/invoices ─────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  const brandAccess = isAdmin ? null : await resolveBrandAccess(user.id)
+  if (!isAdmin && !hasBrandPermission(brandAccess, 'billing.read')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   let query = admin
     .from('invoices')
@@ -33,7 +37,7 @@ export async function GET(request: NextRequest) {
     .order('issue_date', { ascending: false })
     .range((page - 1) * limit, page * limit - 1)
 
-  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
+  if (!isAdmin) query = query.eq('organization_id', brandAccess!.organizationId)
   if (campaignId) query = query.eq('campaign_id', campaignId)
   if (status)  query = query.eq('status', status)
   if (dateFrom) query = query.gte('issue_date', dateFrom)
@@ -103,7 +107,11 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient()
   const resolvedOrgId = await getOrgId(user.id, user.user_metadata, admin)
   const { isAdmin } = resolvedOrgId ? await getUserRole(user.id, resolvedOrgId, admin) : { isAdmin: false }
-  let orgId = (organization_id as string) ?? resolvedOrgId
+  const brandAccess = isAdmin ? null : await resolveBrandAccess(user.id)
+  if (!isAdmin && !hasBrandPermission(brandAccess, 'billing.manage')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  let orgId = isAdmin ? ((organization_id as string) ?? resolvedOrgId) : brandAccess!.organizationId
 
   if (campaign_id) {
     const { data: campaign } = await admin
@@ -114,7 +122,6 @@ export async function POST(request: NextRequest) {
     if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
     if (!isAdmin) {
-      const brandAccess = await resolveBrandAccess(user.id)
       const ownsCampaign = !!brandAccess && (
         campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
       )

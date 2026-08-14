@@ -238,7 +238,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   // influencer de una eliminación accidental.
   const { data: relation } = await admin
     .from('campaign_influencers')
-    .select('id, application_status, metadata')
+    .select('id, application_status, metadata, influencer:influencers(display_name, email)')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencerId)
     .maybeSingle()
@@ -266,13 +266,17 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       && !deliverable.attendance_response
       && deliverable.attendance_outcome !== 'no_show'
     )
+    const hasConfirmedAttendance = (deliverables ?? []).some(deliverable =>
+      deliverable.type === 'event_attendance'
+      && deliverable.attendance_response === 'confirmed'
+    )
 
     if (relation.application_status === 'accepted' && hasUnconfirmedAttendance) {
       const removedAt = new Date().toISOString()
       const metadata = {
         ...((relation.metadata as Record<string, unknown> | null) ?? {}),
         removal_reason: 'attendance_deadline_closed',
-        removal_message: 'Sorry, no confirmaste antes de la fecha y los cupos se cerraron.',
+        removal_message: 'Lo sentimos, no confirmaste tu asistencia antes de la fecha límite y los cupos se cerraron.',
         removed_at: removedAt,
       }
       const { error: rejectError } = await admin
@@ -290,11 +294,34 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         return NextResponse.json({ error: rejectError.message }, { status: 500 })
       }
 
+      try {
+        const influencer = relation.influencer as { display_name?: string | null; email?: string | null } | null
+        if (influencer?.email) {
+          const { data: campaign } = await admin.from('campaigns').select('name').eq('id', params.id).single()
+          const { error: emailError } = await getResend().emails.send({
+            from: FROM_EMAIL,
+            to: influencer.email,
+            subject: `Cupos cerrados: ${campaign?.name ?? 'campaña'}`,
+            html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fb;margin:0;padding:32px;color:#1f2937"><div style="max-width:540px;margin:auto;background:#fff;border-radius:18px;padding:28px"><p>Hola ${influencer.display_name ?? 'Influencer'},</p><p>Lo sentimos, no confirmaste tu asistencia antes de la fecha límite y los cupos se cerraron.</p></div></body></html>`,
+          })
+          if (emailError) console.error('[DELETE /api/campaigns/[id]/influencers] attendance deadline email', emailError)
+        }
+      } catch (emailError) {
+        console.error('[DELETE /api/campaigns/[id]/influencers] attendance deadline email', emailError)
+      }
+
       return NextResponse.json({
         success: true,
         outcome: 'attendance_deadline_closed',
         content_preserved: hasSubmittedContent,
       })
+    }
+
+    if (relation.application_status === 'accepted' && hasConfirmedAttendance) {
+      return NextResponse.json({
+        error: 'No se puede quitar una influencer que ya confirmó su asistencia.',
+        code: 'CAMPAIGN_INFLUENCER_ATTENDANCE_CONFIRMED',
+      }, { status: 409 })
     }
 
     if (hasSubmittedContent) {

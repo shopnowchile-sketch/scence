@@ -14,11 +14,11 @@ export async function resolveCampaignAssetAccess(
     .maybeSingle()
 
   if (error) throw error
-  if (!campaign) return { admin, campaign: null, canView: false, canViewBrief: false, canManage: false }
+  if (!campaign) return { admin, campaign: null, canView: false, canViewBrief: false, canViewSponsorBrief: false, canManage: false }
 
   const orgId = await getOrgId(userId, userMetadata, admin)
   const { isAdmin } = orgId ? await getUserRole(userId, orgId, admin) : { isAdmin: false }
-  if (isAdmin) return { admin, campaign, canView: true, canViewBrief: true, canManage: true }
+  if (isAdmin) return { admin, campaign, canView: true, canViewBrief: true, canViewSponsorBrief: true, canManage: true }
 
   const access = await resolveBrandAccess(userId)
   if (access) {
@@ -29,6 +29,7 @@ export async function resolveCampaignAssetAccess(
       campaign,
       canView: hasBrandPermission(access, 'campaign.read'),
       canViewBrief: hasBrandPermission(access, 'campaign.read'),
+      canViewSponsorBrief: hasBrandPermission(access, 'campaign.read'),
       canManage: hasBrandPermission(access, 'campaign.manage'),
     }
 
@@ -40,7 +41,22 @@ export async function resolveCampaignAssetAccess(
       .maybeSingle()
 
     const canRead = !!coBrand && hasBrandPermission(access, 'campaign.read')
-    return { admin, campaign, canView: canRead, canViewBrief: canRead, canManage: false }
+    if (canRead) return { admin, campaign, canView: true, canViewBrief: true, canViewSponsorBrief: true, canManage: false }
+
+    const { data: opportunityCampaign } = await admin
+      .from('campaigns')
+      .select('metadata')
+      .eq('id', campaignId)
+      .eq('status', 'active')
+      .maybeSingle()
+    const metadata = opportunityCampaign?.metadata && typeof opportunityCampaign.metadata === 'object'
+      ? opportunityCampaign.metadata as Record<string, unknown>
+      : {}
+    const opportunity = metadata.collaboration_opportunity && typeof metadata.collaboration_opportunity === 'object'
+      ? metadata.collaboration_opportunity as Record<string, unknown>
+      : null
+    const canViewSponsorBrief = Boolean(opportunity?.enabled) && hasBrandPermission(access, 'campaign.read')
+    return { admin, campaign, canView: false, canViewBrief: false, canViewSponsorBrief, canManage: false }
   }
 
   const { data: influencer } = await admin
@@ -58,17 +74,12 @@ export async function resolveCampaignAssetAccess(
       .maybeSingle()
 
     const canView = membership?.application_status === 'accepted'
-    // The campaign brief is deliberately available to a candidate in the same
-    // organisation before applying. Other campaign files remain private until
-    // acceptance.
-    const canViewBrief = !!membership || (
-      campaign.visibility === 'open' &&
-      campaign.status !== 'draft' &&
-      campaign.status !== 'pending_approval' &&
-      influencer.organization_id === campaign.organization_id
-    )
-    return { admin, campaign, canView, canViewBrief, canManage: false }
+    // Briefs and operational files are private until the influencer is
+    // accepted. A pending application only receives the limited public DTO
+    // from /api/influencer/campaigns/[id].
+    const canViewBrief = canView
+    return { admin, campaign, canView, canViewBrief, canViewSponsorBrief: false, canManage: false }
   }
 
-  return { admin, campaign, canView: false, canViewBrief: false, canManage: false }
+  return { admin, campaign, canView: false, canViewBrief: false, canViewSponsorBrief: false, canManage: false }
 }

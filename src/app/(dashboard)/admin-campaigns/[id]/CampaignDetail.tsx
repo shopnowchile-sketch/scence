@@ -645,6 +645,7 @@ function CampaignBrandsPanel({
   onChanged: () => void
 }) {
   if (brands.length === 0 && !canManage) return null
+  const instagramColors = ['border-violet-100 bg-violet-50 text-violet-700', 'border-fuchsia-100 bg-fuchsia-50 text-fuchsia-700', 'border-sky-100 bg-sky-50 text-sky-700', 'border-emerald-100 bg-emerald-50 text-emerald-700', 'border-amber-100 bg-amber-50 text-amber-700']
 
   return (
     <div className="card px-4 py-3">
@@ -655,7 +656,7 @@ function CampaignBrandsPanel({
       {brands.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {brands.map((brand, idx) => (
-            <div key={`${brand.id ?? idx}`} className="group flex min-w-0 items-center gap-1.5 rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5">
+            <div key={`${brand.id ?? idx}`} className={cn('group flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5', brand.instagram ? instagramColors[idx % instagramColors.length] : 'border-gray-100 bg-gray-50 text-gray-800')}>
               <div className="flex min-w-0 items-center gap-1.5">
                 {brand.logo_url ? (
                   <img src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-5 w-5 flex-shrink-0 rounded object-contain" />
@@ -663,7 +664,7 @@ function CampaignBrandsPanel({
                   <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-violet-50 text-[10px] font-bold text-violet-600">{(brand.name ?? '?').slice(0, 1).toUpperCase()}</span>
                 )}
                 {brand.instagram ? (
-                  <a href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="max-w-[170px] truncate text-xs font-semibold text-violet-700 hover:underline">@{brand.instagram.replace(/^@/, '')}</a>
+                  <a href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="max-w-[170px] truncate text-xs font-semibold text-current hover:underline">@{brand.instagram.replace(/^@/, '')}</a>
                 ) : (
                   <span className="max-w-[150px] truncate text-xs font-semibold text-gray-800">{brand.name ?? 'Marca sin nombre'}</span>
                 )}
@@ -1028,6 +1029,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [assetName, setAssetName] = useState('')
   const [assetUrl, setAssetUrl] = useState('')
   const [assetMode, setAssetMode] = useState<'file' | 'link'>('file')
+  const [assetType, setAssetType] = useState<'asset' | 'sponsor_brief'>('asset')
   const [assetFile, setAssetFile] = useState<File | null>(null)
   const [assetFormOpen, setAssetFormOpen] = useState(false)
   const [assetSaving, setAssetSaving] = useState(false)
@@ -1670,6 +1672,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       return
     }
 
+    if (assetType === 'sponsor_brief' && assetMode !== 'file') {
+      toast.error('El brief para sponsors debe ser un archivo privado')
+      return
+    }
+
     if (assetMode === 'file' && !assetFile) {
       toast.error('Selecciona un archivo')
       return
@@ -1683,6 +1690,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         const formData = new FormData()
         if (assetName.trim()) formData.append('filename', assetName.trim())
         if (assetFile) formData.append('file', assetFile)
+        formData.append('asset_type', assetType)
 
         res = await fetch(`/api/campaigns/${id}/assets`, {
           method: 'POST',
@@ -1704,6 +1712,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       setAssetName('')
       setAssetUrl('')
       setAssetFile(null)
+      setAssetType('asset')
       setAssetFormOpen(false)
       await reloadCampaignAssets()
       toast.success('Asset agregado')
@@ -3504,6 +3513,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="flex gap-2">
               <button type="button" onClick={() => setAssetMode('file')} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', assetMode === 'file' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 border')}>Subir archivo</button>
               <button type="button" onClick={() => setAssetMode('link')} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', assetMode === 'link' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 border')}>Agregar enlace</button>
+            </div>
+            <div className="max-w-xs">
+              <label className="mb-1 block text-xs font-semibold text-gray-600">Tipo de archivo</label>
+              <select value={assetType} onChange={event => { const value = event.target.value as 'asset' | 'sponsor_brief'; setAssetType(value); if (value === 'sponsor_brief') setAssetMode('file') }} className="input-base w-full bg-white text-sm">
+                <option value="asset">Asset general</option>
+                <option value="sponsor_brief">Brief privado para sponsors</option>
+              </select>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
             <div>

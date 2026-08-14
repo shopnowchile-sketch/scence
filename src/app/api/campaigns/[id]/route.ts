@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
-import { notifyAllInfluencersOfOpenCampaign, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
+import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 
 type Params = { params: { id: string } }
 
@@ -427,6 +427,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     await Promise.all([
       notifyPreassignedInfluencersOnActivation(params.id, admin),
       notifyAllInfluencersOfOpenCampaign(params.id, admin),
+      notifyEligibleBrandsOfSponsorOpportunity(params.id, admin),
     ])
   }
 

@@ -1,8 +1,35 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail } from '@/lib/resend'
+import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail, sponsorOpportunityEmail } from '@/lib/resend'
 
 const BATCH_SIZE = 100 // límite de resend.batch.send()
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+
+export async function notifyEligibleBrandsOfSponsorOpportunity(campaignId: string, admin: ReturnType<typeof createAdminClient>): Promise<{ sent: number; failed: number; skipped?: string }> {
+  try {
+    const { data: campaign } = await admin.from('campaigns').select('id,name,type,brand_id,metadata').eq('id', campaignId).eq('status', 'active').maybeSingle()
+    const metadata = campaign?.metadata && typeof campaign.metadata === 'object' ? campaign.metadata as Record<string, unknown> : {}
+    const config = metadata.collaboration_opportunity && typeof metadata.collaboration_opportunity === 'object' ? metadata.collaboration_opportunity as Record<string, unknown> : null
+    if (!campaign || !config?.enabled) return { sent: 0, failed: 0, skipped: 'not_enabled' }
+    const alreadyNotified = new Set(Array.isArray(metadata.sponsor_notified_brand_ids) ? metadata.sponsor_notified_brand_ids.map(String) : [])
+    const { data: activeMemberships } = await admin.from('organization_members').select('organization_id').eq('is_active', true)
+    const organizationIds = Array.from(new Set((activeMemberships ?? []).map(row => row.organization_id).filter(Boolean)))
+    if (!organizationIds.length) return { sent: 0, failed: 0 }
+    const { data: brands, error } = await admin.from('brands').select('id,name,contact_email,organization_id').in('organization_id', organizationIds).neq('id', campaign.brand_id).not('contact_email', 'is', null)
+    if (error) throw error
+    const targets = (brands ?? []).filter(brand => !alreadyNotified.has(brand.id))
+    const successfulIds: string[] = []
+    let failed = 0
+    for (const brand of targets) {
+      try {
+        const { error: emailError } = await getResend().emails.send({ from: FROM_EMAIL, to: brand.contact_email as string, subject: `Nueva oportunidad sponsor: ${campaign.name}`, html: sponsorOpportunityEmail({ brandName: brand.name, campaignName: campaign.name, campaignType: campaign.type, benefits: typeof config.benefits === 'string' ? config.benefits : null, opportunityUrl: `${APP_URL}/brand-opportunities` }) })
+        if (emailError) throw new Error(emailError.message)
+        successfulIds.push(brand.id)
+      } catch (sendError) { console.error('[notifyEligibleBrandsOfSponsorOpportunity] email', sendError); failed += 1 }
+    }
+    if (successfulIds.length) await admin.from('campaigns').update({ metadata: { ...metadata, sponsor_notified_brand_ids: [...Array.from(alreadyNotified), ...successfulIds], sponsor_notifications_sent_at: new Date().toISOString() } }).eq('id', campaignId)
+    return { sent: successfulIds.length, failed }
+  } catch (error) { console.error('[notifyEligibleBrandsOfSponsorOpportunity]', error); return { sent: 0, failed: 0, skipped: 'exception' } }
+}
 
 /**
  * notifyAllInfluencersOfOpenCampaign — al activar una campaña pública

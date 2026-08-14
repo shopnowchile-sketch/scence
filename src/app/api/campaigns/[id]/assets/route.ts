@@ -75,8 +75,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { admin, campaign, canView, canViewBrief } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
-  if (!campaign || (!canView && !canViewBrief)) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  const { admin, campaign, canView, canViewBrief, canViewSponsorBrief } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
+  if (!campaign || (!canView && !canViewBrief && !canViewSponsorBrief)) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
   let query = admin
     .from('media_files')
@@ -87,7 +87,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   // A candidate may access only the current campaign brief. Attachments,
   // product files and any other assets stay restricted to accepted influencers.
-  if (!canView) query = query.contains('metadata', { asset_type: 'brief' })
+  if (!canView) query = query.contains('metadata', { asset_type: canViewSponsorBrief ? 'sponsor_brief' : 'brief' })
 
   const { data, error } = await query
 
@@ -96,7 +96,11 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const withUrls = await Promise.all((data ?? []).map(async asset => {
+  const visibleAssets = (data ?? []).filter(asset => {
+    const type = ((asset.metadata ?? {}) as Record<string, unknown>).asset_type
+    return type !== 'sponsor_brief' || canViewSponsorBrief
+  })
+  const withUrls = await Promise.all(visibleAssets.map(async asset => {
     const meta = (asset.metadata ?? {}) as Record<string, unknown>
     if (meta.kind === 'uploaded_file') {
       const { data: signed } = await admin.storage

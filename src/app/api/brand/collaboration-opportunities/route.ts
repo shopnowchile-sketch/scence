@@ -22,10 +22,14 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const { data: applications } = await admin.from('campaign_brand_applications').select('campaign_id,status').eq('brand_id', access.brandId)
   const applicationByCampaign = new Map((applications ?? []).map(row => [row.campaign_id, row.status]))
+  const campaignIds = (campaigns ?? []).map(c => c.id)
+  const { data: sponsorBriefs } = campaignIds.length ? await admin.from('media_files')
+    .select('campaign_id').in('campaign_id', campaignIds).contains('metadata', { asset_type: 'sponsor_brief' }) : { data: [] }
+  const campaignsWithBrief = new Set((sponsorBriefs ?? []).map(row => row.campaign_id))
   return NextResponse.json({ data: (campaigns ?? []).flatMap(c => {
     const config = opportunity(c.metadata)
     if (!config?.enabled) return []
-    return [{ ...c, collaboration_opportunity: config, application_status: applicationByCampaign.get(c.id) ?? null }]
+    return [{ ...c, collaboration_opportunity: config, application_status: applicationByCampaign.get(c.id) ?? null, has_sponsor_brief: campaignsWithBrief.has(c.id) }]
   }) })
 }
 

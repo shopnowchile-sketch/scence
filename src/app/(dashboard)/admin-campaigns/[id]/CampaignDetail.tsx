@@ -1019,6 +1019,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
   const [addingDeliverable, setAddingDeliverable] = useState(false)
+  const [deliverableStatusFilter, setDeliverableStatusFilter] = useState<DeliverableStatus | null>(null)
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
   const [showCampaignInvoiceModal, setShowCampaignInvoiceModal] = useState(false)
   const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
@@ -3154,13 +3155,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {(() => {
             // Contenido con URL y asistencias ya confirmadas. Las solicitudes
             // pendientes viven y se gestionan en el tab Influencers.
+            const acceptedInfluencerIds = new Set(
+              confirmedInfluencers
+                .map(relation => relation.influencer?.id)
+                .filter((value): value is string => Boolean(value))
+            )
             const submittedDeliverables = campaignDeliverables.filter(
-              deliverable => Boolean(
+              deliverable => acceptedInfluencerIds.has(deliverable.influencer?.id ?? '') && Boolean(
                 deliverable.content_url ||
                 deliverable.published_url ||
                 (deliverable.type === 'event_attendance' && (deliverable.attendance_response === 'confirmed' || deliverable.attendance_outcome === 'no_show'))
               )
             )
+            const visibleSubmittedDeliverables = deliverableStatusFilter
+              ? submittedDeliverables.filter(deliverable => deliverable.status === deliverableStatusFilter)
+              : submittedDeliverables
 
             return (
               <>
@@ -3171,9 +3180,19 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       const count = submittedDeliverables.filter(d => d.status === st).length
                       if (count === 0) return null
                       return (
-                        <div key={st} className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold badge', cfg.cls)}>
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setDeliverableStatusFilter(current => current === st ? null : st)}
+                          aria-pressed={deliverableStatusFilter === st}
+                          className={cn(
+                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold badge transition ring-offset-2 hover:ring-2',
+                            cfg.cls,
+                            deliverableStatusFilter === st && 'ring-2 ring-violet-500'
+                          )}
+                        >
                           {cfg.icon} {cfg.label}: {count}
-                        </div>
+                        </button>
                       )
                     })}
                   </div>
@@ -3189,7 +3208,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 {addingDeliverable && (
                   <AddDeliverableForm
                     campaignId={id}
-                    influencers={campaignInfluencers.map(ci => ({ id: ci.influencer?.id ?? '', name: ci.influencer?.display_name ?? 'Influencer' }))}
+                    influencers={confirmedInfluencers.map(ci => ({ id: ci.influencer?.id ?? '', name: ci.influencer?.display_name ?? 'Influencer' }))}
                     collaboratorBrands={campaignBrands.filter(brand => brand._role === 'Colaboradora' && brand.id).map(brand => ({ id: String(brand.id), name: String(brand.name ?? 'Marca'), instagram: brand.instagram as string | null }))}
                     onSuccess={() => { setAddingDeliverable(false); void refetch() }}
                     onCancel={() => setAddingDeliverable(false)}
@@ -3227,7 +3246,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     }
 
                     const groups = new Map<string, { influencer: { id: string; display_name: string; avatar_url: string | null }; items: CampaignDeliverableDetail[] }>()
-                    for (const d of submittedDeliverables) {
+                    for (const d of visibleSubmittedDeliverables) {
                       if (!d.influencer) continue
                       const key = d.influencer.id
                       if (!groups.has(key)) groups.set(key, { influencer: d.influencer, items: [] })

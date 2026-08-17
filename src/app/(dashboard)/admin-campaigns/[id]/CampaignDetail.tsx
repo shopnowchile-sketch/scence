@@ -1063,6 +1063,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingMinRating, setPendingMinRating] = useState(0)
   const [pendingSearch, setPendingSearch] = useState('')
   const [pendingApplicationsOpen, setPendingApplicationsOpen] = useState(false)
+  const [pendingSelection, setPendingSelection] = useState<Set<string>>(new Set())
+  const [bulkRejectingPending, setBulkRejectingPending] = useState(false)
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
   const patchCampaign = usePatchCampaign(id, apiBase)
@@ -1229,6 +1231,48 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
     return true
   })
+  const visiblePendingIds = filteredPendingApplications.map(application => application.id)
+  const selectedVisiblePendingIds = visiblePendingIds.filter(applicationId => pendingSelection.has(applicationId))
+  const allVisiblePendingSelected = visiblePendingIds.length > 0 && selectedVisiblePendingIds.length === visiblePendingIds.length
+  const applicationsEndpoint = isBrandPortal
+    ? `/api/brand/campaigns/${id}/applications`
+    : `/api/campaigns/${id}/applications`
+
+  function toggleVisiblePendingApplications() {
+    setPendingSelection(previous => {
+      const next = new Set(previous)
+      if (allVisiblePendingSelected) visiblePendingIds.forEach(applicationId => next.delete(applicationId))
+      else visiblePendingIds.forEach(applicationId => next.add(applicationId))
+      return next
+    })
+  }
+
+  async function rejectSelectedPendingApplications() {
+    if (selectedVisiblePendingIds.length === 0) return
+    if (!confirm(`¿Rechazar ${selectedVisiblePendingIds.length} solicitud(es) seleccionada(s)?`)) return
+    setBulkRejectingPending(true)
+    try {
+      const response = await fetch(applicationsEndpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ application_ids: selectedVisiblePendingIds, action: 'reject' }),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'Error al rechazar las postulaciones')
+      toast.success(`${selectedVisiblePendingIds.length} postulación(es) rechazada(s)`)
+      setPendingSelection(previous => {
+        const next = new Set(previous)
+        selectedVisiblePendingIds.forEach(applicationId => next.delete(applicationId))
+        return next
+      })
+      await refetch()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al rechazar las postulaciones')
+      void refetch()
+    } finally {
+      setBulkRejectingPending(false)
+    }
+  }
 
   const pendingInvitations = campaignInfluencers.filter(
     ci => ci.application_status === 'pending' && ci.origin === 'invitation'
@@ -2479,7 +2523,28 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               )}
 
               {filteredPendingApplications.length > 0 && (
-                <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <div className="rounded-xl border border-gray-200 bg-white">
+                  <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={allVisiblePendingSelected}
+                        onChange={toggleVisiblePendingApplications}
+                        className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                      />
+                      Seleccionar todos
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void rejectSelectedPendingApplications()}
+                      disabled={selectedVisiblePendingIds.length === 0 || bulkRejectingPending}
+                      className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {bulkRejectingPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      Rechazar seleccionados{selectedVisiblePendingIds.length > 0 ? ` (${selectedVisiblePendingIds.length})` : ''}
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px]">
                     <thead>
                       <tr className="border-b border-gray-200">
@@ -2505,13 +2570,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         const profileUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
                         const gradient = GRADIENTS[i % GRADIENTS.length]
                         const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-                        const applicationsEndpoint = isBrandPortal
-                          ? `/api/brand/campaigns/${id}/applications`
-                          : `/api/campaigns/${id}/applications`
                         return (
                           <tr key={ci.id} className="transition-colors hover:bg-violet-50/40">
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={pendingSelection.has(ci.id)}
+                                  onChange={() => setPendingSelection(previous => {
+                                    const next = new Set(previous)
+                                    if (next.has(ci.id)) next.delete(ci.id)
+                                    else next.add(ci.id)
+                                    return next
+                                  })}
+                                  aria-label={`Seleccionar a ${inf.display_name}`}
+                                  className="h-4 w-4 flex-shrink-0 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                                />
                                 {inf.avatar_url ? (
                                   <img src={inf.avatar_url} alt={inf.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                                 ) : (
@@ -2540,8 +2614,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 <button
                                   onClick={async () => {
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'accept' }) })
-                                    if (response.ok) toast.success(`Postulación de ${inf.display_name} aceptada — se le notificó por email`)
-                                    else toast.error('Error al aceptar la postulación')
+                                    const json = await response.json().catch(() => ({}))
+                                    if (response.ok) {
+                                      toast.success(`Postulación de ${inf.display_name} aceptada — se le notificó por email`)
+                                      setPendingSelection(previous => {
+                                        const next = new Set(previous)
+                                        next.delete(ci.id)
+                                        return next
+                                      })
+                                    } else toast.error(json.error ?? 'Error al aceptar la postulación')
                                     void refetch()
                                   }}
                                   className="text-xs font-bold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700"
@@ -2550,7 +2631,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   onClick={async () => {
                                     if (!confirm(`¿Rechazar la solicitud de ${inf.display_name}?`)) return
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'reject' }) })
-                                    if (!response.ok) toast.error('Error al rechazar la postulación')
+                                    const json = await response.json().catch(() => ({}))
+                                    if (!response.ok) toast.error(json.error ?? 'Error al rechazar la postulación')
+                                    else {
+                                      toast.success(`Postulación de ${inf.display_name} rechazada`)
+                                      setPendingSelection(previous => {
+                                        const next = new Set(previous)
+                                        next.delete(ci.id)
+                                        return next
+                                      })
+                                    }
                                     void refetch()
                                   }}
                                   className="text-xs font-bold bg-white text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50"
@@ -2562,6 +2652,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
               </div>}

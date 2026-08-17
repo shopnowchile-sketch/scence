@@ -67,7 +67,11 @@ export async function acceptCampaignApplication(
     }
   }
 
-  const { error: updateError } = await admin
+  // La transición condicional es también la barrera de idempotencia del email:
+  // solo la primera petición que cambia pending -> accepted continúa con los
+  // efectos secundarios. Un reintento o dos aprobaciones simultáneas no pueden
+  // volver a crear entregables ni enviar otro correo.
+  const { data: acceptedApplication, error: updateError } = await admin
     .from('campaign_influencers')
     .update({
       application_status: 'accepted',
@@ -76,8 +80,42 @@ export async function acceptCampaignApplication(
       updated_at: new Date().toISOString(),
     })
     .eq('id', applicationId)
+    .eq('campaign_id', campaignId)
+    .eq('application_status', 'pending')
+    .select('id')
+    .maybeSingle()
 
   if (updateError) return { ok: false, error: updateError.message, status: 500 }
+  if (!acceptedApplication) {
+    return { ok: false, error: 'Esta postulación ya fue gestionada', status: 422 }
+  }
+
+  // Email de aprobación — se intenta inmediatamente después de confirmar la
+  // transición. Ninguna ruta de rechazo llama a Resend.
+  if (app.influencer?.email) {
+    try {
+      let brandName: string | null = null
+      if (campaign.brand_id) {
+        const { data: brand } = await admin.from('brands').select('name').eq('id', campaign.brand_id).maybeSingle()
+        brandName = brand?.name ?? null
+      }
+
+      const { error: emailErr } = await getResend().emails.send({
+        from: FROM_EMAIL,
+        to: app.influencer.email,
+        subject: `¡Tu postulación a "${campaign.name}" fue aprobada!`,
+        html: campaignApplicationApprovedEmail({
+          influencerName: app.influencer.display_name,
+          campaignName:   campaign.name,
+          brandName,
+          appUrl:         `${APP_URL}/inf-campaigns`,
+        }),
+      })
+      if (emailErr) console.error('[acceptCampaignApplication] Resend devolvió error:', emailErr)
+    } catch (e) {
+      console.error('[acceptCampaignApplication] approval email non-fatal:', e)
+    }
+  }
 
   // Crear deliverables desde deliverable_templates de la campaña (si no existen ya)
   try {
@@ -155,35 +193,52 @@ export async function acceptCampaignApplication(
   // se avisara a nadie. Aceptar una postulación/invitación ya NO cambia
   // campaigns.status — solo el status de la fila campaign_influencers.
 
-  // Email de aprobación — no bloqueante
-  if (app.influencer?.email) {
-    try {
-      let brandName: string | null = null
-      if (campaign.brand_id) {
-        const { data: brand } = await admin.from('brands').select('name').eq('id', campaign.brand_id).maybeSingle()
-        brandName = brand?.name ?? null
-      }
+  return { ok: true }
+}
 
-      // NOTA: el SDK de Resend NO lanza excepción en errores de la API (key
-      // inválida, dominio no verificado, etc.) — devuelve { data, error } sin
-      // throw. Antes no se revisaba `error`, así que un fallo de Resend quedaba
-      // completamente silencioso (sin log, sin señal de que no llegó el email).
-      const { error: emailErr } = await getResend().emails.send({
-        from: FROM_EMAIL,
-        to: app.influencer.email,
-        subject: `¡Tu postulación a "${campaign.name}" fue aprobada!`,
-        html: campaignApplicationApprovedEmail({
-          influencerName: app.influencer.display_name,
-          campaignName:   campaign.name,
-          brandName,
-          appUrl:         `${APP_URL}/inf-campaigns`,
-        }),
-      })
-      if (emailErr) console.error('[acceptCampaignApplication] Resend devolvió error:', emailErr)
-    } catch (e) {
-      console.error('[acceptCampaignApplication] approval email non-fatal:', e)
-    }
+/**
+ * Rechaza una o varias postulaciones usando la misma fuente de verdad.
+ * No contiene ni dispara notificaciones por email.
+ */
+export async function rejectCampaignApplications(
+  admin: SupabaseClient,
+  params: { campaignId: string; applicationIds: string[] }
+): Promise<{ ok: true; rejectedIds: string[] } | { ok: false; error: string; status: number }> {
+  const applicationIds = Array.from(new Set(params.applicationIds.filter(Boolean)))
+  if (applicationIds.length === 0) {
+    return { ok: false, error: 'Selecciona al menos una postulación', status: 422 }
+  }
+  if (applicationIds.length > 500) {
+    return { ok: false, error: 'No se pueden gestionar más de 500 postulaciones a la vez', status: 422 }
   }
 
-  return { ok: true }
+  const { data: applications, error: lookupError } = await admin
+    .from('campaign_influencers')
+    .select('id, application_status, origin')
+    .eq('campaign_id', params.campaignId)
+    .in('id', applicationIds)
+
+  if (lookupError) return { ok: false, error: lookupError.message, status: 500 }
+  if (!applications || applications.length !== applicationIds.length) {
+    return { ok: false, error: 'Una o más postulaciones no pertenecen a esta campaña', status: 404 }
+  }
+  if (applications.some(application => application.application_status !== 'pending')) {
+    return { ok: false, error: 'Solo se pueden gestionar postulaciones pendientes', status: 422 }
+  }
+
+  const { data: rejected, error: updateError } = await admin
+    .from('campaign_influencers')
+    .update({ application_status: 'rejected', updated_at: new Date().toISOString() })
+    .eq('campaign_id', params.campaignId)
+    .eq('application_status', 'pending')
+    .in('id', applicationIds)
+    .select('id')
+
+  if (updateError) return { ok: false, error: updateError.message, status: 500 }
+  const rejectedIds = (rejected ?? []).map(application => application.id as string)
+  if (rejectedIds.length !== applicationIds.length) {
+    return { ok: false, error: 'Una o más postulaciones fueron gestionadas por otra solicitud', status: 409 }
+  }
+
+  return { ok: true, rejectedIds }
 }

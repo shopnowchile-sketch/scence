@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
-import { acceptCampaignApplication } from '@/lib/campaign-applications'
+import { acceptCampaignApplication, rejectCampaignApplications } from '@/lib/campaign-applications'
 
 type Params = { params: { id: string } }
 
@@ -28,14 +28,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { data: campaign } = await query.single()
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
-  let body: { application_id: string; action: 'accept' | 'reject'; agreed_fee?: number }
+  let body: { application_id?: string; application_ids?: string[]; action: 'accept' | 'reject'; agreed_fee?: number }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { application_id, action, agreed_fee } = body
-  if (!application_id) return NextResponse.json({ error: 'application_id requerido' }, { status: 422 })
+  const { application_id, application_ids, action, agreed_fee } = body
   if (!['accept', 'reject'].includes(action)) return NextResponse.json({ error: 'action debe ser accept o reject' }, { status: 422 })
+
+  if (action === 'reject') {
+    const result = await rejectCampaignApplications(admin, {
+      campaignId: params.id,
+      applicationIds: application_ids ?? (application_id ? [application_id] : []),
+    })
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ ok: true, status: 'rejected', rejected_ids: result.rejectedIds })
+  }
+
+  if (!application_id) return NextResponse.json({ error: 'application_id requerido' }, { status: 422 })
 
   const { data: application } = await admin
     .from('campaign_influencers')
@@ -49,22 +59,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Solo se pueden gestionar aplicaciones pendientes' }, { status: 422 })
   }
 
-  if (action === 'accept') {
-    const result = await acceptCampaignApplication(admin, {
-      campaignId: params.id,
-      applicationId: application_id,
-      agreedFee: agreed_fee ?? null,
-    })
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
-    return NextResponse.json({ ok: true, status: 'accepted' })
-  }
-
-  const { error: updateError } = await admin
-    .from('campaign_influencers')
-    .update({ application_status: 'rejected', updated_at: new Date().toISOString() })
-    .eq('id', application_id)
-
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
-
-  return NextResponse.json({ ok: true, status: 'rejected' })
+  const result = await acceptCampaignApplication(admin, {
+    campaignId: params.id,
+    applicationId: application_id,
+    agreedFee: agreed_fee ?? null,
+  })
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  return NextResponse.json({ ok: true, status: 'accepted' })
 }

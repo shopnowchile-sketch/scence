@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
+import {
+  DeliverableTemplateSyncError,
+  normalizeDeliverableTemplates,
+  syncCampaignDeliverablesFromTemplates,
+} from '@/lib/campaign-deliverables-sync'
 
 type Params = { params: { id: string } }
 
@@ -266,6 +271,25 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
+  let previousDeliverableTemplates: ReturnType<typeof normalizeDeliverableTemplates> | null = null
+  if ('deliverable_templates' in rest) {
+    try {
+      rest.deliverable_templates = normalizeDeliverableTemplates(rest.deliverable_templates)
+    } catch (error) {
+      if (error instanceof DeliverableTemplateSyncError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
+    const { data: currentCampaign, error: currentCampaignError } = await admin
+      .from('campaigns')
+      .select('deliverable_templates')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (currentCampaignError) return NextResponse.json({ error: currentCampaignError.message }, { status: 500 })
+    previousDeliverableTemplates = normalizeDeliverableTemplates(currentCampaign?.deliverable_templates ?? [])
+  }
+
   // Scope update to the user's own org — salvo admin/super_admin/owner de
   // Scence, que puede editar cualquier campaña (mismo criterio que GET).
   let query = admin
@@ -283,6 +307,25 @@ export async function PUT(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+
+  let deliverablesSync = null
+  if (previousDeliverableTemplates) {
+    try {
+      deliverablesSync = await syncCampaignDeliverablesFromTemplates({
+        admin,
+        campaignId: params.id,
+        previousTemplates: previousDeliverableTemplates,
+        nextTemplates: rest.deliverable_templates as ReturnType<typeof normalizeDeliverableTemplates>,
+      })
+    } catch (syncError) {
+      await admin.from('campaigns').update({ deliverable_templates: previousDeliverableTemplates }).eq('id', params.id)
+      if (syncError instanceof DeliverableTemplateSyncError) {
+        return NextResponse.json({ error: syncError.message }, { status: syncError.status })
+      }
+      throw syncError
+    }
+  }
+
   // Si la marca elegida ya era colaboradora, deja de serlo para que se muestre
   // una sola vez con el rol correcto en la campaña.
   if (!access?.isBrand && typeof rest.brand_id === 'string') {
@@ -296,7 +339,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
-  return NextResponse.json({ data })
+  return NextResponse.json({ data, deliverables_sync: deliverablesSync })
 }
 
 // ── PATCH /api/campaigns/[id] — partial update / status change ────────────────
@@ -403,6 +446,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
   }
 
+  let previousDeliverableTemplates: ReturnType<typeof normalizeDeliverableTemplates> | null = null
+  if ('deliverable_templates' in fields) {
+    try {
+      fields.deliverable_templates = normalizeDeliverableTemplates(fields.deliverable_templates)
+    } catch (error) {
+      if (error instanceof DeliverableTemplateSyncError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
+    const { data: currentCampaign, error: currentCampaignError } = await admin
+      .from('campaigns')
+      .select('deliverable_templates')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (currentCampaignError) return NextResponse.json({ error: currentCampaignError.message }, { status: 500 })
+    previousDeliverableTemplates = normalizeDeliverableTemplates(currentCampaign?.deliverable_templates ?? [])
+  }
+
   // Scope update to the user's own org — salvo admin/super_admin/owner de
   // Scence, que puede cambiar el estado de cualquier campaña.
   let query = admin
@@ -418,6 +480,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (error.code === 'PGRST116') return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     console.error('[PATCH /api/campaigns/[id]]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+
+  let deliverablesSync = null
+  if (previousDeliverableTemplates) {
+    try {
+      deliverablesSync = await syncCampaignDeliverablesFromTemplates({
+        admin,
+        campaignId: params.id,
+        previousTemplates: previousDeliverableTemplates,
+        nextTemplates: fields.deliverable_templates as ReturnType<typeof normalizeDeliverableTemplates>,
+      })
+    } catch (syncError) {
+      await admin.from('campaigns').update({ deliverable_templates: previousDeliverableTemplates }).eq('id', params.id)
+      if (syncError instanceof DeliverableTemplateSyncError) {
+        return NextResponse.json({ error: syncError.message }, { status: syncError.status })
+      }
+      throw syncError
+    }
   }
 
   // La activación administrativa es el único momento en que se anuncia una
@@ -469,7 +550,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
   }
 
-  return NextResponse.json({ data })
+  return NextResponse.json({ data, deliverables_sync: deliverablesSync })
 }
 
 function normalizeCampaignBenefits(value: unknown) {

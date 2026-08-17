@@ -8,6 +8,11 @@ import {
   resolveBrandPlan,
   visibilityLimitMessage,
 } from '@/lib/plan-limits'
+import {
+  DeliverableTemplateSyncError,
+  normalizeDeliverableTemplates,
+  syncCampaignDeliverablesFromTemplates,
+} from '@/lib/campaign-deliverables-sync'
 
 type Params = { params: { id: string } }
 
@@ -148,6 +153,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if ('social_tags' in body) updates.mention_handles = body.social_tags
 
+  if ('deliverable_templates' in updates) {
+    try {
+      updates.deliverable_templates = normalizeDeliverableTemplates(updates.deliverable_templates)
+    } catch (error) {
+      if (error instanceof DeliverableTemplateSyncError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
+  }
+
   const statusByAction: Record<string, string> = {
     submit_for_approval: 'pending_approval',
     pause: 'paused',
@@ -186,7 +202,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data: campaignBase, error: baseError } = await admin
     .from('campaigns')
-    .select('id, brand_id, created_by_brand_id, organization_id, status, visibility, metadata')
+    .select('id, brand_id, created_by_brand_id, organization_id, status, visibility, metadata, deliverable_templates')
     .eq('id', params.id)
     .single()
 
@@ -325,7 +341,27 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ data })
+
+  let deliverablesSync = null
+  if ('deliverable_templates' in updates) {
+    const previousDeliverableTemplates = normalizeDeliverableTemplates(campaignBase.deliverable_templates ?? [])
+    try {
+      deliverablesSync = await syncCampaignDeliverablesFromTemplates({
+        admin,
+        campaignId: params.id,
+        previousTemplates: previousDeliverableTemplates,
+        nextTemplates: updates.deliverable_templates as ReturnType<typeof normalizeDeliverableTemplates>,
+      })
+    } catch (syncError) {
+      await admin.from('campaigns').update({ deliverable_templates: previousDeliverableTemplates }).eq('id', params.id)
+      if (syncError instanceof DeliverableTemplateSyncError) {
+        return NextResponse.json({ error: syncError.message }, { status: syncError.status })
+      }
+      throw syncError
+    }
+  }
+
+  return NextResponse.json({ data, deliverables_sync: deliverablesSync })
 }
 
 export const PUT = PATCH

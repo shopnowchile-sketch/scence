@@ -170,9 +170,11 @@ export function DeliverableTemplateBuilder({
       )}
 
       {/* Selector de tipos */}
-      {!compact && <div className="flex flex-wrap gap-2">
+      <div className={cn('flex flex-wrap gap-2', compact && 'rounded-xl border border-dashed border-violet-200 bg-violet-50/40 p-3')}>
+        {compact && <p className="w-full text-xs font-semibold text-violet-700">Agregar entregable</p>}
         {DELIVERABLE_TYPES.map(dt => {
           const active = value.some(d => d.type === dt.value)
+          if (compact && active) return null
           return (
             <button key={dt.value} type="button"
               onClick={() => active ? remove(dt.value) : addType(dt.value)}
@@ -186,7 +188,7 @@ export function DeliverableTemplateBuilder({
             </button>
           )
         })}
-      </div>}
+      </div>
 
       {/* Edición compacta del Overview: conserva los entregables existentes. */}
       {compact && value.length > 0 && (
@@ -195,7 +197,20 @@ export function DeliverableTemplateBuilder({
             const type = DELIVERABLE_TYPES.find(item => item.value === deliverable.type)
             const selectedBrandIds = new Set(deliverable.tag_brand_ids ?? [])
             return <div key={deliverable.type} className="rounded-xl border border-gray-200 bg-white p-3">
-              <p className="text-sm font-semibold text-gray-900">{type?.emoji} {type?.label ?? deliverable.type}</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-gray-900">{type?.emoji} {type?.label ?? deliverable.type}</p>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                    Cantidad
+                    <input type="number" min="1" max="50" value={deliverable.quantity}
+                      onChange={event => update(deliverable.type, 'quantity', event.target.value)}
+                      className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-violet-400" />
+                  </label>
+                  <button type="button" onClick={() => remove(deliverable.type)} className="text-xs font-semibold text-gray-400 transition-colors hover:text-red-500">
+                    Quitar
+                  </button>
+                </div>
+              </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="text-xs font-semibold text-gray-600">Descripción
                   <textarea value={deliverable.description ?? ''} onChange={event => update(deliverable.type, 'description', event.target.value)} rows={2} placeholder="Instrucciones para este contenido" className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-violet-400" />

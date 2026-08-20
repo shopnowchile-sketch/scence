@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Eye, EyeOff, Building2, User, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { COMUNAS_CHILE } from '@/lib/communes-chile'
 import { cn } from '@/lib/utils'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -27,6 +28,10 @@ const brandSchema = z.object({
 
 const influencerSchema = z.object({
   display_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
+  instagram_username: z.string().trim().min(2, 'Instagram es obligatorio').max(100),
+  commune:      z.string().trim().min(2, 'Comuna es obligatoria').max(100),
+  address:      z.string().trim().min(5, 'Dirección es obligatoria').max(200),
+  birth_date:   z.string().min(1, 'Fecha de nacimiento es obligatoria'),
   email:        z.string().email('Email inválido'),
   password:     z.string()
     .min(8, 'Mínimo 8 caracteres')
@@ -271,12 +276,23 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
   })
   const pwd = watch('password') ?? ''
 
-  async function onSubmit({ display_name, email, password }: InfluencerValues) {
+  async function onSubmit({ display_name, instagram_username, commune, address, birth_date, email, password }: InfluencerValues) {
     setLoading(true); setError(null)
     const { error: e } = await supabase.auth.signUp({
       email, password,
       options: {
-        data: { full_name: display_name, display_name, is_influencer: true },
+        // Datos transitorios para handle_new_user(). El trigger los valida y
+        // crea influencer + Instagram en la misma transacción de Auth; luego
+        // los retira de raw_user_meta_data para no duplicar el perfil ahí.
+        data: {
+          full_name: display_name,
+          display_name,
+          is_influencer: true,
+          instagram_username,
+          commune,
+          address,
+          birth_date,
+        },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
@@ -312,6 +328,29 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre y apellido</label>
           <input {...register('display_name')} autoComplete="name" className="input-base w-full" placeholder="Sofía Contreras" />
           {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Instagram</label>
+          <input {...register('instagram_username')} autoComplete="off" className="input-base w-full" placeholder="@sofiacontreras" />
+          {errors.instagram_username && <p className="text-xs text-red-500 mt-1">{errors.instagram_username.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna</label>
+          <input {...register('commune')} list="influencer-register-communes" className="input-base w-full" placeholder="Providencia" />
+          <datalist id="influencer-register-communes">
+            {COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}
+          </datalist>
+          {errors.commune && <p className="text-xs text-red-500 mt-1">{errors.commune.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label>
+          <input {...register('address')} autoComplete="street-address" className="input-base w-full" placeholder="Av. Providencia 1234" />
+          {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha de nacimiento</label>
+          <input {...register('birth_date')} type="date" autoComplete="bday" className="input-base w-full" />
+          {errors.birth_date && <p className="text-xs text-red-500 mt-1">{errors.birth_date.message}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>

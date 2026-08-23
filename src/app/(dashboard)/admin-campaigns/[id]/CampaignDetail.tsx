@@ -1418,9 +1418,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   )
   const hasCampaignMetrics = deliverablesWithMetrics.length > 0
   const totalViews    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
-  const totalLikes    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
-  const totalComments = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.comments ?? 0), 0)
-  const totalInteractionsMetrics = totalLikes + totalComments
   const campaignEngagementRates = deliverablesWithMetrics
     .map(d => d.engagement_rate)
     .filter((v): v is number => v != null)
@@ -2240,8 +2237,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <div className="text-[10px] font-medium text-gray-500">Visualizaciones</div>
             </button>
             <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
-              <div className="text-sm font-bold text-gray-900">{hasCampaignMetrics ? formatFollowers(totalInteractionsMetrics) : '—'}</div>
-              <div className="text-[10px] font-medium text-gray-500">Engagement total</div>
+              <div className="text-sm font-bold text-gray-900">{avgCampaignEngagement != null ? `${avgCampaignEngagement}%` : '—'}</div>
+              <div className="text-[10px] font-medium text-gray-500">Engagement promedio</div>
             </button>
             <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver entregables">
               <div className="text-sm font-bold text-gray-900">{deliverableDone}/{deliverableCount}</div>

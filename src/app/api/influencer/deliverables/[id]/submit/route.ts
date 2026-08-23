@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { ADMIN_NOTIFICATION_EMAIL, getResend, FROM_EMAIL } from '@/lib/resend'
+import { didContentUrlChange, normalizeContentUrl } from '@/lib/deliverables/metrics-state'
 
 type Params = { params: { id: string } }
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: deliverable } = await admin
     .from('campaign_deliverables')
-    .select('id, status, influencer_id, type, title, due_date, campaign_id, campaign:campaigns(name, organization_id, status)')
+    .select('id, status, influencer_id, type, title, due_date, campaign_id, content_url, campaign:campaigns(name, organization_id, status)')
     .eq('id', params.id)
     .single()
 
@@ -50,14 +51,28 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Este deliverable ya fue aprobado' }, { status: 422 })
   }
 
+  const nextContentUrl = normalizeContentUrl(body.content_url)
+  const contentUrlChanged = didContentUrlChange(deliverable.content_url, nextContentUrl)
+
+  const updatePayload: Record<string, unknown> = {
+    status:          'in_review',
+    content_url:     nextContentUrl,
+    submitted_at:    new Date().toISOString(),
+    submitted_notes: body.notes ?? null,
+  }
+
+  // Las métricas pertenecen al URL consultado, no al deliverable en abstracto.
+  // Si el link no cambió se conservan (por ejemplo, al corregir sólo las notas).
+  if (contentUrlChanged) {
+    updatePayload.performance = null
+    updatePayload.metrics_provider = null
+    updatePayload.metrics_updated_at = null
+    updatePayload.engagement_rate = null
+  }
+
   const { data, error } = await admin
     .from('campaign_deliverables')
-    .update({
-      status:          'in_review',
-      content_url:     body.content_url ?? null,
-      submitted_at:    new Date().toISOString(),
-      submitted_notes: body.notes ?? null,
-    })
+    .update(updatePayload)
     .eq('id', params.id)
     .select()
     .single()
@@ -74,7 +89,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         const deliverableTitle = (deliverable as { title?: string | null }).title ?? 'Entregable'
         const campaignData = (deliverable as { campaign?: { name?: string } | null }).campaign
         const campaignName = campaignData?.name ?? 'Campaña'
-        const contentUrl = body.content_url
+        const contentUrl = nextContentUrl
 
         const { error: sendErr } = await getResend().emails.send({
           from: FROM_EMAIL,

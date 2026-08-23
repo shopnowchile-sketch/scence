@@ -11,6 +11,25 @@ export interface DeliverableMetrics {
   comments: number | null
 }
 
+export type EngagementRateBasis = 'views' | 'followers'
+
+/**
+ * Shape persistido en `campaign_deliverables.performance`.
+ *
+ * Las tres métricas originales se mantienen intactas para no romper reportes
+ * ni consumidores existentes. Los campos opcionales sólo aportan trazabilidad:
+ * qué URL se consultó y cómo se calculó el engagement rate.
+ */
+export interface DeliverablePerformance extends DeliverableMetrics {
+  source_url?: string
+  engagement_rate_calculation?: {
+    source: 'internal'
+    basis: EngagementRateBasis
+    denominator: number
+    formula: '(likes + comments) / denominator * 100'
+  } | null
+}
+
 export type DeliverableMetricsResult =
   | { data: DeliverableMetrics }
   | { error: string }

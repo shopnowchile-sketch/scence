@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { computeEngagementRate } from '@/lib/deliverables/apify-metrics'
+import { computeEngagementRateDetails } from '@/lib/deliverables/apify-metrics'
 import { fetchMetricsWithFallback } from '@/lib/deliverables/fetch-metrics'
-import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import type { DeliverablePerformance } from '@/lib/deliverables/metrics-types'
+import { getDeliverableMetricsUrl, losesValidMetricForCurrentContent } from '@/lib/deliverables/metrics-state'
 
 type Params = { params: { id: string } }
 
@@ -36,7 +38,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: deliverable, error: fetchErr } = await admin
     .from('campaign_deliverables')
-    .select('id, type, campaign_id, influencer_id, published_url, content_url, campaign:campaigns(id, brand_id)')
+    .select('id, type, campaign_id, influencer_id, published_url, content_url, performance, campaign:campaigns(id, brand_id)')
     .eq('id', params.id)
     .single()
 
@@ -59,6 +61,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'No tienes acceso a este deliverable' }, { status: 403 })
     }
   } else if (brandAccess) {
+    if (!hasBrandPermission(brandAccess, 'campaign.manage')) {
+      return NextResponse.json({ error: 'No tienes permisos para actualizar métricas' }, { status: 403 })
+    }
     const campaignRaw = deliverable.campaign as unknown
     const campaign = (Array.isArray(campaignRaw) ? campaignRaw[0] : campaignRaw) as
       { id: string; brand_id: string | null } | null | undefined
@@ -77,19 +82,34 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'No tienes acceso a este deliverable' }, { status: 403 })
     }
   } else {
-    const orgId = await getOrgId(user.id, user.user_metadata, admin)
+    const orgId = await getOrgId(user.id, undefined, admin)
     const isAdmin = orgId ? (await getUserRole(user.id, orgId, admin)).isAdmin : false
     if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const url = deliverable.published_url || deliverable.content_url
+  const url = getDeliverableMetricsUrl(deliverable.content_url, deliverable.published_url)
   if (!url) {
     return NextResponse.json({ error: 'Este deliverable todavía no tiene link de publicación' }, { status: 422 })
   }
 
   const result = await fetchMetricsWithFallback(url)
   if ('error' in result) {
-    return NextResponse.json({ error: result.error }, { status: 502 })
+    console.warn('[sync-metrics] ningún proveedor pudo obtener métricas:', result.error)
+    return NextResponse.json({
+      error: 'No pudimos obtener métricas para este contenido. Puede ser privado, haber sido eliminado o estar temporalmente limitado por Instagram. El link y las métricas válidas existentes no fueron modificados.',
+    }, { status: 502 })
+  }
+
+  // Una respuesta parcial puede ser un bloqueo temporal de Instagram. Si ya
+  // había un valor válido para el mismo URL, no lo reemplazamos por null.
+  const previousPerformance = deliverable.performance as (
+    Partial<Record<'views' | 'likes' | 'comments', unknown>> & { source_url?: unknown }
+  ) | null
+  const lostPreviouslyValidMetric = losesValidMetricForCurrentContent(previousPerformance, result.data, url)
+  if (lostPreviouslyValidMetric) {
+    return NextResponse.json({
+      error: 'Instagram devolvió métricas incompletas temporalmente. Conservamos los valores válidos anteriores; intenta actualizar nuevamente más tarde.',
+    }, { status: 502 })
   }
 
   // Fallback de engagement: seguidores de Instagram del influencer, solo si
@@ -105,29 +125,58 @@ export async function POST(_req: NextRequest, { params }: Params) {
     followersFallback = profile?.followers ?? null
   }
 
-  const engagementRate = computeEngagementRate(result.data, followersFallback)
+  const engagement = computeEngagementRateDetails(result.data, followersFallback)
   const now = new Date().toISOString()
 
-  const { data, error } = await admin
+  const performance: DeliverablePerformance = {
+    views:    result.data.views,
+    likes:    result.data.likes,
+    comments: result.data.comments,
+    source_url: url,
+    engagement_rate_calculation: engagement.basis && engagement.denominator != null
+      ? {
+          source: 'internal',
+          basis: engagement.basis,
+          denominator: engagement.denominator,
+          formula: '(likes + comments) / denominator * 100',
+        }
+      : null,
+  }
+
+  // La consulta a Instagram puede tardar. Condicionar el UPDATE a ambos URLs
+  // evita que una respuesta iniciada con un link antiguo repueble métricas
+  // después de que la influencer haya cambiado el contenido.
+  let updateQuery = admin
     .from('campaign_deliverables')
     .update({
-      performance: {
-        views:    result.data.views,
-        likes:    result.data.likes,
-        comments: result.data.comments,
-      },
+      performance,
       metrics_provider:    result.provider,
       metrics_updated_at:  now,
-      engagement_rate:     engagementRate,
+      engagement_rate:     engagement.rate,
       updated_at:          now,
     })
     .eq('id', params.id)
+
+  updateQuery = deliverable.content_url == null
+    ? updateQuery.is('content_url', null)
+    : updateQuery.eq('content_url', deliverable.content_url)
+  updateQuery = deliverable.published_url == null
+    ? updateQuery.is('published_url', null)
+    : updateQuery.eq('published_url', deliverable.published_url)
+
+  const { data, error } = await updateQuery
     .select('id, performance, metrics_provider, metrics_updated_at, engagement_rate')
-    .single()
+    .maybeSingle()
 
   if (error) {
     console.error('[POST /api/campaign-deliverables/[id]/sync-metrics]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!data) {
+    return NextResponse.json({
+      error: 'El link cambió mientras se obtenían las métricas. No guardamos resultados del contenido anterior; vuelve a sincronizar el link actual.',
+    }, { status: 409 })
   }
 
   return NextResponse.json({ data })

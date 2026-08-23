@@ -205,7 +205,18 @@ export interface CampaignDeliverableDetail {
   content_rating: number | null  // 1-5 estrellas, calificado por admin/marca
   // Métricas reales de publicación (Apify) — solo views/likes/comments.
   // reach/impressions/saves/shares NO existen: no se inventan.
-  performance: { views: number | null; likes: number | null; comments: number | null } | null
+  performance: {
+    views: number | null
+    likes: number | null
+    comments: number | null
+    source_url?: string
+    engagement_rate_calculation?: {
+      source: 'internal'
+      basis: 'views' | 'followers'
+      denominator: number
+      formula: '(likes + comments) / denominator * 100'
+    } | null
+  } | null
   metrics_provider: string | null      // ej. 'apify'
   metrics_updated_at: string | null    // última sync real
   engagement_rate: number | null       // CALCULADO por nosotros, no dato real de Instagram

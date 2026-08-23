@@ -21,7 +21,11 @@
  * el patrón de polling que sí usamos para sync masivo de perfiles.
  */
 
-import type { DeliverableMetrics, DeliverableMetricsResult } from './metrics-types'
+import type {
+  DeliverableMetrics,
+  DeliverableMetricsResult,
+  EngagementRateBasis,
+} from './metrics-types'
 export type { DeliverableMetrics, DeliverableMetricsResult } from './metrics-types'
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN
@@ -111,8 +115,42 @@ export function computeEngagementRate(
   metrics: DeliverableMetrics,
   followersFallback: number | null
 ): number | null {
+  return computeEngagementRateDetails(metrics, followersFallback).rate
+}
+
+export type EngagementRateDetails = {
+  rate: number | null
+  basis: EngagementRateBasis | null
+  denominator: number | null
+}
+
+/**
+ * Misma fórmula histórica, pero devuelve además la base usada para que el
+ * JSONB pueda dejar explícito que el rate es un cálculo interno.
+ */
+export function computeEngagementRateDetails(
+  metrics: DeliverableMetrics,
+  followersFallback: number | null
+): EngagementRateDetails {
+  // Si el proveedor no entregó likes ni comments, 0% sería un dato inventado:
+  // no sabemos que hubo cero interacciones, sólo que no fueron informadas.
+  if (metrics.likes == null && metrics.comments == null) {
+    return { rate: null, basis: null, denominator: null }
+  }
+
   const interactions = (metrics.likes ?? 0) + (metrics.comments ?? 0)
-  const base = metrics.views && metrics.views > 0 ? metrics.views : followersFallback
-  if (!base || base <= 0) return null
-  return Math.round((interactions / base) * 10000) / 100
+  const hasViews = typeof metrics.views === 'number' && Number.isFinite(metrics.views) && metrics.views > 0
+  const hasFollowers = typeof followersFallback === 'number' && Number.isFinite(followersFallback) && followersFallback > 0
+  const basis: EngagementRateBasis | null = hasViews ? 'views' : hasFollowers ? 'followers' : null
+  const denominator = hasViews ? metrics.views : hasFollowers ? followersFallback : null
+
+  if (!basis || denominator == null) {
+    return { rate: null, basis: null, denominator: null }
+  }
+
+  return {
+    rate: Math.round((interactions / denominator) * 10000) / 100,
+    basis,
+    denominator,
+  }
 }

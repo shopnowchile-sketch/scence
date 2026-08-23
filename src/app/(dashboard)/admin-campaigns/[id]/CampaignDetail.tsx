@@ -21,6 +21,7 @@ import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus, Camp
 import { getInfluencerTier } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { getDeliverableMetricsUrl } from '@/lib/deliverables/metrics-state'
 import { COMUNAS_CHILE, groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
@@ -95,7 +96,7 @@ function DeliverableContent({
   const action = useDeliverableAction(campaignId)
   const syncMetrics = useSyncDeliverableMetrics(campaignId)
   const cfg = DEL_CONFIG[d.status] ?? DEL_CONFIG.pending
-  const url = d.published_url || d.content_url
+  const url = getDeliverableMetricsUrl(d.content_url, d.published_url)
   const typeLabel = d.type ? d.type.replace(/_/g, ' ') : (d.platform ?? 'Contenido')
   const supportsPerformanceMetrics = d.type === 'reel' || d.type === 'post'
 
@@ -3206,6 +3207,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
                           {selectedInfluencerDeliverables.map(d => {
                             const cfg = DEL_CONFIG[d.status] ?? DEL_CONFIG.pending
+                            const contentUrl = getDeliverableMetricsUrl(d.content_url, d.published_url)
                             return (
                               <div key={d.id} className="rounded-xl border border-gray-100 p-3">
                                 <div className="flex items-start justify-between gap-2">
@@ -3217,9 +3219,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   </div>
                                   <span className={cn('badge text-[10px]', cfg.cls)}>{cfg.label}</span>
                                 </div>
-                                {(d.published_url || d.content_url) && (
+                                {contentUrl && (
                                   <a
-                                    href={d.published_url || d.content_url || '#'}
+                                    href={contentUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:underline"

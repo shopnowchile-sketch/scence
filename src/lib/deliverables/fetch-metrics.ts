@@ -1,6 +1,7 @@
 import type { DeliverableMetrics, MetricsProvider } from './metrics-types'
 import { fetchDeliverablePostMetrics } from './apify-metrics'
 import { fetchInstagramMetricsViaPlaywright } from '../connectors/instagram-playwright-metrics'
+import { hasUsableMetrics } from './metrics-state'
 
 export type FetchMetricsResult =
   | { provider: MetricsProvider; data: DeliverableMetrics }
@@ -25,16 +26,22 @@ export async function fetchMetricsWithFallback(url: string): Promise<FetchMetric
 
   // 2. Apify
   const apifyResult = await fetchDeliverablePostMetrics(url)
-  if ('data' in apifyResult) {
+  if ('data' in apifyResult && hasUsableMetrics(apifyResult.data)) {
     return { provider: 'apify', data: apifyResult.data }
   }
+  const apifyError = 'error' in apifyResult
+    ? apifyResult.error
+    : 'no devolvió métricas utilizables'
 
   // 3. Fallback propio (Playwright) — solo se intenta si Apify falló
   // (sin token, sin créditos, actor caído, etc.)
   const playwrightResult = await fetchInstagramMetricsViaPlaywright(url)
-  if ('data' in playwrightResult) {
+  if ('data' in playwrightResult && hasUsableMetrics(playwrightResult.data)) {
     return { provider: 'playwright', data: playwrightResult.data }
   }
+  const playwrightError = 'error' in playwrightResult
+    ? playwrightResult.error
+    : 'no devolvió métricas utilizables'
 
-  return { error: `Apify: ${apifyResult.error} · Playwright: ${playwrightResult.error}` }
+  return { error: `Apify: ${apifyError} · Playwright: ${playwrightError}` }
 }

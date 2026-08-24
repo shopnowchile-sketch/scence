@@ -2921,24 +2921,36 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </div>
               )}
               {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-                <a href={`/api/campaigns/${id}/influencers/export`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
-                  <FileDown className="h-4 w-4" /> Excel
+                <a
+                  href={`/api/campaigns/${id}/influencers/export`}
+                  title="Descargar Excel"
+                  aria-label="Descargar Excel"
+                  className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <FileDown className="h-4 w-4" />
                 </a>
               )}
               {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
                 <button
                   onClick={() => setShowCampaignEmailModal(true)}
                   disabled={!emailSelection.size}
+                  title={emailSelection.size ? `Enviar email a ${emailSelection.size} influencer${emailSelection.size === 1 ? '' : 's'}` : 'Selecciona influencers para enviar email'}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-50"
                 >
                   <Mail className="h-4 w-4" />
                   Enviar email ({emailSelection.size})
                 </button>
               )}
-              {(!isBrandPortal || c._brand_permissions?.canEdit) && <Link href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors">
-                + Agregar influencer
-              </Link>}
+              {(!isBrandPortal || c._brand_permissions?.canEdit) && (
+                <Link
+                  href={isBrandPortal ? `/brand-campaigns/${id}/invite` : `/admin-campaigns/${id}/influencers/add`}
+                  title="Agregar influencer"
+                  aria-label="Agregar influencer"
+                  className="inline-flex items-center justify-center rounded-xl bg-violet-600 p-2 text-white transition-colors hover:bg-violet-700"
+                >
+                  <Plus className="h-4 w-4" />
+                </Link>
+              )}
             </div>
           </div>
 
@@ -3065,9 +3077,43 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           ) : attendanceDeclined ? (
                             <span className="inline-flex rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">No asistirá</span>
                           ) : attendanceNoConfirmed ? (
-                            <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">No confirmó</span>
+                            attendance && (!isBrandPortal || c._brand_permissions?.canEdit) ? (
+                              <select
+                                value=""
+                                disabled={attendanceUpdating === inf.id}
+                                onChange={event => {
+                                  const action = event.target.value as 'confirmed_client' | 'attended' | 'no_show'
+                                  if (action) void updateManualAttendance(inf.id, action)
+                                }}
+                                title="Actualizar asistencia"
+                                aria-label={`Actualizar asistencia de ${inf.display_name}`}
+                                className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 outline-none transition-colors hover:bg-amber-100 disabled:opacity-50"
+                              >
+                                <option value="">{attendanceUpdating === inf.id ? 'Guardando…' : 'No confirmó'}</option>
+                                <option value="confirmed_client">Confirmó con cliente</option>
+                                <option value="attended">Asistió</option>
+                                <option value="no_show">No asistió</option>
+                              </select>
+                            ) : <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">No confirmó</span>
                           ) : attendancePending ? (
-                            <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">Sin confirmar</span>
+                            attendance && (!isBrandPortal || c._brand_permissions?.canEdit) ? (
+                              <select
+                                value=""
+                                disabled={attendanceUpdating === inf.id}
+                                onChange={event => {
+                                  const action = event.target.value as 'confirmed_client' | 'attended' | 'no_show'
+                                  if (action) void updateManualAttendance(inf.id, action)
+                                }}
+                                title="Actualizar asistencia"
+                                aria-label={`Actualizar asistencia de ${inf.display_name}`}
+                                className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 outline-none transition-colors hover:bg-amber-100 disabled:opacity-50"
+                              >
+                                <option value="">{attendanceUpdating === inf.id ? 'Guardando…' : 'Sin confirmar'}</option>
+                                <option value="confirmed_client">Confirmó con cliente</option>
+                                <option value="attended">Asistió</option>
+                                <option value="no_show">No asistió</option>
+                              </select>
+                            ) : <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">Sin confirmar</span>
                           ) : (
                             <span className="text-xs text-gray-300">—</span>
                           )}
@@ -3171,23 +3217,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            {attendance && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-                              <select
-                                value=""
-                                disabled={attendanceUpdating === inf.id}
-                                onChange={event => {
-                                  const action = event.target.value as 'confirmed_client' | 'attended' | 'no_show'
-                                  if (action) void updateManualAttendance(inf.id, action)
-                                }}
-                                className="max-w-36 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 disabled:opacity-50"
-                                title="Acciones manuales de asistencia"
-                              >
-                                <option value="">{attendanceUpdating === inf.id ? 'Guardando…' : 'Acciones'}</option>
-                                <option value="confirmed_client">Confirmó con cliente</option>
-                                <option value="attended">Asistió</option>
-                                <option value="no_show">No asistió</option>
-                              </select>
-                            )}
                             {typeof ci.metadata?.last_reminder_sent_at === 'string' && (
                               <span
                                 title={`Recordatorio enviado ${formatDatetime(ci.metadata.last_reminder_sent_at)}`}

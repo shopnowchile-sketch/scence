@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Calendar, MapPin, RefreshCw, Clock } from 'lucide-react'
+import { Calendar, MapPin, RefreshCw, Clock, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Booking = {
@@ -11,16 +11,9 @@ type Booking = {
   starts_at: string | null
   ends_at: string | null
   location: string | null
+  description?: string | null
+  google_calendar_link?: string | null
   campaign: { id: string; name: string } | null
-}
-
-type CampaignEvent = {
-  id: string
-  name: string
-  event_date: string
-  location: string | null
-  is_virtual: boolean
-  status: string
 }
 
 function fmt(iso: string | null) {
@@ -30,7 +23,6 @@ function fmt(iso: string | null) {
 
 export default function InfluencerBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
-  const [events,   setEvents]   = useState<CampaignEvent[]>([])
   const [loading,  setLoading]  = useState(true)
   // Historial sin límite crecía indefinidamente sin forma de acotarlo —
   // se muestran los últimos 10 por default, con opción de ver todo.
@@ -40,14 +32,10 @@ export default function InfluencerBookingsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [res, evtRes] = await Promise.all([
-        fetch('/api/influencer/bookings'),
-        fetch('/api/influencer/events'),
-      ])
+      const res = await fetch('/api/influencer/bookings')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setBookings(json.data ?? [])
-      setEvents(evtRes.ok ? (await evtRes.json()).events ?? [] : [])
     } catch (e) {
       toast.error((e as Error).message ?? 'Error cargando bookings')
     }
@@ -82,7 +70,7 @@ export default function InfluencerBookingsPage() {
         </button>
       </div>
 
-      {bookings.length === 0 && events.length === 0 ? (
+      {bookings.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 flex flex-col items-center py-20 gap-3">
           <Calendar className="h-10 w-10 text-gray-200" />
           <p className="text-sm font-semibold text-gray-400">Sin bookings ni eventos asignados</p>
@@ -90,16 +78,6 @@ export default function InfluencerBookingsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-
-          {/* Eventos de campaña */}
-          {events.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Eventos ({events.length})</p>
-              <div className="space-y-3">
-                {events.map(e => <EventCard key={e.id} event={e} />)}
-              </div>
-            </div>
-          )}
 
           {/* Próximos */}
           {upcoming.length > 0 && (
@@ -137,6 +115,19 @@ export default function InfluencerBookingsPage() {
 }
 
 function BookingCard({ booking: b }: { booking: Booking }) {
+  const calendarUrl = b.google_calendar_link || (() => {
+    if (!b.starts_at || !b.ends_at) return null
+    const compactUtc = (value: string) => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: b.campaign?.name ?? b.title ?? 'Evento',
+      dates: `${compactUtc(b.starts_at)}/${compactUtc(b.ends_at)}`,
+    })
+    if (b.description) params.set('details', b.description)
+    if (b.location) params.set('location', b.location)
+    return `https://calendar.google.com/calendar/render?${params.toString()}`
+  })()
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5">
       <div className="flex items-start gap-4">
@@ -173,45 +164,17 @@ function BookingCard({ booking: b }: { booking: Booking }) {
               </div>
             )}
           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function EventCard({ event: e }: { event: CampaignEvent }) {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5">
-      <div className="flex items-start gap-4">
-        <div className="flex-shrink-0 w-12 text-center">
-          <div className="bg-blue-50 rounded-xl px-2 py-2">
-            <p className="text-xs text-blue-400 font-semibold uppercase leading-none">
-              {new Date(e.event_date).toLocaleDateString('es-CL', { month: 'short' })}
-            </p>
-            <p className="text-2xl font-extrabold text-blue-700 leading-tight">
-              {new Date(e.event_date).getDate()}
-            </p>
-          </div>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-bold text-gray-900">{e.name}</h3>
-            <span className="text-[10px] font-bold px-2 py-1 rounded-full flex-shrink-0 bg-blue-100 text-blue-700">
-              Evento
-            </span>
-          </div>
-          <div className="mt-1.5 space-y-1">
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Clock className="h-3 w-3 flex-shrink-0" />
-              {fmt(e.event_date)}
-            </div>
-            {e.location && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                <MapPin className="h-3 w-3 flex-shrink-0" />
-                {e.is_virtual ? 'Virtual' : e.location}
-              </div>
-            )}
-          </div>
+          {calendarUrl && (
+            <a
+              href={calendarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 hover:text-violet-800 hover:underline"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Abrir en Google Calendar
+            </a>
+          )}
         </div>
       </div>
     </div>

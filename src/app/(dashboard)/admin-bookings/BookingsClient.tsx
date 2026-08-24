@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   Plus, ChevronLeft, ChevronRight,
   List, MapPin, ExternalLink,
-  Video, CheckCircle2, Clock, X, CalendarDays, Loader2, FileText,
+  Video, CheckCircle2, Clock, X, CalendarDays, Loader2,
 } from 'lucide-react'
 import {
   format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
@@ -264,36 +264,18 @@ const EVENT_COLORS: Record<string, string> = {
   meeting: 'bg-amber-100 text-amber-700 border-amber-200',
 }
 
-type CalDeliverable = {
-  id: string; title: string | null; type: string; status: string
-  due_date: string
-  campaign: { id: string; name: string } | null
-  influencer: { id: string; display_name: string; avatar_url: string | null } | null
-}
-
 export function BookingsClient() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [view, setView] = useState<'month' | 'list'>('month')
   const [listStatusFilter, setListStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [selected, setSelected] = useState<Booking | null>(null)
   const [showNewBooking, setShowNewBooking] = useState(false)
-  const [deliverables, setDeliverables] = useState<CalDeliverable[]>([])
 
   const { data, isLoading, error: bookingsError, refetch: refetchBookings } = useBookings()
   const bookings = useMemo(() => data?.data ?? [], [data?.data])
 
   const updateStatus = useUpdateBookingStatus()
   const cancelMutation = useCancelBooking()
-
-  // ── Fetch deliverables for current month ───────────
-  useEffect(() => {
-    const from = format(startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const to   = format(endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    fetch(`/api/deliverables?from=${from}&to=${to}`)
-      .then(r => r.json())
-      .then(j => setDeliverables(j.data ?? []))
-      .catch(() => {/* silent */})
-  }, [currentMonth])
 
   // ── Calendar grid helpers ──────────────────────────
   const monthStart = startOfMonth(currentMonth)
@@ -305,10 +287,6 @@ export function BookingsClient() {
   const bookingsForDay = useCallback((day: Date) =>
     bookings.filter(b => isSameDay(parseISO(b.starts_at), day))
   , [bookings])
-
-  const deliverablesForDay = useCallback((day: Date) =>
-    deliverables.filter(d => isSameDay(parseISO(d.due_date), day))
-  , [deliverables])
 
   // ── Acciones ───────────────────────────────────────
   const confirmBooking = useCallback(async (booking: Booking) => {
@@ -416,10 +394,9 @@ export function BookingsClient() {
               <div className="grid grid-cols-7">
                 {calDays.map((day, idx) => {
                   const dayBookings     = bookingsForDay(day)
-                  const dayDeliverables = deliverablesForDay(day)
                   const isCurrentMonth  = isSameMonth(day, currentMonth)
                   const todayDay        = isToday(day)
-                  const totalItems      = dayBookings.length + dayDeliverables.length
+                  const totalItems      = dayBookings.length
 
                   return (
                     <div
@@ -451,21 +428,6 @@ export function BookingsClient() {
                         >
                           {format(parseISO(b.starts_at), 'HH:mm')} {b.title}
                         </button>
-                      ))}
-
-                      {/* Deliverables */}
-                      {dayDeliverables.slice(0, dayBookings.length >= 2 ? 0 : 2 - dayBookings.length).map(d => (
-                        <div
-                          key={d.id}
-                          title={`${d.influencer?.display_name ?? ''} · ${d.campaign?.name ?? ''}`}
-                          className="w-full text-left text-[11px] font-medium px-1.5 py-0.5 rounded-md mb-0.5 border truncate bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1"
-                        >
-                          <FileText className="h-2.5 w-2.5 flex-shrink-0" />
-                          <span className="truncate">
-                            {format(parseISO(d.due_date), 'HH:mm')} {d.title ?? d.type}
-                            {d.influencer && <span className="opacity-60"> · {d.influencer.display_name}</span>}
-                          </span>
-                        </div>
                       ))}
 
                       {totalItems > 2 && (

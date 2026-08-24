@@ -17,6 +17,14 @@ export async function GET() {
 
   if (!influencer) return NextResponse.json({ error: 'Not an influencer' }, { status: 403 })
 
+  const { data: acceptedRows, error: acceptedError } = await admin
+    .from('campaign_influencers')
+    .select('campaign_id')
+    .eq('influencer_id', influencer.id)
+    .eq('application_status', 'accepted')
+  if (acceptedError) return NextResponse.json({ error: acceptedError.message }, { status: 500 })
+  const acceptedCampaignIds = new Set((acceptedRows ?? []).map(row => row.campaign_id as string))
+
   // Buscar en booking_influencers (multi-influencer)
   // Nota (fix B-06): `bookings` no tiene FK directa a `brands` — la marca se
   // alcanza vía bookings.campaign_id -> campaigns.brand_id -> brands.id.
@@ -28,7 +36,7 @@ export async function GET() {
     .select(`
       id, status,
       booking:bookings (
-        id, title, description, status, starts_at, ends_at, location,
+        id, title, description, status, starts_at, ends_at, location, metadata,
         campaign:campaigns (id, name, brand:brands!brand_id (id, name, logo_url))
       )
     `)
@@ -41,7 +49,7 @@ export async function GET() {
   const { data: directRows } = await admin
     .from('bookings')
     .select(`
-      id, title, description, status, starts_at, ends_at, location,
+      id, title, description, status, starts_at, ends_at, location, metadata,
       campaign:campaigns (id, name, brand:brands!brand_id (id, name, logo_url))
     `)
     .eq('influencer_id', influencer.id)
@@ -51,10 +59,12 @@ export async function GET() {
 
   function flattenBrand(row: Record<string, unknown>): Record<string, unknown> {
     const campaign = row.campaign as CampaignWithBrand
+    const metadata = row.metadata as Record<string, unknown> | null
     return {
       ...row,
       campaign: campaign ? { id: campaign.id, name: campaign.name } : null,
       brand: campaign?.brand ?? null,
+      google_calendar_link: typeof metadata?.google_calendar_link === 'string' ? metadata.google_calendar_link : null,
     }
   }
 
@@ -65,6 +75,9 @@ export async function GET() {
   for (const row of biRows ?? []) {
     const b = row.booking as unknown as Record<string, unknown> | null
     if (!b) continue
+    const campaignId = (b.campaign as CampaignWithBrand)?.id
+    if (campaignId && !acceptedCampaignIds.has(campaignId)) continue
+    if (!b.starts_at || !b.ends_at) continue
     const bid = b.id as string
     if (seen.has(bid)) continue
     seen.add(bid)
@@ -72,6 +85,9 @@ export async function GET() {
   }
 
   for (const b of directRows ?? []) {
+    const campaignId = (b.campaign as unknown as CampaignWithBrand)?.id
+    if (campaignId && !acceptedCampaignIds.has(campaignId)) continue
+    if (!b.starts_at || !b.ends_at) continue
     if (seen.has(b.id)) continue
     seen.add(b.id)
     merged.push({ ...flattenBrand(b as unknown as Record<string, unknown>), my_status: b.status })

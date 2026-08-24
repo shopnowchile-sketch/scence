@@ -235,6 +235,7 @@ export async function GET() {
     for (const row of merged as Array<Record<string, unknown>>) {
       const campaign = row.campaign as Record<string, unknown> | null
       if (!campaign?.id) continue
+      if (row.application_status !== 'accepted' && !row._self_created) continue
       const booking = byCampaign.get(campaign.id as string) ?? campaignEventByCampaign.get(campaign.id as string)
       if (!booking) continue
       // La dirección permite a la influencer decidir si puede asistir. Brief y

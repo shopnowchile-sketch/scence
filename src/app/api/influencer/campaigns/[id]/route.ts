@@ -90,16 +90,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     delete payload.brief_url
   }
 
-  // Para decidir si postular, la influencer puede ver cuándo es el evento,
-  // pero nunca dirección ni instrucciones antes de ser aceptada.
-  const { data: eventBooking } = await admin
-    .from('bookings')
-    .select('id, starts_at, ends_at, location, location_details')
-    .eq('campaign_id', params.id)
-    .is('influencer_id', null)
-    .order('starts_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+  // El booking operativo (incluidos fecha y hora) sólo pertenece al portal de
+  // una influencer aceptada en la campaña.
+  const { data: eventBooking } = isAccepted
+    ? await admin
+      .from('bookings')
+      .select('id, starts_at, ends_at, location, location_details')
+      .eq('campaign_id', params.id)
+      .is('influencer_id', null)
+      .order('starts_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    : { data: null }
 
   const { count: acceptedCount } = await admin
     .from('campaign_influencers')
@@ -112,9 +114,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ? campaign.metadata as Record<string, unknown>
       : {}
   const fallbackLocation = typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null
-  // La dirección se muestra antes de postular; el brief sigue reservado hasta aceptación.
-  const visibleEventBooking = eventBooking
-    ?? (fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
+  const visibleEventBooking = isAccepted
+    ? eventBooking ?? (fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
+    : null
 
   return NextResponse.json({
     data: {

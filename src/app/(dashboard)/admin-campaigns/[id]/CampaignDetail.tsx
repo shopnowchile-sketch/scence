@@ -1548,12 +1548,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // sus entregables del resultado para no inflar engagement ni visualizaciones.
   const isEligibleCampaignResult = (d: CampaignDeliverableDetail) =>
     !d.influencer?.id || !noShowInfluencerIds.has(d.influencer.id)
-  const deliverablesWithMetrics = campaignDeliverables.filter(d =>
-    d.type === 'reel' && d.performance != null && isEligibleCampaignResult(d) && (d.status === 'approved' || d.status === 'published')
+  const campaignContentWithMetrics = campaignDeliverables.filter(d =>
+    d.type !== 'event_attendance'
+    && d.performance != null
+    && isEligibleCampaignResult(d)
+    && (d.status === 'approved' || d.status === 'published')
   )
-  const hasCampaignMetrics = deliverablesWithMetrics.length > 0
-  const totalViews    = deliverablesWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
-  const campaignEngagementRates = deliverablesWithMetrics
+  const hasCampaignViews = campaignContentWithMetrics.some(d => d.performance?.views != null)
+  const totalViews = campaignContentWithMetrics.reduce((sum, deliverable) => sum + (deliverable.performance?.views ?? 0), 0)
+  const campaignEngagementRates = campaignContentWithMetrics
+    .filter(d => d.type === 'reel')
     .map(d => d.engagement_rate)
     .filter((v): v is number => v != null)
   const avgCampaignEngagement = campaignEngagementRates.length > 0
@@ -2399,7 +2403,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <div className={cn('text-[10px] font-medium', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>Postulaciones</div>
             </button>
             <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
-              <div className="text-sm font-bold text-gray-900">{hasCampaignMetrics ? formatFollowers(totalViews) : '—'}</div>
+              <div className="text-sm font-bold text-gray-900">{hasCampaignViews ? formatFollowers(totalViews) : '—'}</div>
               <div className="text-[10px] font-medium text-gray-500">Visualizaciones</div>
             </button>
             <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">

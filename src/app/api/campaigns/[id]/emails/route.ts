@@ -113,6 +113,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (influencerIds.some(influencerId => noShowInfluencerIds.has(influencerId))) {
     return NextResponse.json({ error: 'Las influencers que no asistieron no pueden recibir más emails de esta campaña.' }, { status: 422 })
   }
+  if (template.key === 'campaign_content_reminder') {
+    const incompleteContentInfluencerIds = new Set((deliverables ?? [])
+      .filter(deliverable => deliverable.type !== 'event_attendance' && !isDeliverableComplete(deliverable))
+      .map(deliverable => deliverable.influencer_id))
+    if (influencerIds.some(influencerId => !incompleteContentInfluencerIds.has(influencerId))) {
+      return NextResponse.json({ error: 'El recordatorio de contenido sólo puede enviarse a influencers con entregables pendientes.' }, { status: 422 })
+    }
+  }
 
   const portalUrl = `${APP_URL}/inf-campaign/${params.id}`
   const actionUrl = safeActionUrl(body.action_url, portalUrl)

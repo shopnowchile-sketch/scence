@@ -3408,10 +3408,24 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             const visibleSubmittedDeliverables = deliverableStatusFilter
               ? submittedDeliverables.filter(deliverable => deliverable.type === 'event_attendance' || deliverable.status === deliverableStatusFilter)
               : submittedDeliverables
+            const incompleteContentInfluencerIds = new Set(
+              campaignDeliverables
+                .filter(deliverable =>
+                  deliverable.type !== 'event_attendance'
+                  && acceptedInfluencerIds.has(deliverable.influencer?.id ?? '')
+                  && !isDeliverableComplete(deliverable)
+                )
+                .map(deliverable => deliverable.influencer?.id)
+                .filter((influencerId): influencerId is string => typeof influencerId === 'string')
+            )
             const visibleDeliverableInfluencerIds = Array.from(new Set(
               visibleSubmittedDeliverables
                 .map(deliverable => deliverable.influencer?.id)
-                .filter((influencerId): influencerId is string => typeof influencerId === 'string' && !noShowInfluencerIds.has(influencerId))
+                .filter((influencerId): influencerId is string =>
+                  typeof influencerId === 'string'
+                  && !noShowInfluencerIds.has(influencerId)
+                  && incompleteContentInfluencerIds.has(influencerId)
+                )
             ))
             const allVisibleDeliverablesSelected = visibleDeliverableInfluencerIds.length > 0
               && visibleDeliverableInfluencerIds.every(influencerId => deliverableEmailSelection.has(influencerId))
@@ -3598,7 +3612,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           ratedCount={stats?.ratedCount ?? 0}
                           metrics={stats?.hasMetrics ? { views: stats.views, likes: stats.likes, comments: stats.comments, avgEngagement: stats.avgEngagement } : null}
                           inactiveNoShow={noShowInfluencerIds.has(g.influencer.id)}
-                          emailAction={!noShowInfluencerIds.has(g.influencer.id)
+                          emailAction={!noShowInfluencerIds.has(g.influencer.id) && incompleteContentInfluencerIds.has(g.influencer.id)
                             ? {
                               selected: deliverableEmailSelection.has(g.influencer.id),
                               onSelected: selected => setDeliverableEmailSelection(current => {

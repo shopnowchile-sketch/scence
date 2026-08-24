@@ -35,7 +35,7 @@ import { createClient } from '@/lib/supabase/client'
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
   if (!username) return null
-  const u = username.replace(/^@/, '')
+  const u = username.replace(/^@+/, '')
   switch (platform) {
     case 'instagram': return `https://instagram.com/${u}`
     case 'tiktok':    return `https://tiktok.com/@${u}`
@@ -1315,8 +1315,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     if (pendingMinEngagement > 0 && (primarySP?.engagement_rate ?? 0) < pendingMinEngagement) return false
     if (pendingMinRating > 0 && (inf.rating ?? 0) < pendingMinRating) return false
     if (pendingSearch.trim()) {
-      const query = pendingSearch.trim().toLowerCase()
-      const handles = (inf.influencer_social_profiles ?? []).map(profile => profile.username ?? '').join(' ')
+      const query = pendingSearch.trim().toLowerCase().replace(/^@+/, '')
+      const handles = (inf.influencer_social_profiles ?? [])
+        .map(profile => (profile.username ?? '').replace(/^@+/, ''))
+        .join(' ')
       if (![inf.display_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(query)) return false
     }
     return true
@@ -1391,8 +1393,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     if (infStatus && (ci.status ?? 'draft') !== infStatus) return false
     if (infCommune && inf.commune !== infCommune) return false
     if (infSearch.trim()) {
-      const q = infSearch.trim().toLowerCase()
-      const handles = (inf.influencer_social_profiles ?? []).map(profile => profile.username ?? '').join(' ')
+      const q = infSearch.trim().toLowerCase().replace(/^@+/, '')
+      const handles = (inf.influencer_social_profiles ?? [])
+        .map(profile => (profile.username ?? '').replace(/^@+/, ''))
+        .join(' ')
       if (![inf.display_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(q)) return false
     }
     return true
@@ -3128,10 +3132,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               </div>
                             )}
                             <div>
-                              <span className="text-left text-sm font-semibold text-gray-900">{inf.display_name}</span>
+                              <Link
+                                href={isBrandPortal ? `/brand-influencers/${inf.id}` : `/admin-influencers/${inf.id}?from=${encodeURIComponent(`/admin-campaigns/${id}?tab=influencers`)}`}
+                                className="text-left text-sm font-semibold text-gray-900 transition-colors hover:text-violet-700 hover:underline"
+                                title={`Ver ficha completa de ${inf.display_name}`}
+                              >
+                                {inf.display_name}
+                              </Link>
                               {instagramSP?.username && instagramUrl && (
                                 <a href={instagramUrl} target="_blank" rel="noopener noreferrer" onClick={event => event.stopPropagation()} className="block text-xs text-violet-600 hover:underline">
-                                  @{instagramSP.username}
+                                  @{instagramSP.username.replace(/^@+/, '')}
                                 </a>
                               )}
                             </div>

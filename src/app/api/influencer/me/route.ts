@@ -135,11 +135,24 @@ export async function PATCH(req: Request) {
         continue
       }
       if (sp.id) {
+        const { data: existing } = await admin
+          .from('influencer_social_profiles')
+          .select('username')
+          .eq('id', sp.id)
+          .eq('influencer_id', influencer.id)
+          .single()
+        const nextUsername = String(sp.username ?? '').trim().replace(/^@/, '').toLowerCase()
+        const previousUsername = String(existing?.username ?? '').trim().replace(/^@/, '').toLowerCase()
         await admin.from('influencer_social_profiles').update({
-          username: sp.username ?? null,
+          username: nextUsername || null,
           profile_url: sp.profile_url ?? null,
-          followers: sp.followers ?? 0,
-          engagement_rate: sp.engagement_rate ?? null,
+          // Seguidores y engagement son datos verificados: la influencer no
+          // puede escribirlos. Si cambia el @, se reintenta el sync sin borrar
+          // el último valor válido.
+          ...(nextUsername !== previousUsername ? {
+            synced_at: null,
+            last_synced_at: null,
+          } : {}),
         }).eq('id', sp.id).eq('influencer_id', influencer.id)
       } else {
         await admin.from('influencer_social_profiles').insert({
@@ -147,8 +160,8 @@ export async function PATCH(req: Request) {
           platform: sp.platform,
           username: sp.username ?? null,
           profile_url: sp.profile_url ?? null,
-          followers: sp.followers ?? 0,
-          engagement_rate: sp.engagement_rate ?? null,
+          followers: 0,
+          engagement_rate: null,
         })
       }
     }

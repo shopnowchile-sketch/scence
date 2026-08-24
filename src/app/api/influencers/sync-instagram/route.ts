@@ -10,6 +10,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+
+export const maxDuration = 300
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,6 +20,7 @@ const admin = createClient(
 )
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN
+const AUTOMATIC_BATCH_SIZE = 2500
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,40 +77,155 @@ function computeEngagement(profile: ApifyProfile): number | null {
 }
 
 /** Fetch all instagram social profiles, building clean handles */
-async function fetchDBProfiles(influencerIds?: string[]): Promise<DBProfile[]> {
-  let q = admin
-    .from('influencer_social_profiles')
-    .select('id, influencer_id, username, profile_url')
-    .eq('platform', 'instagram')
-
-  if (influencerIds?.length) q = q.in('influencer_id', influencerIds)
-
-  const { data, error } = await q
-  if (error) throw new Error(error.message)
-
+async function fetchDBProfiles(influencerIds?: string[], limit?: number): Promise<DBProfile[]> {
   const profiles: DBProfile[] = []
-  for (const row of data ?? []) {
-    // Try username field first, then profile_url
-    const handle = cleanHandle(row.username as string | null)
-      ?? cleanHandle(row.profile_url as string | null)
-    if (handle) {
-      profiles.push({
-        id: row.id,
-        influencer_id: row.influencer_id,
-        raw_username: (row.username as string | null) ?? '',
-        clean_handle: handle,
-      })
+  const pageSize = 500
+  for (let offset = 0; !limit || offset < limit; offset += pageSize) {
+    const take = Math.min(pageSize, limit ? limit - offset : pageSize)
+    let q = admin
+      .from('influencer_social_profiles')
+      .select('id, influencer_id, username, profile_url')
+      .eq('platform', 'instagram')
+      .order('synced_at', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + take - 1)
+    if (influencerIds?.length) q = q.in('influencer_id', influencerIds)
+    const { data, error } = await q
+    if (error) throw new Error(error.message)
+
+    for (const row of data ?? []) {
+      const handle = cleanHandle(row.username as string | null)
+        ?? cleanHandle(row.profile_url as string | null)
+      if (handle) {
+        profiles.push({
+          id: row.id,
+          influencer_id: row.influencer_id,
+          raw_username: (row.username as string | null) ?? '',
+          clean_handle: handle,
+        })
+      }
     }
+    if ((data ?? []).length < take) break
   }
   return profiles
+}
+
+async function authorizeSync(req: NextRequest): Promise<{ ok: boolean; cron: boolean; status?: number }> {
+  const cron = Boolean(process.env.CRON_SECRET)
+    && req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`
+  if (cron) return { ok: true, cron: true }
+
+  const supabase = createServerClient()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error || !user) return { ok: false, cron: false, status: 401 }
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  if (!orgId) return { ok: false, cron: false, status: 403 }
+  const { isAdmin } = await getUserRole(user.id, orgId, admin)
+  return { ok: isAdmin, cron: false, status: isAdmin ? undefined : 403 }
+}
+
+async function getRunStatus(runId: string) {
+  const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
+  if (!statusRes.ok) throw new Error(`Apify status error: ${statusRes.status}`)
+  const { data } = await statusRes.json()
+  return String(data?.status ?? 'UNKNOWN')
+}
+
+async function saveCompletedRun(runId: string) {
+  const dataRes = await fetch(
+    `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}&limit=2500&format=json`
+  )
+  if (!dataRes.ok) throw new Error(`Dataset error: ${dataRes.status}`)
+
+  const rawData = await dataRes.json()
+  const items: ApifyProfile[] = Array.isArray(rawData) ? rawData
+    : (rawData?.items ?? rawData?.data ?? [])
+  if (items.length === 0) {
+    return { status: 'SUCCEEDED', synced: 0, failed: 0, errors: [], message: 'Apify no devolvió resultados.' }
+  }
+
+  const dbProfiles = await fetchDBProfiles()
+  const byHandle = new Map<string, DBProfile[]>()
+  for (const profile of dbProfiles) {
+    byHandle.set(profile.clean_handle, [...(byHandle.get(profile.clean_handle) ?? []), profile])
+  }
+
+  const report = { synced: 0, failed: 0, errors: [] as string[], notFound: [] as string[] }
+  const syncedAt = new Date().toISOString()
+  const updates: Array<{ item: ApifyProfile; row: DBProfile; handle: string; followers: number; engagementRate: number | null; avatarUrl: string | null }> = []
+  for (const item of items) {
+    if (!item.username) continue
+    const handle = item.username.toLowerCase().trim()
+    const rows = byHandle.get(handle)
+    if (!rows?.length) {
+      report.notFound.push(handle)
+      continue
+    }
+
+    const followers = item.followersCount
+    const engagementRate = computeEngagement(item)
+    const avatarUrl = item.profilePicUrlHD ?? item.profilePicUrl ?? null
+    // Un perfil parcial/bloqueado de Apify no puede borrar ni poner en cero el
+    // último dato válido. Se deja pendiente para que el próximo cron reintente.
+    if (typeof followers !== 'number' || !Number.isFinite(followers) || followers <= 0) {
+      report.errors.push(`@${handle}: Instagram no devolvió seguidores válidos`)
+      report.failed++
+      continue
+    }
+    for (const row of rows) updates.push({ item, row, handle, followers, engagementRate, avatarUrl })
+    byHandle.delete(handle)
+  }
+
+  // Procesar con concurrencia acotada: el roster completo no queda serializado
+  // en miles de round-trips, pero tampoco sobrecarga Postgres.
+  for (let offset = 0; offset < updates.length; offset += 25) {
+    await Promise.all(updates.slice(offset, offset + 25).map(async ({ item, row, handle, followers, engagementRate, avatarUrl }) => {
+      const spUpdate: Record<string, unknown> = {
+        followers,
+        username: handle,
+        synced_at: syncedAt,
+        last_synced_at: syncedAt,
+        updated_at: syncedAt,
+      }
+      if (engagementRate !== null) spUpdate.engagement_rate = engagementRate
+      const { error: spErr } = await admin
+        .from('influencer_social_profiles')
+        .update(spUpdate)
+        .eq('id', row.id)
+      if (spErr) {
+        report.errors.push(`@${handle}: ${spErr.message}`)
+        report.failed++
+        return
+      }
+
+      const { data: influencer } = await admin
+        .from('influencers')
+        .select('metadata')
+        .eq('id', row.influencer_id)
+        .single()
+      const metadata: Record<string, unknown> = {
+        ...(influencer?.metadata as Record<string, unknown> ?? {}),
+        last_ig_sync: syncedAt,
+      }
+      if (item.biography) metadata.instagram_bio = item.biography
+      if (item.postsCount != null) metadata.instagram_posts_count = item.postsCount
+      if (item.verified != null) metadata.instagram_verified = item.verified
+      if (engagementRate !== null) metadata.instagram_engagement = engagementRate
+      await admin.from('influencers').update({
+        metadata,
+        ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+      }).eq('id', row.influencer_id)
+      report.synced++
+    }))
+  }
+  return { status: 'SUCCEEDED', ...report }
 }
 
 // ── POST — inicia run ─────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const supabase = createServerClient()
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await authorizeSync(req)
+  if (!auth.ok) return NextResponse.json({ error: auth.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: auth.status })
   if (!APIFY_TOKEN) return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
 
   let body: { influencer_ids?: string[] } = {}
@@ -139,20 +258,35 @@ export async function POST(req: NextRequest) {
 // ── GET — polling + save ──────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const supabase = createServerClient()
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await authorizeSync(req)
+  if (!auth.ok) return NextResponse.json({ error: auth.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: auth.status })
   if (!APIFY_TOKEN) return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
 
   const runId = new URL(req.url).searchParams.get('runId')
+  if (auth.cron && !runId) {
+    const profiles = await fetchDBProfiles(undefined, AUTOMATIC_BATCH_SIZE)
+    const handles = Array.from(new Set(profiles.map(profile => profile.clean_handle)))
+    if (!handles.length) return NextResponse.json({ status: 'SUCCEEDED', synced: 0, failed: 0 })
+    const started = await startApifyInstagramSync(handles)
+    if ('error' in started) return NextResponse.json({ error: started.error }, { status: 502 })
+
+    for (let attempt = 0; attempt < 52; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5000))
+      const status = await getRunStatus(started.runId)
+      if (['RUNNING', 'READY', 'INITIALIZING'].includes(status)) continue
+      if (status !== 'SUCCEEDED') {
+        return NextResponse.json({ status, error: `Run terminó con estado: ${status}` }, { status: 502 })
+      }
+      return NextResponse.json(await saveCompletedRun(started.runId))
+    }
+    return NextResponse.json({ status: 'RUNNING', runId: started.runId }, { status: 202 })
+  }
   if (!runId) return NextResponse.json({ error: 'runId requerido' }, { status: 400 })
 
   // Check run status
-  const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
-  if (!statusRes.ok) return NextResponse.json({ error: `Apify status error: ${statusRes.status}` }, { status: 502 })
-
-  const { data: runInfo } = await statusRes.json()
-  const status: string = runInfo?.status ?? 'UNKNOWN'
+  let status: string
+  try { status = await getRunStatus(runId) }
+  catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 502 }) }
 
   if (['RUNNING', 'READY', 'INITIALIZING'].includes(status)) {
     return NextResponse.json({ status })
@@ -161,108 +295,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ status, error: `Run terminó con estado: ${status}` }, { status: 502 })
   }
 
-  // Fetch dataset
-  const dataRes = await fetch(
-    `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}&limit=1000&format=json`
-  )
-  if (!dataRes.ok) return NextResponse.json({ error: `Dataset error: ${dataRes.status}` }, { status: 502 })
-
-  const rawData = await dataRes.json()
-  const items: ApifyProfile[] = Array.isArray(rawData) ? rawData
-    : (rawData?.items ?? rawData?.data ?? [])
-
-  console.log('[sync-ig GET] dataset items:', items.length,
-    '| sample usernames:', items.slice(0, 3).map((i: ApifyProfile) => i.username))
-
-  if (items.length === 0) {
-    return NextResponse.json({
-      status: 'SUCCEEDED', synced: 0, failed: 0,
-      message: 'Apify no devolvió resultados. Las cuentas pueden ser privadas o los handles incorrectos.',
-    })
-  }
-
-  // Build lookup map from DB
-  let dbProfiles: DBProfile[]
-  try { dbProfiles = await fetchDBProfiles() }
-  catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 500 }) }
-
-  // Map: clean_handle → db profile (handle collisions → first wins)
-  const byHandle = new Map<string, DBProfile>()
-  for (const p of dbProfiles) {
-    if (!byHandle.has(p.clean_handle)) byHandle.set(p.clean_handle, p)
-  }
-
-  const report = { synced: 0, failed: 0, errors: [] as string[], notFound: [] as string[] }
-
-  for (const item of items) {
-    if (!item.username) continue
-    const handle = item.username.toLowerCase().trim()
-    const row = byHandle.get(handle)
-
-    if (!row) {
-      report.notFound.push(handle)
-      continue
-    }
-
-    const followers      = item.followersCount ?? null
-    const engagementRate = computeEngagement(item)
-    const avatarUrl      = item.profilePicUrlHD ?? item.profilePicUrl ?? null
-
-    // 1. Update social_profile: followers + engagement_rate + clean username
-    const spUpdate: Record<string, unknown> = {
-      followers,
-      username: handle, // store clean handle
-    }
-    if (engagementRate !== null) spUpdate.engagement_rate = engagementRate
-
-    const { error: spErr } = await admin
-      .from('influencer_social_profiles')
-      .update(spUpdate)
-      .eq('id', row.id)
-
-    if (spErr) {
-      // fallback without engagement_rate
-      const { error: spErr2 } = await admin
-        .from('influencer_social_profiles')
-        .update({ followers, username: handle })
-        .eq('id', row.id)
-      if (spErr2) {
-        report.errors.push(`@${handle}: ${spErr2.message}`)
-        report.failed++
-        continue
-      }
-    }
-
-    // 2. Update influencer: avatar_url + metadata
-    try {
-      const { data: inf } = await admin
-        .from('influencers')
-        .select('id, avatar_url, metadata')
-        .eq('id', row.influencer_id)
-        .single()
-
-      const meta: Record<string, unknown> = { ...(inf?.metadata as Record<string, unknown> ?? {}) }
-      if (item.biography)          meta.instagram_bio         = item.biography
-      if (item.postsCount)         meta.instagram_posts_count = item.postsCount
-      if (item.verified != null)   meta.instagram_verified    = item.verified
-      if (engagementRate !== null) meta.instagram_engagement  = engagementRate
-      meta.last_ig_sync = new Date().toISOString()
-
-      const infUpdate: Record<string, unknown> = { metadata: meta }
-      // Only update avatar if influencer doesn't already have one, or update always
-      if (avatarUrl) infUpdate.avatar_url = avatarUrl
-
-      await admin.from('influencers').update(infUpdate).eq('id', row.influencer_id)
-    } catch { /* non-fatal */ }
-
-    report.synced++
-    byHandle.delete(handle)
-    console.log(`[sync-ig] ✓ @${handle}: ${followers?.toLocaleString()} seg, ${engagementRate ?? '-'}% eng, foto: ${!!avatarUrl}`)
-  }
-
-  // Remaining in byHandle = sent to Apify but not returned (private/deleted/wrong handle)
-  report.failed = byHandle.size
-  console.log(`[sync-ig] done — synced:${report.synced} failed:${report.failed} notFound:${report.notFound.length}`)
-
-  return NextResponse.json({ status: 'SUCCEEDED', ...report })
+  try { return NextResponse.json(await saveCompletedRun(runId)) }
+  catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 500 }) }
 }

@@ -501,15 +501,17 @@ export default function ProfilePage() {
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase">Seguidores</label>
-                        <input type="number" value={sp.followers} onChange={e => updateSocial(idx, 'followers', parseInt(e.target.value) || 0)} placeholder="0"
-                          className="w-full mt-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 outline-none focus:border-violet-400" />
+                        <input type="text" value={sp.followers > 0 ? sp.followers.toLocaleString('es-CL') : 'Pendiente'} disabled
+                          title="Se actualiza automáticamente desde Instagram"
+                          className="w-full mt-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-100 text-gray-500 cursor-not-allowed" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase">Engagement %</label>
-                        <input type="number" step="0.1" value={sp.engagement_rate ?? ''} onChange={e => updateSocial(idx, 'engagement_rate', parseFloat(e.target.value) || null)} placeholder="3.5"
-                          className="w-full mt-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 outline-none focus:border-violet-400" />
+                        <input type="text" value={sp.engagement_rate != null ? `${sp.engagement_rate.toFixed(2)}%` : 'Pendiente'} disabled
+                          title="Se actualiza automáticamente desde Instagram"
+                          className="w-full mt-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-100 text-gray-500 cursor-not-allowed" />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase">URL perfil</label>
@@ -517,6 +519,7 @@ export default function ProfilePage() {
                           className="w-full mt-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 outline-none focus:border-violet-400" />
                       </div>
                     </div>
+                    <p className="text-[11px] text-gray-400">Seguidores y engagement se actualizan automáticamente desde Instagram.</p>
                   </div>
                 )
               })}

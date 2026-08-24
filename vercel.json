@@ -4,11 +4,15 @@
     "app/api/campaign-deliverables/[id]/sync-metrics/route.ts": {
       "memory": 1769,
       "maxDuration": 60
+    },
+    "app/api/influencers/sync-instagram/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
     { "path": "/api/cron/brand-document-reminders", "schedule": "0 12 * * *" },
     { "path": "/api/cron/expire-attendance-confirmations", "schedule": "15 12 * * *" },
-    { "path": "/api/cron/close-expired-campaign-applications", "schedule": "5 12 * * *" }
+    { "path": "/api/cron/close-expired-campaign-applications", "schedule": "5 12 * * *" },
+    { "path": "/api/influencers/sync-instagram", "schedule": "30 10 * * *" }
   ]
 }

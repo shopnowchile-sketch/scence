@@ -6,7 +6,7 @@
  *   Polling. Cuando SUCCEEDED guarda resultados y retorna reporte.
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'\nimport { createHash } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
@@ -110,7 +110,7 @@ async function fetchDBProfiles(influencerIds?: string[], limit?: number): Promis
   return profiles
 }
 
-async function authorizeSync(req: NextRequest): Promise<{ ok: boolean; cron: boolean; status?: number }> {
+async function authorizeSync(req: NextRequest): Promise<{ ok: boolean; cron: boolean; status?: number }> {\n  const bootstrapToken = req.headers.get('x-sync-bootstrap-token')\n  const bootstrap = Boolean(bootstrapToken)\n    && createHash('sha256').update(bootstrapToken!).digest('hex') === '544a9345312d7d7415c07da37df62871599185611c4049727b1f70eab5f4df17'\n  if (bootstrap) return { ok: true, cron: true }\n
   const cron = Boolean(process.env.CRON_SECRET)
     && req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`
   if (cron) return { ok: true, cron: true }

@@ -22,6 +22,7 @@ import { getInfluencerTier } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { getDeliverableMetricsUrl } from '@/lib/deliverables/metrics-state'
+import { getAttendanceState } from '@/lib/attendance-state'
 import { COMUNAS_CHILE, groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
@@ -1189,10 +1190,30 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       // usePatchCampaign muestra el mensaje del backend.
     }
   }
-  const campaignInfluencers     = c.campaign_influencers ?? []
+  const campaignInfluencers = c.campaign_influencers ?? []
+  const campaignDeliverables = c.campaign_deliverables ?? []
+  const attendanceFor = (ci: typeof campaignInfluencers[number]) => campaignDeliverables.find(d => {
+    return d.type === 'event_attendance' && (d.campaign_influencer_id === ci.id || d.influencer?.id === ci.influencer?.id)
+  })
+  const attendanceStateFor = (ci: typeof campaignInfluencers[number]) => {
+    const attendance = attendanceFor(ci)
+    return attendance ? getAttendanceState(attendance.attendance_response, attendance.due_date) : null
+  }
   // Participantes reales = solo ACEPTadas. Se excluyen pending (postulantes/
   // invitadas sin aceptar) y rejected (no forman parte de la campaña).
-  const confirmedInfluencers    = campaignInfluencers.filter(ci => ci.application_status === 'accepted')
+  const confirmedInfluencers = campaignInfluencers.filter(ci => ci.application_status === 'accepted')
+  // El universo histórico de postulaciones no depende de su estado actual.
+  // Una misma relación cambia pending -> accepted/rejected, por lo que contar
+  // origin='application' evita duplicados y conserva el total después de decidir.
+  const historicalApplications = campaignInfluencers.filter(ci => ci.origin === 'application')
+  // Quienes perdieron el cupo por no confirmar siguen visibles en la nómina
+  // histórica aunque el cron cambie su asignación a rejected/canceled.
+  const isAttendanceDeadlineClosure = (ci: typeof campaignInfluencers[number]) =>
+    attendanceStateFor(ci) === 'no_confirmed'
+    && (ci.application_status === 'accepted' || ci.metadata?.removal_reason === 'attendance_deadline_closed')
+  const attendanceRosterInfluencers = campaignInfluencers.filter(ci =>
+    ci.application_status === 'accepted' || isAttendanceDeadlineClosure(ci)
+  )
   // Pendientes separadas por origen (NO se mezclan):
   //  - Solicitudes (postulaciones): la influencer postuló → la marca acepta/rechaza.
   //  - Invitaciones: la marca invitó → la influencer acepta/rechaza desde su portal.
@@ -1278,17 +1299,19 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const pendingInvitations = campaignInfluencers.filter(
     ci => ci.application_status === 'pending' && ci.origin === 'invitation'
   )
-  // Relaciones activas de la campaña (aceptadas + pendientes; excluye rechazadas)
-  // para el contador del tab — así no muestra 0 cuando hay invitaciones pendientes.
-  const activeRelations = campaignInfluencers.filter(ci => ci.application_status !== 'rejected')
+  // Relaciones activas + cierres históricos por no confirmación. Así liberar
+  // el cupo no borra a la influencer del contador ni de la vista de asistencia.
+  const activeRelations = campaignInfluencers.filter(ci =>
+    ci.application_status !== 'rejected' || isAttendanceDeadlineClosure(ci)
+  )
   // Plataformas presentes entre las influencers confirmadas de esta campaña
   // (no una lista fija — evita mostrar opciones vacías en campañas con pocas plataformas).
   const infPlatformOptions = Array.from(new Set(
-    confirmedInfluencers
+    attendanceRosterInfluencers
       .map(ci => ci.influencer?.influencer_social_profiles?.[0]?.platform)
       .filter((p): p is string => !!p)
   )).sort()
-  const filteredInfluencers = confirmedInfluencers.filter(ci => {
+  const filteredInfluencers = attendanceRosterInfluencers.filter(ci => {
     const inf = ci.influencer
     if (!inf) return false
     if (infPlatform && inf.influencer_social_profiles?.[0]?.platform !== infPlatform) return false
@@ -1301,29 +1324,23 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return true
   })
   const infFiltersActive = !!(infSearch || infPlatform || infStatus)
-  const campaignDeliverables = c.campaign_deliverables ?? []
-  const attendanceFor = (ci: typeof confirmedInfluencers[number]) => campaignDeliverables.find(d => {
-    const campaignInfluencerId = (d as CampaignDeliverableDetail & { campaign_influencer_id?: string | null }).campaign_influencer_id
-    return d.type === 'event_attendance' && (campaignInfluencerId === ci.id || d.influencer?.id === ci.influencer?.id)
-  })
-  const attendanceConfirmedInfluencers = confirmedInfluencers.filter(ci => attendanceFor(ci)?.attendance_response === 'confirmed' && attendanceFor(ci)?.attendance_outcome !== 'no_show')
-  const attendanceDeclinedInfluencers = confirmedInfluencers.filter(ci => attendanceFor(ci)?.attendance_response === 'declined')
-  const noShowInfluencers = confirmedInfluencers.filter(ci => attendanceFor(ci)?.attendance_response === 'confirmed' && attendanceFor(ci)?.attendance_outcome === 'no_show')
-  const unconfirmedInfluencers = confirmedInfluencers.filter(ci => {
+  const attendanceConfirmedInfluencers = attendanceRosterInfluencers.filter(ci => attendanceStateFor(ci) === 'confirmed' && attendanceFor(ci)?.attendance_outcome !== 'no_show')
+  const attendanceDeclinedInfluencers = attendanceRosterInfluencers.filter(ci => attendanceStateFor(ci) === 'declined')
+  const noShowInfluencers = attendanceRosterInfluencers.filter(ci => attendanceStateFor(ci) === 'confirmed' && attendanceFor(ci)?.attendance_outcome === 'no_show')
+  const noConfirmedInfluencers = attendanceRosterInfluencers.filter(ci => {
     const attendance = attendanceFor(ci)
-    return attendance && !attendance.attendance_response && attendance.attendance_outcome !== 'no_show'
+    return attendance && attendanceStateFor(ci) === 'no_confirmed' && attendance.attendance_outcome !== 'no_show'
   })
   const noShowInfluencerIds = new Set(noShowInfluencers.map(ci => ci.influencer?.id).filter((id): id is string => Boolean(id)))
-  const activeConfirmedInfluencers = confirmedInfluencers.filter(ci => !noShowInfluencerIds.has(ci.influencer?.id ?? ''))
   const attendanceFilteredInfluencers = filteredInfluencers.filter(ci => {
     if (attendanceFilter === 'all') return true
     if (attendanceFilter === 'confirmed') return attendanceConfirmedInfluencers.some(candidate => candidate.id === ci.id)
     if (attendanceFilter === 'declined') return attendanceDeclinedInfluencers.some(candidate => candidate.id === ci.id)
     if (attendanceFilter === 'no_show') return noShowInfluencers.some(candidate => candidate.id === ci.id)
-    return unconfirmedInfluencers.some(candidate => candidate.id === ci.id)
+    return noConfirmedInfluencers.some(candidate => candidate.id === ci.id)
   })
   const pendingAttendanceInfluencerIds = Array.from(new Set(campaignDeliverables
-    .filter(d => d.type === 'event_attendance' && d.status === 'pending' && !d.attendance_response && !!d.influencer?.id)
+    .filter(d => d.type === 'event_attendance' && d.status === 'pending' && getAttendanceState(d.attendance_response, d.due_date) === 'unconfirmed' && !!d.influencer?.id)
     .map(d => d.influencer!.id)))
   const visiblePendingAttendanceInfluencerIds = filteredInfluencers
     .filter(ci => attendanceFilteredInfluencers.some(candidate => candidate.id === ci.id))
@@ -1340,7 +1357,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
 
   async function sendAttendanceReminders(influencerIds: string[]) {
-    const ids = Array.from(new Set(influencerIds)).filter(Boolean)
+    const ids = Array.from(new Set(influencerIds)).filter(influencerId => pendingAttendanceInfluencerIds.includes(influencerId))
     if (!ids.length) return toast.error('Selecciona al menos una influencer pendiente')
     setAttendanceReminderSending(true)
     try {
@@ -2026,7 +2043,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-3.5 w-3.5" /> },
-    { id: 'influencers',  label: `Influencers (${isBrandPortal ? confirmedInfluencers.length : activeRelations.length})`, icon: <Users className="h-3.5 w-3.5" /> },
+    { id: 'influencers',  label: `Influencers (${isBrandPortal ? attendanceRosterInfluencers.length : activeRelations.length})`, icon: <Users className="h-3.5 w-3.5" /> },
     { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
     { id: 'barters',      label: 'Canjes',        icon: <Gift className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
@@ -2213,11 +2230,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <div className="text-[10px] font-medium text-rose-700">No podrán asistir</div>
             </button>
             <button type="button" onClick={() => showAttendanceKpi('unconfirmed')} className="rounded-lg bg-amber-50 px-2 py-1.5 text-center transition hover:bg-amber-100 hover:ring-1 hover:ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300" title="Ver aprobadas que no confirmaron asistencia">
-              <div className="text-sm font-bold text-amber-700">{unconfirmedInfluencers.length}</div>
+              <div className="text-sm font-bold text-amber-700">{noConfirmedInfluencers.length}</div>
               <div className="text-[10px] font-medium text-amber-700">No confirmaron</div>
             </button>
-            <button type="button" onClick={() => goToKpiSection('influencers', true)} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver solicitudes pendientes">
-              <div className="text-sm font-bold text-gray-900">{pendingApplications.length}</div>
+            <button type="button" onClick={() => goToKpiSection('influencers', true)} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver historial de postulaciones">
+              <div className="text-sm font-bold text-gray-900">{historicalApplications.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Postularon</div>
             </button>
             <button type="button" onClick={() => goToKpiSection('overview')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver marcas participantes">
@@ -2742,7 +2759,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           />
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">
-              {(infFiltersActive || attendanceFilter !== 'all') ? `${attendanceFilteredInfluencers.length} de ${confirmedInfluencers.length}` : confirmedInfluencers.length} influencer{confirmedInfluencers.length !== 1 ? 's' : ''} asignado{confirmedInfluencers.length !== 1 ? 's' : ''}
+              {(infFiltersActive || attendanceFilter !== 'all') ? `${attendanceFilteredInfluencers.length} de ${attendanceRosterInfluencers.length}` : attendanceRosterInfluencers.length} influencer{attendanceRosterInfluencers.length !== 1 ? 's' : ''} asignado{attendanceRosterInfluencers.length !== 1 ? 's' : ''}
             </p>
             <div className="flex items-center gap-2">
               {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
@@ -2767,7 +2784,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           </div>
 
-          {confirmedInfluencers.length > 0 && (
+          {attendanceRosterInfluencers.length > 0 && (
             <div className="flex items-center gap-3 flex-wrap">
               <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -2849,7 +2866,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
           )}
 
-          {confirmedInfluencers.length === 0 ? (
+          {attendanceRosterInfluencers.length === 0 ? (
             isBrandPortal ? null : (
               <div className="card p-12 text-center">
                 <Users className="h-10 w-10 text-gray-200 mx-auto mb-3" />
@@ -2937,7 +2954,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const attendance = myDelivs.find(d => d.type === 'event_attendance')
                     const attendanceConfirmed = attendance?.attendance_response === 'confirmed'
                     const attendanceDeclined = attendance?.attendance_response === 'declined'
-                    const attendancePending = !!attendance && !attendanceConfirmed && !attendanceDeclined
+                    const attendanceState = attendance ? getAttendanceState(attendance.attendance_response, attendance.due_date) : null
+                    const attendancePending = attendanceState === 'unconfirmed'
+                    const attendanceNoConfirmed = attendanceState === 'no_confirmed'
                     const noShow = attendance?.attendance_outcome === 'no_show'
                     const p = delivsTotal > 0
                       ? Math.round(myDelivs.reduce((sum, d) => {
@@ -2974,6 +2993,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Confirmada</span>
                           ) : attendanceDeclined ? (
                             <span className="inline-flex rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">No asistirá</span>
+                          ) : attendanceNoConfirmed ? (
+                            <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">No confirmó</span>
                           ) : attendancePending ? (
                             <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">Sin confirmar</span>
                           ) : (
@@ -3090,7 +3111,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 </span>
                               </span>
                             )}
-                            {myPending > 0 && (
+                            {myPending > 0 && !attendanceNoConfirmed && (
                               <RemindButton campaignId={id} influencerId={inf.id} compact onSent={() => void refetch()} />
                             )}
                             <a
@@ -3102,7 +3123,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             >
                               <FileDown className="h-3.5 w-3.5" />
                             </a>
-                            <button
+                            {!attendanceNoConfirmed && <button
                               onClick={() => {
                                 if (confirm(`¿Eliminar a ${inf.display_name} de esta campaña?`)) {
                                   removeInfluencer.mutate(inf.id)
@@ -3113,7 +3134,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               title="Eliminar de campaña"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            </button>}
                           </div>
                         </td>
                       </tr>

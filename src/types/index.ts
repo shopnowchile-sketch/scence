@@ -191,6 +191,7 @@ export interface CampaignInfluencerDetail {
 
 export interface CampaignDeliverableDetail {
   id: string
+  campaign_influencer_id?: string | null
   title: string
   type: string | null
   status: DeliverableStatus

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
+import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
 
 type Params = { params: { id: string } }
 
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!influencer || !deliverable) return NextResponse.json({ error: 'Entregable no encontrado' }, { status: 404 })
   if (deliverable.influencer_id !== influencer.id) return NextResponse.json({ error: 'No tienes acceso a este entregable' }, { status: 403 })
   if (deliverable.type !== 'event_attendance') return NextResponse.json({ error: 'Este entregable no es una confirmación de asistencia' }, { status: 422 })
-  if (deliverable.due_date && new Date(`${deliverable.due_date}T23:59:59`).getTime() < Date.now()) {
+  if (isAttendanceDeadlineExpired(deliverable.due_date)) {
     return NextResponse.json({ error: 'El plazo para confirmar ya venció y el cupo fue liberado.' }, { status: 422 })
   }
 

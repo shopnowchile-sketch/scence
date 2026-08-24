@@ -14,6 +14,7 @@ import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
@@ -153,7 +154,7 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
   const approved = items.filter(d => ['approved', 'published', 'completed'].includes(d.status)).length
   const isAttendanceExpired = (deliverable: Deliverable) => {
     if (deliverable.type !== 'event_attendance' || deliverable.attendance_response || !deliverable.due_date) return false
-    return new Date(`${deliverable.due_date}T23:59:59`).getTime() < Date.now()
+    return isAttendanceDeadlineExpired(deliverable.due_date)
   }
   const expiredAttendance = items.filter(isAttendanceExpired).length
   const pending = total - submitted - expiredAttendance

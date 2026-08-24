@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
+import { getCampaignDateKey } from '@/lib/attendance-state'
 
 type Params = { params: { id: string } }
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       .eq('type', 'event_attendance')
       .eq('status', 'pending')
       .is('attendance_response', null)
+      .gte('due_date', getCampaignDateKey())
       .in('influencer_id', ids)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     const people = (rows ?? []).map(row => ({

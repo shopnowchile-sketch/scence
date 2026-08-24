@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -310,6 +310,119 @@ function FollowersStat({ followers }: { followers: number | null }) {
   return <StatBlock value={formatFollowers(followers)} label="seguidores" />
 }
 
+type AttendanceFilter = 'all' | 'confirmed' | 'declined' | 'no_show' | 'unconfirmed'
+
+function InfluencerFiltersMenu({
+  search, platform, status, commune, attendance, platformOptions, communeOptions, active,
+  onSearch, onPlatform, onStatus, onCommune, onAttendance, onClear,
+}: {
+  search: string
+  platform: string
+  status: string
+  commune: string
+  attendance: AttendanceFilter
+  platformOptions: string[]
+  communeOptions: string[]
+  active: boolean
+  onSearch: (value: string) => void
+  onPlatform: (value: string) => void
+  onStatus: (value: string) => void
+  onCommune: (value: string) => void
+  onAttendance: (value: AttendanceFilter) => void
+  onClear: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        title="Filtros"
+        aria-label="Filtros"
+        className={cn(
+          'relative flex items-center rounded-xl border p-2 text-sm font-medium transition-colors',
+          open || active
+            ? 'border-violet-300 bg-violet-50 text-violet-700'
+            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+        )}
+      >
+        <ListFilter className="h-4 w-4" />
+        {active && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-violet-600" />}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 z-30 mt-2 w-72 space-y-3 rounded-xl border border-gray-100 bg-white p-3 shadow-lg">
+          <label className="block text-xs font-semibold text-gray-500">
+            Buscar
+            <div className="relative mt-1">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={event => onSearch(event.target.value)}
+                placeholder="Nombre, Instagram o email"
+                className="input-base py-2 pl-8 text-sm"
+              />
+            </div>
+          </label>
+          <label className="block text-xs font-semibold text-gray-500">
+            Comuna
+            <select value={commune} onChange={event => onCommune(event.target.value)} className="input-base mt-1 py-2 text-sm">
+              <option value="">Todas las comunas</option>
+              {communeOptions.map(option => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          {platformOptions.length > 0 && (
+            <label className="block text-xs font-semibold text-gray-500">
+              Plataforma
+              <select value={platform} onChange={event => onPlatform(event.target.value)} className="input-base mt-1 py-2 text-sm">
+                <option value="">Todas las plataformas</option>
+                {platformOptions.map(option => <option key={option} value={option}>{PLATFORM_ICONS[option] ?? ''} {option}</option>)}
+              </select>
+            </label>
+          )}
+          <label className="block text-xs font-semibold text-gray-500">
+            Estado
+            <select value={status} onChange={event => onStatus(event.target.value)} className="input-base mt-1 py-2 text-sm">
+              <option value="">Todos los estados</option>
+              <option value="draft">Por confirmar</option>
+              <option value="pending_approval">En revisión</option>
+              <option value="active">Activo</option>
+              <option value="paused">Pausado</option>
+              <option value="completed">Completado</option>
+              <option value="canceled">Cancelado</option>
+            </select>
+          </label>
+          <label className="block text-xs font-semibold text-gray-500">
+            Asistencia
+            <select value={attendance} onChange={event => onAttendance(event.target.value as AttendanceFilter)} className="input-base mt-1 py-2 text-sm">
+              <option value="all">Toda la asistencia</option>
+              <option value="confirmed">Confirmaron</option>
+              <option value="declined">No podrán asistir</option>
+              <option value="no_show">No asistieron</option>
+              <option value="unconfirmed">No confirmaron</option>
+            </select>
+          </label>
+          {active && (
+            <button type="button" onClick={onClear} className="flex w-full items-center justify-center gap-1.5 border-t border-gray-100 pt-3 text-xs font-semibold text-violet-600 hover:text-violet-700">
+              <X className="h-3.5 w-3.5" /> Limpiar filtros
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Métricas reales de contenido (Apify), mismo tamaño que seguidores, en fila
 // ordenada. Views/likes/comments son reales; engagement SIEMPRE calculado
 // por nosotros (nunca "alcance" — no existe reach/impressions/saves/shares).
@@ -327,56 +440,6 @@ function ContentMetricsStats({ metrics }: {
         valueClass="text-violet-600"
       />
     </div>
-  )
-}
-
-// ── Grupo por influencer. 1 solo deliverable → todo en 1 fila (avatar +
-// nombre + Instagram + tipo + link + rating + estado). Más de uno → dropdown
-// colapsable con el header arriba y cada deliverable en su propia fila adentro.
-function RemindButton({ campaignId, influencerId, compact, onSent }: { campaignId: string; influencerId: string; compact?: boolean; onSent?: () => void }) {
-  const [sending, setSending] = useState(false)
-
-  async function handleRemind() {
-    setSending(true)
-    try {
-      const res = await fetch(`/api/campaigns/${campaignId}/deliverables/remind`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ influencer_id: influencerId }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Error al enviar recordatorio')
-      toast.success('Recordatorio enviado')
-      onSent?.()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al enviar recordatorio')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  if (compact) {
-    return (
-      <button
-        onClick={handleRemind}
-        disabled={sending}
-        title="Enviar recordatorio de entregables pendientes"
-        className="p-1.5 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50 flex-shrink-0"
-      >
-        {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-      </button>
-    )
-  }
-
-  return (
-    <button
-      onClick={handleRemind}
-      disabled={sending}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 flex-shrink-0"
-    >
-      {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-      Enviar recordatorio
-    </button>
   )
 }
 
@@ -973,7 +1036,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [infSearch, setInfSearch] = useState('')
   const [infPlatform, setInfPlatform] = useState('')
   const [infStatus, setInfStatus] = useState('')
-  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'confirmed' | 'declined' | 'no_show' | 'unconfirmed'>('all')
+  const [infCommune, setInfCommune] = useState('')
+  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>('all')
   const [ciVisibleColumns, setCiVisibleColumns] = useLocalStorageState<Record<CiColumnKey, boolean>>(
     'scence:campaign-detail:approved-influencers:visibleColumns', DEFAULT_CI_COLUMNS
   )
@@ -1315,11 +1379,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       .map(ci => ci.influencer?.influencer_social_profiles?.[0]?.platform)
       .filter((p): p is string => !!p)
   )).sort()
+  const infCommuneOptions = Array.from(new Set(
+    attendanceRosterInfluencers
+      .map(ci => ci.influencer?.commune)
+      .filter((commune): commune is string => !!commune)
+  )).sort((a, b) => a.localeCompare(b, 'es'))
   const filteredInfluencers = attendanceRosterInfluencers.filter(ci => {
     const inf = ci.influencer
     if (!inf) return false
     if (infPlatform && inf.influencer_social_profiles?.[0]?.platform !== infPlatform) return false
     if (infStatus && (ci.status ?? 'draft') !== infStatus) return false
+    if (infCommune && inf.commune !== infCommune) return false
     if (infSearch.trim()) {
       const q = infSearch.trim().toLowerCase()
       const handles = (inf.influencer_social_profiles ?? []).map(profile => profile.username ?? '').join(' ')
@@ -1327,7 +1397,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
     return true
   })
-  const infFiltersActive = !!(infSearch || infPlatform || infStatus)
+  const infFiltersActive = !!(infSearch || infPlatform || infStatus || infCommune || attendanceFilter !== 'all')
   const attendanceConfirmedInfluencers = attendanceRosterInfluencers.filter(ci => attendanceStateFor(ci) === 'confirmed' && attendanceFor(ci)?.attendance_outcome !== 'no_show')
   const attendanceDeclinedInfluencers = attendanceRosterInfluencers.filter(ci => attendanceStateFor(ci) === 'declined')
   const noShowInfluencers = attendanceRosterInfluencers.filter(ci => attendanceFor(ci)?.attendance_outcome === 'no_show')
@@ -2805,11 +2875,44 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             canManage={!isBrandPortal || !!c._brand_permissions?.canEdit}
             onChanged={() => void refetch()}
           />
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between items-center gap-2">
             <p className="text-sm text-gray-500">
-              {(infFiltersActive || attendanceFilter !== 'all') ? `${attendanceFilteredInfluencers.length} de ${attendanceRosterInfluencers.length}` : attendanceRosterInfluencers.length} influencer{attendanceRosterInfluencers.length !== 1 ? 's' : ''} asignado{attendanceRosterInfluencers.length !== 1 ? 's' : ''}
+              {infFiltersActive ? `${attendanceFilteredInfluencers.length} de ${attendanceRosterInfluencers.length}` : attendanceRosterInfluencers.length} influencer{attendanceRosterInfluencers.length !== 1 ? 's' : ''} asignado{attendanceRosterInfluencers.length !== 1 ? 's' : ''}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {attendanceRosterInfluencers.length > 0 && (
+                <div className="relative z-50 flex items-center gap-1.5">
+                  <InfluencerFiltersMenu
+                    search={infSearch}
+                    platform={infPlatform}
+                    status={infStatus}
+                    commune={infCommune}
+                    attendance={attendanceFilter}
+                    platformOptions={infPlatformOptions}
+                    communeOptions={infCommuneOptions}
+                    active={infFiltersActive}
+                    onSearch={setInfSearch}
+                    onPlatform={setInfPlatform}
+                    onStatus={setInfStatus}
+                    onCommune={setInfCommune}
+                    onAttendance={setAttendanceFilter}
+                    onClear={() => {
+                      setInfSearch('')
+                      setInfPlatform('')
+                      setInfStatus('')
+                      setInfCommune('')
+                      setAttendanceFilter('all')
+                    }}
+                  />
+                  <ColumnVisibilityMenu
+                    columns={CI_COLUMNS}
+                    visible={ciVisibleColumns}
+                    onToggle={toggleCiColumn}
+                    onReset={() => setCiVisibleColumns(DEFAULT_CI_COLUMNS)}
+                    iconOnly
+                  />
+                </div>
+              )}
               {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
                 <a href={`/api/campaigns/${id}/influencers/export`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
                   <FileDown className="h-4 w-4" /> Excel
@@ -2831,88 +2934,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </Link>}
             </div>
           </div>
-
-          {attendanceRosterInfluencers.length > 0 && (
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px] max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar nombre, Instagram o email..."
-                  value={infSearch}
-                  onChange={e => setInfSearch(e.target.value)}
-                  className="input-base pl-9"
-                />
-                {infSearch && (
-                  <button onClick={() => setInfSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {infPlatformOptions.length > 0 && (
-                <div className="relative">
-                  <select
-                    value={infPlatform}
-                    onChange={e => setInfPlatform(e.target.value)}
-                    className={cn('input-base appearance-none pr-8 cursor-pointer',
-                      infPlatform && 'border-violet-400 text-violet-700')}
-                  >
-                    <option value="">Todas las plataformas</option>
-                    {infPlatformOptions.map(p => (
-                      <option key={p} value={p}>{PLATFORM_ICONS[p] ?? ''} {p.charAt(0).toUpperCase() + p.slice(1)}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                </div>
-              )}
-
-              <div className="relative">
-                <select
-                  value={infStatus}
-                  onChange={e => setInfStatus(e.target.value)}
-                  className={cn('input-base appearance-none pr-8 cursor-pointer',
-                    infStatus && 'border-violet-400 text-violet-700')}
-                >
-                  <option value="">Todos los estados</option>
-                  <option value="draft">Por confirmar</option>
-                  <option value="pending_approval">En revisión</option>
-                  <option value="active">Activo</option>
-                  <option value="paused">Pausado</option>
-                  <option value="completed">Completado</option>
-                  <option value="canceled">Cancelado</option>
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-              </div>
-
-              <div className="relative">
-                <select value={attendanceFilter} onChange={e => setAttendanceFilter(e.target.value as typeof attendanceFilter)} className={cn('input-base appearance-none pr-8 cursor-pointer', attendanceFilter !== 'all' && 'border-violet-400 text-violet-700')}>
-                  <option value="all">Toda la asistencia</option>
-                  <option value="confirmed">Confirmaron</option>
-                  <option value="declined">No podrán asistir</option>
-                  <option value="no_show">No asistieron</option>
-                  <option value="unconfirmed">No confirmaron</option>
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-              </div>
-
-              <ColumnVisibilityMenu
-                columns={CI_COLUMNS}
-                visible={ciVisibleColumns}
-                onToggle={toggleCiColumn}
-                onReset={() => setCiVisibleColumns(DEFAULT_CI_COLUMNS)}
-              />
-
-              {(infFiltersActive || attendanceFilter !== 'all') && (
-                <button
-                  onClick={() => { setInfSearch(''); setInfPlatform(''); setInfStatus(''); setAttendanceFilter('all') }}
-                  className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700 px-3 py-2 rounded-lg hover:bg-violet-50 transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" /> Limpiar
-                </button>
-              )}
-            </div>
-          )}
 
           {attendanceRosterInfluencers.length === 0 ? (
             isBrandPortal ? null : (
@@ -3169,8 +3190,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 </span>
                               </span>
                             )}
-                            {myPending > 0 && !attendanceNoConfirmed && (
-                              <RemindButton campaignId={id} influencerId={inf.id} compact onSent={() => void refetch()} />
+                            {myPending > 0 && !attendanceNoConfirmed && ci.application_status === 'accepted' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEmailSelection(new Set([inf.id]))
+                                  setShowCampaignEmailModal(true)
+                                }}
+                                title="Enviar email y elegir template"
+                                className="p-1.5 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors flex-shrink-0"
+                              >
+                                <Mail className="h-3.5 w-3.5" />
+                              </button>
                             )}
                             <a
                               href={`/api/campaigns/${id}/influencer-report?influencer_id=${inf.id}`}

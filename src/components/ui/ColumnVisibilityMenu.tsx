@@ -47,8 +47,8 @@ export function ColumnVisibilityMenu<K extends string>({
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        title={iconOnly ? 'Seleccionar columnas' : undefined}
-        aria-label={iconOnly ? 'Seleccionar columnas' : undefined}
+        title={iconOnly ? 'Columnas' : undefined}
+        aria-label={iconOnly ? 'Columnas' : undefined}
         className={cn(
           'flex items-center rounded-xl border text-sm font-medium transition-colors',
           iconOnly ? 'p-2' : 'gap-1.5 px-3 py-2.5',

@@ -44,9 +44,11 @@ export async function GET() {
   // Filter out canceled campaigns AND draft/pending_approval (preasignación no
   // activada: la influencer no debe ver esas campañas ni sus deliverables).
   const HIDDEN = new Set(['canceled', 'draft', 'pending_approval'])
-  const filtered = (data ?? []).filter(ci =>
-    !HIDDEN.has(String((ci.campaign as unknown as { status?: string } | null)?.status ?? ''))
-  )
+  const filtered = (data ?? []).filter(ci => {
+    const campaignStatus = String((ci.campaign as unknown as { status?: string } | null)?.status ?? '')
+    if (HIDDEN.has(campaignStatus)) return false
+    return campaignStatus !== 'completed' || ci.application_status === 'accepted'
+  })
 
   return NextResponse.json({ data: filtered })
 }

@@ -83,7 +83,12 @@ export async function GET() {
   const HIDDEN_ASSIGNED_STATUSES = new Set(['draft', 'pending_approval'])
   const visibleAssigned = (assigned ?? []).filter((ci: Record<string, unknown>) => {
     const camp = ci.campaign as Record<string, unknown> | null
-    return !HIDDEN_ASSIGNED_STATUSES.has(String(camp?.status ?? ''))
+    const campaignStatus = String(camp?.status ?? '')
+    if (HIDDEN_ASSIGNED_STATUSES.has(campaignStatus)) return false
+    // Una campaña completada queda como historial únicamente para quienes
+    // efectivamente fueron aceptadas para participar (incluye no-show).
+    if (campaignStatus === 'completed') return ci.application_status === 'accepted'
+    return true
   })
 
   // Rechazadas sin participación real: si la postulación/invitación quedó

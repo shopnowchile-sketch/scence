@@ -8,6 +8,17 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient()
   const now = new Date()
   const today = getCampaignDateKey(now)
+
+  // La fecha de término es la fuente de verdad para cerrar campañas. Reutilizar
+  // este cron evita mantener campañas vencidas visibles como oportunidades.
+  const { data: completedCampaigns, error: campaignsError } = await admin
+    .from('campaigns')
+    .update({ status: 'completed', updated_at: now.toISOString() })
+    .eq('status', 'active')
+    .lt('end_date', today)
+    .select('id')
+  if (campaignsError) return NextResponse.json({ error: campaignsError.message }, { status: 500 })
+
   const { data: overdue, error } = await admin.from('campaign_deliverables')
     .select('id, status')
     .eq('type', 'event_attendance').is('attendance_response', null).lt('due_date', today)
@@ -57,5 +68,5 @@ export async function GET(request: NextRequest) {
       if (updated) released += 1
     }
   }
-  return NextResponse.json({ ok: true, released })
+  return NextResponse.json({ ok: true, released, campaigns_completed: completedCampaigns?.length ?? 0 })
 }

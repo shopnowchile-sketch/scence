@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
+import { getCampaignDateKey } from '@/lib/attendance-state'
 
 // GET /api/influencer/campaigns/open
 // Returns active campaigns the influencer is NOT yet part of (open to apply)
@@ -10,6 +11,7 @@ export async function GET() {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  const today = getCampaignDateKey()
 
   const { data: influencer } = await admin
     .from('influencers')
@@ -50,6 +52,7 @@ export async function GET() {
     `)
     .eq('visibility', 'open')
     .eq('status', 'active')
+    .or(`end_date.is.null,end_date.gte.${today}`)
     .order('start_date', { ascending: true })
     .limit(50)
 

@@ -220,6 +220,7 @@ export function NewInvoiceModal({
   initialCampaign,
   initialClientName = '',
   initialClientEmail = '',
+  clientOptions,
   lockCampaign = false,
   onCreated,
 }: {
@@ -227,6 +228,7 @@ export function NewInvoiceModal({
   initialCampaign?: { id: string; name: string }
   initialClientName?: string
   initialClientEmail?: string
+  clientOptions?: Array<{ id: string; name: string; email?: string | null }>
   lockCampaign?: boolean
   onCreated?: () => void
 }) {
@@ -237,6 +239,7 @@ export function NewInvoiceModal({
     client_name: initialClientName, client_email: initialClientEmail, campaign_id: initialCampaign?.id ?? '',
     issue_date: today, due_date: in30, tax_rate: 19, currency: 'CLP', notes: '',
   })
+  const [selectedClientId, setSelectedClientId] = useState('')
   const [items, setItems] = useState<LineItem[]>([{ description: '', quantity: 1, unit_price: 0 }])
   const create = useCreateInvoice()
   const { data: campaignsData } = useCampaignsList({ limit: 100 })
@@ -280,12 +283,40 @@ export function NewInvoiceModal({
           {/* Client */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Nombre del cliente *</label>
-              <input className="input" value={form.client_name} onChange={e => f('client_name', e.target.value)} placeholder="Ej. Nike LATAM" />
+              <label className="label">{clientOptions ? 'Marca participante *' : 'Nombre del cliente *'}</label>
+              {clientOptions ? (
+                <div className="relative">
+                  <select
+                    className="input appearance-none pr-8"
+                    value={selectedClientId}
+                    onChange={event => {
+                      const selected = clientOptions.find(option => option.id === event.target.value)
+                      setSelectedClientId(event.target.value)
+                      setForm(current => ({
+                        ...current,
+                        client_name: selected?.name ?? '',
+                        client_email: selected?.email ?? '',
+                      }))
+                    }}
+                  >
+                    <option value="">Seleccionar marca</option>
+                    {clientOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                </div>
+              ) : (
+                <input className="input" value={form.client_name} onChange={e => f('client_name', e.target.value)} placeholder="Ej. Nike LATAM" />
+              )}
             </div>
             <div>
               <label className="label">Email del cliente</label>
-              <input className="input" type="email" value={form.client_email} onChange={e => f('client_email', e.target.value)} placeholder="billing@cliente.com" />
+              <input
+                className="input"
+                type="email"
+                value={form.client_email}
+                onChange={e => f('client_email', e.target.value)}
+                placeholder="billing@cliente.com"
+              />
             </div>
           </div>
 

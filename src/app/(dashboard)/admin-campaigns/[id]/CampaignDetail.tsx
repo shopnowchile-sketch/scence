@@ -1441,7 +1441,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     .filter(ci => {
       const attendance = attendanceFor(ci)
       const state = attendance ? getAttendanceState(attendance.attendance_response, attendance.due_date) : null
-      return ci.application_status === 'accepted' && (state === 'unconfirmed' || state === 'no_confirmed') && !!ci.influencer?.id
+      return ci.application_status === 'accepted'
+        && attendance?.attendance_outcome !== 'no_show'
+        && (state === 'unconfirmed' || state === 'no_confirmed')
+        && !!ci.influencer?.id
     })
     .map(ci => ci.influencer!.id)
   const allVisibleAcceptedSelected = visibleAcceptedInfluencerIds.length > 0
@@ -1537,6 +1540,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     ...(((c as unknown as { campaign_brands?: Array<{ brand?: Record<string, unknown> }> }).campaign_brands ?? [])
       .map(cb => cb.brand ? { ...cb.brand, _role: 'Colaboradora' } : null)),
   ].filter(Boolean) as Array<Record<string, unknown>>
+  const invoiceRecipientBrands = campaignBrands
+    .filter(brand => brand._role === 'Colaboradora' && brand.id && brand.name)
+    .map(brand => ({
+      id: String(brand.id),
+      name: String(brand.name),
+      email: brand.billing_email ? String(brand.billing_email) : brand.contact_email ? String(brand.contact_email) : null,
+    }))
   const briefAsset = campaignAssets.find(asset => {
     const metadata = asset.metadata as Record<string, unknown> | undefined
     return metadata?.asset_type === 'brief'
@@ -3046,7 +3056,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         )}
                       >
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          {ci.application_status === 'accepted' && (attendancePending || attendanceNoConfirmed) && (
+                          {ci.application_status === 'accepted' && !noShow && (attendancePending || attendanceNoConfirmed) && (
                             <input
                               type="checkbox"
                               checked={emailSelection.has(inf.id)}
@@ -3398,6 +3408,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             const visibleSubmittedDeliverables = deliverableStatusFilter
               ? submittedDeliverables.filter(deliverable => deliverable.type === 'event_attendance' || deliverable.status === deliverableStatusFilter)
               : submittedDeliverables
+            const visibleDeliverableInfluencerIds = Array.from(new Set(
+              visibleSubmittedDeliverables
+                .map(deliverable => deliverable.influencer?.id)
+                .filter((influencerId): influencerId is string => typeof influencerId === 'string' && !noShowInfluencerIds.has(influencerId))
+            ))
+            const allVisibleDeliverablesSelected = visibleDeliverableInfluencerIds.length > 0
+              && visibleDeliverableInfluencerIds.every(influencerId => deliverableEmailSelection.has(influencerId))
+
+            function toggleVisibleDeliverableInfluencers() {
+              setDeliverableEmailSelection(current => {
+                const next = new Set(current)
+                if (allVisibleDeliverablesSelected) visibleDeliverableInfluencerIds.forEach(influencerId => next.delete(influencerId))
+                else visibleDeliverableInfluencerIds.forEach(influencerId => next.add(influencerId))
+                return next
+              })
+            }
 
             return (
               <>
@@ -3425,6 +3451,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     })}
                   </div>
                   <div className="flex items-center gap-2">
+                    {visibleDeliverableInfluencerIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={toggleVisibleDeliverableInfluencers}
+                        title={allVisibleDeliverablesSelected ? 'Deseleccionar todas las influencers visibles' : 'Seleccionar todas las influencers visibles'}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                      >
+                        <CheckCircle2 className={cn('h-3.5 w-3.5', allVisibleDeliverablesSelected ? 'text-violet-600' : 'text-gray-400')} />
+                        {allVisibleDeliverablesSelected ? 'Deseleccionar todas' : 'Seleccionar todas'}
+                      </button>
+                    )}
                     <DeliverableSortMenu value={deliverableSort} onChange={setDeliverableSort} />
                     <button
                       type="button"
@@ -3857,8 +3894,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <h3 className="text-sm font-semibold text-gray-700">Facturas de esta campaña</h3>
             <div className="flex items-center gap-3">
               {(!isBrandPortal || c._brand_permissions?.canEdit) && (
-                <button type="button" onClick={() => setShowCampaignInvoiceModal(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-lg hover:bg-violet-700">
+                <button
+                  type="button"
+                  onClick={() => setShowCampaignInvoiceModal(true)}
+                  disabled={invoiceRecipientBrands.length === 0}
+                  title={invoiceRecipientBrands.length > 0 ? 'Crear factura para una marca participante' : 'No hay marcas participantes para facturar'}
+                  className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   <Plus className="h-4 w-4" /> Crear factura
                 </button>
               )}
@@ -3886,12 +3928,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
       )}
 
-      {showCampaignInvoiceModal && (
+      {showCampaignInvoiceModal && invoiceRecipientBrands.length > 0 && (
         <NewInvoiceModal
           onClose={() => setShowCampaignInvoiceModal(false)}
           initialCampaign={{ id, name: c.name }}
-          initialClientName={String((c.brand as unknown as { name?: string } | null)?.name ?? '')}
-          initialClientEmail={String((c.brand as unknown as { contact_email?: string } | null)?.contact_email ?? '')}
+          clientOptions={invoiceRecipientBrands}
           lockCampaign
           onCreated={() => void reloadCampaignInvoices()}
         />

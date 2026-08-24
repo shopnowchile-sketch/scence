@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
+import { attendanceClosedEmail, attendanceConfirmationEmail, getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
+import { buildManualAttendanceUpdate, type ManualAttendanceAction } from '@/lib/manual-attendance'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-
-function attendanceConfirmationEmail({ influencerName, campaignName, campaignId, dueDate }: {
-  influencerName: string; campaignName: string; campaignId: string; dueDate: string | null
-}) {
-  const dueLabel = dueDate
-    ? new Date(`${dueDate}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
-    : null
-  return `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fb;margin:0;padding:32px 0;color:#1f2937"><div style="max-width:540px;margin:auto;background:#fff;border-radius:18px;overflow:hidden"><div style="padding:28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff"><b style="font-size:20px">Confirma tu asistencia</b></div><div style="padding:28px"><p>Hola ${influencerName},</p><p>Ya quedaste aceptada en <b>${campaignName}</b>. Para asegurar tu cupo, confirma tu asistencia desde tu perfil de SCENCE.</p>${dueLabel ? `<p><b>Fecha límite:</b> ${dueLabel}</p>` : ''}<a href="${APP_URL}/inf-campaign/${campaignId}" style="display:block;padding:14px;border-radius:10px;background:#7c3aed;color:#fff;text-align:center;font-weight:700;text-decoration:none">Confirmar asistencia</a></div></div></body></html>`
-}
 
 type Params = { params: { id: string } }
 
@@ -302,7 +294,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
             from: FROM_EMAIL,
             to: influencer.email,
             subject: `Cupos cerrados: ${campaign?.name ?? 'campaña'}`,
-            html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fb;margin:0;padding:32px;color:#1f2937"><div style="max-width:540px;margin:auto;background:#fff;border-radius:18px;padding:28px"><p>Hola ${influencer.display_name ?? 'Influencer'},</p><p>Lo sentimos, no confirmaste tu asistencia antes de la fecha límite y los cupos se cerraron.</p></div></body></html>`,
+            html: attendanceClosedEmail({ influencerName: influencer.display_name ?? 'Influencer' }),
           })
           if (emailError) console.error('[DELETE /api/campaigns/[id]/influencers] attendance deadline email', emailError)
         }
@@ -374,13 +366,79 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { influencer_id, ...updates } = body
+  const { influencer_id, attendance_action, ...updates } = body
 
   if (!influencer_id) {
     return NextResponse.json({ error: 'influencer_id is required' }, { status: 422 })
   }
 
   const admin = createAdminClient()
+
+  if (attendance_action !== undefined) {
+    if (!['confirmed_client', 'attended', 'no_show'].includes(String(attendance_action))) {
+      return NextResponse.json({ error: 'Acción de asistencia inválida.' }, { status: 422 })
+    }
+
+    const { data: relation, error: relationError } = await admin.from('campaign_influencers')
+      .select('id, application_status, status, metadata')
+      .eq('campaign_id', params.id)
+      .eq('influencer_id', influencer_id as string)
+      .maybeSingle()
+    if (relationError) return NextResponse.json({ error: relationError.message }, { status: 500 })
+    const metadata = (relation?.metadata as Record<string, unknown> | null) ?? {}
+    const isDeadlineClosure = metadata.removal_reason === 'attendance_deadline_closed'
+    if (!relation || (relation.application_status !== 'accepted' && !isDeadlineClosure)) {
+      return NextResponse.json({ error: 'La influencer no pertenece a esta campaña como participante aceptada.' }, { status: 422 })
+    }
+
+    const { data: attendance, error: attendanceError } = await admin.from('campaign_deliverables')
+      .select('id, attendance_response, attendance_note')
+      .eq('campaign_id', params.id)
+      .eq('influencer_id', influencer_id as string)
+      .eq('type', 'event_attendance')
+      .limit(1)
+      .maybeSingle()
+    if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 })
+    if (!attendance) return NextResponse.json({ error: 'Esta influencer no tiene confirmación de asistencia en la campaña.' }, { status: 422 })
+
+    const now = new Date().toISOString()
+    const attendanceUpdate = buildManualAttendanceUpdate({
+      action: attendance_action as ManualAttendanceAction,
+      currentResponse: attendance.attendance_response,
+      currentNote: attendance.attendance_note,
+      now,
+    })
+    let reinstated = false
+    if (attendance_action === 'attended' && isDeadlineClosure) {
+      const { removal_reason: _removalReason, removal_message: _removalMessage, ...preservedMetadata } = metadata
+      const { error: reinstateError } = await admin.from('campaign_influencers').update({
+        application_status: 'accepted',
+        status: 'active',
+        metadata: { ...preservedMetadata, attendance_reinstated_at: now, attendance_reinstated_by: user.id },
+        updated_at: now,
+      }).eq('id', relation.id)
+      if (reinstateError) return NextResponse.json({ error: reinstateError.message }, { status: 500 })
+      reinstated = true
+    }
+
+    const { error: updateAttendanceError } = await admin.from('campaign_deliverables')
+      .update(attendanceUpdate)
+      .eq('id', attendance.id)
+    if (updateAttendanceError) {
+      if (reinstated) {
+        await admin.from('campaign_influencers').update({
+          application_status: relation.application_status,
+          status: relation.status,
+          metadata,
+          updated_at: now,
+        }).eq('id', relation.id)
+      }
+      return NextResponse.json({ error: updateAttendanceError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ data: { influencer_id, attendance_action } })
+  }
+
   const { data, error } = await admin
     .from('campaign_influencers')
     .update({ ...updates, updated_at: new Date().toISOString() })

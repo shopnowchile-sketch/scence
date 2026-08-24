@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
-import { FROM_EMAIL, getResend } from '@/lib/resend'
+import { attendanceReminderEmail, FROM_EMAIL, getResend } from '@/lib/resend'
 import { getCampaignDateKey } from '@/lib/attendance-state'
 
 type Params = { params: { id: string } }
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-
-function mailHtml(name: string, campaign: string, campaignId: string, dueDate: string, message?: string) {
-  return `<!doctype html><html><body style="margin:0;background:#f7f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1f2937"><div style="max-width:540px;margin:32px auto;background:#fff;border-radius:18px;overflow:hidden"><div style="padding:28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff"><div style="font-size:28px">✋</div><b style="font-size:20px">Confirma tu asistencia</b></div><div style="padding:28px"><p>Hola ${name},</p><p>Te necesitamos para confirmar si asistirás a <b>${campaign}</b>.</p>${message ? `<div style="padding:14px;border-radius:10px;background:#f5f3ff">${message}</div>` : ''}<p><b>Fecha límite:</b> ${dueDate}</p><p style="padding:12px;border-radius:10px;background:#fff7ed;color:#9a3412"><b>Importante:</b> si no confirmas dentro del plazo, tu cupo se liberará para poder invitar a otra creadora.</p><a href="${APP_URL}/inf-campaign/${campaignId}" style="display:block;padding:14px;border-radius:10px;background:#7c3aed;color:#fff;text-align:center;font-weight:700;text-decoration:none">Confirmar en Scence</a><p style="font-size:12px;color:#6b7280">Responde Sí, asistiré o No podré asistir. Tu respuesta ayuda a organizar la experiencia.</p></div></div></body></html>`
-}
-
 async function canManage(admin: ReturnType<typeof createAdminClient>, user: { id: string; user_metadata?: Record<string, unknown> }, campaignId: string) {
   const { data: campaign } = await admin.from('campaigns').select('id, organization_id, brand_id, created_by_brand_id').eq('id', campaignId).maybeSingle()
   if (!campaign) return { allowed: false, campaign: null }
@@ -51,7 +45,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!people.length) return NextResponse.json({ error: 'No hay confirmaciones pendientes con email disponible.' }, { status: 422 })
     const result = await getResend().batch.send(people.map(person => {
       const dueLabel = new Date(`${person.dueDate}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
-      return { from: FROM_EMAIL, to: person.email!, subject: `Recordatorio: confirma tu asistencia antes del ${dueLabel}`, html: mailHtml(person.name, campaign.name, params.id, dueLabel, person.message) }
+      return { from: FROM_EMAIL, to: person.email!, subject: `Recordatorio: confirma tu asistencia antes del ${dueLabel}`, html: attendanceReminderEmail({ influencerName: person.name, campaignName: campaign.name, campaignId: params.id, dueDate: dueLabel, message: person.message }) }
     }))
     if (result.error) return NextResponse.json({ error: 'No se pudo enviar el recordatorio.' }, { status: 500 })
     return NextResponse.json({ data: { sent: people.length } })
@@ -99,7 +93,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     })).filter(person => !!person.email)
     const dueLabel = new Date(`${body.due_date}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     if (people.length) {
-      const result = await getResend().batch.send(people.map(person => ({ from: FROM_EMAIL, to: person.email!, subject: `Confirma tu asistencia antes del ${dueLabel}`, html: mailHtml(person.name, campaign.name, params.id, dueLabel, body.message?.trim()) })))
+      const result = await getResend().batch.send(people.map(person => ({ from: FROM_EMAIL, to: person.email!, subject: `Confirma tu asistencia antes del ${dueLabel}`, html: attendanceReminderEmail({ influencerName: person.name, campaignName: campaign.name, campaignId: params.id, dueDate: dueLabel, message: body.message?.trim() }) })))
       if (!result.error) emailed = people.length
     }
   }

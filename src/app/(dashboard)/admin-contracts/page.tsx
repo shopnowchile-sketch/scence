@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   FileText, Plus, X, Eye, Trash2, Copy, CheckCheck,
   ChevronDown, Sparkles, Search, AlertCircle, Loader2,
-  FileSignature, RefreshCw,
+  FileSignature, RefreshCw, Mail,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { NDA_TEMPLATE_ES, templateVariables } from '@/lib/document-templates'
+import { EMAIL_CATALOG, type EmailTemplateDefinition } from '@/lib/email-catalog'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type CampaignType =
@@ -109,6 +110,37 @@ function renderPreview(content: string, values: Record<string, string> = SAMPLE_
 function extractVariables(content: string): string[] {
   const matches = content.match(/\{\{[a-z_]+\}\}/g) ?? []
   return Array.from(new Set(matches))
+}
+
+function EmailPreviewModal({ template, onClose }: { template: EmailTemplateDefinition; onClose: () => void }) {
+  const subject = template.defaultSubject
+    .replaceAll('{{campaign_name}}', 'Campaña Verano SCENCE')
+    .replaceAll('{{influencer_name}}', 'Valentina Reyes')
+    .replaceAll('{{brand_name}}', 'Marca Ejemplo')
+    .replaceAll('{{ticket_title}}', 'Ayuda con mi campaña')
+    .replaceAll('{{plan_name}}', 'Growth')
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4" onClick={onClose}>
+      <div className="mx-auto my-8 max-w-2xl rounded-2xl bg-white shadow-xl" onClick={event => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b p-5">
+          <div><h2 className="font-bold text-gray-900">{template.name}</h2><p className="text-xs text-gray-400">Vista previa del catálogo central</p></div>
+          <button onClick={onClose} aria-label="Cerrar"><X className="h-5 w-5 text-gray-400" /></button>
+        </div>
+        <div className="space-y-4 p-6">
+          <div className="rounded-xl border bg-gray-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Asunto</p><p className="mt-1 text-sm font-semibold text-gray-900">{subject}</p></div>
+          <div className="overflow-hidden rounded-xl border bg-white">
+            <div className="bg-gradient-to-r from-violet-600 to-indigo-600 p-6 text-center text-lg font-black text-white">SCENCE</div>
+            <div className="space-y-4 p-6 text-sm leading-6 text-gray-600">
+              <p>Hola Valentina,</p>
+              <p>{template.defaultMessage ?? template.description}</p>
+              {template.defaultButtonLabel && <div className="rounded-lg bg-violet-600 px-4 py-3 text-center font-semibold text-white">{template.defaultButtonLabel}</div>}
+            </div>
+          </div>
+          <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Variables resueltas al enviar</p><div className="flex flex-wrap gap-2">{template.requiredVariables.map(variable => <code key={variable} className="rounded bg-violet-50 px-2 py-1 text-xs text-violet-700">{`{{${variable}}}`}</code>)}</div></div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Empty State ───────────────────────────────────────────────────────────────
@@ -676,6 +708,7 @@ function TemplateCard({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ContractsPage() {
+  const [templateCategory, setTemplateCategory] = useState<'documents' | 'emails'>('documents')
   const [templates, setTemplates] = useState<ContractTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -688,6 +721,7 @@ export default function ContractsPage() {
   const [generateTarget, setGenerateTarget] = useState<ContractTemplate | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ContractTemplate | null>(null)
   const [dbError, setDbError] = useState<string | null>(null)
+  const [emailPreviewTarget, setEmailPreviewTarget] = useState<EmailTemplateDefinition | null>(null)
 
   const createNdaTemplate = async () => {
     try {
@@ -739,6 +773,7 @@ export default function ContractsPage() {
     const matchType = !filterType || t.campaign_type === filterType
     return matchSearch && matchType
   })
+  const filteredEmails = EMAIL_CATALOG.filter(template => !search || [template.name, template.description, template.category].join(' ').toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div className="space-y-6">
@@ -747,19 +782,25 @@ export default function ContractsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Templates</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Modelos reutilizables para contratos, NDA y futuros documentos
+            Catálogo reutilizable de documentos y emails de SCENCE
           </p>
         </div>
-        <div className="flex gap-2">
+        {templateCategory === 'documents' && <div className="flex gap-2">
           <button onClick={createNdaTemplate} className="inline-flex items-center gap-2 border border-violet-200 text-violet-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-50 transition-colors">
             <FileSignature className="h-4 w-4" /> Crear NDA
           </button>
           <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors shadow-sm">
             <Plus className="h-4 w-4" /> Nueva plantilla
           </button>
-        </div>
+        </div>}
       </div>
 
+      <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+        <button onClick={() => setTemplateCategory('documents')} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${templateCategory === 'documents' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500'}`}><FileText className="h-4 w-4" />Documentos</button>
+        <button onClick={() => setTemplateCategory('emails')} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${templateCategory === 'emails' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500'}`}><Mail className="h-4 w-4" />Emails ({EMAIL_CATALOG.length})</button>
+      </div>
+
+      {templateCategory === 'documents' ? <>
       {/* Stats bar */}
       {templates.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -846,6 +887,26 @@ export default function ContractsPage() {
         </div>
       )}
 
+      </> : <>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input className="input-base pl-9" placeholder="Buscar emails…" value={search} onChange={event => setSearch(event.target.value)} />
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredEmails.map(template => (
+            <div key={template.key} className="card flex flex-col p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0"><h3 className="truncate text-sm font-bold text-gray-900">{template.name}</h3><p className="mt-1 text-xs capitalize text-gray-400">{template.category} · {template.audience}</p></div>
+                <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${template.usage === 'automatic' ? 'bg-gray-100 text-gray-600' : template.usage === 'manual' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}>{template.usage === 'automatic' ? 'Automático' : template.usage === 'manual' ? 'Manual' : 'Auto + manual'}</span>
+              </div>
+              <p className="mt-3 flex-1 text-sm leading-5 text-gray-500">{template.description}</p>
+              <p className="mt-3 truncate rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">{template.defaultSubject}</p>
+              <button onClick={() => setEmailPreviewTarget(template)} className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50"><Eye className="h-3.5 w-3.5" />Preview</button>
+            </div>
+          ))}
+        </div>
+      </>}
+
       {/* Modals */}
       {showCreate && (
         <TemplateModal
@@ -879,6 +940,7 @@ export default function ContractsPage() {
           onDeleted={loadTemplates}
         />
       )}
+      {emailPreviewTarget && <EmailPreviewModal template={emailPreviewTarget} onClose={() => setEmailPreviewTarget(null)} />}
     </div>
   )
 }

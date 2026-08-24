@@ -115,6 +115,9 @@ export interface DeliverableJoin {
   published_at: string | null
   updated_at: string | null
   content_url: string | null
+  attendance_outcome?: string | null
+  attendance_outcome_at?: string | null
+  attendance_note?: string | null
   campaign: { id: string; name: string } | null
 }
 

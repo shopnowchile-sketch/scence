@@ -1,4 +1,4 @@
-export type ManualAttendanceAction = 'confirmed_client' | 'attended' | 'no_show'
+export type ManualAttendanceAction = 'confirmed_client' | 'attended' | 'no_show' | 'no_show_unconfirmed'
 
 export function buildManualAttendanceUpdate({
   action,
@@ -23,12 +23,16 @@ export function buildManualAttendanceUpdate({
     update.attendance_outcome_at = now
     update.attendance_note = currentNote || 'Asistencia registrada manualmente'
     update.status = 'approved'
-  } else {
+  } else if (action === 'no_show') {
     update.attendance_response = 'confirmed'
     if (currentResponse !== 'confirmed') update.attendance_responded_at = now
     update.attendance_outcome = 'no_show'
     update.attendance_outcome_at = now
     update.attendance_note = 'Confirmó con el cliente · No asistió'
+  } else {
+    update.attendance_outcome = 'no_show'
+    update.attendance_outcome_at = now
+    update.attendance_note = 'No confirmó · No asistió'
   }
   return update
 }

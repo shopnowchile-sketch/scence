@@ -366,7 +366,58 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { influencer_id, attendance_action, ...updates } = body
+  const { influencer_id, influencer_ids, attendance_action, ...updates } = body
+
+  const bulkInfluencerIds = Array.isArray(influencer_ids)
+    ? Array.from(new Set(influencer_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)))
+    : []
+
+  if (bulkInfluencerIds.length > 0) {
+    if (attendance_action !== 'no_show_unconfirmed') {
+      return NextResponse.json({ error: 'La acción masiva de asistencia no es válida.' }, { status: 422 })
+    }
+
+    const admin = createAdminClient()
+    const { data: campaign, error: campaignError } = await admin.from('campaigns')
+      .select('status')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (campaignError) return NextResponse.json({ error: campaignError.message }, { status: 500 })
+    if (campaign?.status !== 'completed') {
+      return NextResponse.json({ error: 'Esta acción sólo está disponible para campañas completadas.' }, { status: 422 })
+    }
+
+    const { data: relations, error: relationsError } = await admin.from('campaign_influencers')
+      .select('influencer_id, application_status, metadata')
+      .eq('campaign_id', params.id)
+      .in('influencer_id', bulkInfluencerIds)
+    if (relationsError) return NextResponse.json({ error: relationsError.message }, { status: 500 })
+    const allowedIds = new Set((relations ?? [])
+      .filter(relation => relation.application_status === 'accepted'
+        || (relation.metadata as Record<string, unknown> | null)?.removal_reason === 'attendance_deadline_closed')
+      .map(relation => relation.influencer_id as string))
+    if (bulkInfluencerIds.some(id => !allowedIds.has(id))) {
+      return NextResponse.json({ error: 'Una o más influencers no pertenecen a esta campaña.' }, { status: 422 })
+    }
+
+    const { data: attendanceRows, error: attendanceError } = await admin.from('campaign_deliverables')
+      .select('id, influencer_id, attendance_response, attendance_outcome')
+      .eq('campaign_id', params.id)
+      .eq('type', 'event_attendance')
+      .in('influencer_id', bulkInfluencerIds)
+    if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 })
+    const eligibleRows = (attendanceRows ?? []).filter(row => !row.attendance_response && row.attendance_outcome !== 'no_show')
+    if (eligibleRows.length !== bulkInfluencerIds.length) {
+      return NextResponse.json({ error: 'Sólo se pueden marcar influencers que no confirmaron asistencia.' }, { status: 422 })
+    }
+
+    const now = new Date().toISOString()
+    const { error: updateError } = await admin.from('campaign_deliverables')
+      .update(buildManualAttendanceUpdate({ action: 'no_show_unconfirmed', currentResponse: null, currentNote: null, now }))
+      .in('id', eligibleRows.map(row => row.id))
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ data: { updated: eligibleRows.length, attendance_action } })
+  }
 
   if (!influencer_id) {
     return NextResponse.json({ error: 'influencer_id is required' }, { status: 422 })

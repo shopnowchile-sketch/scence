@@ -373,6 +373,16 @@ export function InfluencerProfile({ id }: { id: string }) {
       if (d.created_at) events.push({ id: `deliverable-created-${d.id}`, date: d.created_at, icon: '📝', title: 'Entregable creado', detail, href })
       if (d.submitted_at) events.push({ id: `deliverable-submitted-${d.id}`, date: d.submitted_at, icon: '📤', title: 'Entregable enviado', detail, href })
       if (d.published_at) events.push({ id: `deliverable-published-${d.id}`, date: d.published_at, icon: '✅', title: 'Contenido publicado', detail, href })
+      if (d.attendance_outcome === 'no_show' && d.attendance_outcome_at) {
+        events.push({
+          id: `attendance-no-show-${d.id}`,
+          date: d.attendance_outcome_at,
+          icon: '🔴',
+          title: 'No asistió',
+          detail: `${d.attendance_note ?? 'No asistió'} · ${d.campaign?.name ?? 'Campaña'}`,
+          href: d.campaign?.id ? `/admin-campaigns/${d.campaign.id}?tab=influencers` : null,
+        })
+      }
       return events
     }),
     ...barters.flatMap(barter => {

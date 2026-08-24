@@ -68,13 +68,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const ciIds = (campaignInfluencers ?? []).map((ci: Record<string,unknown>) => ci.id as string).filter(Boolean)
   let delivQuery = admin
     .from('campaign_deliverables')
-    .select(`id, title, type, status, due_date, platform, created_at, submitted_at, published_at, updated_at, description, progress, content_url, campaign:campaigns (id, name)`)
+    .select(`id, title, type, status, due_date, platform, created_at, submitted_at, published_at, updated_at, description, progress, content_url, attendance_outcome, attendance_outcome_at, attendance_note, campaign:campaigns (id, name)`)
     .eq('influencer_id', params.id)
 
   if (ciIds.length > 0) {
     delivQuery = admin
       .from('campaign_deliverables')
-      .select(`id, title, type, status, due_date, platform, created_at, submitted_at, published_at, updated_at, description, progress, content_url, campaign:campaigns (id, name)`)
+      .select(`id, title, type, status, due_date, platform, created_at, submitted_at, published_at, updated_at, description, progress, content_url, attendance_outcome, attendance_outcome_at, attendance_note, campaign:campaigns (id, name)`)
       .or(`influencer_id.eq.${params.id},campaign_influencer_id.in.(${ciIds.join(',')})`)
   }
 

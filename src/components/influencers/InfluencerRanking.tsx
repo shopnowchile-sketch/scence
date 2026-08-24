@@ -132,11 +132,12 @@ export function InfluencerRanking({
     let rows = [...influencers]
 
     if (search.trim()) {
-      const q = search.trim().toLowerCase()
+      const q = search.trim().toLowerCase().replace(/^@+/, '')
       rows = rows.filter(inf =>
         String(inf.display_name ?? '').toLowerCase().includes(q) ||
         String(inf.email ?? '').toLowerCase().includes(q) ||
-        String(inf.commune ?? inf.city ?? '').toLowerCase().includes(q)
+        String(inf.commune ?? inf.city ?? '').toLowerCase().includes(q) ||
+        (inf.social_profiles ?? []).some(profile => String(profile.username ?? '').toLowerCase().replace(/^@+/, '').includes(q))
       )
     }
 
@@ -256,7 +257,7 @@ export function InfluencerRanking({
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar influencer, email o comuna..."
+              placeholder="Buscar influencer, Instagram, email o comuna..."
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
             />
           </div>

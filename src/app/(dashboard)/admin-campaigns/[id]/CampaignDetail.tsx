@@ -505,15 +505,17 @@ function DeliverableInfluencerGroup({
   // Estado por deliverable del grupo — para que el header diga "en revisión"
   // / "aprobado" en vez de solo el conteo, y se sepa sin abrir cuál necesita
   // acción. Reusa DEL_CONFIG (mismo label/color que ya se usa por deliverable).
-  const statusCounts = items.reduce<Partial<Record<DeliverableStatus, number>>>((acc, d) => {
+  const statusCounts = items.filter(item => item.type !== 'event_attendance').reduce<Partial<Record<DeliverableStatus, number>>>((acc, d) => {
     acc[d.status] = (acc[d.status] ?? 0) + 1
     return acc
   }, {})
+  const attendanceConfirmed = items.some(item => item.type === 'event_attendance' && item.attendance_response === 'confirmed')
   const STATUS_ORDER: DeliverableStatus[] = ['in_review', 'rejected', 'pending', 'approved', 'published']
   const statusBadges = noShow ? (
     <span className="badge bg-gray-200 text-gray-600 text-[11px]">No asistió</span>
   ) : (
     <div className="flex items-center gap-1.5 flex-wrap justify-end">
+      {attendanceConfirmed && <span className="badge badge-green text-[11px]">Confirmada</span>}
       {STATUS_ORDER.filter(s => statusCounts[s]).map(s => (
         <span key={s} className={cn('badge text-[11px]', DEL_CONFIG[s].cls)}>
           {statusCounts[s]} {DEL_CONFIG[s].label.toLowerCase()}
@@ -1122,6 +1124,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [assetSaving, setAssetSaving] = useState(false)
   const [briefSaving, setBriefSaving] = useState(false)
   const briefInputRef = useRef<HTMLInputElement>(null)
+  const assetUploadInputRef = useRef<HTMLInputElement>(null)
   const [coverSaving, setCoverSaving] = useState(false)
   const coverInputRef = useRef<HTMLInputElement>(null)
   const [locationFormOpen, setLocationFormOpen] = useState(false)
@@ -1435,7 +1438,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return noConfirmedInfluencers.some(candidate => candidate.id === ci.id)
   }).sort((left, right) => Number(attendanceFor(left)?.attendance_outcome === 'no_show') - Number(attendanceFor(right)?.attendance_outcome === 'no_show'))
   const visibleAcceptedInfluencerIds = attendanceFilteredInfluencers
-    .filter(ci => ci.application_status === 'accepted' && attendanceFor(ci)?.attendance_outcome !== 'no_show' && !!ci.influencer?.id)
+    .filter(ci => {
+      const attendance = attendanceFor(ci)
+      const state = attendance ? getAttendanceState(attendance.attendance_response, attendance.due_date) : null
+      return ci.application_status === 'accepted' && (state === 'unconfirmed' || state === 'no_confirmed') && !!ci.influencer?.id
+    })
     .map(ci => ci.influencer!.id)
   const allVisibleAcceptedSelected = visibleAcceptedInfluencerIds.length > 0
     && visibleAcceptedInfluencerIds.every(influencerId => emailSelection.has(influencerId))
@@ -1880,6 +1887,30 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     toast.success('Asset eliminado')
   }
 
+  async function handleUploadCampaignAssets(files: FileList | null) {
+    const selectedFiles = Array.from(files ?? [])
+    if (!selectedFiles.length) return
+    setAssetSaving(true)
+    try {
+      for (const file of selectedFiles) {
+        const formData = new FormData()
+        formData.append('filename', file.name)
+        formData.append('file', file)
+        formData.append('asset_type', 'asset')
+        const response = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body: formData })
+        const json = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(json.error ?? `No se pudo subir ${file.name}`)
+      }
+      await reloadCampaignAssets()
+      toast.success(`${selectedFiles.length} archivo${selectedFiles.length === 1 ? '' : 's'} subido${selectedFiles.length === 1 ? '' : 's'}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudieron subir los archivos')
+    } finally {
+      setAssetSaving(false)
+      if (assetUploadInputRef.current) assetUploadInputRef.current.value = ''
+    }
+  }
+
   async function handleUploadBrief(file: File) {
     if (file.size > 4 * 1024 * 1024) {
       toast.error('El brief debe pesar máximo 4 MB. Comprímelo e inténtalo nuevamente.')
@@ -2131,7 +2162,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     { id: 'deliverables', label: `Entregables${pendingDeliverableReviewCount > 0 ? ` (${pendingDeliverableReviewCount})` : ''}`, icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
     { id: 'barters',      label: 'Canjes',        icon: <Gift className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
-    { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-3.5 w-3.5" /> },
+    { id: 'locations',    label: `Lugares (${brandLocations.length + (eventLocation ? 1 : 0)})`, icon: <Target className="h-3.5 w-3.5" /> },
     { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-3.5 w-3.5" /> },
     { id: 'history',      label: 'Historial',     icon: <Clock className="h-3.5 w-3.5" /> },
   ]
@@ -3015,7 +3046,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         )}
                       >
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          {ci.application_status === 'accepted' && !noShow && (
+                          {ci.application_status === 'accepted' && (attendancePending || attendanceNoConfirmed) && (
                             <input
                               type="checkbox"
                               checked={emailSelection.has(inf.id)}
@@ -3351,8 +3382,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           {/* Trabajo de contenido de las influencers aceptadas. La asistencia
               se gestiona exclusivamente desde el tab Influencers. */}
           {(() => {
-            // Entregables muestra únicamente contenido que ya tiene URL.
-            // La asistencia y los placeholders viven en Influencers.
+            // Entregables muestra contenido con URL. La única excepción es
+            // la confirmación de asistencia/participación ya respondida.
             const acceptedInfluencerIds = new Set(
               confirmedInfluencers
                 .map(relation => relation.influencer?.id)
@@ -3360,11 +3391,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             )
             const submittedDeliverables = campaignDeliverables.filter(deliverable =>
               acceptedInfluencerIds.has(deliverable.influencer?.id ?? '') &&
-              deliverable.type !== 'event_attendance' &&
-              Boolean(deliverable.content_url || deliverable.published_url)
+              (deliverable.type === 'event_attendance'
+                ? deliverable.attendance_response === 'confirmed' || deliverable.attendance_outcome === 'no_show'
+                : Boolean(deliverable.content_url || deliverable.published_url))
             )
             const visibleSubmittedDeliverables = deliverableStatusFilter
-              ? submittedDeliverables.filter(deliverable => deliverable.status === deliverableStatusFilter)
+              ? submittedDeliverables.filter(deliverable => deliverable.type === 'event_attendance' || deliverable.status === deliverableStatusFilter)
               : submittedDeliverables
 
             return (
@@ -3589,10 +3621,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         <div className="card p-6 space-y-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-gray-700">Lugares asociados a la marca principal</h3>
-              <p className="text-xs text-gray-400 mt-1">
-                Estos lugares quedan guardados en la marca principal de esta campaña.
-              </p>
+              <h3 className="text-sm font-semibold text-gray-700">Lugares de la campaña</h3>
             </div>
 
             <button
@@ -3686,10 +3715,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </form>
           )}
 
-          {brandLocations.length === 0 ? (
+          {!eventLocation && brandLocations.length === 0 ? (
             <p className="text-sm text-gray-400">Sin lugares asociados todavía.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {eventLocation && (
+                <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-900">{eventVenueName || 'Lugar principal'}</p>
+                      <p className="mt-1 text-xs text-gray-600">{eventLocation}{eventCommune ? `, ${eventCommune}` : ''}</p>
+                      {eventBooking?.location_details?.instructions?.trim() && <p className="mt-2 text-xs text-gray-400">{eventBooking.location_details.instructions.trim()}</p>}
+                    </div>
+                    <span className="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-semibold text-violet-700">Principal</span>
+                  </div>
+                </div>
+              )}
               {brandLocations.map((loc, idx) => (
                 <div key={`${loc.id ?? idx}`} className="rounded-xl border border-gray-100 p-4 bg-white">
                   <div className="flex items-start justify-between gap-3">
@@ -3715,79 +3756,95 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
       {/* ── ASSETS ─────────────────────────────────────────────────────────── */}
       {tab === 'assets' && (
-        <div className="card p-6 space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">Assets de esta campaña</h3>
-            <span className="text-xs text-gray-400">{campaignAssets.length} asset(s)</span>
+        <div className="card space-y-4 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">Archivos de la campaña</h3>
+              <p className="mt-0.5 text-xs text-gray-400">{campaignAssets.length} archivo{campaignAssets.length === 1 ? '' : 's'}</p>
+            </div>
+            {(!isBrandPortal || c._brand_permissions?.canEdit) && (
+              <>
+                <input
+                  ref={assetUploadInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={event => void handleUploadCampaignAssets(event.target.files)}
+                />
+                <button
+                  type="button"
+                  onClick={() => assetUploadInputRef.current?.click()}
+                  disabled={assetSaving}
+                  title="Subir archivos"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-60"
+                >
+                  {assetSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  {assetSaving ? 'Subiendo…' : 'Subir archivos'}
+                </button>
+              </>
+            )}
           </div>
 
-          {(!isBrandPortal || c._brand_permissions?.canEdit) && <form onSubmit={handleAddCampaignAsset} className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setAssetMode('file')} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', assetMode === 'file' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 border')}>Subir archivo</button>
-              <button type="button" onClick={() => setAssetMode('link')} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', assetMode === 'link' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 border')}>Agregar enlace</button>
-            </div>
-            <div className="max-w-xs">
-              <label className="mb-1 block text-xs font-semibold text-gray-600">Tipo de archivo</label>
-              <select value={assetType} onChange={event => { const value = event.target.value as 'asset' | 'sponsor_brief'; setAssetType(value); if (value === 'sponsor_brief') setAssetMode('file') }} className="input-base w-full bg-white text-sm">
-                <option value="asset">Asset general</option>
-                <option value="sponsor_brief">Brief privado para sponsors</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Nombre</label>
-              <input
-                value={assetName}
-                onChange={e => setAssetName(e.target.value)}
-                className="input-base w-full text-sm"
-                placeholder="Ej: Logo, brief, foto producto"
-              />
-            </div>
-            {assetMode === 'file' ? <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Archivo</label>
-              <input type="file" multiple={false} onChange={e => setAssetFile(e.target.files?.[0] ?? null)} className="input-base w-full text-sm bg-white" />
-            </div> : <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">URL del asset</label>
-              <input value={assetUrl} onChange={e => setAssetUrl(e.target.value)} className="input-base w-full text-sm" placeholder="https://..." />
-            </div>}
-            <button
-              type="submit"
-              disabled={assetSaving}
-              className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-60"
-            >
-              {assetSaving ? 'Guardando...' : 'Agregar'}
-            </button>
-            </div>
-          </form>}
-
           {campaignAssets.length === 0 ? (
-            <p className="text-sm text-gray-400">Sin assets cargados para esta campaña.</p>
+            <div className="rounded-xl border border-dashed border-gray-200 py-10 text-center">
+              <FileText className="mx-auto mb-2 h-8 w-8 text-gray-200" />
+              <p className="text-sm text-gray-400">Sin archivos cargados.</p>
+            </div>
           ) : (
-            <div className="space-y-3">
-              {campaignAssets.map(asset => (
-                <div key={String(asset.id)} className="flex items-center justify-between rounded-xl border border-gray-100 p-4 gap-4">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{String(asset.filename ?? 'Asset')}</p>
-                    <p className="text-xs text-gray-400 truncate">{String(asset.mime_type ?? 'Enlace externo')}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
+              {campaignAssets.map(asset => {
+                const filename = String(asset.filename ?? 'Archivo')
+                const fileUrl = String(asset.signed_url ?? asset.storage_path ?? '')
+                const mimeType = String(asset.mime_type ?? '')
+                const isImage = mimeType.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(filename)
+
+                return (
+                  <div key={String(asset.id)} className="group overflow-hidden rounded-xl border border-gray-100 bg-white transition-shadow hover:shadow-sm">
                     <a
-                      href={String(asset.signed_url ?? asset.storage_path)}
+                      href={fileUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs font-semibold text-violet-600 hover:underline inline-flex items-center gap-1"
+                      title={`Abrir ${filename}`}
+                      className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-gray-50"
                     >
-                      Descargar <Download className="h-3 w-3" />
+                      {isImage && fileUrl ? (
+                        <span
+                          role="img"
+                          aria-label={filename}
+                          className="h-full w-full bg-cover bg-center transition-transform duration-200 group-hover:scale-[1.02]"
+                          style={{ backgroundImage: `url(${JSON.stringify(fileUrl)})` }}
+                        />
+                      ) : (
+                        <FileText className="h-9 w-9 text-gray-300" />
+                      )}
                     </a>
-                    {(!isBrandPortal || c._brand_permissions?.canEdit) && <button
-                      onClick={() => handleDeleteCampaignAsset(String(asset.id))}
-                      className="text-xs font-semibold text-red-500 hover:underline"
-                    >
-                      Eliminar
-                    </button>}
+                    <div className="flex items-center gap-1.5 p-2.5">
+                      <p className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-700" title={filename}>{filename}</p>
+                      <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Descargar ${filename}`}
+                        aria-label={`Descargar ${filename}`}
+                        className="rounded-md p-1 text-violet-600 hover:bg-violet-50"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </a>
+                      {(!isBrandPortal || c._brand_permissions?.canEdit) && (
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteCampaignAsset(String(asset.id))}
+                          title={`Eliminar ${filename}`}
+                          aria-label={`Eliminar ${filename}`}
+                          className="rounded-md p-1 text-gray-300 hover:bg-red-50 hover:text-red-500"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

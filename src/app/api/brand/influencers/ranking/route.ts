@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url)
-  const search = searchParams.get('search')?.toLowerCase() ?? ''
+  const search = searchParams.get('search')?.toLowerCase().replace(/^@+/, '') ?? ''
   const platform = searchParams.get('platform') ?? ''
   const category = searchParams.get('category') ?? ''
   const sortBy = (searchParams.get('sort_by') ?? 'followers') as RankingSortBy
@@ -154,7 +154,8 @@ export async function GET(req: NextRequest) {
   if (search) {
     rows = rows.filter(inf =>
       String(inf.display_name ?? '').toLowerCase().includes(search) ||
-      String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search)
+      String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search) ||
+      (inf.social_profiles ?? []).some(profile => String(profile.username ?? '').toLowerCase().replace(/^@+/, '').includes(search))
     )
   }
 

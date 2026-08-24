@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/influencers/ranking'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
@@ -31,7 +30,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url)
-  const search = searchParams.get('search')?.toLowerCase() ?? ''
+  const search = searchParams.get('search')?.toLowerCase().replace(/^@+/, '') ?? ''
   const platform = searchParams.get('platform') ?? ''
   const category = searchParams.get('category') ?? ''
   const sortBy = (searchParams.get('sort_by') ?? 'followers') as RankingSortBy
@@ -41,8 +40,6 @@ export async function GET(req: NextRequest) {
   // influencer" (AddInfluencerClient, que pide limit=500 a este mismo endpoint).
   // Se sube a 5000 (bien por sobre el roster actual).
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 5000)
-
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
   // FIX (2026-07-03, reportado por Pri: "no se puede filtrar por última
   // conexión"): el fix anterior (.limit(5000)) NO alcanzaba — Supabase/PostgREST
@@ -83,7 +80,6 @@ export async function GET(req: NextRequest) {
             )
           `)
           .range(from, to)
-        if (orgId) q = q.eq('organization_id', orgId)
         return q
       },
       { maxRows: 5000 }
@@ -168,7 +164,8 @@ export async function GET(req: NextRequest) {
     rows = rows.filter(inf =>
       String(inf.display_name ?? '').toLowerCase().includes(search) ||
       String(inf.email ?? '').toLowerCase().includes(search) ||
-      String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search)
+      String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search) ||
+      (inf.social_profiles ?? []).some(profile => String(profile.username ?? '').toLowerCase().replace(/^@+/, '').includes(search))
     )
   }
 

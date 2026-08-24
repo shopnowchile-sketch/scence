@@ -42,6 +42,7 @@ interface Props {
   onToggleSelect?: (id: string) => void
   onToggleAll?: () => void
   onDelete?: (inf: Influencer) => void
+  renderAction?: (inf: Influencer) => React.ReactNode
   /** admin: link a /admin-influencers/[id]. brand: sin perfil propio aun (gap G-09) -> no clickable. */
   portal?: 'admin' | 'brand'
 }
@@ -74,7 +75,7 @@ function TH({ children, col, sortBy, sortOrder, onSort, onResizeStart }: {
 
 export function InfluencerTable({
   influencers, onSort, sortBy, sortOrder,
-  selectable = false, selectedIds, onToggleSelect, onToggleAll, onDelete,
+  selectable = false, selectedIds, onToggleSelect, onToggleAll, onDelete, renderAction,
   portal = 'admin',
 }: Props) {
   const allSelected = selectable && influencers.length > 0 && influencers.every(i => selectedIds?.has(i.id))
@@ -185,7 +186,7 @@ export function InfluencerTable({
             {portal === 'admin' && visible.lastConnection && <col style={{ width: widths.lastConnection }} />}
             {portal === 'admin' && visible.registeredBy      && <col style={{ width: widths.registeredBy }} />}
             {portal === 'admin' && visible.associatedBrands  && <col style={{ width: widths.associatedBrands }} />}
-            <col style={{ width: 90 }} />
+            <col style={{ width: renderAction ? 220 : 90 }} />
           </colgroup>
           <thead>
             <tr className="border-b border-gray-100">
@@ -448,7 +449,7 @@ export function InfluencerTable({
 
                   {/* Acciones */}
                   <td className="px-4 py-3">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                    {renderAction ? renderAction(inf) : <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                       {portal === 'admin' && !inf.last_sign_in_at && inf.email && (
                         <button
                           onClick={() => handleInvite(inf)}
@@ -479,7 +480,7 @@ export function InfluencerTable({
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}
-                    </div>
+                    </div>}
                   </td>
                 </tr>
               )

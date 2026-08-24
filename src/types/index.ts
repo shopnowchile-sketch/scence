@@ -294,6 +294,8 @@ export interface Campaign {
   influencer_count?: number
   deliverable_count?: number
   deliverable_done?: number
+  total_views?: number | null
+  engagement_average?: number | null
   brand_id?: string | null
   commission_rate?: number | null
   brand?: { id: string; name: string; logo_url: string | null } | null

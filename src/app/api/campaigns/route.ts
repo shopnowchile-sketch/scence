@@ -4,6 +4,56 @@ import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensure
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
+type CampaignMetricRow = {
+  campaign_id: string
+  influencer_id: string | null
+  type: string | null
+  status: string
+  attendance_outcome: string | null
+  performance: unknown
+  engagement_rate: number | null
+}
+
+function metricNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function campaignMetrics(rows: CampaignMetricRow[]) {
+  const noShows = new Set(
+    rows
+      .filter(row => row.type === 'event_attendance' && row.attendance_outcome === 'no_show')
+      .map(row => row.influencer_id)
+      .filter(Boolean),
+  )
+  const measurable = rows.filter(row =>
+    row.type !== 'event_attendance'
+    && (row.status === 'approved' || row.status === 'published')
+    && !noShows.has(row.influencer_id),
+  )
+  const totalViews = measurable.reduce((total, row) => {
+    const performance = row.performance && typeof row.performance === 'object'
+      ? row.performance as Record<string, unknown>
+      : null
+    return total + (metricNumber(performance?.views) ?? 0)
+  }, 0)
+  const engagementRates = measurable
+    .filter(row => row.type === 'reel')
+    .map(row => metricNumber(row.engagement_rate))
+    .filter((value): value is number => value !== null)
+
+  return {
+    totalViews,
+    engagementAverage: engagementRates.length
+      ? engagementRates.reduce((total, value) => total + value, 0) / engagementRates.length
+      : null,
+  }
+}
+
 // ── GET /api/campaigns ────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   // Authenticate via regular client (respects cookies/session)
@@ -138,7 +188,7 @@ export async function GET(request: NextRequest) {
       ? admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds).eq('application_status', 'accepted')
       : { data: [] },
     campaignIds.length
-      ? admin.from('campaign_deliverables').select('campaign_id, status, content_url, published_url').in('campaign_id', campaignIds)
+      ? admin.from('campaign_deliverables').select('campaign_id, influencer_id, type, status, attendance_outcome, content_url, published_url, performance, engagement_rate').in('campaign_id', campaignIds)
       : { data: [] },
   ])
 
@@ -160,13 +210,20 @@ export async function GET(request: NextRequest) {
   }
 
   const coverUrls = await getCampaignCoverUrls(admin, campaignIds)
-  const enriched = (data ?? []).map(c => ({
-    ...c,
-    cover_url:         coverUrls.get(c.id) ?? null,
-    influencer_count:  infCount[c.id]  ?? 0,
-    deliverable_count: delCount[c.id]  ?? 0,
-    deliverable_done:  delDone[c.id]   ?? 0,
-  }))
+  const enriched = (data ?? []).map(c => {
+    const metrics = c.status === 'completed'
+      ? campaignMetrics((cdRows ?? []).filter(row => row.campaign_id === c.id) as CampaignMetricRow[])
+      : null
+    return {
+      ...c,
+      cover_url:         coverUrls.get(c.id) ?? null,
+      influencer_count:  infCount[c.id]  ?? 0,
+      deliverable_count: delCount[c.id]  ?? 0,
+      deliverable_done:  delDone[c.id]   ?? 0,
+      total_views:       metrics?.totalViews ?? null,
+      engagement_average: metrics?.engagementAverage ?? null,
+    }
+  })
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit })
 }

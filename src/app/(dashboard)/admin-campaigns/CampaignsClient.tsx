@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
+import { Columns3, Filter, Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
 import { useCampaignsList, useCampaignsSummary, type CampaignSummary } from '@/hooks/useCampaignsList'
 import { AICampaignBuilder } from '@/components/campaigns/AICampaignBuilder'
 import { CampaignFilters } from '@/components/campaigns/CampaignFilters'
@@ -117,6 +117,8 @@ type CampaignColumnKey =
   | 'visibility'
   | 'platforms'
   | 'influencers'
+  | 'views'
+  | 'engagement'
   | 'progress'
   | 'budget'
   | 'dates'
@@ -133,6 +135,8 @@ const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
   { key: 'visibility',  label: 'Público/Privado' },
   { key: 'platforms',   label: 'Plataformas' },
   { key: 'influencers', label: 'Influencers' },
+  { key: 'views',       label: 'Visualizaciones' },
+  { key: 'engagement',  label: 'Engagement' },
   { key: 'progress',    label: 'Progreso' },
   { key: 'budget',      label: 'Budget' },
   { key: 'dates',       label: 'Fechas' },
@@ -147,6 +151,8 @@ const DEFAULT_COLUMN_WIDTHS: Record<CampaignColumnKey, number> = {
   visibility: 160,
   platforms: 140,
   influencers: 180,
+  views: 145,
+  engagement: 140,
   progress: 190,
   budget: 170,
   dates: 160,
@@ -203,6 +209,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
   const [filters, setFilters]   = useState<Partial<CampaignFiltersType>>(() => ({ status: (searchParams.get('status') ?? undefined) as CampaignFiltersType['status'] }))
   const [showAIBuilder, setShowAIBuilder] = useState(false)
   const [showColumns, setShowColumns] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<Record<CampaignColumnKey, boolean>>(
     `scence:${portal}:campaigns:columns`,
     {
@@ -212,6 +219,8 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
       visibility: true,
       platforms: true,
       influencers: true,
+      views: true,
+      engagement: true,
       progress: true,
       budget: true,
       dates: true,
@@ -307,6 +316,8 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
           case 'visibility':  return c.visibility ?? ''
           case 'platforms':   return c.platforms?.join(',') ?? ''
           case 'influencers': return c.influencer_count ?? 0
+          case 'views':       return c.total_views ?? -1
+          case 'engagement':  return c.engagement_average ?? -1
           case 'progress':    return c === a ? progressA : progressB
           case 'budget':      return c.budget_total ?? 0
           case 'dates':       return c.start_date ?? ''
@@ -358,6 +369,8 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
       case 'visibility': return <td className="px-4 py-3">{c.visibility ? <span className={`badge text-[11px] ${c.visibility === 'open' ? 'badge-green' : 'badge-gray'}`}>{c.visibility === 'open' ? 'Pública' : 'Privada'}</span> : <span className="text-xs text-gray-300">—</span>}</td>
       case 'platforms': return <td className="px-4 py-3"><div className="flex items-center gap-1">{c.platforms?.map(p => <span key={p} className="text-base" title={p}>{PLATFORM_ICONS[p]}</span>)}{(!c.platforms || c.platforms.length === 0) && <span className="text-xs text-gray-300">—</span>}</div></td>
       case 'influencers': return <td className="px-4 py-3"><AvatarGroup count={c.influencer_count ?? 0} campaignId={c.id} base={isBrandPortal ? '/brand-campaigns' : '/admin-campaigns'} /></td>
+      case 'views': return <td className="px-4 py-3 text-sm font-semibold text-gray-700 tabular-nums">{c.status === 'completed' && c.total_views !== null && c.total_views !== undefined ? c.total_views.toLocaleString('es-CL') : <span className="text-gray-300">—</span>}</td>
+      case 'engagement': return <td className="px-4 py-3 text-sm font-semibold text-violet-600 tabular-nums">{c.status === 'completed' && c.engagement_average !== null && c.engagement_average !== undefined ? `${c.engagement_average.toFixed(2)}%` : <span className="text-gray-300">—</span>}</td>
       case 'progress': return <td className="px-4 py-3 overflow-hidden">{(c.deliverable_count ?? 0) > 0 ? <ProgressBar done={c.deliverable_done ?? 0} total={c.deliverable_count ?? 0} pct={pct} /> : <span className="text-xs text-gray-300">Sin deliverables</span>}</td>
       case 'budget': return <td className="px-4 py-3">{c.budget_total ? <div><div className="text-sm font-semibold text-gray-900">{formatCurrency(c.budget_total, c.currency)}</div><div className="text-xs text-gray-400 mt-0.5">{formatCurrency(c.budget_spent, c.currency)} gastado{c.budget_total > 0 && <span className={budgetPct > 90 ? ' text-red-500 font-medium' : ''}> ({budgetPct}%)</span>}</div></div> : <span className="text-xs text-gray-300">Sin budget</span>}</td>
       case 'dates': return <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{c.start_date ? <div><div>{formatDate(c.start_date, 'd MMM yy')}</div><div className="text-gray-300">→ {c.end_date ? formatDate(c.end_date, 'd MMM yy') : '—'}</div></div> : <span className="text-gray-300">Sin fechas</span>}</td>
@@ -437,29 +450,43 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
         <>
           <KPIs summary={summary} />
 
-          {/* Filtros */}
-          <div className="card p-4">
-            <CampaignFilters
-              filters={{ search: '', status: '', type: '', platform: '', visibility: '', brandId: '', dateFrom: '', dateTo: '', ...filters } as CampaignFiltersType}
-              onChange={setFilter}
-              onReset={resetFilters}
-              total={campaigns.length}
-              brands={isBrandPortal ? undefined : brands}
-            />
-            {/* Selector integrado al bloque de filtros para evitar el espacio
-                vacío que antes quedaba entre filtros y tabla. */}
-            <div className="relative flex items-center justify-end gap-3 mt-3 pt-3 border-t border-gray-100">
-              <span className="text-xs text-gray-400">Arrastra encabezados para ordenar · arrastra su borde para ajustar ancho</span>
+          {/* Barra compacta: los controles completos se mantienen dentro de Filtros. */}
+          <div className="relative flex items-center justify-between gap-3">
+            <span className="text-sm text-gray-500">{campaigns.length} campaña{campaigns.length !== 1 ? 's' : ''}</span>
+            <div className="relative flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowColumns(v => !v)}
-                className="px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+                onClick={() => { setShowFilters(v => !v); setShowColumns(false) }}
+                title="Filtros"
+                aria-label="Filtros"
+                className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${showFilters || Object.values(filters).some(Boolean) ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
               >
-                Columnas
+                <Filter className="h-4 w-4" /> Filtros
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowColumns(v => !v); setShowFilters(false) }}
+                title="Columnas"
+                aria-label="Columnas"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+              >
+                <Columns3 className="h-4 w-4" />
               </button>
 
+              {showFilters && (
+                <div className="absolute right-0 top-12 z-30 w-[min(760px,calc(100vw-3rem))] rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
+                  <CampaignFilters
+                    filters={{ search: '', status: '', type: '', platform: '', visibility: '', brandId: '', dateFrom: '', dateTo: '', ...filters } as CampaignFiltersType}
+                    onChange={setFilter}
+                    onReset={resetFilters}
+                    total={campaigns.length}
+                    brands={isBrandPortal ? undefined : brands}
+                  />
+                </div>
+              )}
+
               {showColumns && (
-                <div className="absolute right-0 top-14 z-20 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-3">
+                <div className="absolute right-0 top-12 z-30 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-3">
                   <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Mostrar columnas</div>
                   <button
                     type="button"

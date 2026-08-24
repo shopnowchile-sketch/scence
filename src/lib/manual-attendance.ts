@@ -24,11 +24,11 @@ export function buildManualAttendanceUpdate({
     update.attendance_note = currentNote || 'Asistencia registrada manualmente'
     update.status = 'approved'
   } else {
+    update.attendance_response = 'confirmed'
+    if (currentResponse !== 'confirmed') update.attendance_responded_at = now
     update.attendance_outcome = 'no_show'
     update.attendance_outcome_at = now
-    update.attendance_note = currentNote
-      ? `${currentNote} · No asistió`
-      : 'No asistió · resultado registrado manualmente'
+    update.attendance_note = 'Confirmó con el cliente · No asistió'
   }
   return update
 }

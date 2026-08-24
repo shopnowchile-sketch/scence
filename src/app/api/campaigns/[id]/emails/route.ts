@@ -103,10 +103,16 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const { data: deliverables, error: deliverablesError } = await admin.from('campaign_deliverables')
-    .select('influencer_id, title, type, status, due_date, content_url, published_url, attendance_response')
+    .select('influencer_id, title, type, status, due_date, content_url, published_url, attendance_response, attendance_outcome')
     .eq('campaign_id', params.id)
     .in('influencer_id', influencerIds)
   if (deliverablesError) return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
+  const noShowInfluencerIds = new Set((deliverables ?? [])
+    .filter(deliverable => deliverable.type === 'event_attendance' && deliverable.attendance_outcome === 'no_show')
+    .map(deliverable => deliverable.influencer_id))
+  if (influencerIds.some(influencerId => noShowInfluencerIds.has(influencerId))) {
+    return NextResponse.json({ error: 'Las influencers que no asistieron no pueden recibir más emails de esta campaña.' }, { status: 422 })
+  }
 
   const portalUrl = `${APP_URL}/inf-campaign/${params.id}`
   const actionUrl = safeActionUrl(body.action_url, portalUrl)

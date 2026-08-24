@@ -1414,7 +1414,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return noConfirmedInfluencers.some(candidate => candidate.id === ci.id)
   })
   const visibleAcceptedInfluencerIds = attendanceFilteredInfluencers
-    .filter(ci => ci.application_status === 'accepted' && !!ci.influencer?.id)
+    .filter(ci => ci.application_status === 'accepted' && attendanceFor(ci)?.attendance_outcome !== 'no_show' && !!ci.influencer?.id)
     .map(ci => ci.influencer!.id)
   const allVisibleAcceptedSelected = visibleAcceptedInfluencerIds.length > 0
     && visibleAcceptedInfluencerIds.every(influencerId => emailSelection.has(influencerId))
@@ -1448,6 +1448,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(json.error ?? 'No se pudo actualizar la asistencia')
+      if (action === 'no_show') {
+        setEmailSelection(current => {
+          const next = new Set(current)
+          next.delete(influencerId)
+          return next
+        })
+      }
       const label = action === 'confirmed_client' ? 'Confirmación registrada' : action === 'attended' ? 'Asistencia registrada' : 'No asistencia registrada'
       toast.success(label)
       await refetch()
@@ -3012,7 +3019,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const myDelivs    = campaignDeliverables.filter(d => d.influencer?.id === inf.id)
                     const delivsDone  = myDelivs.filter(d => d.status === 'published').length
                     const delivsTotal = myDelivs.length
-                    const myPending   = myDelivs.filter(d => !isDeliverableComplete(d)).length
                     const attendance = myDelivs.find(d => d.type === 'event_attendance')
                     const attendanceConfirmed = attendance?.attendance_response === 'confirmed'
                     const attendanceDeclined = attendance?.attendance_response === 'declined'
@@ -3038,7 +3044,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         )}
                       >
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          {ci.application_status === 'accepted' && (
+                          {ci.application_status === 'accepted' && !noShow && (
                             <input
                               type="checkbox"
                               checked={emailSelection.has(inf.id)}
@@ -3050,7 +3056,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         </td>
                         <td className="px-4 py-3">
                           {noShow ? (
-                            <div><span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700">NO ASISTIÓ</span>{attendance?.attendance_note && <p className="mt-1 max-w-48 text-[10px] text-red-600">{attendance.attendance_note}</p>}</div>
+                            <div>
+                              <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700">NO ASISTIÓ</span>
+                              <p className="mt-1 max-w-48 text-[10px] font-medium text-red-600">Confirmó con el cliente · No asistió</p>
+                            </div>
                           ) : attendanceConfirmed ? (
                             <div><span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> {attendance?.attendance_outcome === 'attended' ? 'ASISTIÓ' : 'Confirmada'}</span>{attendance?.attendance_note && <p className="mt-1 max-w-48 text-[10px] text-gray-500">{attendance.attendance_note}</p>}</div>
                           ) : attendanceDeclined ? (
@@ -3189,19 +3198,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   {formatDate(ci.metadata.last_reminder_sent_at)}
                                 </span>
                               </span>
-                            )}
-                            {myPending > 0 && !attendanceNoConfirmed && ci.application_status === 'accepted' && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEmailSelection(new Set([inf.id]))
-                                  setShowCampaignEmailModal(true)
-                                }}
-                                title="Enviar email y elegir template"
-                                className="p-1.5 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-50 transition-colors flex-shrink-0"
-                              >
-                                <Mail className="h-3.5 w-3.5" />
-                              </button>
                             )}
                             <a
                               href={`/api/campaigns/${id}/influencer-report?influencer_id=${inf.id}`}

@@ -250,12 +250,13 @@ function DeliverableContent({
 // ── Avatar + nombre + Instagram clickeable — compartido entre el modo de
 // 1 fila y el header colapsable del dropdown.
 function InfluencerBadge({
-  influencer, igUsername,
+  influencer, igUsername, profileHref,
 }: {
   influencer: { id: string; display_name: string; avatar_url: string | null }
   igUsername: string | null
+  profileHref: string
 }) {
-  const cleanIg = igUsername ? igUsername.replace(/^@/, '') : null
+  const cleanIg = igUsername ? igUsername.replace(/^@+/, '') : null
   const igUrl = buildProfileUrl('instagram', cleanIg)
   const gradient = GRADIENTS[influencer.display_name.charCodeAt(0) % GRADIENTS.length]
 
@@ -267,7 +268,9 @@ function InfluencerBadge({
           : influencer.display_name.charAt(0).toUpperCase()}
       </div>
       <div className="min-w-0 leading-tight">
-        <p className="text-xs font-semibold text-gray-900 truncate">{influencer.display_name}</p>
+        <Link href={profileHref} onClick={event => event.stopPropagation()} className="block truncate text-xs font-semibold text-gray-900 transition-colors hover:text-violet-700 hover:underline">
+          {influencer.display_name}
+        </Link>
         <div className="flex items-center gap-1.5">
           {igUrl ? (
             <a href={igUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
@@ -311,6 +314,47 @@ function FollowersStat({ followers }: { followers: number | null }) {
 }
 
 type AttendanceFilter = 'all' | 'confirmed' | 'declined' | 'no_show' | 'unconfirmed'
+type DeliverableSort = 'followers_desc' | 'results_desc' | 'engagement_desc' | 'rating_desc'
+
+function DeliverableSortMenu({ value, onChange }: { value: DeliverableSort; onChange: (value: DeliverableSort) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(current => !current)}
+        title="Ordenar entregables"
+        aria-label="Ordenar entregables"
+        className={cn('rounded-xl border p-2 transition-colors', open ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50')}
+      >
+        <ListFilter className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-30 mt-2 w-56 rounded-xl border border-gray-100 bg-white p-3 shadow-lg">
+          <label className="block text-xs font-semibold text-gray-500">
+            Ordenar por
+            <select value={value} onChange={event => onChange(event.target.value as DeliverableSort)} className="input-base mt-1 py-2 text-sm">
+              <option value="followers_desc">Más seguidores</option>
+              <option value="results_desc">Mejores resultados</option>
+              <option value="engagement_desc">Mayor engagement</option>
+              <option value="rating_desc">Mayor rating</option>
+            </select>
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function InfluencerFiltersMenu({
   search, platform, status, commune, attendance, platformOptions, communeOptions, active,
@@ -434,30 +478,25 @@ function ContentMetricsStats({ metrics }: {
       <StatBlock icon={Eye} value={metrics ? formatFollowers(metrics.views) : '—'} label="visualizaciones" />
       <StatBlock icon={Heart} value={metrics ? formatFollowers(metrics.likes) : '—'} label="likes" />
       <StatBlock icon={MessageCircle} value={metrics ? formatFollowers(metrics.comments) : '—'} label="comentarios" />
-      <StatBlock
-        value={metrics?.avgEngagement != null ? `${metrics.avgEngagement}%` : '—'}
-        label="engagement (calc.)"
-        valueClass="text-violet-600"
-      />
     </div>
   )
 }
 
 function DeliverableInfluencerGroup({
-  influencer, igUsername, followers, items, campaignId, reviewNotes, setReviewNotes, pct, avgRating, ratedCount, metrics, attendanceReminder,
+  influencer, igUsername, followers, items, campaignId, profileHref, reviewNotes, setReviewNotes, avgRating, ratedCount, metrics, emailAction,
 }: {
   influencer: { id: string; display_name: string; avatar_url: string | null }
   igUsername: string | null
   followers: number | null
   items: CampaignDeliverableDetail[]
   campaignId: string
+  profileHref: string
   reviewNotes: Record<string, string>
   setReviewNotes: React.Dispatch<React.SetStateAction<Record<string, string>>>
-  pct: number
   avgRating: number | null
   ratedCount: number
   metrics: { views: number; likes: number; comments: number; avgEngagement: number | null } | null
-  attendanceReminder?: { selected: boolean; sending: boolean; onSelected: (selected: boolean) => void; onSend: () => void }
+  emailAction?: { selected: boolean; onSelected: (selected: boolean) => void; onSend: () => void }
 }) {
   const [open, setOpen] = useState(false)
   const noShow = items.some(item => item.type === 'event_attendance' && item.attendance_outcome === 'no_show')
@@ -484,7 +523,7 @@ function DeliverableInfluencerGroup({
 
   const scoreBlocks = (
     <>
-      <StatBlock value={`${pct}%`} label="completado" />
+      <StatBlock value={metrics?.avgEngagement != null ? `${metrics.avgEngagement}%` : '—'} label="engagement" valueClass="text-violet-600" />
       <StatBlock
         icon={Star}
         value={avgRating !== null ? avgRating.toFixed(1) : '—'}
@@ -500,24 +539,24 @@ function DeliverableInfluencerGroup({
   // (items ya viene filtrado a solo eso — nunca los pendientes).
   return (
     <div className={cn('card p-2 space-y-1.5', noShow && 'bg-gray-100 opacity-70 grayscale')}>
-      <div className="flex items-center justify-between gap-3 cursor-pointer" onClick={() => setOpen(v => !v)}>
+      <div className={cn('flex items-center justify-between gap-3', noShow ? 'cursor-default' : 'cursor-pointer')} onClick={() => { if (!noShow) setOpen(v => !v) }}>
         <div className="flex items-center gap-3 flex-wrap">
-          <InfluencerBadge influencer={influencer} igUsername={igUsername} />
+          <InfluencerBadge influencer={influencer} igUsername={igUsername} profileHref={profileHref} />
           <FollowersStat followers={followers} />
           <ContentMetricsStats metrics={metrics} />
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           {scoreBlocks}
           {statusBadges}
-          {attendanceReminder && <div className="flex items-center gap-1" onClick={event => event.stopPropagation()}>
-            <input aria-label={`Seleccionar a ${influencer.display_name} para recordatorio`} type="checkbox" checked={attendanceReminder.selected} onChange={event => attendanceReminder.onSelected(event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
-            <button type="button" disabled={attendanceReminder.sending} onClick={attendanceReminder.onSend} title="Enviar recordatorio de asistencia por email" className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 disabled:opacity-50">{attendanceReminder.sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}</button>
+          {emailAction && !noShow && <div className="flex items-center gap-1" onClick={event => event.stopPropagation()}>
+            <input aria-label={`Seleccionar a ${influencer.display_name} para recordatorio de contenido`} type="checkbox" checked={emailAction.selected} onChange={event => emailAction.onSelected(event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
+            <button type="button" onClick={emailAction.onSend} title="Enviar recordatorio de contenido" className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50"><Mail className="h-4 w-4" /></button>
           </div>}
-          <ChevronRight className={cn('h-4 w-4 text-gray-400 transition-transform', open ? 'rotate-90' : '')} />
+          {!noShow && <ChevronRight className={cn('h-4 w-4 text-gray-400 transition-transform', open ? 'rotate-90' : '')} />}
         </div>
       </div>
 
-      {open && (
+      {open && !noShow && (
         <div className="pt-1.5 border-t border-gray-50 divide-y divide-gray-50">
           {items.map(d => (
             <div key={d.id} className="py-2 first:pt-0 last:pb-0">
@@ -1050,42 +1089,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   function togglePendingColumn(key: CiColumnKey) {
     setPendingVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
   }
-  // Selección para enviar recordatorio a varios influencers a la vez (no
-  // uno-a-uno) — reusa el mismo endpoint /remind, solo dispara N fetches.
-  const [remindSelection, setRemindSelection] = useState<Set<string>>(new Set())
-  const [bulkSending, setBulkSending] = useState(false)
-  const [attendanceReminderSelection, setAttendanceReminderSelection] = useState<Set<string>>(new Set())
-  const [attendanceReminderSending, setAttendanceReminderSending] = useState(false)
   const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set())
   const [showCampaignEmailModal, setShowCampaignEmailModal] = useState(false)
+  const [deliverableEmailSelection, setDeliverableEmailSelection] = useState<Set<string>>(new Set())
+  const [showDeliverableEmailModal, setShowDeliverableEmailModal] = useState(false)
+  const [deliverableSort, setDeliverableSort] = useState<DeliverableSort>('followers_desc')
   const [attendanceUpdating, setAttendanceUpdating] = useState<string | null>(null)
 
-  async function handleBulkRemind() {
-    const ids = Array.from(remindSelection)
-    if (ids.length === 0) return
-    setBulkSending(true)
-    try {
-      const results = await Promise.allSettled(
-        ids.map(influencerId =>
-          fetch(`/api/campaigns/${id}/deliverables/remind`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ influencer_id: influencerId }),
-          }).then(async res => {
-            if (!res.ok) throw new Error((await res.json())?.error || 'Error')
-          })
-        )
-      )
-      const ok = results.filter(r => r.status === 'fulfilled').length
-      const failed = results.length - ok
-      if (ok > 0) toast.success(`Recordatorio enviado a ${ok} influencer${ok !== 1 ? 's' : ''}`)
-      if (failed > 0) toast.error(`${failed} recordatorio${failed !== 1 ? 's' : ''} no se pudo${failed !== 1 ? 'ieron' : ''} enviar`)
-      setRemindSelection(new Set())
-      void refetch()
-    } finally {
-      setBulkSending(false)
-    }
-  }
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
@@ -1416,7 +1426,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     if (attendanceFilter === 'declined') return attendanceDeclinedInfluencers.some(candidate => candidate.id === ci.id)
     if (attendanceFilter === 'no_show') return noShowInfluencers.some(candidate => candidate.id === ci.id)
     return noConfirmedInfluencers.some(candidate => candidate.id === ci.id)
-  })
+  }).sort((left, right) => Number(attendanceFor(left)?.attendance_outcome === 'no_show') - Number(attendanceFor(right)?.attendance_outcome === 'no_show'))
   const visibleAcceptedInfluencerIds = attendanceFilteredInfluencers
     .filter(ci => ci.application_status === 'accepted' && attendanceFor(ci)?.attendance_outcome !== 'no_show' && !!ci.influencer?.id)
     .map(ci => ci.influencer!.id)
@@ -1458,6 +1468,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           next.delete(influencerId)
           return next
         })
+        setDeliverableEmailSelection(current => {
+          const next = new Set(current)
+          next.delete(influencerId)
+          return next
+        })
       }
       const label = action === 'confirmed_client' ? 'Confirmación registrada' : action === 'attended' ? 'Asistencia registrada' : 'No asistencia registrada'
       toast.success(label)
@@ -1468,49 +1483,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       setAttendanceUpdating(null)
     }
   }
-  const pendingAttendanceInfluencerIds = Array.from(new Set(campaignDeliverables
-    .filter(d => d.type === 'event_attendance' && d.status === 'pending' && getAttendanceState(d.attendance_response, d.due_date) === 'unconfirmed' && !!d.influencer?.id)
-    .map(d => d.influencer!.id)))
-  const visiblePendingAttendanceInfluencerIds = filteredInfluencers
-    .filter(ci => attendanceFilteredInfluencers.some(candidate => candidate.id === ci.id))
-    .map(ci => ci.influencer?.id)
-    .filter((influencerId): influencerId is string => !!influencerId && pendingAttendanceInfluencerIds.includes(influencerId))
-
-  function setAttendanceReminderSelected(influencerId: string, selected: boolean) {
-    setAttendanceReminderSelection(current => {
-      const next = new Set(current)
-      if (selected) next.add(influencerId)
-      else next.delete(influencerId)
-      return next
-    })
-  }
-
-  async function sendAttendanceReminders(influencerIds: string[]) {
-    const ids = Array.from(new Set(influencerIds)).filter(influencerId => pendingAttendanceInfluencerIds.includes(influencerId))
-    if (!ids.length) return toast.error('Selecciona al menos una influencer pendiente')
-    setAttendanceReminderSending(true)
-    try {
-      const response = await fetch(`/api/campaigns/${id}/attendance-confirmations`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remind', influencer_ids: ids }),
-      })
-      const json = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(json.error ?? 'No se pudo enviar el recordatorio')
-      toast.success(`Recordatorio enviado a ${json.data.sent} influencer${json.data.sent === 1 ? '' : 's'}`)
-      setAttendanceReminderSelection(current => new Set(Array.from(current).filter(value => !ids.includes(value))))
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo enviar el recordatorio')
-    } finally {
-      setAttendanceReminderSending(false)
-    }
-  }
-  // IDs de influencers visibles (tras filtros) con al menos 1 pendiente en
-  // esta campaña — usados para el checkbox "seleccionar todas" del recordatorio.
-  const remindablePendingIds = filteredInfluencers
-    .filter(ci => ci.influencer && campaignDeliverables.some(d =>
-      d.influencer?.id === ci.influencer!.id && !isDeliverableComplete(d)
-    ))
-    .map(ci => ci.influencer!.id)
   // FIX: antes buscaba solo en confirmedInfluencers — clickear una postulante
   // pendiente en el panel de "solicitudes pendientes" no la encontraba (estaba
   // filtrada afuera) y el panel derecho caía silenciosamente a mostrar la
@@ -1521,34 +1493,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     ? campaignDeliverables.filter(d => d.influencer?.id === selectedInfluencer.id)
     : []
 
-  // Solo cuenta deliverables con URL ya entregada — mismo criterio que el tab
-  // Deliverables (que ya filtra por esto). Antes contaba los 148 templates
-  // creados en bulk sin entrega, mostrando "Deliverables (148)" cuando en
-  // realidad solo había 1 entregable real.
-  // Solo mostrar entregables reales enviados o revisados
-  const visibleDeliverables = campaignDeliverables.filter(d => {
-    // ocultar asistencia pendiente sin respuesta
-    if (d.type === 'event_attendance') {
-      return !!d.attendance_response
-    }
-
-    // mostrar solo contenido enviado o revisado
-    return !!d.content_url ||
-           !!d.submitted_at ||
-           ['in_review','approved','rejected','published'].includes(d.status)
-  })
-
   const reelDeliverables = campaignDeliverables.filter(d => d.type === 'reel')
   const deliverableCount = reelDeliverables.length
+  const pendingDeliverableReviewCount = campaignDeliverables.filter(d => d.type !== 'event_attendance' && d.status === 'in_review').length
   const deliverableDone  = reelDeliverables.filter(d => d.status === 'published').length
-  // Average progress: published=100, others use progress field
-  const avgProgress = deliverableCount > 0
-    ? Math.round(reelDeliverables.reduce((sum, d) => {
-        if (d.status === 'published') return sum + 100
-        return sum + (d.progress ?? 0)
-      }, 0) / deliverableCount)
-    : 0
-  const pct = avgProgress
 
   // Métricas reales de contenido (Apify) agregadas a nivel campaña — solo
   // suma deliverables ya sincronizados (performance != null). No incluye
@@ -2173,7 +2121,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',     label: 'Overview',      icon: <Target className="h-3.5 w-3.5" /> },
     { id: 'influencers',  label: `Influencers (${isBrandPortal ? attendanceRosterInfluencers.length : activeRelations.length})`, icon: <Users className="h-3.5 w-3.5" /> },
-    { id: 'deliverables', label: `Deliverables (${deliverableCount})`,           icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+    { id: 'deliverables', label: `Entregables${pendingDeliverableReviewCount > 0 ? ` (${pendingDeliverableReviewCount})` : ''}`, icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
     { id: 'barters',      label: 'Canjes',        icon: <Gift className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
     { id: 'locations',    label: `Lugares (${brandLocations.length})`, icon: <Target className="h-3.5 w-3.5" /> },
@@ -3393,26 +3341,23 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── DELIVERABLES ─────────────────────────────────────────────────────── */}
       {tab === 'deliverables' && (
         <div className="space-y-3">
-          {/* Solo se listan deliverables donde el influencer ya subió su URL
-              (content_url o published_url) — evita ruido de los templates
-              creados en bulk para todas las invitadas que aún no entregan nada. */}
+          {/* Trabajo de contenido de las influencers aceptadas. La asistencia
+              se gestiona exclusivamente desde el tab Influencers. */}
           {(() => {
-            // Contenido con URL y asistencias ya confirmadas. Las solicitudes
-            // pendientes viven y se gestionan en el tab Influencers.
+            // El tab Entregables contiene trabajo de contenido. La asistencia
+            // se gestiona en Influencers; solo conservamos la fila final de
+            // una no-show para dejar claro que ya no requiere acciones.
             const acceptedInfluencerIds = new Set(
               confirmedInfluencers
                 .map(relation => relation.influencer?.id)
                 .filter((value): value is string => Boolean(value))
             )
-            const submittedDeliverables = campaignDeliverables.filter(
-              deliverable => acceptedInfluencerIds.has(deliverable.influencer?.id ?? '') && Boolean(
-                deliverable.content_url ||
-                deliverable.published_url ||
-                (deliverable.type === 'event_attendance' && (deliverable.attendance_response === 'confirmed' || deliverable.attendance_outcome === 'no_show'))
-              )
+            const submittedDeliverables = campaignDeliverables.filter(deliverable =>
+              acceptedInfluencerIds.has(deliverable.influencer?.id ?? '') &&
+              (deliverable.type !== 'event_attendance' || deliverable.attendance_outcome === 'no_show')
             )
             const visibleSubmittedDeliverables = deliverableStatusFilter
-              ? submittedDeliverables.filter(deliverable => deliverable.status === deliverableStatusFilter)
+              ? submittedDeliverables.filter(deliverable => deliverable.type === 'event_attendance' || deliverable.status === deliverableStatusFilter)
               : submittedDeliverables
 
             return (
@@ -3421,7 +3366,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
                     {(Object.entries(DEL_CONFIG) as [DeliverableStatus, typeof DEL_CONFIG[DeliverableStatus]][]).map(([st, cfg]) => {
-                      const count = submittedDeliverables.filter(d => d.status === st).length
+                      const count = submittedDeliverables.filter(d => d.type !== 'event_attendance' && d.status === st).length
                       if (count === 0) return null
                       return (
                         <button
@@ -3440,12 +3385,26 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       )
                     })}
                   </div>
-                  <button
-                    onClick={() => setAddingDeliverable(v => !v)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Agregar deliverable
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <DeliverableSortMenu value={deliverableSort} onChange={setDeliverableSort} />
+                    {deliverableEmailSelection.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDeliverableEmailModal(true)}
+                        title="Enviar recordatorio de contenido"
+                        className="flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                      >
+                        <Mail className="h-3.5 w-3.5" /> Recordar ({deliverableEmailSelection.size})
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setAddingDeliverable(v => !v)}
+                      title="Agregar entregable"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Agregar entregable
+                    </button>
+                  </div>
                 </div>
 
                 {/* Inline add form */}
@@ -3465,7 +3424,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <p className="text-sm text-gray-400">
                       {campaignDeliverables.length === 0
                         ? 'Sin deliverables asignados aún'
-                        : 'Ninguna influencer ha subido su URL todavía'}
+                        : 'Sin entregables de contenido asignados'}
                     </p>
                     {campaignDeliverables.length === 0 && (
                       <button onClick={() => setAddingDeliverable(true)}
@@ -3497,26 +3456,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       groups.get(key)!.items.push(d)
                     }
 
-                    // % completado y rating promedio POR influencer en ESTA
-                    // campaña (no el global de arriba) — base: TODOS sus
-                    // deliverables de la campaña, no solo los ya subidos.
+                    // Rating y métricas por influencer en esta campaña.
                     const statsByInfluencerId = new Map<string, {
-                      pct: number; avgRating: number | null; ratedCount: number
+                      avgRating: number | null; ratedCount: number
                       views: number; likes: number; comments: number; avgEngagement: number | null; hasMetrics: boolean
                     }>()
                     for (const d of campaignDeliverables) {
                       if (!d.influencer) continue
                       const key = d.influencer.id
                       if (!statsByInfluencerId.has(key)) statsByInfluencerId.set(key, {
-                        pct: 0, avgRating: null, ratedCount: 0,
+                        avgRating: null, ratedCount: 0,
                         views: 0, likes: 0, comments: 0, avgEngagement: null, hasMetrics: false,
                       })
                     }
                     for (const key of Array.from(statsByInfluencerId.keys())) {
-                      const own = campaignDeliverables.filter(d => d.influencer?.id === key)
-                      const ownDone = own.filter(isDeliverableComplete).length
+                      const own = campaignDeliverables.filter(d => d.influencer?.id === key && d.type !== 'event_attendance')
                       const ownRated = own.filter(d => d.content_rating != null)
-                      const pct = own.length > 0 ? Math.round((ownDone / own.length) * 100) : 0
                       const avgRating = ownRated.length > 0
                         ? Math.round((ownRated.reduce((s, d) => s + (d.content_rating as number), 0) / ownRated.length) * 10) / 10
                         : null
@@ -3534,13 +3489,26 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         ? Math.round((ownRates.reduce((s, v) => s + v, 0) / ownRates.length) * 100) / 100
                         : null
                       statsByInfluencerId.set(key, {
-                        pct, avgRating, ratedCount: ownRated.length,
+                        avgRating, ratedCount: ownRated.length,
                         views, likes, comments, avgEngagement, hasMetrics: ownWithMetrics.length > 0,
                       })
                     }
 
-                    return Array.from(groups.values()).map(g => {
+                    const orderedGroups = Array.from(groups.values()).sort((left, right) => {
+                      const leftNoShow = left.items.some(item => item.type === 'event_attendance' && item.attendance_outcome === 'no_show')
+                      const rightNoShow = right.items.some(item => item.type === 'event_attendance' && item.attendance_outcome === 'no_show')
+                      if (leftNoShow !== rightNoShow) return leftNoShow ? 1 : -1
+                      const leftStats = statsByInfluencerId.get(left.influencer.id)
+                      const rightStats = statsByInfluencerId.get(right.influencer.id)
+                      if (deliverableSort === 'results_desc') return (rightStats?.views ?? -1) - (leftStats?.views ?? -1)
+                      if (deliverableSort === 'engagement_desc') return (rightStats?.avgEngagement ?? -1) - (leftStats?.avgEngagement ?? -1)
+                      if (deliverableSort === 'rating_desc') return (rightStats?.avgRating ?? -1) - (leftStats?.avgRating ?? -1)
+                      return (followersByInfluencerId.get(right.influencer.id) ?? -1) - (followersByInfluencerId.get(left.influencer.id) ?? -1)
+                    })
+
+                    return orderedGroups.map(g => {
                       const stats = statsByInfluencerId.get(g.influencer.id)
+                      const hasPendingContent = g.items.some(d => d.type !== 'event_attendance' && !isDeliverableComplete(d))
                       return (
                         <DeliverableInfluencerGroup
                           key={g.influencer.id}
@@ -3549,18 +3517,25 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           followers={followersByInfluencerId.get(g.influencer.id) ?? null}
                           items={g.items}
                           campaignId={id}
+                          profileHref={isBrandPortal ? `/brand-influencers/${g.influencer.id}` : `/admin-influencers/${g.influencer.id}?from=${encodeURIComponent(`/admin-campaigns/${id}?tab=deliverables`)}`}
                           reviewNotes={reviewNotes}
                           setReviewNotes={setReviewNotes}
-                          pct={stats?.pct ?? 0}
                           avgRating={stats?.avgRating ?? null}
                           ratedCount={stats?.ratedCount ?? 0}
                           metrics={stats?.hasMetrics ? { views: stats.views, likes: stats.likes, comments: stats.comments, avgEngagement: stats.avgEngagement } : null}
-                          attendanceReminder={g.items.some(d => d.type === 'event_attendance' && d.status === 'pending' && !d.attendance_response)
+                          emailAction={hasPendingContent
                             ? {
-                              selected: attendanceReminderSelection.has(g.influencer.id),
-                              sending: attendanceReminderSending,
-                              onSelected: selected => setAttendanceReminderSelected(g.influencer.id, selected),
-                              onSend: () => void sendAttendanceReminders([g.influencer.id]),
+                              selected: deliverableEmailSelection.has(g.influencer.id),
+                              onSelected: selected => setDeliverableEmailSelection(current => {
+                                const next = new Set(current)
+                                if (selected) next.add(g.influencer.id)
+                                else next.delete(g.influencer.id)
+                                return next
+                              }),
+                              onSend: () => {
+                                setDeliverableEmailSelection(new Set([g.influencer.id]))
+                                setShowDeliverableEmailModal(true)
+                              },
                             }
                             : undefined}
                         />
@@ -3956,6 +3931,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           influencerIds={Array.from(emailSelection)}
           onClose={() => setShowCampaignEmailModal(false)}
           onSent={() => setEmailSelection(new Set())}
+        />
+      )}
+      {showDeliverableEmailModal && deliverableEmailSelection.size > 0 && (
+        <CampaignEmailModal
+          campaignId={id}
+          campaignName={c.name}
+          influencerIds={Array.from(deliverableEmailSelection)}
+          initialTemplateKey="campaign_content_reminder"
+          onClose={() => setShowDeliverableEmailModal(false)}
+          onSent={() => setDeliverableEmailSelection(new Set())}
         />
       )}
     </div>

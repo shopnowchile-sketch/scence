@@ -9,12 +9,14 @@ export function CampaignEmailModal({
   campaignId,
   campaignName,
   influencerIds,
+  initialTemplateKey,
   onClose,
   onSent,
 }: {
   campaignId: string
   campaignName: string
   influencerIds: string[]
+  initialTemplateKey?: string
   onClose: () => void
   onSent: () => void
 }) {
@@ -37,14 +39,15 @@ export function CampaignEmailModal({
         if (!active) return
         const available = (json.data ?? []) as EmailTemplateDefinition[]
         setTemplates(available)
-        if (available[0]) selectTemplate(available[0])
+        const initialTemplate = available.find(template => template.key === initialTemplateKey) ?? available[0]
+        if (initialTemplate) selectTemplate(initialTemplate)
       })
       .catch(error => toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los templates'))
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
     // selectTemplate sólo actualiza estado local y usa campaignName estable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaignId])
+  }, [campaignId, initialTemplateKey])
 
   function selectTemplate(template: EmailTemplateDefinition) {
     setTemplateKey(template.key)

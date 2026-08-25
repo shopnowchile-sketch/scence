@@ -78,6 +78,7 @@ export const ES_TO_EN: Record<string, string> = {
   'Próximamente': 'Coming soon',
 
   // Authentication and registration
+  'Gestión de campañas para marcas e influencers': 'Campaign management for brands & influencers',
   'Bienvenido de vuelta': 'Welcome back',
   'Inicia sesión en tu cuenta': 'Sign in to your account',
   'Iniciando sesión…': 'Signing in…',

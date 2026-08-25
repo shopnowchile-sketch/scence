@@ -15,7 +15,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </div>
             <span className="text-2xl font-black text-gray-900 tracking-tight">SCENCE</span>
           </div>
-          <p className="text-sm text-gray-400">Campaign management for brands & influencers</p>
+          <p className="text-sm text-gray-400">Gestión de campañas para marcas e influencers</p>
         </div>
         {children}
       </div>

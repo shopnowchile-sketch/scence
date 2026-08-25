@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieOptions } from '@supabase/ssr'
+import { detectLocale, LOCALE_COOKIE } from '@/i18n/config'
 
 const PUBLIC_ROUTES = [
   '/login', '/register', '/forgot-password', '/reset-password',
@@ -17,12 +18,31 @@ const PUBLIC_ROUTES = [
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const isPublic = PUBLIC_ROUTES.some(route => path.startsWith(route))
+  const existingLocale = request.cookies.get(LOCALE_COOKIE)?.value
+  const locale = detectLocale({
+    cookieLocale: existingLocale,
+    acceptLanguage: request.headers.get('accept-language'),
+    country: request.headers.get('x-vercel-ip-country'),
+  })
+
+  if (!existingLocale) request.cookies.set(LOCALE_COOKIE, locale)
+
+  const withLocale = (response: NextResponse) => {
+    if (!existingLocale) {
+      response.cookies.set(LOCALE_COOKIE, locale, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 365,
+        sameSite: 'lax',
+      })
+    }
+    return response
+  }
 
   // Las páginas y webhooks públicos no necesitan renovar ni verificar una sesión.
   // Evitar esta llamada es importante cuando una campaña genera muchas visitas
   // simultáneas desde un correo o enlace compartido.
   if (isPublic) {
-    return NextResponse.next({ request })
+    return withLocale(NextResponse.next({ request }))
   }
 
   let supabaseResponse = NextResponse.next({ request })
@@ -54,13 +74,13 @@ export async function middleware(request: NextRequest) {
   if (!claims) {
     // API routes → return JSON 401 instead of HTML redirect
     if (isApiRoute) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return withLocale(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
     }
     // Pages → redirect to login with return param
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirect', path)
-    return NextResponse.redirect(url)
+    return withLocale(NextResponse.redirect(url))
   }
 
   // Determinar rol del usuario autenticado
@@ -94,37 +114,37 @@ export async function middleware(request: NextRequest) {
     if (isBrand) {
       // Marca → solo puede acceder al portal de marcas
       if (path === '/login' || path === '/' || path === '/brand/dashboard') {
-        return NextResponse.redirect(new URL('/brand-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/brand-dash', request.url)))
       }
       if (ADMIN_ONLY.some(r => path.startsWith(r)) || INFLUENCER_ONLY.some(r => path.startsWith(r))) {
-        return NextResponse.redirect(new URL('/brand-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/brand-dash', request.url)))
       }
     } else if (isInfluencer) {
       if (path === '/login' || path === '/' || path === '/dashboard') {
-        return NextResponse.redirect(new URL('/inf-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
       }
       // /influencers/support es accesible para influencers aunque /influencers esté en ADMIN_ONLY
       if (ADMIN_ONLY.some(r => path.startsWith(r)) && path !== '/influencers/support') {
-        return NextResponse.redirect(new URL('/inf-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
       }
       if (BRAND_ONLY.some(r => path.startsWith(r))) {
-        return NextResponse.redirect(new URL('/inf-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
       }
     } else {
       // Admin
       if (path === '/login' || path === '/') {
-        return NextResponse.redirect(new URL('/admin-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
       }
       if (INFLUENCER_ONLY.some(r => path === r || path.startsWith(r + '/'))) {
-        return NextResponse.redirect(new URL('/admin-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
       }
       if (BRAND_ONLY.some(r => path.startsWith(r))) {
-        return NextResponse.redirect(new URL('/admin-dash', request.url))
+        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
       }
     }
   }
 
-  return supabaseResponse
+  return withLocale(supabaseResponse)
 }
 
 export const config = {

@@ -32,19 +32,22 @@ export async function PATCH(request: NextRequest) {
 
   const { full_name, display_name, phone, timezone, locale, avatar_url, notification_preferences, signer_rut, signer_role } = body
 
+  if (locale !== undefined && locale !== 'es' && locale !== 'en') {
+    return NextResponse.json({ error: 'Unsupported locale' }, { status: 400 })
+  }
+
   const admin = createAdminClient()
 
-  const update: Record<string, unknown> = {
-    full_name:    full_name    ?? undefined,
-    display_name: display_name ?? undefined,
-    phone:        phone        ?? null,
-    timezone:     timezone     ?? undefined,
-    locale:       locale       ?? undefined,
-    avatar_url:   avatar_url   ?? null,
-    signer_rut:   signer_rut   ?? null,
-    signer_role:  signer_role  ?? null,
-    updated_at:   new Date().toISOString(),
-  }
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key)
+  if (has('full_name')) update.full_name = full_name
+  if (has('display_name')) update.display_name = display_name
+  if (has('phone')) update.phone = phone ?? null
+  if (has('timezone')) update.timezone = timezone
+  if (has('locale')) update.locale = locale
+  if (has('avatar_url')) update.avatar_url = avatar_url ?? null
+  if (has('signer_rut')) update.signer_rut = signer_rut ?? null
+  if (has('signer_role')) update.signer_role = signer_role ?? null
 
   // Preferencias de notificación: se guardan dentro de metadata (JSONB) para
   // no crear una columna/tabla nueva. Merge con lo existente, nunca se pisa

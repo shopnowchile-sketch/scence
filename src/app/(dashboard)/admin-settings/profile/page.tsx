@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { Loader2, Save, User } from 'lucide-react'
+import { useScenceLocale } from '@/components/providers/LocaleProvider'
 
 const schema = z.object({
   full_name:    z.string().min(2, 'Mínimo 2 caracteres'),
@@ -31,6 +32,7 @@ export default function ProfileSettingsPage() {
   const [email, setEmail]       = useState('')
   const pathname = usePathname()
   const isBrandPortal = pathname.startsWith('/brand-settings')
+  const { locale: activeLocale, setLocale } = useScenceLocale()
 
   const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -46,7 +48,7 @@ export default function ProfileSettingsPage() {
             display_name: data.display_name ?? '',
             phone:        data.phone        ?? '',
             timezone:     data.timezone     ?? 'America/Mexico_City',
-            locale:       data.locale       ?? 'es',
+            locale:       data.locale === 'en' || data.locale === 'es' ? data.locale : activeLocale,
             signer_rut:   data.signer_rut   ?? '',
             signer_role:  data.signer_role  ?? '',
           })
@@ -54,7 +56,7 @@ export default function ProfileSettingsPage() {
         }
       })
       .finally(() => setLoading(false))
-  }, [reset])
+  }, [activeLocale, reset])
 
   async function onSubmit(data: FormValues) {
     setSaving(true)
@@ -67,6 +69,9 @@ export default function ProfileSettingsPage() {
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Perfil actualizado')
       reset(data)
+      if ((data.locale === 'es' || data.locale === 'en') && data.locale !== activeLocale) {
+        setLocale(data.locale)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
@@ -135,7 +140,6 @@ export default function ProfileSettingsPage() {
             <select {...register('locale')} className="input-base w-full">
               <option value="es">Español</option>
               <option value="en">English</option>
-              <option value="pt">Português</option>
             </select>
           </div>
         </div>

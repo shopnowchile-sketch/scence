@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react'
 import { Menu, X, LogOut, ChevronDown, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -158,6 +159,9 @@ function SidebarContent({
 
       {/* Footer */}
       <div className="border-t border-gray-100 p-3 space-y-0.5 flex-shrink-0">
+        <div className="flex justify-end px-2 pb-1">
+          <LanguageSwitcher compact />
+        </div>
         {portal === 'admin' && (
           <Link href="/admin-settings/profile" onClick={onNavClick}
             className={cn('nav-link', pathname.startsWith('/admin-settings') && 'active')}>

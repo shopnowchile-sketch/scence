@@ -67,3 +67,6 @@
     @apply bg-violet-50 text-violet-700 font-semibold;
   }
 }
+html[data-locale='en'][data-locale-ready='false'] body {
+  visibility: hidden;
+}

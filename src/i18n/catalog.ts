@@ -102,6 +102,7 @@ export const ES_TO_EN: Record<string, string> = {
   'Calificados': 'Qualified',
   'Con email': 'With email',
   'Sin email': 'Without email',
+  'Sin enviar': 'Not sent',
   'Filtrar por interacción de email': 'Filter by email interaction',
   'Filtrar por disponibilidad de email': 'Filter by email availability',
   'Seleccionar todas las empresas filtradas': 'Select all filtered companies',

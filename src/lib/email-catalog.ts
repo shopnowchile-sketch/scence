@@ -9,11 +9,12 @@ export type EmailTemplateDefinition = {
   category: EmailCategory
   audience: EmailAudience
   usage: EmailUsage
-  contexts: Array<'campaign' | 'system'>
+  contexts: Array<'campaign' | 'crm' | 'system'>
   requiredVariables: string[]
   defaultSubject: string
   defaultMessage?: string
   defaultButtonLabel?: string
+  defaultButtonUrl?: string
 }
 
 // Registro único de los emails existentes. La persistencia continúa en código:
@@ -22,7 +23,80 @@ export const EMAIL_CATALOG: EmailTemplateDefinition[] = [
   { key: 'password_reset', name: 'Recuperación de contraseña', description: 'Link temporal para crear una nueva contraseña.', category: 'access', audience: 'customer', usage: 'automatic', contexts: ['system'], requiredVariables: ['action_link'], defaultSubject: 'Restablece tu contraseña — Scence' },
   { key: 'brand_signup_confirmation', name: 'Confirmación de registro de marca', description: 'Confirma el registro inicial del portal de marcas.', category: 'access', audience: 'brand', usage: 'automatic', contexts: ['system'], requiredVariables: ['contact_name', 'action_link'], defaultSubject: 'Confirma tu cuenta — SCENCE' },
   { key: 'influencer_campaign_invite', name: 'Invitación privada de influencer', description: 'Invitación generada automáticamente por el flujo privado de campaña.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['influencer_name', 'campaign_name', 'brand_name', 'portal_url'], defaultSubject: 'Invitación a {{campaign_name}}' },
-  { key: 'crm_intro', name: 'Introducción comercial CRM', description: 'Presentación de SCENCE a prospectos.', category: 'crm', audience: 'brand', usage: 'automatic', contexts: ['system'], requiredVariables: ['contact_name', 'company_name'], defaultSubject: 'Conoce Scence' },
+  {
+    key: 'crm_intro',
+    name: 'Introducción comercial CRM',
+    description: 'Presentación inicial de SCENCE para prospectos y PYMES.',
+    category: 'crm',
+    audience: 'brand',
+    usage: 'manual_and_automatic',
+    contexts: ['crm', 'system'],
+    requiredVariables: ['contact_name', 'company_name'],
+    defaultSubject: 'Hola, ¿cómo estás?',
+    defaultMessage: `Hola {{contact_name}},
+
+Soy Pri, fundadora de SCENCE.
+
+Hoy las marcas ya no crecen solo con publicidad tradicional. Las personas quieren contenido real, recomendaciones auténticas y marcas que les generen confianza.
+
+Por eso creamos SCENCE: una plataforma chilena que conecta marcas con creadoras de contenido e influencers para crear campañas, eventos, canjes y contenido UGC que ayude a aumentar visibilidad, seguidores, confianza y ventas.
+
+Queremos invitar a {{company_name}} a probar SCENCE y crear su primera campaña con creadoras.
+
+Si quieres más información, también me puedes escribir directo a pri@scence.cl.
+
+Saludos,
+Pri
+SCENCE`,
+    defaultButtonLabel: 'Crear mi primera campaña gratis →',
+    defaultButtonUrl: 'https://scence-app.vercel.app/register',
+  },
+  {
+    key: 'crm_follow_up',
+    name: 'Seguimiento comercial CRM',
+    description: 'Seguimiento breve para prospectos contactados anteriormente.',
+    category: 'crm',
+    audience: 'brand',
+    usage: 'manual',
+    contexts: ['crm'],
+    requiredVariables: ['contact_name', 'company_name'],
+    defaultSubject: '¿Conversamos sobre una campaña para {{company_name}}?',
+    defaultMessage: `Hola {{contact_name}},
+
+Quería retomar mi mensaje sobre SCENCE. Ayudamos a marcas como {{company_name}} a crear campañas con creadoras de contenido de forma simple y acompañada.
+
+Si te interesa, podemos revisar una primera idea de campaña sin compromiso.
+
+Saludos,
+Pri
+SCENCE`,
+    defaultButtonLabel: 'Conocer SCENCE →',
+    defaultButtonUrl: 'https://scence-app.vercel.app/register',
+  },
+  {
+    key: 'crm_clicked_follow_up',
+    name: 'Seguimiento después de clic',
+    description: 'Mensaje para prospectos que hicieron clic en un email anterior.',
+    category: 'crm',
+    audience: 'brand',
+    usage: 'manual',
+    contexts: ['crm'],
+    requiredVariables: ['contact_name', 'company_name'],
+    defaultSubject: '{{company_name}}, ¿vemos una primera campaña?',
+    defaultMessage: `Hola {{contact_name}},
+
+Vi que revisaste la información de SCENCE y quería ayudarte con el siguiente paso.
+
+Podemos preparar para {{company_name}} una primera propuesta de campaña con creadoras de contenido, alineada a su público y objetivos.
+
+Si te hace sentido, responde este email y la armamos contigo.
+
+Saludos,
+Pri
+SCENCE`,
+    defaultButtonLabel: 'Crear mi campaña →',
+    defaultButtonUrl: 'https://scence-app.vercel.app/register',
+  },
   { key: 'booking_confirmed', name: 'Booking confirmado', description: 'Confirma fecha, lugar y participación en un booking.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['recipient_name', 'campaign_name', 'event_date', 'event_location'], defaultSubject: 'Booking confirmado: {{campaign_name}}' },
   { key: 'application_approved', name: 'Postulación aprobada', description: 'Informa a la influencer que fue seleccionada.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['influencer_name', 'campaign_name', 'brand_name', 'portal_url'], defaultSubject: '¡Tu postulación a {{campaign_name}} fue aprobada!' },
   { key: 'new_application', name: 'Nueva postulación recibida', description: 'Alerta a la marca sobre una nueva postulante.', category: 'campaigns', audience: 'brand', usage: 'automatic', contexts: ['system'], requiredVariables: ['recipient_name', 'influencer_name', 'campaign_name', 'review_url'], defaultSubject: 'Nueva postulación: {{campaign_name}}' },
@@ -58,6 +132,10 @@ export const EMAIL_CATALOG: EmailTemplateDefinition[] = [
 
 export const CAMPAIGN_EMAIL_CATALOG = EMAIL_CATALOG.filter(template =>
   template.contexts.includes('campaign') && template.audience === 'influencer' && template.usage !== 'automatic'
+)
+
+export const CRM_EMAIL_CATALOG = EMAIL_CATALOG.filter(template =>
+  template.contexts.includes('crm') && ['brand', 'customer'].includes(template.audience) && template.usage !== 'automatic'
 )
 
 export function getEmailTemplate(key: string): EmailTemplateDefinition | undefined {

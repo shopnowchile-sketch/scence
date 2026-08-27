@@ -36,12 +36,33 @@ const EMAIL_STATUS_EVENT_TYPES: Record<string, string[]> = {
   failed_bounced: ['email.failed', 'email.bounced'],
 }
 
-function applyEmailEventFilter(query: any, emailStatus: string) {
+type EmailEventSets = Record<'sent' | 'delivered' | 'opened' | 'clicked' | 'failed' | 'bounced', Set<string>>
+
+function getEmailEventLeadIds(emailStatus: string, emailEventSets: EmailEventSets) {
   const eventTypes = EMAIL_STATUS_EVENT_TYPES[emailStatus]
-  if (!eventTypes) return query
-  return eventTypes.length === 1
-    ? query.eq('crm_email_events.event_type', eventTypes[0])
-    : query.in('crm_email_events.event_type', eventTypes)
+  if (!eventTypes) return null
+
+  const setByEventType: Record<string, Set<string>> = {
+    'email.sent': emailEventSets.sent,
+    'email.delivered': emailEventSets.delivered,
+    'email.opened': emailEventSets.opened,
+    'email.clicked': emailEventSets.clicked,
+    'email.failed': emailEventSets.failed,
+    'email.bounced': emailEventSets.bounced,
+  }
+  return Array.from(new Set(eventTypes.flatMap(eventType => Array.from(setByEventType[eventType] ?? []))))
+}
+
+function applyContactDataFilter(query: any, contactData: string) {
+  if (contactData === 'has_email') return query.not('email', 'is', null).neq('email', '')
+  if (contactData === 'missing_email') return query.or('email.is.null,email.eq.')
+  return query
+}
+
+function chunksOf<T>(values: T[], size: number) {
+  const chunks: T[][] = []
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size))
+  return chunks
 }
 
 // ── GET /api/crm-leads — lista paginada con filtros ───────────────────────────
@@ -68,7 +89,7 @@ export async function GET(request: NextRequest) {
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
-  const emailEventSets = {
+  const emailEventSets: EmailEventSets = {
     sent: new Set<string>(),
     delivered: new Set<string>(),
     opened: new Set<string>(),
@@ -110,68 +131,88 @@ export async function GET(request: NextRequest) {
   // CRM. Reusa los mismos filtros que el listado paginado. Corta antes de
   // hacer el enriquecimiento (auth map, sources, etc.) que no se necesita acá.
   if (idsOnly) {
-    const buildIdsQuery = () => {
-      const eventRelation = EMAIL_STATUS_EVENT_TYPES[emailStatus] ? ', crm_email_events!inner(event_type)' : ''
-      let q: any = admin.from('crm_leads').select(`id${eventRelation}`).order('created_at', { ascending: false })
+    const buildIdsQuery = (eventLeadIds?: string[]) => {
+      let q: any = admin.from('crm_leads').select('id').order('created_at', { ascending: false })
       if (qualification) q = q.eq('qualification_status', qualification)
       if (region) q = q.eq('region', region)
       if (source) q = q.eq('source', source)
       if (industry) q = q.eq('industry', industry)
       if (commune) q = q.eq('commune', commune)
-      if (contactData === 'missing_email_instagram') {
-        q = q.or('and(email.is.null,instagram.is.null),and(email.is.null,instagram.eq.),and(email.eq.,instagram.is.null),and(email.eq.,instagram.eq.)')
-      }
-      q = applyEmailEventFilter(q, emailStatus)
+      q = applyContactDataFilter(q, contactData)
+      if (eventLeadIds) q = q.in('id', eventLeadIds)
       if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
       if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
       return q
     }
 
-    const allIds: string[] = []
+    const allIds = new Set<string>()
     const PAGE = 1000
-    let from = 0
-    for (;;) {
-      const { data: rows, error: idsError } = await buildIdsQuery().range(from, from + PAGE - 1)
-      if (idsError) {
-        console.error('[GET /api/crm-leads ids_only]', idsError)
-        return NextResponse.json({ error: idsError.message }, { status: 500 })
+    const eventLeadIds = getEmailEventLeadIds(emailStatus, emailEventSets)
+    const idChunks = eventLeadIds === null ? [undefined] : chunksOf(eventLeadIds, 200)
+
+    for (const idChunk of idChunks) {
+      let from = 0
+      for (;;) {
+        const { data: rows, error: idsError } = await buildIdsQuery(idChunk).range(from, from + PAGE - 1)
+        if (idsError) {
+          console.error('[GET /api/crm-leads ids_only]', idsError)
+          return NextResponse.json({ error: idsError.message }, { status: 500 })
+        }
+        if (!rows || rows.length === 0) break
+        for (const r of rows as Array<{ id: string }>) allIds.add(r.id)
+        if (rows.length < PAGE || allIds.size >= 20000) break
+        from += PAGE
       }
-      if (!rows || rows.length === 0) break
-      for (const r of rows as Array<{ id: string }>) allIds.push(r.id)
-      if (rows.length < PAGE || allIds.length >= 20000) break
-      from += PAGE
+      if (allIds.size >= 20000) break
     }
 
-    return NextResponse.json({ ids: allIds })
+    return NextResponse.json({ ids: Array.from(allIds).slice(0, 20000) })
   }
 
-  const eventRelation = EMAIL_STATUS_EVENT_TYPES[emailStatus] ? ', crm_email_events!inner(event_type)' : ''
-  let query: any = admin
-    .from('crm_leads')
-    .select(`id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at${eventRelation}`, { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range((page - 1) * limit, page * limit - 1)
-
-  if (qualification) query = query.eq('qualification_status', qualification)
-  if (region) query = query.eq('region', region)
-  if (source) query = query.eq('source', source)
-  if (industry) query = query.eq('industry', industry)
-  if (commune) query = query.eq('commune', commune)
-  if (contactData === 'missing_email_instagram') {
-    query = query.or('and(email.is.null,instagram.is.null),and(email.is.null,instagram.eq.),and(email.eq.,instagram.is.null),and(email.eq.,instagram.eq.)')
+  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at'
+  const buildLeadsQuery = (eventLeadIds?: string[], withCount = false) => {
+    let q: any = withCount
+      ? admin.from('crm_leads').select(leadFields, { count: 'exact' })
+      : admin.from('crm_leads').select(leadFields)
+    q = q.order('created_at', { ascending: false })
+    if (qualification) q = q.eq('qualification_status', qualification)
+    if (region) q = q.eq('region', region)
+    if (source) q = q.eq('source', source)
+    if (industry) q = q.eq('industry', industry)
+    if (commune) q = q.eq('commune', commune)
+    q = applyContactDataFilter(q, contactData)
+    if (eventLeadIds) q = q.in('id', eventLeadIds)
+    if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
+    if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
+    return q
   }
 
-  query = applyEmailEventFilter(query, emailStatus)
-  if (emailStatus === 'not_sent') query = query.is('contacted_at', null)
+  const eventLeadIds = getEmailEventLeadIds(emailStatus, emailEventSets)
+  let data: any[] = []
+  let count = 0
 
-  if (search) {
-    query = query.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
-  }
-
-  const { data, error, count } = await query
-  if (error) {
-    console.error('[GET /api/crm-leads]', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (eventLeadIds !== null) {
+    const matchingById = new Map<string, any>()
+    for (const idChunk of chunksOf(eventLeadIds, 200)) {
+      const { data: rows, error } = await buildLeadsQuery(idChunk)
+      if (error) {
+        console.error('[GET /api/crm-leads email filter]', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+      for (const row of rows ?? []) matchingById.set(row.id, row)
+    }
+    const matching = Array.from(matchingById.values()).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    count = matching.length
+    data = matching.slice((page - 1) * limit, page * limit)
+  } else {
+    const query = buildLeadsQuery(undefined, true).range((page - 1) * limit, page * limit - 1)
+    const result = await query
+    if (result.error) {
+      console.error('[GET /api/crm-leads]', result.error)
+      return NextResponse.json({ error: result.error.message }, { status: 500 })
+    }
+    data = result.data ?? []
+    count = result.count ?? 0
   }
 
   const authMap = await buildAuthEmailMap(admin)
@@ -197,7 +238,7 @@ export async function GET(request: NextRequest) {
   }
 
   const enriched = (data ?? []).map((row: any) => {
-    const { crm_email_events: _emailEvents, ...l } = row
+    const l = row
     const lastSignIn = l.email ? authMap.get(l.email.toLowerCase()) ?? null : null
     const openedAt = openedMap.get(l.id) ?? null
 
@@ -210,29 +251,8 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  // Valores distintos de `source` (para poblar el filtro "Origen" en la UI) —
-  // se calcula junto con la lista para no necesitar un endpoint nuevo.
-  // FIX (2026-07-05): un solo `.limit(20000)` NO bastaba — Supabase/PostgREST
-  // corta cada request a ~1000 filas server-side sin importar el límite
-  // pedido del lado del cliente (mismo bug ya encontrado y corregido en
-  // notify-no-instagram/route.ts). Con 2 tandas importadas en orden distinto
-  // (maturana_enero_2027 primero, 4733 filas; cuicos_las_condes_wengerhaus
-  // después, 1000 filas), la query sin paginar solo veía la primera tanda y
-  // "cuicos" nunca aparecía en el filtro. Se pagina con el mismo patrón
-  // PAGE=1000 + loop que ya usa loadScan/notify-no-instagram.
-  const sourcesSet = new Set<string>()
-  {
-    const PAGE = 1000
-    let from = 0
-    for (;;) {
-      const { data: sourceRows } = await admin.from('crm_leads').select('source').range(from, from + PAGE - 1)
-      if (!sourceRows || sourceRows.length === 0) break
-      for (const r of sourceRows) if (r.source) sourcesSet.add(r.source)
-      if (sourceRows.length < PAGE) break
-      from += PAGE
-    }
-  }
-  const industriesSet = new Set<string>()
+  // La única dimensión de catálogo que sigue visible en el toolbar es comuna.
+  // Se pagina para no perder valores por el límite de filas de PostgREST.
   const communesSet = new Set<string>()
   {
     const PAGE = 1000
@@ -240,13 +260,12 @@ export async function GET(request: NextRequest) {
     for (;;) {
       const { data: filterRows } = await admin
         .from('crm_leads')
-        .select('industry, commune')
+        .select('commune')
         .range(from, from + PAGE - 1)
 
       if (!filterRows || filterRows.length === 0) break
 
       for (const r of filterRows) {
-        if (r.industry) industriesSet.add(r.industry)
         if (r.commune) communesSet.add(r.commune)
       }
 
@@ -255,8 +274,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const sources = Array.from(sourcesSet).sort()
-  const industries = Array.from(industriesSet).sort()
   const communes = Array.from(communesSet).sort()
 
   const stats = {
@@ -269,7 +286,7 @@ export async function GET(request: NextRequest) {
     openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
   }
 
-  return NextResponse.json({ data: enriched, total: count ?? 0, page, limit, sources, industries, communes, stats })
+  return NextResponse.json({ data: enriched, total: count, page, limit, communes, stats })
 }
 
 // ── POST /api/crm-leads — crear lead manual ──────────────────────────────────

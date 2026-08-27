@@ -6,6 +6,7 @@ import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 
 type Lead = {
   id: string
@@ -88,6 +89,7 @@ const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
 ]
 
 const DEFAULT_COLUMNS: ColumnKey[] = COLUMN_CONFIG.map(c => c.key)
+const DEFAULT_CRM_TEMPLATE = CRM_EMAIL_CATALOG.find(template => template.key === 'crm_intro') ?? CRM_EMAIL_CATALOG[0]
 
 export function CrmLeadsClient() {
   const [leads, setLeads] = useState<Lead[]>([])
@@ -117,34 +119,9 @@ export function CrmLeadsClient() {
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [showBulkSendModal, setShowBulkSendModal] = useState(false)
-  const [bulkSubject, setBulkSubject] = useState('Hola, ¿cómo estás?')
-  const [bulkMessage, setBulkMessage] = useState(`Hola,
-
-Soy Pri, fundadora de SCENCE.
-
-Hoy las marcas ya no crecen solo con publicidad tradicional. Las personas quieren contenido real, recomendaciones auténticas y marcas que les generen confianza.
-
-Por eso creamos SCENCE: una plataforma chilena que conecta marcas con creadoras de contenido e influencers para crear campañas, eventos, canjes y contenido UGC que ayude a aumentar visibilidad, seguidores, confianza y ventas.
-
-Queremos invitarte a probar SCENCE y registrar tu marca para que podamos ayudarte a conectar con creadoras alineadas a tu estilo, tu público y tus objetivos.
-
-Esta nueva forma de potenciar marcas ya se está usando en Estados Unidos y en el mundo. En Chile, SCENCE está creciendo para ayudar a emprendedores y empresas a adaptarse a lo que hoy sí genera impacto: contenido real, comunidad y confianza.
-
-Puedes registrarte aquí:
-https://scence-app.vercel.app/register
-
-También puedes revisar nuestros Instagram:
-@influencers.snc — https://www.instagram.com/influencers.snc/
-@scence.cl — https://www.instagram.com/scence.cl/
-
-Si quieres más información, también me puedes escribir directo a:
-pri@scence.cl
-
-Nos encantaría ayudarte a crecer tu marca con creadoras.
-
-Saludos,
-Pri
-SCENCE`)
+  const [bulkTemplateKey, setBulkTemplateKey] = useState(DEFAULT_CRM_TEMPLATE.key)
+  const [bulkSubject, setBulkSubject] = useState(DEFAULT_CRM_TEMPLATE.defaultSubject)
+  const [bulkMessage, setBulkMessage] = useState(DEFAULT_CRM_TEMPLATE.defaultMessage ?? '')
   const [sendingBulk, setSendingBulk] = useState(false)
   const limit = 50
   const tableRef = useRef<HTMLDivElement>(null)
@@ -244,6 +221,22 @@ SCENCE`)
     }
   }
 
+  const bulkTemplate = CRM_EMAIL_CATALOG.find(template => template.key === bulkTemplateKey) ?? DEFAULT_CRM_TEMPLATE
+
+  function chooseBulkTemplate(templateKey: string) {
+    const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey)
+    if (!template) return
+    setBulkTemplateKey(template.key)
+    setBulkSubject(template.defaultSubject)
+    setBulkMessage(template.defaultMessage ?? '')
+  }
+
+  function resetBulkTemplate() {
+    setBulkTemplateKey(DEFAULT_CRM_TEMPLATE.key)
+    setBulkSubject(DEFAULT_CRM_TEMPLATE.defaultSubject)
+    setBulkMessage(DEFAULT_CRM_TEMPLATE.defaultMessage ?? '')
+  }
+
   async function sendBulkEmails() {
     if (selectedIds.length === 0) {
       toast.error('No hay leads seleccionados')
@@ -257,6 +250,7 @@ SCENCE`)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lead_ids: selectedIds,
+          template_key: bulkTemplateKey,
           subject: bulkSubject,
           message: bulkMessage,
         }),
@@ -267,34 +261,7 @@ SCENCE`)
 
       toast.success(`Envío en marcha: ${j.total} leads. Te llega un email cuando termine.`)
       setShowBulkSendModal(false)
-      setBulkSubject('Hola, ¿cómo estás?')
-      setBulkMessage(`Hola,
-
-Soy Pri, fundadora de SCENCE.
-
-Hoy las marcas ya no crecen solo con publicidad tradicional. Las personas quieren contenido real, recomendaciones auténticas y marcas que les generen confianza.
-
-Por eso creamos SCENCE: una plataforma chilena que conecta marcas con creadoras de contenido e influencers para crear campañas, eventos, canjes y contenido UGC que ayude a aumentar visibilidad, seguidores, confianza y ventas.
-
-Queremos invitarte a probar SCENCE y registrar tu marca para que podamos ayudarte a conectar con creadoras alineadas a tu estilo, tu público y tus objetivos.
-
-Esta nueva forma de potenciar marcas ya se está usando en Estados Unidos y en el mundo. En Chile, SCENCE está creciendo para ayudar a emprendedores y empresas a adaptarse a lo que hoy sí genera impacto: contenido real, comunidad y confianza.
-
-Puedes registrarte aquí:
-https://scence-app.vercel.app/register
-
-También puedes revisar nuestros Instagram:
-@influencers.snc — https://www.instagram.com/influencers.snc/
-@scence.cl — https://www.instagram.com/scence.cl/
-
-Si quieres más información, también me puedes escribir directo a:
-pri@scence.cl
-
-Nos encantaría ayudarte a crecer tu marca con creadoras.
-
-Saludos,
-Pri
-SCENCE`)
+      resetBulkTemplate()
       setSelectedIds([])
       await load()
     } catch (e) {
@@ -864,6 +831,20 @@ SCENCE`)
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Tipo de email</label>
+                <select
+                  value={bulkTemplateKey}
+                  onChange={event => chooseBulkTemplate(event.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-violet-400"
+                >
+                  {CRM_EMAIL_CATALOG.map(template => (
+                    <option key={template.key} value={template.key}>{template.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-400">{bulkTemplate.description}</p>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">Asunto</label>
                 <input
                   value={bulkSubject}
@@ -875,7 +856,7 @@ SCENCE`)
 
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">
-                  Mensaje personalizado opcional
+                  Mensaje
                 </label>
                 <textarea
                   value={bulkMessage}
@@ -885,7 +866,7 @@ SCENCE`)
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400 resize-none"
                 />
                 <p className="mt-1 text-xs text-gray-400">
-                  Este mensaje se enviará a todos los leads seleccionados. Puedes editarlo antes de enviar.
+                  Puedes editarlo. Las variables {'{{contact_name}}'} y {'{{company_name}}'} se personalizan para cada lead.
                 </p>
               </div>
             </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3 } from 'lucide-react'
+import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3, SlidersHorizontal } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
@@ -62,6 +62,19 @@ const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: 
   converted:   { label: 'Convertido',    cls: 'bg-violet-100 text-violet-700' },
 }
 
+const EMAIL_STATUS_OPTIONS = [
+  { value: '', label: 'Cualquier actividad de email' },
+  { value: 'sent', label: 'Enviados' },
+  { value: 'delivered', label: 'Entregados' },
+  { value: 'opened', label: 'Abiertos' },
+  { value: 'clicked', label: 'Con clic' },
+  { value: 'engaged', label: 'Abrieron o hicieron clic' },
+  { value: 'failed', label: 'Fallidos' },
+  { value: 'bounced', label: 'Rebotados' },
+  { value: 'failed_bounced', label: 'Fallidos o rebotados' },
+  { value: 'not_sent', label: 'Sin email enviado' },
+]
+
 type ColumnKey = 'contact' | 'instagram' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
 type EmailStats = {
@@ -101,6 +114,7 @@ export function CrmLeadsClient() {
   const [commune, setCommune] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
+  const [showMoreFilters, setShowMoreFilters] = useState(false)
   const [sources, setSources] = useState<string[]>([])
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
     'scence:admin:crm:visibleColumns', DEFAULT_COLUMNS
@@ -421,6 +435,31 @@ SCENCE`)
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
+  const activeFilterCount = [qualification, industry, commune, source, emailStatus, contactData].filter(Boolean).length
+  const hasActiveFilters = Boolean(search || activeFilterCount)
+  const activeHiddenFilters = [
+    industry ? { key: 'industry', label: `Rubro: ${industry}`, clear: () => setIndustry('') } : null,
+    commune ? { key: 'commune', label: `Comuna: ${commune}`, clear: () => setCommune('') } : null,
+    source ? { key: 'source', label: `Origen: ${source}`, clear: () => setSource('') } : null,
+    emailStatus && !['opened', 'clicked'].includes(emailStatus)
+      ? {
+          key: 'emailStatus',
+          label: `Email: ${EMAIL_STATUS_OPTIONS.find(option => option.value === emailStatus)?.label ?? emailStatus}`,
+          clear: () => setEmailStatus(''),
+        }
+      : null,
+  ].filter((filter): filter is { key: string; label: string; clear: () => void } => filter !== null)
+
+  function clearFilters() {
+    setSearch('')
+    setQualification('')
+    setIndustry('')
+    setCommune('')
+    setSource('')
+    setEmailStatus('')
+    setContactData('')
+    setPage(1)
+  }
 
   return (
     <div className="space-y-4">
@@ -536,9 +575,9 @@ SCENCE`)
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-2">
-          <div className="relative xl:col-span-5">
+      <div className="rounded-2xl border border-gray-100 bg-white p-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative min-w-[260px] flex-[1_1_320px] max-w-xl">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
             <input
               value={search}
@@ -548,80 +587,139 @@ SCENCE`)
             />
           </div>
 
-          <div className="xl:col-span-3">
-            <select
-              value={qualification}
-              onChange={e => { setPage(1); setQualification(e.target.value) }}
-              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+          <div className="inline-flex max-w-full overflow-x-auto rounded-lg bg-gray-100 p-1" aria-label="Filtrar por estado">
+            <button
+              type="button"
+              aria-pressed={!qualification}
+              onClick={() => { setPage(1); setQualification('') }}
+              className={cn(
+                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                !qualification ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              )}
             >
-              <option value="">Todos los estados</option>
-              {Object.entries(STATUS_CONFIG).map(([k, cfg]) => (
-                <option key={k} value={k}>{cfg.label}</option>
-              ))}
-            </select>
+              Todos
+            </button>
+            {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={qualification === key}
+                onClick={() => { setPage(1); setQualification(key) }}
+                className={cn(
+                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                  qualification === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                )}
+              >
+                {config.label}
+              </button>
+            ))}
           </div>
 
-          <div className="xl:col-span-4">
+          <button
+            type="button"
+            aria-pressed={emailStatus === 'opened'}
+            onClick={() => { setPage(1); setEmailStatus(emailStatus === 'opened' ? '' : 'opened') }}
+            className={cn(
+              'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
+              emailStatus === 'opened'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+            )}
+          >
+            Abrió email
+          </button>
+
+          <button
+            type="button"
+            aria-pressed={emailStatus === 'clicked'}
+            onClick={() => { setPage(1); setEmailStatus(emailStatus === 'clicked' ? '' : 'clicked') }}
+            className={cn(
+              'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
+              emailStatus === 'clicked'
+                ? 'border-violet-200 bg-violet-50 text-violet-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+            )}
+          >
+            Hizo clic
+          </button>
+
+          <button
+            type="button"
+            aria-pressed={contactData === 'missing_email_instagram'}
+            onClick={() => {
+              setPage(1)
+              setContactData(contactData === 'missing_email_instagram' ? '' : 'missing_email_instagram')
+            }}
+            className={cn(
+              'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
+              contactData === 'missing_email_instagram'
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+            )}
+          >
+            Sin contacto
+          </button>
+
+          <button
+            type="button"
+            aria-expanded={showMoreFilters}
+            onClick={() => setShowMoreFilters(value => !value)}
+            className={cn(
+              'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors',
+              showMoreFilters || activeHiddenFilters.length > 0
+                ? 'border-violet-200 bg-violet-50 text-violet-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+            )}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Más filtros
+            {activeHiddenFilters.length > 0 && (
+              <span className="rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] leading-none text-white">
+                {activeHiddenFilters.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {showMoreFilters && (
+          <div className="grid grid-cols-1 gap-2 rounded-xl bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-4">
             <select
               value={industry}
+              aria-label="Filtrar por rubro"
               onChange={e => { setPage(1); setIndustry(e.target.value) }}
-              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todos los rubros</option>
               {industries.map(i => (
                 <option key={i} value={i}>{i}</option>
               ))}
             </select>
-          </div>
-
-          <div className="xl:col-span-4">
             <select
               value={commune}
+              aria-label="Filtrar por comuna"
               onChange={e => { setPage(1); setCommune(e.target.value) }}
-              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todas las comunas</option>
               {communes.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
-          </div>
-
-          <div className="xl:col-span-4">
             <select
               value={emailStatus}
+              aria-label="Filtrar por actividad de email"
               onChange={e => { setPage(1); setEmailStatus(e.target.value) }}
-              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
             >
-              <option value="">Todos los emails</option>
-              <option value="sent">Enviados</option>
-              <option value="delivered">Entregados</option>
-              <option value="opened">Abiertos</option>
-              <option value="clicked">Con clic</option>
-              <option value="engaged">Abrieron o hicieron clic</option>
-              <option value="failed">Fallidos</option>
-              <option value="bounced">Rebotados</option>
-              <option value="failed_bounced">Fallidos o rebotados</option>
-              <option value="not_sent">Sin email enviado</option>
+              {EMAIL_STATUS_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
-          </div>
-
-          <div className="xl:col-span-4">
-            <select
-              value={contactData}
-              onChange={e => { setPage(1); setContactData(e.target.value) }}
-              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
-            >
-              <option value="">Todos los datos de contacto</option>
-              <option value="missing_email_instagram">Sin email ni Instagram</option>
-            </select>
-          </div>
-
-          <div className="xl:col-span-4">
             <select
               value={source}
+              aria-label="Filtrar por origen"
               onChange={e => { setPage(1); setSource(e.target.value) }}
-              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
             >
               <option value="">Todos los orígenes</option>
               {sources.map(s => (
@@ -629,33 +727,41 @@ SCENCE`)
               ))}
             </select>
           </div>
+        )}
 
-          <div className="xl:col-span-4 flex items-center">
-            <button
-              type="button"
-              onClick={() => {
-                setSearch('')
-                setQualification('')
-                setIndustry('')
-                setCommune('')
-                setSource('')
-                setEmailStatus('')
-                setContactData('')
-                setPage(1)
-              }}
-              className="h-9 px-3 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50"
-            >
-              Limpiar filtros
-            </button>
-          </div>
+        {(hasActiveFilters || total > 0) && (
+          <div className="flex min-h-7 items-center justify-between gap-2 border-t border-gray-100 pt-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {activeHiddenFilters.map(filter => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => { filter.clear(); setPage(1) }}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full bg-gray-100 px-2.5 text-[11px] font-medium text-gray-600 hover:bg-gray-200"
+                  title="Quitar filtro"
+                >
+                  {filter.label}
+                  <X className="h-3 w-3" />
+                </button>
+              ))}
 
-          {total > 0 && (
-            <div className="xl:col-span-4 flex items-center">
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="h-7 px-2 text-[11px] font-semibold text-gray-500 hover:text-gray-800"
+                >
+                  Limpiar todo
+                </button>
+              )}
+            </div>
+
+            {total > 0 && (
               <button
                 type="button"
                 onClick={selectAllMatching}
                 disabled={selectingAll || selectedIds.length === total}
-                className="h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                className="h-7 px-2 text-[11px] font-semibold text-violet-700 hover:text-violet-900 disabled:opacity-50"
               >
                 {selectingAll
                   ? 'Seleccionando...'
@@ -663,9 +769,9 @@ SCENCE`)
                     ? `Todos (${total}) seleccionados`
                     : `Seleccionar todos (${total})`}
               </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {selectedCount > 0 && (

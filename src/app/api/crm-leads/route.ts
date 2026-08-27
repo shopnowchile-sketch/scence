@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { isCrmAdmin } from '@/lib/crm-auth'
 
 // Módulo CRM — aislado, no toca brands/influencers/campaigns.
 // Solo super_admin / brand_manager (mismo criterio que useIsAdmin / Sidebar admin).
-async function isAdminUser(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return ['super_admin', 'brand_manager'].includes(String(data?.role ?? ''))
-}
-
 // Cruza emails de leads contra auth.users (mismo método admin.auth.admin.listUsers()
 // ya usado en /api/brands y /api/brands/[id]/invite para last_sign_in_at, solo que
 // ahí se busca por user_id y acá por email — un lead recién queda vinculado a un
@@ -29,6 +25,25 @@ async function buildAuthEmailMap(admin: ReturnType<typeof createAdminClient>) {
   return map
 }
 
+const EMAIL_STATUS_EVENT_TYPES: Record<string, string[]> = {
+  sent: ['email.sent'],
+  delivered: ['email.delivered'],
+  opened: ['email.opened'],
+  clicked: ['email.clicked'],
+  engaged: ['email.opened', 'email.clicked'],
+  failed: ['email.failed'],
+  bounced: ['email.bounced'],
+  failed_bounced: ['email.failed', 'email.bounced'],
+}
+
+function applyEmailEventFilter(query: any, emailStatus: string) {
+  const eventTypes = EMAIL_STATUS_EVENT_TYPES[emailStatus]
+  if (!eventTypes) return query
+  return eventTypes.length === 1
+    ? query.eq('crm_email_events.event_type', eventTypes[0])
+    : query.in('crm_email_events.event_type', eventTypes)
+}
+
 // ── GET /api/crm-leads — lista paginada con filtros ───────────────────────────
 export async function GET(request: NextRequest) {
   const supabase = createServerClient()
@@ -36,7 +51,7 @@ export async function GET(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -48,6 +63,7 @@ export async function GET(request: NextRequest) {
   const industry = searchParams.get('industry') ?? ''
   const commune = searchParams.get('commune') ?? ''
   const emailStatus = searchParams.get('email_status') ?? ''
+  const contactData = searchParams.get('contact_data') ?? ''
   const idsOnly = searchParams.get('ids_only') === '1'
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
@@ -56,6 +72,7 @@ export async function GET(request: NextRequest) {
     sent: new Set<string>(),
     delivered: new Set<string>(),
     opened: new Set<string>(),
+    clicked: new Set<string>(),
     failed: new Set<string>(),
     bounced: new Set<string>(),
   }
@@ -78,6 +95,7 @@ export async function GET(request: NextRequest) {
         if (row.event_type === 'email.sent') emailEventSets.sent.add(row.lead_id)
         if (row.event_type === 'email.delivered') emailEventSets.delivered.add(row.lead_id)
         if (row.event_type === 'email.opened') emailEventSets.opened.add(row.lead_id)
+        if (row.event_type === 'email.clicked') emailEventSets.clicked.add(row.lead_id)
         if (row.event_type === 'email.failed') emailEventSets.failed.add(row.lead_id)
         if (row.event_type === 'email.bounced') emailEventSets.bounced.add(row.lead_id)
       }
@@ -92,26 +110,18 @@ export async function GET(request: NextRequest) {
   // CRM. Reusa los mismos filtros que el listado paginado. Corta antes de
   // hacer el enriquecimiento (auth map, sources, etc.) que no se necesita acá.
   if (idsOnly) {
-    const applyIdsEmailFilter = (q: any, ids: Set<string>) => {
-      const list = Array.from(ids)
-      return list.length > 0
-        ? q.in('id', list)
-        : q.eq('id', '00000000-0000-0000-0000-000000000000')
-    }
-
     const buildIdsQuery = () => {
-      let q: any = admin.from('crm_leads').select('id').order('created_at', { ascending: false })
+      const eventRelation = EMAIL_STATUS_EVENT_TYPES[emailStatus] ? ', crm_email_events!inner(event_type)' : ''
+      let q: any = admin.from('crm_leads').select(`id${eventRelation}`).order('created_at', { ascending: false })
       if (qualification) q = q.eq('qualification_status', qualification)
       if (region) q = q.eq('region', region)
       if (source) q = q.eq('source', source)
       if (industry) q = q.eq('industry', industry)
       if (commune) q = q.eq('commune', commune)
-      if (emailStatus === 'sent') q = applyIdsEmailFilter(q, emailEventSets.sent)
-      if (emailStatus === 'delivered') q = applyIdsEmailFilter(q, emailEventSets.delivered)
-      if (emailStatus === 'opened') q = applyIdsEmailFilter(q, emailEventSets.opened)
-      if (emailStatus === 'failed') q = applyIdsEmailFilter(q, emailEventSets.failed)
-      if (emailStatus === 'bounced') q = applyIdsEmailFilter(q, emailEventSets.bounced)
-      if (emailStatus === 'failed_bounced') q = applyIdsEmailFilter(q, new Set(Array.from(emailEventSets.failed).concat(Array.from(emailEventSets.bounced))))
+      if (contactData === 'missing_email_instagram') {
+        q = q.or('and(email.is.null,instagram.is.null),and(email.is.null,instagram.eq.),and(email.eq.,instagram.is.null),and(email.eq.,instagram.eq.)')
+      }
+      q = applyEmailEventFilter(q, emailStatus)
       if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
       if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
       return q
@@ -135,9 +145,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ids: allIds })
   }
 
-  let query = admin
+  const eventRelation = EMAIL_STATUS_EVENT_TYPES[emailStatus] ? ', crm_email_events!inner(event_type)' : ''
+  let query: any = admin
     .from('crm_leads')
-    .select('id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at', { count: 'exact' })
+    .select(`id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at${eventRelation}`, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range((page - 1) * limit, page * limit - 1)
 
@@ -146,22 +157,11 @@ export async function GET(request: NextRequest) {
   if (source) query = query.eq('source', source)
   if (industry) query = query.eq('industry', industry)
   if (commune) query = query.eq('commune', commune)
-
-  const applyEmailStatusFilter = (ids: Set<string>) => {
-    const list = Array.from(ids)
-    query = list.length > 0
-      ? query.in('id', list)
-      : query.eq('id', '00000000-0000-0000-0000-000000000000')
+  if (contactData === 'missing_email_instagram') {
+    query = query.or('and(email.is.null,instagram.is.null),and(email.is.null,instagram.eq.),and(email.eq.,instagram.is.null),and(email.eq.,instagram.eq.)')
   }
 
-  if (emailStatus === 'sent') applyEmailStatusFilter(emailEventSets.sent)
-  if (emailStatus === 'delivered') applyEmailStatusFilter(emailEventSets.delivered)
-  if (emailStatus === 'opened') applyEmailStatusFilter(emailEventSets.opened)
-  if (emailStatus === 'failed') applyEmailStatusFilter(emailEventSets.failed)
-  if (emailStatus === 'bounced') applyEmailStatusFilter(emailEventSets.bounced)
-  // Combinado — usado por el KPI "Fallidos/Rebotados" del dashboard (una sola
-  // tarjeta que suma ambos, por eso el click necesita ambos sets a la vez).
-  if (emailStatus === 'failed_bounced') applyEmailStatusFilter(new Set(Array.from(emailEventSets.failed).concat(Array.from(emailEventSets.bounced))))
+  query = applyEmailEventFilter(query, emailStatus)
   if (emailStatus === 'not_sent') query = query.is('contacted_at', null)
 
   if (search) {
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
 
   const authMap = await buildAuthEmailMap(admin)
 
-  const leadIds = (data ?? []).map(l => l.id)
+  const leadIds = (data ?? []).map((lead: { id: string }) => lead.id)
   const openedMap = new Map<string, string | null>()
 
   if (leadIds.length > 0) {
@@ -196,7 +196,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const enriched = (data ?? []).map(l => {
+  const enriched = (data ?? []).map((row: any) => {
+    const { crm_email_events: _emailEvents, ...l } = row
     const lastSignIn = l.email ? authMap.get(l.email.toLowerCase()) ?? null : null
     const openedAt = openedMap.get(l.id) ?? null
 
@@ -262,6 +263,7 @@ export async function GET(request: NextRequest) {
     sent: emailEventSets.sent.size,
     delivered: emailEventSets.delivered.size,
     opened: emailEventSets.opened.size,
+    clicked: emailEventSets.clicked.size,
     failed: emailEventSets.failed.size,
     bounced: emailEventSets.bounced.size,
     openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
@@ -277,7 +279,7 @@ export async function POST(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

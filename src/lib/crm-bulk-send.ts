@@ -88,7 +88,11 @@ export async function sendLeadBatch(
       event_type: 'email.sent',
       recipient_email: lead.email,
       subject,
-      raw_payload: { source: 'bulk-send', resend_email_id: resendEmailId },
+      raw_payload: {
+        source: 'bulk-send',
+        email_type: 'Envío masivo CRM',
+        resend_email_id: resendEmailId,
+      },
     })
 
     await admin.from('crm_leads').update({
@@ -100,7 +104,7 @@ export async function sendLeadBatch(
     await admin.from('crm_lead_activities').insert({
       lead_id: lead.id,
       action_type: 'email_sent',
-      description: `Email masivo enviado a ${lead.email} · Asunto: ${subject}${resendEmailId ? ` · Resend ID: ${resendEmailId}` : ''}`,
+      description: `Tipo: Envío masivo CRM · Para: ${lead.email} · Asunto: ${subject}`,
       created_by: userId,
     })
 

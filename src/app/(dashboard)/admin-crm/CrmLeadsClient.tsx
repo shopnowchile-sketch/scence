@@ -68,6 +68,7 @@ type EmailStats = {
   sent: number
   delivered: number
   opened: number
+  clicked: number
   failed: number
   bounced: number
   openRate: number
@@ -99,6 +100,7 @@ export function CrmLeadsClient() {
   const [industry, setIndustry] = useState('')
   const [commune, setCommune] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
+  const [contactData, setContactData] = useState('')
   const [sources, setSources] = useState<string[]>([])
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
     'scence:admin:crm:visibleColumns', DEFAULT_COLUMNS
@@ -106,7 +108,7 @@ export function CrmLeadsClient() {
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [industries, setIndustries] = useState<string[]>([])
   const [communes, setCommunes] = useState<string[]>([])
-  const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, failed: 0, bounced: 0, openRate: 0 })
+  const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, clicked: 0, failed: 0, bounced: 0, openRate: 0 })
   const [showAddModal, setShowAddModal] = useState(false)
   const [savingLead, setSavingLead] = useState(false)
   const [form, setForm] = useState<LeadForm>(EMPTY_FORM)
@@ -166,6 +168,7 @@ SCENCE`)
     if (industry) params.set('industry', industry)
     if (commune) params.set('commune', commune)
     if (emailStatus) params.set('email_status', emailStatus)
+    if (contactData) params.set('contact_data', contactData)
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
@@ -181,7 +184,7 @@ SCENCE`)
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, source, industry, commune, emailStatus])
+  }, [page, search, qualification, source, industry, commune, emailStatus, contactData])
 
   useEffect(() => { load() }, [load])
 
@@ -242,6 +245,7 @@ SCENCE`)
       if (industry) params.set('industry', industry)
       if (commune) params.set('commune', commune)
       if (emailStatus) params.set('email_status', emailStatus)
+      if (contactData) params.set('contact_data', contactData)
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudo seleccionar todos')
@@ -593,10 +597,23 @@ SCENCE`)
               <option value="sent">Enviados</option>
               <option value="delivered">Entregados</option>
               <option value="opened">Abiertos</option>
+              <option value="clicked">Con clic</option>
+              <option value="engaged">Abrieron o hicieron clic</option>
               <option value="failed">Fallidos</option>
               <option value="bounced">Rebotados</option>
               <option value="failed_bounced">Fallidos o rebotados</option>
               <option value="not_sent">Sin email enviado</option>
+            </select>
+          </div>
+
+          <div className="xl:col-span-4">
+            <select
+              value={contactData}
+              onChange={e => { setPage(1); setContactData(e.target.value) }}
+              className="h-9 w-full px-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 outline-none focus:border-violet-400"
+            >
+              <option value="">Todos los datos de contacto</option>
+              <option value="missing_email_instagram">Sin email ni Instagram</option>
             </select>
           </div>
 
@@ -623,6 +640,7 @@ SCENCE`)
                 setCommune('')
                 setSource('')
                 setEmailStatus('')
+                setContactData('')
                 setPage(1)
               }}
               className="h-9 px-3 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50"

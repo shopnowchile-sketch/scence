@@ -29,6 +29,18 @@ const EVENT_LABEL: Record<string, string> = {
   'email.suppressed': 'Email suprimido',
 }
 
+const EVENT_ACTION_TYPE: Record<string, string> = {
+  'email.sent': 'email_sent',
+  'email.delivered': 'email_delivered',
+  'email.delivery_delayed': 'email_delayed',
+  'email.opened': 'email_opened',
+  'email.clicked': 'email_clicked',
+  'email.bounced': 'email_bounced',
+  'email.complained': 'email_complained',
+  'email.failed': 'email_failed',
+  'email.suppressed': 'email_suppressed',
+}
+
 function firstEmail(value: unknown): string | null {
   if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : null
   return typeof value === 'string' ? value : null
@@ -91,6 +103,27 @@ export async function POST(req: NextRequest) {
     leadId = lead?.id ?? null
   }
 
+  // Svix reintenta webhooks cuando no recibe respuesta a tiempo. Evita que el
+  // mismo evento y su actividad aparezcan duplicados en el historial, sin
+  // eliminar aperturas/clics legítimos que ocurran en momentos distintos.
+  if (resendEmailId) {
+    let duplicateQuery = admin
+      .from('crm_email_events')
+      .select('id')
+      .eq('resend_email_id', resendEmailId)
+      .eq('event_type', eventType)
+      .limit(1)
+
+    // `email.sent` ya se registra localmente al recibir el ID de Resend. Para
+    // el resto conservamos eventos repetidos reales (p. ej. dos aperturas) y
+    // sólo colapsamos el mismo timestamp, que corresponde a un retry de Svix.
+    if (eventType !== 'email.sent') duplicateQuery = duplicateQuery.eq('occurred_at', occurredAt)
+
+    const { data: duplicate } = await duplicateQuery.maybeSingle()
+
+    if (duplicate) return NextResponse.json({ received: true, duplicate: true })
+  }
+
   await admin.from('crm_email_events').insert({
     lead_id: leadId,
     resend_email_id: resendEmailId,
@@ -109,7 +142,7 @@ export async function POST(req: NextRequest) {
 
     await admin.from('crm_lead_activities').insert({
       lead_id: leadId,
-      action_type: 'email_sent',
+      action_type: EVENT_ACTION_TYPE[eventType] ?? 'email_event',
       description: `${label}${recipientEmail ? ` · ${recipientEmail}` : ''}${subject ? ` · Asunto: ${subject}` : ''}${clickedLink}`,
       created_by: null,
     })

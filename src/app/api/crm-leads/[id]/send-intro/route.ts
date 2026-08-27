@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, crmIntroEmail } from '@/lib/resend'
+import { isCrmAdmin } from '@/lib/crm-auth'
 
 type Params = { params: { id: string } }
-
-async function isAdminUser(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return ['super_admin', 'brand_manager'].includes(String(data?.role ?? ''))
-}
 
 function escapeHtml(value: string) {
   return value
@@ -51,7 +47,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -119,13 +115,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     recipient_email: lead.email,
     subject,
     occurred_at: now,
-    raw_payload: { source: 'send-intro', resend_email_id: resendEmailId },
+    raw_payload: {
+      source: 'send-intro',
+      email_type: 'Introducción comercial CRM',
+      resend_email_id: resendEmailId,
+    },
   })
 
   await admin.from('crm_lead_activities').insert({
     lead_id: params.id,
     action_type: 'email_sent',
-    description: `Email enviado a ${lead.email} · Asunto: ${subject}${resendEmailId ? ` · Resend ID: ${resendEmailId}` : ''}`,
+    description: `Tipo: Introducción comercial CRM · Para: ${lead.email} · Asunto: ${subject}`,
     created_by: user.id,
   })
 

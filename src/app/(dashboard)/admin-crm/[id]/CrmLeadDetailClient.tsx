@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -19,6 +20,7 @@ type EmailEvent = {
   recipient_email: string | null
   subject: string | null
   resend_email_id: string | null
+  email_type: string | null
   occurred_at: string | null
   created_at: string
 }
@@ -62,11 +64,21 @@ const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: 
 
 const ACTION_LABEL: Record<string, string> = {
   email_sent: 'Email enviado',
+  email_delivered: 'Email entregado',
+  email_delayed: 'Entrega demorada',
+  email_opened: 'Email abierto',
+  email_clicked: 'Link clickeado',
+  email_bounced: 'Email rebotado',
+  email_complained: 'Marcado como spam',
+  email_failed: 'Falló el email',
+  email_suppressed: 'Email suprimido',
+  email_event: 'Evento de email',
   qualified: 'Calificado',
   rejected: 'Rechazado',
   note: 'Nota',
   contacted: 'Contactado',
   converted: 'Convertido',
+  status_changed: 'Estado actualizado',
 }
 
 const EMAIL_EVENT_LABEL: Record<string, string> = {
@@ -117,11 +129,13 @@ SCENCE`
 }
 
 export function CrmLeadDetailClient({ id }: { id: string }) {
+  const router = useRouter()
   const [lead, setLead] = useState<Lead | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [note, setNote] = useState('')
   const [savingNote, setSavingNote] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [showEmailEditor, setShowEmailEditor] = useState(false)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
@@ -203,7 +217,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
       const r = await fetch(`/api/crm-leads/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qualification_notes: note }),
+        body: JSON.stringify({ note }),
       })
       if (!r.ok) throw new Error()
       setNote('')
@@ -213,6 +227,27 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
       toast.error('No se pudo guardar la nota')
     }
     setSavingNote(false)
+  }
+
+  async function deleteLead() {
+    if (!lead || !window.confirm(`¿Eliminar permanentemente el lead ${lead.company_name || lead.email || ''}?`)) return
+
+    setDeleting(true)
+    try {
+      const r = await fetch('/api/crm-leads/bulk-delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_ids: [lead.id] }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error ?? 'No se pudo eliminar el lead')
+      toast.success('Lead eliminado')
+      router.push('/admin-crm')
+      router.refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el lead')
+      setDeleting(false)
+    }
   }
 
   if (loading) {
@@ -226,15 +261,32 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   const cfg = STATUS_CONFIG[lead.qualification_status] ?? STATUS_CONFIG.unqualified
   const emailEvents = lead.email_events ?? []
   const latestEmailEvent = emailEvents[0] ?? null
+  const noteActivities = lead.activities.filter(activity => (
+    activity.action_type === 'note'
+    && !activity.description?.startsWith('Estado cambiado a')
+    && !activity.description?.startsWith('Marca creada automáticamente')
+  ))
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/admin-crm" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
-          <ArrowLeft className="h-4 w-4" /> CRM
-        </Link>
-        <span className="text-gray-200">/</span>
-        <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{lead.company_name}</span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link href="/admin-crm" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800">
+            <ArrowLeft className="h-4 w-4" /> CRM
+          </Link>
+          <span className="text-gray-200">/</span>
+          <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{lead.company_name}</span>
+        </div>
+        <button
+          type="button"
+          onClick={deleteLead}
+          disabled={deleting}
+          title="Eliminar lead"
+          aria-label="Eliminar lead"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+        >
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -406,6 +458,24 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
             >
               Guardar nota
             </button>
+
+            <div className="mt-5 border-t border-gray-100 pt-4">
+              <h3 className="text-xs font-bold text-gray-700 mb-3">Historial de notas</h3>
+              {noteActivities.length === 0 ? (
+                <p className="text-xs text-gray-400">Sin notas todavía.</p>
+              ) : (
+                <div className="space-y-3">
+                  {noteActivities.map(activity => (
+                    <div key={activity.id} className="rounded-xl bg-gray-50 p-3">
+                      <p className="text-xs text-gray-600 whitespace-pre-wrap">{activity.description}</p>
+                      <p className="mt-1 text-[10px] text-gray-300">
+                        {new Date(activity.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -422,6 +492,12 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
               <div className="text-xs text-gray-400">
                 Último evento: {new Date(latestEmailEvent.occurred_at ?? latestEmailEvent.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
               </div>
+              {(latestEmailEvent.email_type || latestEmailEvent.subject) && (
+                <div className="rounded-xl bg-gray-50 p-3 text-xs text-gray-500 space-y-1">
+                  {latestEmailEvent.email_type && <p><span className="font-semibold text-gray-700">Tipo:</span> {latestEmailEvent.email_type}</p>}
+                  {latestEmailEvent.subject && <p><span className="font-semibold text-gray-700">Asunto:</span> {latestEmailEvent.subject}</p>}
+                </div>
+              )}
               <div className="space-y-2">
                 {emailEvents.slice(0, 5).map(ev => (
                   <div key={ev.id} className="flex items-start justify-between gap-3 text-xs border-b border-gray-50 pb-2 last:border-0">

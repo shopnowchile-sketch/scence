@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-
-async function isAdminUser(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return ['super_admin', 'brand_manager'].includes(String(data?.role ?? ''))
-}
+import { isCrmAdmin } from '@/lib/crm-auth'
 
 export async function DELETE(request: NextRequest) {
   const supabase = createServerClient()
@@ -12,7 +8,7 @@ export async function DELETE(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -40,9 +36,6 @@ export async function DELETE(request: NextRequest) {
 
   for (let i = 0; i < uniqueIds.length; i += CHUNK) {
     const chunk = uniqueIds.slice(i, i + CHUNK)
-
-    await admin.from('crm_email_events').delete().in('lead_id', chunk)
-    await admin.from('crm_lead_activities').delete().in('lead_id', chunk)
 
     const { data, error } = await admin
       .from('crm_leads')

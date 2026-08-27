@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { isCrmAdmin } from '@/lib/crm-auth'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-
-async function isAdminUser(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return ['super_admin', 'brand_manager'].includes(String(data?.role ?? ''))
-}
 
 // POST /api/crm-leads/bulk-send
 // Ya NO manda los emails en la misma request (eso causaba el tope de 50 y el
@@ -20,7 +16,7 @@ export async function POST(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

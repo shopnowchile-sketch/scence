@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-
-async function isAdminUser(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return ['super_admin', 'brand_manager'].includes(String(data?.role ?? ''))
-}
+import { isCrmAdmin } from '@/lib/crm-auth'
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = []
@@ -112,7 +108,7 @@ export async function POST(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

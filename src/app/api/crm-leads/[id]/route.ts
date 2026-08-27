@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { isCrmAdmin } from '@/lib/crm-auth'
 
 type Params = { params: { id: string } }
-
-async function isAdminUser(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return ['super_admin', 'brand_manager'].includes(String(data?.role ?? ''))
-}
 
 const VALID_STATUS = ['unqualified', 'qualified', 'rejected', 'contacted', 'converted']
 
@@ -18,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -38,9 +34,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: emailEvents } = await admin
     .from('crm_email_events')
-    .select('id, event_type, recipient_email, subject, resend_email_id, occurred_at, created_at')
+    .select('id, event_type, recipient_email, subject, resend_email_id, occurred_at, created_at, raw_payload')
     .eq('lead_id', params.id)
     .order('occurred_at', { ascending: false })
+
+  const enrichedActivities = [...(activities ?? [])]
+  const legacyNote = typeof lead.qualification_notes === 'string' ? lead.qualification_notes.trim() : ''
+  if (legacyNote && !enrichedActivities.some(activity => activity.action_type === 'note' && activity.description?.trim() === legacyNote)) {
+    enrichedActivities.push({
+      id: `legacy-note-${lead.id}`,
+      action_type: 'note',
+      description: legacyNote,
+      created_at: lead.updated_at ?? lead.created_at,
+      created_by: null,
+    })
+    enrichedActivities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }
 
   // Conexión a la app — mismo criterio que /api/crm-leads (lista): cruza el
   // email del lead contra auth.users vía admin.auth.admin.listUsers(). Un solo
@@ -62,8 +71,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
   }
 
+  const emailTypeByResendId = new Map<string, string>()
+  for (const event of emailEvents ?? []) {
+    const rawPayload = event.raw_payload as Record<string, unknown> | null
+    const emailType = typeof rawPayload?.email_type === 'string' ? rawPayload.email_type : null
+    if (event.resend_email_id && emailType) emailTypeByResendId.set(event.resend_email_id, emailType)
+  }
+
+  const enrichedEmailEvents = (emailEvents ?? []).map(event => ({
+    ...event,
+    email_type: event.resend_email_id ? emailTypeByResendId.get(event.resend_email_id) ?? null : null,
+    raw_payload: undefined,
+  }))
+
   return NextResponse.json({
-    data: { ...lead, activities: activities ?? [], email_events: emailEvents ?? [], app_connected: appConnected, app_last_sign_in_at: appLastSignInAt },
+    data: { ...lead, activities: enrichedActivities, email_events: enrichedEmailEvents, app_connected: appConnected, app_last_sign_in_at: appLastSignInAt },
   })
 }
 
@@ -74,7 +96,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdminUser(user.id, admin))) {
+  if (!(await isCrmAdmin(user, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -99,6 +121,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (body.qualification_notes !== undefined) update.qualification_notes = body.qualification_notes
 
+  const note = typeof body.note === 'string' ? body.note.trim() : ''
+  if (body.note !== undefined && !note) {
+    return NextResponse.json({ error: 'La nota no puede estar vacía' }, { status: 422 })
+  }
+  if (note) update.qualification_notes = note
+
   const { data, error } = await admin
     .from('crm_leads')
     .update(update)
@@ -109,12 +137,33 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   if (body.qualification_status) {
+    const actionTypeByStatus: Record<string, string> = {
+      unqualified: 'status_changed',
+      qualified: 'qualified',
+      rejected: 'rejected',
+      contacted: 'contacted',
+      converted: 'converted',
+    }
     await admin.from('crm_lead_activities').insert({
       lead_id: params.id,
-      action_type: body.qualification_status === 'qualified' ? 'qualified' : body.qualification_status === 'rejected' ? 'rejected' : 'note',
+      action_type: actionTypeByStatus[body.qualification_status] ?? 'note',
       description: `Estado cambiado a "${body.qualification_status}"`,
       created_by: user.id,
     })
+  }
+
+  if (note) {
+    const { error: noteError } = await admin.from('crm_lead_activities').insert({
+      lead_id: params.id,
+      action_type: 'note',
+      description: note,
+      created_by: user.id,
+    })
+
+    if (noteError) {
+      console.error('[PATCH /api/crm-leads/[id]] error guardando historial de nota', noteError)
+      return NextResponse.json({ error: 'No se pudo registrar la nota en el historial' }, { status: 500 })
+    }
   }
 
   // ── Integración CRM -> Brands ─────────────────────────────────────────────

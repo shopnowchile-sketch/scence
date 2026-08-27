@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3, SlidersHorizontal } from 'lucide-react'
+import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
@@ -62,19 +62,6 @@ const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: 
   converted:   { label: 'Convertido',    cls: 'bg-violet-100 text-violet-700' },
 }
 
-const EMAIL_STATUS_OPTIONS = [
-  { value: '', label: 'Cualquier actividad de email' },
-  { value: 'sent', label: 'Enviados' },
-  { value: 'delivered', label: 'Entregados' },
-  { value: 'opened', label: 'Abiertos' },
-  { value: 'clicked', label: 'Con clic' },
-  { value: 'engaged', label: 'Abrieron o hicieron clic' },
-  { value: 'failed', label: 'Fallidos' },
-  { value: 'bounced', label: 'Rebotados' },
-  { value: 'failed_bounced', label: 'Fallidos o rebotados' },
-  { value: 'not_sent', label: 'Sin email enviado' },
-]
-
 type ColumnKey = 'contact' | 'instagram' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
 type EmailStats = {
@@ -109,18 +96,13 @@ export function CrmLeadsClient() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [qualification, setQualification] = useState('')
-  const [source, setSource] = useState('')
-  const [industry, setIndustry] = useState('')
   const [commune, setCommune] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
-  const [showMoreFilters, setShowMoreFilters] = useState(false)
-  const [sources, setSources] = useState<string[]>([])
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
     'scence:admin:crm:visibleColumns', DEFAULT_COLUMNS
   )
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
-  const [industries, setIndustries] = useState<string[]>([])
   const [communes, setCommunes] = useState<string[]>([])
   const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, clicked: 0, failed: 0, bounced: 0, openRate: 0 })
   const [showAddModal, setShowAddModal] = useState(false)
@@ -178,8 +160,6 @@ SCENCE`)
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
     if (search) params.set('search', search)
     if (qualification) params.set('qualification', qualification)
-    if (source) params.set('source', source)
-    if (industry) params.set('industry', industry)
     if (commune) params.set('commune', commune)
     if (emailStatus) params.set('email_status', emailStatus)
     if (contactData) params.set('contact_data', contactData)
@@ -188,19 +168,20 @@ SCENCE`)
       const j = await r.json()
       const nextLeads = j.data ?? []
       setLeads(nextLeads)
-      setSelectedIds(prev => prev.filter(id => nextLeads.some((lead: Lead) => lead.id === id)))
       setTotal(j.total ?? 0)
       if (j.stats) setStats(j.stats)
-      if (Array.isArray(j.sources)) setSources(j.sources)
-      if (Array.isArray(j.industries)) setIndustries(j.industries)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
     } catch {
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, source, industry, commune, emailStatus, contactData])
+  }, [page, search, qualification, commune, emailStatus, contactData])
 
   useEffect(() => { load() }, [load])
+
+  // Cambiar de página conserva una selección global. Cambiar los filtros la
+  // reinicia para que nunca se envíe a destinatarios de una búsqueda anterior.
+  useEffect(() => { setSelectedIds([]) }, [search, qualification, commune, emailStatus, contactData])
 
   function updateForm<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -234,19 +215,11 @@ SCENCE`)
     }
   }
 
-  const visibleLeadIds = leads.map(lead => lead.id)
   const selectedCount = selectedIds.length
-  const allVisibleSelected = visibleLeadIds.length > 0 && visibleLeadIds.every(id => selectedIds.includes(id))
+  const allMatchingSelected = total > 0 && selectedCount === total
 
   function toggleLead(id: string) {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
-
-  function toggleAllVisible() {
-    setSelectedIds(prev => {
-      if (allVisibleSelected) return prev.filter(id => !visibleLeadIds.includes(id))
-      return Array.from(new Set([...prev, ...visibleLeadIds]))
-    })
   }
 
   async function selectAllMatching() {
@@ -255,15 +228,13 @@ SCENCE`)
       const params = new URLSearchParams({ ids_only: '1' })
       if (search) params.set('search', search)
       if (qualification) params.set('qualification', qualification)
-      if (source) params.set('source', source)
-      if (industry) params.set('industry', industry)
       if (commune) params.set('commune', commune)
       if (emailStatus) params.set('email_status', emailStatus)
       if (contactData) params.set('contact_data', contactData)
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudo seleccionar todos')
-      const ids = j.ids ?? []
+      const ids = Array.from(new Set<string>(j.ids ?? []))
       setSelectedIds(ids)
       toast.success(`${ids.length} lead${ids.length === 1 ? '' : 's'} seleccionado${ids.length === 1 ? '' : 's'}`)
     } catch (e) {
@@ -435,27 +406,13 @@ SCENCE`)
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
-  const activeFilterCount = [qualification, industry, commune, source, emailStatus, contactData].filter(Boolean).length
+  const activeFilterCount = [qualification, commune, emailStatus, contactData].filter(Boolean).length
   const hasActiveFilters = Boolean(search || activeFilterCount)
-  const activeHiddenFilters = [
-    industry ? { key: 'industry', label: `Rubro: ${industry}`, clear: () => setIndustry('') } : null,
-    commune ? { key: 'commune', label: `Comuna: ${commune}`, clear: () => setCommune('') } : null,
-    source ? { key: 'source', label: `Origen: ${source}`, clear: () => setSource('') } : null,
-    emailStatus && !['opened', 'clicked'].includes(emailStatus)
-      ? {
-          key: 'emailStatus',
-          label: `Email: ${EMAIL_STATUS_OPTIONS.find(option => option.value === emailStatus)?.label ?? emailStatus}`,
-          clear: () => setEmailStatus(''),
-        }
-      : null,
-  ].filter((filter): filter is { key: string; label: string; clear: () => void } => filter !== null)
 
   function clearFilters() {
     setSearch('')
     setQualification('')
-    setIndustry('')
     setCommune('')
-    setSource('')
     setEmailStatus('')
     setContactData('')
     setPage(1)
@@ -575,9 +532,9 @@ SCENCE`)
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-3 space-y-2">
+      <div className="rounded-2xl border border-gray-100 bg-white p-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative min-w-[260px] flex-[1_1_320px] max-w-xl">
+          <div className="relative min-w-[240px] flex-[1_1_280px] max-w-md">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
             <input
               value={search}
@@ -587,191 +544,112 @@ SCENCE`)
             />
           </div>
 
-          <div className="inline-flex max-w-full overflow-x-auto rounded-lg bg-gray-100 p-1" aria-label="Filtrar por estado">
+          <select
+            value={commune}
+            aria-label="Filtrar por comuna"
+            onChange={e => { setPage(1); setCommune(e.target.value) }}
+            className="h-9 min-w-[150px] rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
+          >
+            <option value="">Todas las comunas</option>
+            {communes.map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+
+          <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">
             <button
               type="button"
-              aria-pressed={!qualification}
-              onClick={() => { setPage(1); setQualification('') }}
+              aria-pressed={!emailStatus}
+              onClick={() => { setPage(1); setEmailStatus('') }}
               className={cn(
                 'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                !qualification ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                !emailStatus ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
               )}
             >
-              Todos
+              Email: todos
             </button>
-            {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={qualification === key}
-                onClick={() => { setPage(1); setQualification(key) }}
-                className={cn(
-                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                  qualification === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-                )}
-              >
-                {config.label}
-              </button>
-            ))}
+            <button
+              type="button"
+              aria-pressed={emailStatus === 'opened'}
+              onClick={() => { setPage(1); setEmailStatus('opened') }}
+              className={cn(
+                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                emailStatus === 'opened' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              )}
+            >
+              Abrió
+            </button>
+            <button
+              type="button"
+              aria-pressed={emailStatus === 'clicked'}
+              onClick={() => { setPage(1); setEmailStatus('clicked') }}
+              className={cn(
+                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                emailStatus === 'clicked' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              )}
+            >
+              Hizo clic
+            </button>
           </div>
 
           <button
             type="button"
-            aria-pressed={emailStatus === 'opened'}
-            onClick={() => { setPage(1); setEmailStatus(emailStatus === 'opened' ? '' : 'opened') }}
+            aria-pressed={qualification === 'qualified'}
+            onClick={() => { setPage(1); setQualification(qualification === 'qualified' ? '' : 'qualified') }}
             className={cn(
               'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
-              emailStatus === 'opened'
+              qualification === 'qualified'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
             )}
           >
-            Abrió email
+            Calificados
           </button>
 
-          <button
-            type="button"
-            aria-pressed={emailStatus === 'clicked'}
-            onClick={() => { setPage(1); setEmailStatus(emailStatus === 'clicked' ? '' : 'clicked') }}
-            className={cn(
-              'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
-              emailStatus === 'clicked'
-                ? 'border-violet-200 bg-violet-50 text-violet-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-            )}
-          >
-            Hizo clic
-          </button>
-
-          <button
-            type="button"
-            aria-pressed={contactData === 'missing_email_instagram'}
-            onClick={() => {
-              setPage(1)
-              setContactData(contactData === 'missing_email_instagram' ? '' : 'missing_email_instagram')
-            }}
-            className={cn(
-              'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
-              contactData === 'missing_email_instagram'
-                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-            )}
-          >
-            Sin contacto
-          </button>
-
-          <button
-            type="button"
-            aria-expanded={showMoreFilters}
-            onClick={() => setShowMoreFilters(value => !value)}
-            className={cn(
-              'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors',
-              showMoreFilters || activeHiddenFilters.length > 0
-                ? 'border-violet-200 bg-violet-50 text-violet-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-            )}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Más filtros
-            {activeHiddenFilters.length > 0 && (
-              <span className="rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] leading-none text-white">
-                {activeHiddenFilters.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {showMoreFilters && (
-          <div className="grid grid-cols-1 gap-2 rounded-xl bg-gray-50 p-2 sm:grid-cols-2 xl:grid-cols-4">
-            <select
-              value={industry}
-              aria-label="Filtrar por rubro"
-              onChange={e => { setPage(1); setIndustry(e.target.value) }}
-              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
-            >
-              <option value="">Todos los rubros</option>
-              {industries.map(i => (
-                <option key={i} value={i}>{i}</option>
-              ))}
-            </select>
-            <select
-              value={commune}
-              aria-label="Filtrar por comuna"
-              onChange={e => { setPage(1); setCommune(e.target.value) }}
-              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
-            >
-              <option value="">Todas las comunas</option>
-              {communes.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-            <select
-              value={emailStatus}
-              aria-label="Filtrar por actividad de email"
-              onChange={e => { setPage(1); setEmailStatus(e.target.value) }}
-              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
-            >
-              {EMAIL_STATUS_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <select
-              value={source}
-              aria-label="Filtrar por origen"
-              onChange={e => { setPage(1); setSource(e.target.value) }}
-              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
-            >
-              <option value="">Todos los orígenes</option>
-              {sources.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {(hasActiveFilters || total > 0) && (
-          <div className="flex min-h-7 items-center justify-between gap-2 border-t border-gray-100 pt-2 flex-wrap">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {activeHiddenFilters.map(filter => (
-                <button
-                  key={filter.key}
-                  type="button"
-                  onClick={() => { filter.clear(); setPage(1) }}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full bg-gray-100 px-2.5 text-[11px] font-medium text-gray-600 hover:bg-gray-200"
-                  title="Quitar filtro"
-                >
-                  {filter.label}
-                  <X className="h-3 w-3" />
-                </button>
-              ))}
-
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="h-7 px-2 text-[11px] font-semibold text-gray-500 hover:text-gray-800"
-                >
-                  Limpiar todo
-                </button>
-              )}
-            </div>
-
-            {total > 0 && (
+          <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por disponibilidad de email">
+            {[
+              { value: '', label: 'Todos' },
+              { value: 'has_email', label: 'Con email' },
+              { value: 'missing_email', label: 'Sin email' },
+            ].map(option => (
               <button
+                key={option.value || 'all'}
                 type="button"
-                onClick={selectAllMatching}
-                disabled={selectingAll || selectedIds.length === total}
-                className="h-7 px-2 text-[11px] font-semibold text-violet-700 hover:text-violet-900 disabled:opacity-50"
+                aria-pressed={contactData === option.value}
+                onClick={() => { setPage(1); setContactData(option.value) }}
+                className={cn(
+                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                  contactData === option.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                )}
               >
-                {selectingAll
-                  ? 'Seleccionando...'
-                  : selectedIds.length === total
-                    ? `Todos (${total}) seleccionados`
-                    : `Seleccionar todos (${total})`}
+                {option.label}
               </button>
-            )}
+            ))}
           </div>
-        )}
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="h-9 px-2 text-xs font-semibold text-gray-500 hover:text-gray-800"
+            >
+              Limpiar
+            </button>
+          )}
+
+          {total > 0 && (
+            <button
+              type="button"
+              onClick={selectAllMatching}
+              disabled={selectingAll || allMatchingSelected}
+              className="ml-auto h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700 disabled:bg-violet-100 disabled:text-violet-700"
+            >
+              {selectingAll
+                ? 'Seleccionando...'
+                : allMatchingSelected
+                  ? `Todas (${total}) seleccionadas`
+                  : `Seleccionar las ${total}`}
+            </button>
+          )}
+        </div>
       </div>
 
       {selectedCount > 0 && (
@@ -817,8 +695,14 @@ SCENCE`)
               <th className="px-4 py-3 font-semibold w-10">
                 <input
                   type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={toggleAllVisible}
+                  checked={allMatchingSelected}
+                  onChange={() => {
+                    if (allMatchingSelected) setSelectedIds([])
+                    else void selectAllMatching()
+                  }}
+                  disabled={selectingAll || total === 0}
+                  title="Seleccionar todas las empresas filtradas"
+                  aria-label="Seleccionar todas las empresas filtradas"
                   className="h-4 w-4 rounded border-gray-300 text-violet-600"
                 />
               </th>

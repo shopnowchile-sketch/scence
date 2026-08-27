@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
     leads ?? [],
     job.subject,
     job.message ?? '',
-    job.created_by
+    job.created_by,
+    job.template_key ?? 'crm_intro'
   )
 
   const newCursor = job.cursor + batchIds.length

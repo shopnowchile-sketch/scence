@@ -173,6 +173,48 @@ export function crmIntroEmail({
 </html>`
 }
 
+function escapeEmailHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+export function crmCatalogEmail({
+  message,
+  buttonLabel,
+  buttonUrl,
+}: {
+  message: string
+  buttonLabel?: string
+  buttonUrl?: string
+}): string {
+  const safeMessage = escapeEmailHtml(message).replaceAll('\n', '<br>')
+  const safeButtonLabel = buttonLabel ? escapeEmailHtml(buttonLabel) : ''
+  const safeButtonUrl = buttonUrl ? escapeEmailHtml(buttonUrl) : ''
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>SCENCE</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:32px 0">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+    <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:28px;text-align:center">
+      <span style="color:#fff;font-size:20px;font-weight:900;letter-spacing:-0.5px">SCENCE</span>
+    </div>
+    <div style="padding:32px">
+      <div style="color:#374151;font-size:15px;line-height:1.7">${safeMessage}</div>
+      ${safeButtonLabel && safeButtonUrl ? `<a href="${safeButtonUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px;margin-top:24px">${safeButtonLabel}</a>` : ''}
+    </div>
+    <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
+      <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence</p>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
 export function bookingConfirmEmail({
   recipientName,
   campaignName,

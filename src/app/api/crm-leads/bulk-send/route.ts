@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
+import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -36,13 +37,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Máximo 20.000 leads por job' }, { status: 422 })
   }
 
+  const templateKey = typeof body.template_key === 'string' ? body.template_key : 'crm_intro'
+  const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey)
+  if (!template) {
+    return NextResponse.json({ error: 'El template seleccionado no está disponible para CRM' }, { status: 422 })
+  }
+
   const subject = typeof body.subject === 'string' && body.subject.trim()
-    ? body.subject.trim()
-    : 'Hola, ¿cómo estás?'
+    ? body.subject.trim().replace(/[\r\n]+/g, ' ').slice(0, 180)
+    : template.defaultSubject
 
   const customMessage = typeof body.message === 'string' && body.message.trim()
-    ? body.message.trim()
-    : ''
+    ? body.message.trim().slice(0, 10000)
+    : template.defaultMessage ?? ''
 
   const { data: job, error: jobError } = await admin
     .from('crm_bulk_send_jobs')
@@ -50,6 +57,7 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
       notify_email: user.email ?? null,
       lead_ids: uniqueIds,
+      template_key: template.key,
       subject,
       message: customMessage || null,
       total: uniqueIds.length,

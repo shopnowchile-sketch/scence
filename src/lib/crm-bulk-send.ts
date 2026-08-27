@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { getResend, FROM_EMAIL, crmIntroEmail } from '@/lib/resend'
+import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 
 // Tamaño de tanda por invocación — mismo límite que existía antes como tope
 // duro (era "máximo 50 por vez"), ahora es el tamaño de cada lote interno del
@@ -38,11 +39,13 @@ export async function sendLeadBatch(
   }>,
   subject: string,
   customMessage: string,
-  userId: string
+  userId: string,
+  templateKey = 'crm_intro'
 ) {
   let sent = 0
   let skipped = 0
   let failed = 0
+  const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey) ?? CRM_EMAIL_CATALOG[0]
 
   for (const lead of leads) {
     if (!lead.email) {
@@ -50,18 +53,23 @@ export async function sendLeadBatch(
       continue
     }
 
-    const message = customMessage || defaultPlainMessage(lead)
-    const html = customMessage
-      ? `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;white-space:pre-wrap">${message}</div>`
-      : crmIntroEmail({
-          contactName: lead.contact_name ?? 'hola',
-          companyName: lead.company_name ?? lead.email ?? 'tu marca',
-        })
+    const companyName = lead.company_name?.trim() || 'tu marca'
+    const variables = {
+      contact_name: lead.contact_name?.trim() || `equipo de ${companyName}`,
+      company_name: companyName,
+    }
+    const message = applyEmailVariables(customMessage || template?.defaultMessage || defaultPlainMessage(lead), variables)
+    const resolvedSubject = applyEmailVariables(subject || template?.defaultSubject || 'Conoce SCENCE', variables)
+    const html = crmCatalogEmail({
+      message,
+      buttonLabel: template?.defaultButtonLabel,
+      buttonUrl: template?.defaultButtonUrl,
+    })
 
     const { data: emailData, error: emailError } = await getResend().emails.send({
       from: FROM_EMAIL,
       to: lead.email,
-      subject,
+      subject: resolvedSubject,
       html,
       text: message,
     })
@@ -87,10 +95,11 @@ export async function sendLeadBatch(
       resend_email_id: resendEmailId,
       event_type: 'email.sent',
       recipient_email: lead.email,
-      subject,
+      subject: resolvedSubject,
       raw_payload: {
         source: 'bulk-send',
-        email_type: 'Envío masivo CRM',
+        email_type: template?.name ?? 'Envío masivo CRM',
+        template_key: template?.key ?? templateKey,
         resend_email_id: resendEmailId,
       },
     })
@@ -104,7 +113,7 @@ export async function sendLeadBatch(
     await admin.from('crm_lead_activities').insert({
       lead_id: lead.id,
       action_type: 'email_sent',
-      description: `Tipo: Envío masivo CRM · Para: ${lead.email} · Asunto: ${subject}`,
+      description: `Tipo: ${template?.name ?? 'Envío masivo CRM'} · Para: ${lead.email} · Asunto: ${resolvedSubject}`,
       created_by: userId,
     })
 

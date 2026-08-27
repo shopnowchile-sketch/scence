@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { NDA_TEMPLATE_ES, templateVariables } from '@/lib/document-templates'
-import { EMAIL_CATALOG, type EmailTemplateDefinition } from '@/lib/email-catalog'
+import { applyEmailVariables, EMAIL_CATALOG, type EmailTemplateDefinition } from '@/lib/email-catalog'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type CampaignType =
@@ -113,12 +113,13 @@ function extractVariables(content: string): string[] {
 }
 
 function EmailPreviewModal({ template, onClose }: { template: EmailTemplateDefinition; onClose: () => void }) {
-  const subject = template.defaultSubject
-    .replaceAll('{{campaign_name}}', 'Campaña Verano SCENCE')
-    .replaceAll('{{influencer_name}}', 'Valentina Reyes')
-    .replaceAll('{{brand_name}}', 'Marca Ejemplo')
-    .replaceAll('{{ticket_title}}', 'Ayuda con mi campaña')
-    .replaceAll('{{plan_name}}', 'Growth')
+  const sampleVariables = {
+    campaign_name: 'Campaña Verano SCENCE', influencer_name: 'Valentina Reyes',
+    brand_name: 'Marca Ejemplo', company_name: 'Marca Ejemplo', contact_name: 'Camila',
+    ticket_title: 'Ayuda con mi campaña', plan_name: 'Growth',
+  }
+  const subject = applyEmailVariables(template.defaultSubject, sampleVariables)
+  const message = applyEmailVariables(template.defaultMessage ?? template.description, sampleVariables)
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4" onClick={onClose}>
       <div className="mx-auto my-8 max-w-2xl rounded-2xl bg-white shadow-xl" onClick={event => event.stopPropagation()}>
@@ -132,7 +133,7 @@ function EmailPreviewModal({ template, onClose }: { template: EmailTemplateDefin
             <div className="bg-gradient-to-r from-violet-600 to-indigo-600 p-6 text-center text-lg font-black text-white">SCENCE</div>
             <div className="space-y-4 p-6 text-sm leading-6 text-gray-600">
               <p>Hola Valentina,</p>
-              <p>{template.defaultMessage ?? template.description}</p>
+              <p className="whitespace-pre-line">{message}</p>
               {template.defaultButtonLabel && <div className="rounded-lg bg-violet-600 px-4 py-3 text-center font-semibold text-white">{template.defaultButtonLabel}</div>}
             </div>
           </div>

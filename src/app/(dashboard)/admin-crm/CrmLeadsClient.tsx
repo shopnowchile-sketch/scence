@@ -555,6 +555,17 @@ export function CrmLeadsClient() {
             >
               Hizo clic
             </button>
+            <button
+              type="button"
+              aria-pressed={emailStatus === 'not_sent'}
+              onClick={() => { setPage(1); setEmailStatus('not_sent') }}
+              className={cn(
+                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                emailStatus === 'not_sent' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              )}
+            >
+              Sin enviar
+            </button>
           </div>
 
           <button

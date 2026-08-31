@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -31,6 +32,7 @@ const PWD_RULES = [
 ]
 
 export function BrandRegisterForm() {
+  const searchParams = useSearchParams()
   const [showPwd, setShowPwd]   = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
@@ -73,7 +75,7 @@ export function BrandRegisterForm() {
       res = await fetch('/api/auth/register-brand', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_name, contact_name, email, password }),
+      body: JSON.stringify({ brand_name, contact_name, email, password, referred_by_instagram: searchParams.get('ref') ?? undefined }),
       })
     } catch {
       setError('No pudimos crear tu cuenta. Intenta nuevamente en unos minutos.')

@@ -33,6 +33,8 @@ interface Application {
     bio: string | null
     categories: string[]
     city: string | null
+    is_pro?: boolean
+    pro_source?: 'paid' | 'manual' | 'free'
     influencer_social_profiles: SocialProfile[]
   } | null
 }
@@ -173,6 +175,9 @@ export default function ApplicationsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <h3 className="font-bold text-gray-900">{inf?.display_name ?? 'Sin nombre'}</h3>
+                            <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', inf?.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : inf?.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
+                              {inf?.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
+                            </span>
                             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
                               {app.origin === 'application' ? 'Postulación' : 'Invitación'}
                             </span>
@@ -294,6 +299,9 @@ export default function ApplicationsPage() {
                         }
                         <div className="flex-1 min-w-0">
                           <span className="text-sm font-semibold text-gray-800">{inf?.display_name ?? '—'}</span>
+                          <span className={cn('ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-bold', inf?.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : inf?.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
+                            {inf?.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
+                          </span>
                           <span className="text-xs text-gray-400 ml-2">{app.origin === 'application' ? 'Postulación' : 'Invitación'}</span>
                         </div>
                         <span className={cn('flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full', cfg.color)}>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { parseInfluencerReference } from '@/lib/influencer-paypal'
 
 const STATUS_MAP: Record<string, string> = { ACTIVE: 'active', APPROVAL_PENDING: 'incomplete', SUSPENDED: 'past_due', CANCELLED: 'canceled', EXPIRED: 'canceled' }
 function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
@@ -25,6 +26,24 @@ export async function POST(request: NextRequest) {
   if (!id) return NextResponse.json({ received: true })
   const detailsResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' })
   const subscription = await detailsResponse.json().catch(() => null)
+  const influencerRef = parseInfluencerReference(subscription?.custom_id)
+  if (detailsResponse.ok && influencerRef) {
+    const admin = createAdminClient()
+    const [{ data: influencer }, { data: plan }, { data: existing }] = await Promise.all([
+      admin.from('influencers').select('id, organization_id').eq('id', influencerRef.influencerId).maybeSingle(),
+      admin.from('subscription_plans').select('id').eq('tier', 'pro').eq('is_active', true).maybeSingle(),
+      admin.from('subscriptions').select('id, metadata').eq('paypal_subscription_id', id).maybeSingle(),
+    ])
+    if (!influencer?.organization_id || !plan) return NextResponse.json({ received: true })
+    const status = STATUS_MAP[subscription.status] ?? 'incomplete'
+    const start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString()
+    const end = subscription.billing_info?.next_billing_time ?? start
+    const metadata = existing?.metadata ?? { account_type: 'influencer', influencer_id: influencer.id, campaign_commitments: influencerRef.campaignId ? [influencerRef.campaignId] : [] }
+    const row = { organization_id: influencer.organization_id, plan_id: plan.id, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: status === 'canceled' ? new Date().toISOString() : null, updated_at: new Date().toISOString() }
+    const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)
+    if (error) return NextResponse.json({ error: 'Unable to sync influencer subscription' }, { status: 500 })
+    return NextResponse.json({ received: true })
+  }
   const ref = reference(subscription?.custom_id)
   if (!detailsResponse.ok || !ref) return NextResponse.json({ received: true })
   const status = STATUS_MAP[subscription.status] ?? 'incomplete', start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString(), end = subscription.billing_info?.next_billing_time ?? start

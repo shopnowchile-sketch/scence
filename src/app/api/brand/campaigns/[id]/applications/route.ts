@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { acceptCampaignApplication, rejectCampaignApplications } from '@/lib/campaign-applications'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 
 type Params = { params: { id: string } }
 
@@ -38,8 +39,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const proStatuses = await getInfluencerProStatuses(admin, (data ?? []).map(row => row.influencer?.id).filter((id): id is string => Boolean(id)))
+  const withPlans = (data ?? []).map(row => ({
+    ...row,
+    influencer: row.influencer ? { ...row.influencer, is_pro: (proStatuses.get(row.influencer.id) ?? 'free') !== 'free', pro_source: proStatuses.get(row.influencer.id) ?? 'free' } : null,
+  }))
+
   return NextResponse.json({
-    data: data ?? [],
+    data: withPlans,
     visibility: campaign.visibility,
     application_questions: campaign.application_questions ?? [],
   })

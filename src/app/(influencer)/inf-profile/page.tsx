@@ -5,10 +5,14 @@ import {
   AlertCircle, RefreshCw, Edit2, Save, X, Plus, Trash2,
   Target, Zap, Banknote, MapPin, Tag, Share2, Mail, User,
   Phone, Globe, Calendar, Camera, ImagePlus,
+  Bell, CreditCard, FileText, Link2, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import NotificationPreferencesForm from '@/components/settings/NotificationPreferencesForm'
+import { InfluencerPlanSettings } from '../inf-plan/InfluencerPlanSettings'
+import { InfluencerDocuments } from './_components/InfluencerDocuments'
+import { InfluencerAffiliate } from './_components/InfluencerAffiliate'
 
 type SocialProfile = {
   id?: string
@@ -55,6 +59,7 @@ function isProfileComplete(p: InfluencerProfile) {
 type Deliverable = { id: string; status: string }
 type Campaign = {
   id: string
+  application_status?: string | null
   campaign: { status: string } | null
   campaign_deliverables?: Deliverable[] | null
 }
@@ -108,9 +113,11 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', textar
 }
 
 export default function ProfilePage() {
+  const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'plan' | 'documents' | 'affiliate'>('profile')
   const [profile,   setProfile]   = useState<InfluencerProfile | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [payments,  setPayments]  = useState<{ pending: Payment[]; completed: Payment[] }>({ pending: [], completed: [] })
+  const [isPro,     setIsPro]     = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
@@ -123,21 +130,28 @@ export default function ProfilePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [meRes, campRes, payRes] = await Promise.all([
+      const [meRes, campRes, payRes, billingRes] = await Promise.all([
         fetch('/api/influencer/me'),
         fetch('/api/influencer/campaigns'),
         fetch('/api/influencer/payments'),
+        fetch('/api/influencer/billing', { cache: 'no-store' }),
       ])
       if (!meRes.ok) { toast.error('Error cargando perfil'); setLoading(false); return }
-      const [meData, campData, payData] = await Promise.all([meRes.json(), campRes.json(), payRes.json()])
+      const [meData, campData, payData, billingData] = await Promise.all([meRes.json(), campRes.json(), payRes.json(), billingRes.json()])
       setProfile(meData.data)
       setCampaigns(campData.data ?? [])
       setPayments({ pending: payData.pending ?? [], completed: payData.completed ?? [] })
+      setIsPro(billingRes.ok && billingData.is_pro === true)
     } catch { toast.error('Error cargando perfil') }
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    if (tab === 'plan' || tab === 'documents' || tab === 'affiliate') setActiveTab(tab)
+  }, [])
 
   // Perfil obligatorio: si falta Instagram, comuna o dirección, se fuerza el
   // modo edición al entrar (no se puede navegar el portal con el perfil
@@ -255,15 +269,12 @@ export default function ProfilePage() {
   }
 
   const activeCampaigns = campaigns.filter(c => c.campaign?.status === 'active').length
-  const pendingDeliverables = campaigns.reduce(
-    (total, campaign) => total + (campaign.campaign_deliverables ?? []).filter(
-      deliverable => !['approved', 'published'].includes(deliverable.status)
-    ).length,
-    0
-  )
   const totalEarned     = payments.completed.reduce((s, p) => s + p.net_amount, 0)
   const currency        = payments.completed[0]?.currency ?? payments.pending[0]?.currency ?? 'CLP'
   const socialProfiles  = profile.influencer_social_profiles ?? []
+  const primarySocial   = socialProfiles.find(profile => profile.platform === 'instagram') ?? socialProfiles[0]
+  const primarySocialUrl = primarySocial?.profile_url ?? (primarySocial?.username ? `https://www.${primarySocial.platform}.com/${primarySocial.username.replace(/^@/, '')}` : null)
+  const pendingCampaigns = campaigns.filter(campaign => campaign.application_status === 'pending').length
   const activeSocials   = socials.filter(s => !s._delete)
   const profileComplete = isProfileComplete(profile)
 
@@ -273,7 +284,7 @@ export default function ProfilePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900">Mi Perfil</h1>
-        <div className="flex items-center gap-2">
+        {activeTab === 'profile' && <div className="flex items-center gap-2">
           {!editing && <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><RefreshCw className="h-4 w-4" /></button>}
           {editing ? (
             <>
@@ -291,14 +302,14 @@ export default function ProfilePage() {
               <Edit2 className="h-4 w-4" /> Editar perfil
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* VIEW MODE */}
       {!editing && (
         <>
           <div className="bg-white rounded-2xl border border-gray-100 p-6">
-            <div className="flex items-start gap-5">
+            <div className="flex items-center gap-5">
               <div className="flex-shrink-0">
                 {profile.avatar_url ? (
                   <img src={profile.avatar_url} alt={profile.display_name} onError={() => setProfile(prev => prev ? { ...prev, avatar_url: null } : prev)} className="w-20 h-20 rounded-2xl object-cover" />
@@ -308,35 +319,38 @@ export default function ProfilePage() {
                   </div>
                 )}
               </div>
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <h2 className="text-lg font-bold text-gray-900">{profile.display_name}</h2>
-                {profile.email && <div className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.email}</span></div>}
-                {profile.phone && <div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.phone}</span></div>}
-                {profile.address && <div className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{profile.address}</span></div>}
-                {(profile.commune || profile.city || profile.country) && <div className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{[profile.commune, profile.city, profile.country].filter(Boolean).join(', ')}</span></div>}
-                {profile.birth_date && <div className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-gray-300" /><span className="text-sm text-gray-400">{new Date(profile.birth_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>}
-                {profile.categories && profile.categories.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                    <Tag className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
-                    {profile.categories.map(cat => (
-                      <span key={cat} className="text-[11px] font-medium bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full capitalize">{cat}</span>
-                    ))}
-                  </div>
-                )}
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-bold text-gray-900">{profile.display_name}</h2>
+                  <button type="button" onClick={() => setActiveTab('plan')} className={cn('rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide transition hover:ring-2 hover:ring-violet-200', isPro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600')}>
+                    {isPro ? 'PLAN PRO' : 'PLAN GRATIS'}
+                  </button>
+                </div>
+                {primarySocial && primarySocialUrl && <a href={primarySocialUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-600 hover:underline">Instagram: @{primarySocial.username.replace(/^@/, '')}<ExternalLink className="h-3.5 w-3.5" /></a>}
               </div>
             </div>
-            {profile.bio && (
-              <div className="mt-5 pt-5 border-t border-gray-50">
-                <div className="flex items-center gap-2 mb-2"><User className="h-3.5 w-3.5 text-gray-300" /><span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Bio</span></div>
-                <p className="text-sm text-gray-600 leading-relaxed">{profile.bio}</p>
-              </div>
-            )}
           </div>
 
+          <div className="flex gap-1 rounded-xl border border-gray-100 bg-white p-1">
+            {[
+              { id: 'profile' as const, label: 'Perfil', icon: User },
+              { id: 'notifications' as const, label: 'Notificaciones', icon: Bell },
+              { id: 'plan' as const, label: 'Mi Plan', icon: CreditCard },
+              { id: 'documents' as const, label: 'Documentos', icon: FileText },
+              { id: 'affiliate' as const, label: 'Mi link de afiliado', icon: Link2 },
+            ].map(({ id, label, icon: Icon }) => (
+              <button key={id} type="button" onClick={() => setActiveTab(id)}
+                className={cn('flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors', activeTab === id ? 'bg-violet-50 text-violet-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900')}>
+                <Icon className="h-4 w-4" /> {label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 'profile' && <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Campañas activas',  value: activeCampaigns,                icon: Target,   color: 'text-violet-600', bg: 'bg-violet-50' },
-              { label: 'Entregables pendientes', value: pendingDeliverables,       icon: Zap,      color: 'text-amber-600',  bg: 'bg-amber-50' },
+              { label: 'Campañas pendientes', value: pendingCampaigns,              icon: Zap,      color: 'text-amber-600',  bg: 'bg-amber-50' },
               { label: 'Total cobrado',     value: fmtMoney(totalEarned, currency), icon: Banknote, color: 'text-green-600',  bg: 'bg-green-50' },
               { label: 'Marcas referidas',  value: profile.referred_brands_count ?? 0, icon: Share2, color: 'text-blue-600',   bg: 'bg-blue-50' },
             ].map(({ label, value, icon: Icon, color, bg }) => (
@@ -346,6 +360,19 @@ export default function ProfilePage() {
                 <div className="text-xs text-gray-400 mt-0.5">{label}</div>
               </div>
             ))}
+          </div>
+
+          <div className="rounded-2xl border border-gray-100 bg-white p-5">
+            <h2 className="text-sm font-bold text-gray-900">Información personal</h2>
+            <div className="mt-4 grid gap-3 text-sm text-gray-600 sm:grid-cols-2">
+              {profile.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-gray-300" />{profile.email}</div>}
+              {profile.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-gray-300" />{profile.phone}</div>}
+              {profile.address && <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-300" />{profile.address}</div>}
+              {(profile.commune || profile.city || profile.country) && <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-gray-300" />{[profile.commune, profile.city, profile.country].filter(Boolean).join(', ')}</div>}
+              {profile.birth_date && <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-300" />{new Date(profile.birth_date).toLocaleDateString('es-CL')}</div>}
+            </div>
+            {profile.bio && <p className="mt-4 border-t border-gray-100 pt-4 text-sm leading-relaxed text-gray-600">{profile.bio}</p>}
+            {(profile.categories?.length ?? 0) > 0 && <div className="mt-4 flex flex-wrap gap-2">{profile.categories!.map(category => <span key={category} className="rounded-full bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700">{category}</span>)}</div>}
           </div>
 
           {socialProfiles.length > 0 && (
@@ -377,13 +404,18 @@ export default function ProfilePage() {
               </div>
             </div>
           )}
+          </>}
 
-          <NotificationPreferencesForm />
         </>
       )}
 
+      {activeTab === 'notifications' && <NotificationPreferencesForm />}
+      {activeTab === 'plan' && <InfluencerPlanSettings embedded />}
+      {activeTab === 'documents' && <InfluencerDocuments />}
+      {activeTab === 'affiliate' && <InfluencerAffiliate />}
+
       {/* EDIT MODE */}
-      {editing && (
+      {editing && activeTab === 'profile' && (
         <div className="space-y-5">
           {!profileComplete && (
             <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">

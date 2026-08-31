@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { isInfluencerPro } from '@/lib/influencer-pro'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
@@ -95,5 +96,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ data })
+  const { data: documents } = await admin
+    .from('influencer_documents')
+    .select('id, document_type, title, original_filename, storage_path, mime_type, file_size, created_at')
+    .eq('influencer_id', params.id)
+    .order('created_at', { ascending: false })
+
+  const documentsWithUrls = await Promise.all((documents ?? []).map(async document => {
+    const { data: signed } = await admin.storage.from('influencer-private-documents').createSignedUrl(document.storage_path, 60 * 5, { download: document.original_filename })
+    const { storage_path: _storagePath, ...safeDocument } = document
+    return { ...safeDocument, url: signed?.signedUrl ?? null }
+  }))
+
+  const isPro = await isInfluencerPro(admin, data.id)
+  return NextResponse.json({ data: { ...data, is_pro: isPro, influencer_documents: documentsWithUrls } })
 }

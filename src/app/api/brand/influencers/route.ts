@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 
 // GET /api/brand/influencers
 // Marca ve influencers relacionadas a SUS campañas/asignaciones.
@@ -228,9 +229,11 @@ export async function GET(req: NextRequest) {
           ?.some(sp => sp.platform === platform)
       )
     : (data ?? [])
+  const proStatuses = await getInfluencerProStatuses(admin, filtered.map(inf => inf.id))
+  const withPlans = filtered.map(inf => { const pro_source = proStatuses.get(inf.id) ?? 'free'; return { ...inf, is_pro: pro_source !== 'free', pro_source } })
 
   return NextResponse.json({
-    data: filtered,
+    data: withPlans,
     total: count ?? filtered.length,
     page,
     limit,

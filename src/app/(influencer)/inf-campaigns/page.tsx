@@ -42,6 +42,9 @@ type OpenCampaign = {
   cover_url?: string | null
   brand: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   _applied?: boolean
+  visibility: 'open' | 'private'
+  can_apply: boolean
+  requires_pro: boolean
   campaign_benefits?: Array<{ description: string; quantity?: number }>
 }
 
@@ -93,7 +96,7 @@ function isDuplicatedInOpenList(row: ApiRow): boolean {
   // "Invitaciones pendientes" (Aceptar/Rechazar), así que se conservan acá.
   return row.application_status === 'pending'
     && row.origin !== 'invitation'
-    && row.campaign?.visibility === 'open'
+    && (row.campaign?.visibility === 'open' || row.campaign?.visibility === 'private')
 }
 
 function toRow(row: ApiRow): Campaign | null {
@@ -483,6 +486,8 @@ export default function MyCampaignsPage() {
                       <span className="text-sm font-semibold text-gray-900 truncate">{c.name}</span>
                       {c._applied ? (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">En revisión</span>
+                      ) : c.visibility === 'private' ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">Privada · Pro</span>
                       ) : (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Abierta</span>
                       )}
@@ -496,6 +501,9 @@ export default function MyCampaignsPage() {
                     )}
                     {c._applied && (
                       <p className="text-[10px] text-amber-600 mt-1">Ya postulaste — el equipo te confirmará pronto.</p>
+                    )}
+                    {c.requires_pro && (
+                      <p className="mt-1 text-[11px] font-semibold text-violet-700">🔒 Activa Plan Pro para postular a esta campaña</p>
                     )}
                     {(c.start_date || c.end_date) && (
                       <p className="text-[10px] text-gray-400 mt-1">
@@ -511,6 +519,13 @@ export default function MyCampaignsPage() {
                     </Link>
                     {c._applied ? (
                       <span className="text-[10px] font-bold text-amber-600">⏳ En revisión</span>
+                    ) : c.requires_pro ? (
+                      <Link
+                        href="/inf-profile?tab=plan"
+                        className="rounded-lg bg-violet-600 px-3 py-1.5 text-center text-[10px] font-bold text-white transition-colors hover:bg-violet-700"
+                      >
+                        ACTIVAR PLAN PRO
+                      </Link>
                     ) : (
                       <button
                         onClick={() => handleApply(c.id, c.name)}

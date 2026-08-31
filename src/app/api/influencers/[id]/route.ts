@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
 import { isOrgAdmin } from '@/lib/influencers/authz'
+import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 
 type Params = { params: { id: string } }
 
@@ -124,9 +125,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
     bookings.push({ ...booking, participant_status: row.status } as never)
   }
 
+  const proSource = (await getInfluencerProStatuses(admin, [params.id])).get(params.id) ?? 'free'
   return NextResponse.json({
     data: {
       ...influencer,
+      is_pro: proSource !== 'free',
+      pro_source: proSource,
       campaign_influencers: campaignInfluencers ?? [],
       campaign_deliverables: campaignDeliverables ?? [],
       barters: bartersRes.data ?? [],

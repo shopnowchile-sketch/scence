@@ -160,11 +160,27 @@ export function InfluencerProfile({ id }: { id: string }) {
   const [deletingHard, setDeletingHard] = useState(false)
   const [inviting, setInviting] = useState(false)
   const [syncingIg, setSyncingIg] = useState(false)
+  const [changingPro, setChangingPro] = useState(false)
   const { data: res, isLoading, error, refetch } = useInfluencer(id)
   const { isAdmin } = useIsAdmin()
   const router = useRouter()
   const searchParams = useSearchParams()
   const backHref = searchParams.get('from') || '/admin-influencers'
+
+  async function handleManualPro(active: boolean) {
+    setChangingPro(true)
+    try {
+      const response = await fetch(`/api/influencers/${id}/pro`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
+      await refetch()
+      toast.success(active ? 'Plan Pro manual activado.' : 'Plan Pro manual retirado.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el plan.')
+    } finally {
+      setChangingPro(false)
+    }
+  }
 
   async function handleStatusChange(newStatus: 'draft' | 'active' | 'inactive') {
     setDeactivating(true)
@@ -474,6 +490,10 @@ export function InfluencerProfile({ id }: { id: string }) {
                   <h1 className="text-2xl font-black text-gray-900 tracking-tight">
                     {influencer.display_name}
                   </h1>
+                  <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-extrabold', influencer.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : influencer.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600')}>
+                    {influencer.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
+                  </span>
+                  {isAdmin && influencer.pro_source !== 'paid' && <button type="button" disabled={changingPro} onClick={() => void handleManualPro(influencer.pro_source !== 'manual')} className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50">{changingPro ? 'Guardando…' : influencer.pro_source === 'manual' ? 'QUITAR PRO MANUAL' : 'ACTIVAR PRO MANUAL'}</button>}
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${TIER_COLORS[tier]}`}>
                     {tier}
                   </span>

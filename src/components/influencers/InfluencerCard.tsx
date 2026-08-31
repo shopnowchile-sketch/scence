@@ -79,6 +79,9 @@ export function InfluencerCard({ influencer, compact = false }: Props) {
               <span className={cn('font-semibold text-gray-900 truncate', compact ? 'text-sm' : 'text-sm')}>
                 {influencer.display_name}
               </span>
+              <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', influencer.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : influencer.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
+                {influencer.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
+              </span>
               {influencer.is_verified && (
                 <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
               )}

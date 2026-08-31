@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { getCampaignDateKey } from '@/lib/attendance-state'
+import { isInfluencerPro } from '@/lib/influencer-pro'
 
 // GET /api/influencer/campaigns/open
 // Returns active campaigns the influencer is NOT yet part of (open to apply)
@@ -20,11 +21,12 @@ export async function GET() {
     .single()
 
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
+  const isPro = await isInfluencerPro(admin, influencer.id)
 
   // Campañas donde la influencer ya tiene alguna relación (invitada, postulando, aceptada, etc.)
   const { data: myRows } = await admin
     .from('campaign_influencers')
-    .select('campaign_id, application_status')
+    .select('campaign_id, application_status, origin')
     .eq('influencer_id', influencer.id)
 
   // Las que siguen "pendiente" se DEJAN ver en Disponibles (con badge de
@@ -33,7 +35,7 @@ export async function GET() {
   // refresh y no quedaba ningún rastro visible de la postulación.
   const pendingMap = new Map(
     (myRows ?? [])
-      .filter(r => r.application_status === 'pending')
+      .filter(r => r.application_status === 'pending' && r.origin !== 'invitation')
       .map(r => [r.campaign_id as string, true])
   )
   const excludeIds = (myRows ?? [])
@@ -50,7 +52,7 @@ export async function GET() {
       brand:brands!brand_id (id, name, logo_url, instagram),
       campaign_influencers (id, application_status)
     `)
-    .eq('visibility', 'open')
+    .in('visibility', ['open', 'private'])
     .eq('status', 'active')
     .or(`end_date.is.null,end_date.gte.${today}`)
     .order('start_date', { ascending: true })
@@ -83,8 +85,10 @@ export async function GET() {
       ).length,
       _applied: pendingMap.has(c.id),
       application_status: pendingMap.has(c.id) ? 'pending' : null,
+      can_apply: c.visibility === 'open' || isPro,
+      requires_pro: c.visibility === 'private' && !isPro,
     }))
 
   const covers = await getCampaignCoverUrls(admin, enriched.map(c => c.id))
-  return NextResponse.json({ data: enriched.map(c => ({ ...c, cover_url: covers.get(c.id) ?? null })) })
+  return NextResponse.json({ is_pro: isPro, data: enriched.map(c => ({ ...c, cover_url: covers.get(c.id) ?? null })) })
 }

@@ -72,6 +72,8 @@ export interface Influencer {
   audience_countries: Record<string, number> | null
   is_verified: boolean
   is_active: boolean
+  is_pro?: boolean
+  pro_source?: 'paid' | 'manual' | 'free'
   rating: number | null
   notes: string | null
   metadata: Record<string, unknown> | null

@@ -271,6 +271,9 @@ export function InfluencerTable({
                               {inf.display_name}
                             </Link>
                           )}
+                          <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', inf.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : inf.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
+                            {inf.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
+                          </span>
                           {inf.is_verified && (
                             <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
                           )}

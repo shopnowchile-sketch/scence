@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { acceptCampaignApplication } from '@/lib/campaign-applications'
+import { isInfluencerPro } from '@/lib/influencer-pro'
 
 type Params = { params: { id: string } }
 
@@ -44,7 +45,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
-  if (campaign.visibility !== 'open') return NextResponse.json({ error: 'Esta campaña no está abierta a postulaciones' }, { status: 422 })
+  if (campaign.visibility !== 'open' && campaign.visibility !== 'private') {
+    return NextResponse.json({ error: 'Esta campaña no está abierta a postulaciones' }, { status: 422 })
+  }
+  if (campaign.visibility === 'private' && !(await isInfluencerPro(admin, influencer.id))) {
+    return NextResponse.json(
+      { error: 'Activa Plan Pro para postular a esta campaña privada.', code: 'INFLUENCER_PRO_REQUIRED' },
+      { status: 403 }
+    )
+  }
   if (campaign.status !== 'active') {
     return NextResponse.json({ error: 'Esta campaña no acepta postulaciones en este momento' }, { status: 422 })
   }

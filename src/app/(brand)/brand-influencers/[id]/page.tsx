@@ -8,6 +8,8 @@ import {
   Loader2,
   MapPin,
   Star,
+  FileText,
+  Download,
 } from 'lucide-react'
 import { formatFollowers, PLATFORM_LABELS } from '@/lib/utils'
 
@@ -36,6 +38,7 @@ type Influencer = {
   rating?: number | null
   influencer_social_profiles?: SocialProfile[]
   influencer_rate_cards?: RateCard[]
+  influencer_documents?: Array<{ id: string; document_type: string; title: string; original_filename: string; file_size: number; created_at: string; url: string | null }>
 }
 
 function profileUrl(platform: string, username: string | null) {
@@ -98,6 +101,7 @@ export default function BrandInfluencerProfilePage({
 
   const socials = data.influencer_social_profiles ?? []
   const rates = data.influencer_rate_cards ?? []
+  const documents = data.influencer_documents ?? []
 
   return (
     <div className="space-y-5">
@@ -221,6 +225,14 @@ export default function BrandInfluencerProfilePage({
             </div>
           )}
         </div>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="mb-1 font-bold text-gray-900">Documentos compartidos</h2>
+        <p className="mb-4 text-xs text-gray-400">Disponibles porque esta influencer está aprobada en una campaña de tu marca.</p>
+        {documents.length === 0 ? <p className="text-sm text-gray-400">Sin documentos compartidos.</p> : <div className="grid gap-3 sm:grid-cols-2">{documents.map(document => (
+          <div key={document.id} className="flex items-center gap-3 rounded-xl bg-gray-50 p-3"><FileText className="h-5 w-5 text-violet-500" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-gray-900">{document.title}</p><p className="text-xs text-gray-400">{document.document_type === 'identity' ? 'Identidad' : document.document_type === 'portfolio' ? 'Portfolio' : 'Otro documento'}</p></div>{document.url && <a href={document.url} target="_blank" rel="noopener noreferrer" className="rounded-lg p-2 text-violet-600 hover:bg-violet-100" title="Descargar"><Download className="h-4 w-4" /></a>}</div>
+        ))}</div>}
       </div>
     </div>
   )

@@ -4,6 +4,7 @@ import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getPrimarySocial } from '@/lib/influencers/ranking'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 
 // 'followers' / 'engagement_rate' viven en la tabla join (influencer_social_profiles),
 // no son columnas de `influencers` — Postgres/PostgREST no puede hacer .order() por
@@ -326,6 +327,7 @@ export async function GET(request: NextRequest) {
     .single()
   const scenceOrgId = oldestOrg?.id ?? null
 
+  const proStatuses = await getInfluencerProStatuses(admin, withLastSeen.map(inf => inf.id as string))
   const enriched = withLastSeen.map(inf => {
     const orgId = inf.organization_id as string | null
     const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []
@@ -340,7 +342,8 @@ export async function GET(request: NextRequest) {
       registered_by = 'Marca' // org de marca sin fila en brand_influencers (caso raro/legado)
     }
 
-    return { ...inf, registered_by, associated_brands }
+    const pro_source = proStatuses.get(inf.id as string) ?? 'free'
+    return { ...inf, is_pro: pro_source !== 'free', pro_source, registered_by, associated_brands }
   })
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit })

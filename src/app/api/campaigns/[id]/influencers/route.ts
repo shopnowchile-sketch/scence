@@ -4,6 +4,7 @@ import { attendanceClosedEmail, attendanceConfirmationEmail, getResend, FROM_EMA
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { buildManualAttendanceUpdate, type ManualAttendanceAction } from '@/lib/manual-attendance'
+import { getInfluencerProIds } from '@/lib/influencer-pro'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -37,7 +38,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ data })
+  const proIds = await getInfluencerProIds(admin, (data ?? []).map(row => row.influencer?.id).filter((id): id is string => Boolean(id)))
+  const withPlans = (data ?? []).map(row => ({
+    ...row,
+    influencer: row.influencer ? { ...row.influencer, is_pro: proIds.has(row.influencer.id) } : null,
+  }))
+  return NextResponse.json({ data: withPlans })
 }
 
 // ── POST /api/campaigns/[id]/influencers — add influencer to campaign ──────────

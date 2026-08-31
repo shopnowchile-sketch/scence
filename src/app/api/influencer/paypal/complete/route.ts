@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   const detailsResponse = await fetch(`${influencerPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' })
   const subscription = await detailsResponse.json().catch(() => null)
   const reference = parseInfluencerReference(subscription?.custom_id)
-  if (!detailsResponse.ok || subscription?.status !== 'ACTIVE' || reference?.influencerId !== influencer.id) return NextResponse.json({ error: 'La suscripción aún no está activa.' }, { status: 409 })
+  if (!detailsResponse.ok || subscription?.status !== 'ACTIVE' || !reference || reference.influencerId !== influencer.id) return NextResponse.json({ error: 'La suscripción aún no está activa.' }, { status: 409 })
   const { data: plan } = await admin.from('subscription_plans').select('id').eq('tier', 'pro').eq('is_active', true).maybeSingle()
   if (!plan) return NextResponse.json({ error: 'El Plan Pro no está configurado en SCENCE.' }, { status: 500 })
   const metadata = { account_type: 'influencer', influencer_id: influencer.id, campaign_commitments: reference.campaignId ? [reference.campaignId] : [] }

@@ -9,6 +9,7 @@ import type { Influencer, InfluencerFilters } from '@/types'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
+import Image from 'next/image'
 
 type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
 
@@ -250,7 +251,7 @@ export function InfluencerTable({
                         gradient
                       )}>
                         {inf.avatar_url
-                          ? <img src={inf.avatar_url} alt={inf.display_name} className="w-full h-full rounded-full object-cover" />
+                          ? <Image src={inf.avatar_url} alt={inf.display_name} fill className="w-full h-full rounded-full object-cover" sizes="100vw" />
                           : initials
                         }
                       </div>

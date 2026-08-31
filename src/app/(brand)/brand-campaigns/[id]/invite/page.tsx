@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Loader2, Instagram } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import Image from 'next/image'
 
 interface Influencer {
   id: string
@@ -145,7 +146,7 @@ export default function InviteInfluencerPage() {
       ) : influencer ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
           {influencer.avatar_url
-            ? <img src={influencer.avatar_url} alt={influencer.display_name} className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
+            ? <Image src={influencer.avatar_url} alt={influencer.display_name} fill className="w-14 h-14 rounded-full object-cover flex-shrink-0" sizes="96px" />
             : <div className="w-14 h-14 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">{influencer.display_name[0]}</div>
           }
           <div className="flex-1 min-w-0">

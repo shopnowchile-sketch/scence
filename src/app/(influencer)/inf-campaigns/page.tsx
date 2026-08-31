@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { BrandBadge, CampaignCover } from '@/components/influencer/CampaignVisual'
 import { toast } from 'sonner'
+import Image from 'next/image'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Campaign = {
@@ -390,7 +391,7 @@ export default function MyCampaignsPage() {
               <div key={c.id} className="rounded-xl p-4 border border-violet-200 bg-violet-50/50">
                 <div className="flex items-start gap-3">
                   {c.brand_logo ? (
-                    <img src={c.brand_logo} alt={c.brand_name ?? ''} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                    <Image src={c.brand_logo} alt={c.brand_name ?? ''} fill className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" sizes="96px" />
                   ) : (
                     <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
                       {c.brand_name?.charAt(0) ?? '?'}
@@ -475,7 +476,7 @@ export default function MyCampaignsPage() {
                 <CampaignCover name={c.name} src={c.cover_url} className="h-28" />
                 <div className="flex items-start gap-3 p-4">
                   {c.brand?.logo_url ? (
-                    <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                    <Image src={c.brand.logo_url} alt={c.brand.name} fill className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" sizes="96px" />
                   ) : (
                     <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
                       {c.brand?.name?.charAt(0) ?? '?'}

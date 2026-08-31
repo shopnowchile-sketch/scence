@@ -12,6 +12,7 @@ import {
   Download,
 } from 'lucide-react'
 import { formatFollowers, PLATFORM_LABELS } from '@/lib/utils'
+import Image from 'next/image'
 
 type SocialProfile = {
   platform: string
@@ -116,11 +117,7 @@ export default function BrandInfluencerProfilePage({
       <div className="card p-6">
         <div className="flex flex-col sm:flex-row sm:items-start gap-5">
           {data.avatar_url ? (
-            <img
-              src={data.avatar_url}
-              alt={data.display_name}
-              className="h-24 w-24 rounded-2xl object-cover"
-            />
+            <Image src={data.avatar_url} alt={data.display_name} fill className="h-24 w-24 rounded-2xl object-cover" sizes="96px" />
           ) : (
             <div className="h-24 w-24 rounded-2xl bg-violet-100 flex items-center justify-center text-3xl font-bold text-violet-600">
               {data.display_name.charAt(0).toUpperCase()}

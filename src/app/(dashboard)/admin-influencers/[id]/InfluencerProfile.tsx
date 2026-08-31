@@ -16,6 +16,7 @@ import { useInfluencer } from '@/hooks/useInfluencersList'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import Image from 'next/image'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -468,8 +469,7 @@ export function InfluencerProfile({ id }: { id: string }) {
           {/* Avatar */}
           <div className="relative flex-shrink-0">
             {influencer.avatar_url ? (
-              <img src={influencer.avatar_url} alt={influencer.display_name}
-                className="w-20 h-20 rounded-2xl object-cover" />
+              <Image src={influencer.avatar_url} alt={influencer.display_name} fill className="w-20 h-20 rounded-2xl object-cover" sizes="96px" />
             ) : (
               <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center`}>
                 <span className="text-white text-2xl font-black">{initials}</span>

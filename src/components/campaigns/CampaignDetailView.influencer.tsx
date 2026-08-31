@@ -15,6 +15,7 @@ import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
+import Image from 'next/image'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
@@ -492,7 +493,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
           <div className="flex items-start gap-3 mb-3">
             {p.brand?.logo_url
-              ? <img src={p.brand.logo_url} alt={p.brand.name} className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
+              ? <Image src={p.brand.logo_url} alt={p.brand.name} fill className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" sizes="96px" />
               : <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center flex-shrink-0">
                   <Building2 className="h-5 w-5 text-violet-400" />
                 </div>}
@@ -737,7 +738,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         <div className="p-5">
         <div className="flex items-start gap-3 mb-3">
           {c.brand?.logo_url
-            ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
+            ? <Image src={c.brand.logo_url} alt={c.brand.name} fill className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" sizes="96px" />
             : <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center flex-shrink-0">
                 <Building2 className="h-5 w-5 text-violet-400" />
               </div>}
@@ -788,7 +789,13 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         {!isPending && (
           <div className="mt-4 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              {isAccepted && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
+              {isAccepted && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <Image
+  src={brand.logo_url}
+  alt=""
+  width={16}
+  height={16}
+  className="w-4 h-4 object-contain"
+/>}{brand.name}</span>)}</div></div>}
               <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
                 <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>
@@ -813,7 +820,13 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               <a key={asset.id} href={asset.signed_url ?? asset.storage_path} target="_blank" rel="noopener noreferrer" download={asset.filename}
                 className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:border-violet-200 hover:bg-violet-50/30 transition-colors">
                 <div className="flex min-w-0 items-center gap-3">
-                  {asset.mime_type?.startsWith('image/') && <img src={asset.signed_url ?? asset.storage_path} alt="" className="h-12 w-12 rounded-lg object-cover border border-gray-100" />}
+                  {asset.mime_type?.startsWith('image/') && <Image
+  src={asset.signed_url ?? asset.storage_path}
+  alt=""
+  width={48}
+  height={48}
+  className="h-12 w-12 rounded-lg object-cover border border-gray-100"
+/>}
                   <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-800 truncate">{asset.filename}</p>
                   <p className="text-[10px] text-gray-400">{asset.metadata?.asset_type === 'brief' ? 'Brief' : asset.mime_type ?? 'Archivo'}</p>

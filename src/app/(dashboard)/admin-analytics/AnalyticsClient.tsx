@@ -11,6 +11,7 @@ import {
   BarChart2, Percent,
 } from 'lucide-react'
 import { formatCurrency, formatFollowers, cn } from '@/lib/utils'
+import Image from 'next/image'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface AnalyticsData {
@@ -377,7 +378,7 @@ export function AnalyticsClient() {
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2.5">
                         {inf.avatar ? (
-                          <img src={inf.avatar} alt={inf.name} className="w-8 h-8 rounded-full object-cover" />
+                          <Image src={inf.avatar} alt={inf.name} fill className="w-8 h-8 rounded-full object-cover" sizes="96px" />
                         ) : (
                           <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center text-white text-xs font-bold`}>
                             {inf.name.split(' ').map(w => w[0]).join('').slice(0, 2)}

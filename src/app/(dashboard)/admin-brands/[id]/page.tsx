@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
 import { BrandDocumentsAdmin } from '@/components/brands/BrandDocumentsAdmin'
+import Image from 'next/image'
 
 type Campaign = {
   id: string
@@ -659,7 +660,13 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
           <div className="flex min-w-0 items-center gap-4">
             <div className="relative shrink-0">
               {brand.logo_url ? (
-                <img src={brand.logo_url} alt={`Logo de ${brand.name}`} className="h-24 w-24 rounded-2xl border border-gray-100 bg-white object-cover shadow-sm" />
+                <Image
+  src={brand.logo_url}
+  alt={`Logo de ${brand.name}`}
+  width={96}
+  height={96}
+  className="h-24 w-24 rounded-2xl border border-gray-100 bg-white object-cover shadow-sm"
+/>
               ) : (
                 <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-blue-500 text-3xl font-bold text-white shadow-sm">
                   {initials(brand.name)}
@@ -787,7 +794,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                         )}
                       >
                         {inf.avatar_url ? (
-                          <img src={inf.avatar_url} alt={inf.display_name} className="h-10 w-10 rounded-full object-cover" />
+                          <Image src={inf.avatar_url} alt={inf.display_name} fill className="h-10 w-10 rounded-full object-cover" sizes="96px" />
                         ) : (
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-500 font-bold text-white">
                             {inf.display_name.charAt(0).toUpperCase()}
@@ -1031,7 +1038,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                 <div key={inf.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-violet-50">
                   <Link href={`/admin-influencers/${inf.id}`} className="flex items-center gap-3 min-w-0 flex-1">
                     {inf.avatar_url ? (
-                      <img src={inf.avatar_url} alt={inf.display_name} className="w-10 h-10 rounded-full object-cover" />
+                      <Image src={inf.avatar_url} alt={inf.display_name} fill className="w-10 h-10 rounded-full object-cover" sizes="96px" />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-violet-500 text-white flex items-center justify-center font-bold">
                         {inf.display_name.charAt(0)}

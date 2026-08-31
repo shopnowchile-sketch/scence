@@ -12,7 +12,7 @@ export type CampaignCommitmentResult = {
 
 export function subscriptionCampaignIds(metadata: unknown): string[] {
   const value = (metadata ?? {}) as CommitmentMetadata
-  return [...new Set([...(Array.isArray(value.campaign_commitments) ? value.campaign_commitments : []), ...(value.campaign_id ? [value.campaign_id] : [])].filter(Boolean))]
+  return Array.from(new Set([...(Array.isArray(value.campaign_commitments) ? value.campaign_commitments : []), ...(value.campaign_id ? [value.campaign_id] : [])].filter(Boolean)))
 }
 
 /** Backend source of truth for Influencer Pro cancellation eligibility. */

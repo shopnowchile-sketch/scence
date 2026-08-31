@@ -39,11 +39,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const proStatuses = await getInfluencerProStatuses(admin, (data ?? []).map(row => row.influencer?.id).filter((id): id is string => Boolean(id)))
-  const withPlans = (data ?? []).map(row => ({
-    ...row,
-    influencer: row.influencer ? { ...row.influencer, is_pro: (proStatuses.get(row.influencer.id) ?? 'free') !== 'free', pro_source: proStatuses.get(row.influencer.id) ?? 'free' } : null,
-  }))
+  const normalized = (data ?? []).map(row => ({ ...row, influencer: Array.isArray(row.influencer) ? row.influencer[0] ?? null : row.influencer }))
+  const proStatuses = await getInfluencerProStatuses(admin, normalized.map(row => row.influencer?.id).filter((id): id is string => Boolean(id)))
+  const withPlans = normalized.map(row => {
+    const source = row.influencer ? proStatuses.get(row.influencer.id) ?? 'free' : 'free'
+    return { ...row, influencer: row.influencer ? { ...row.influencer, is_pro: source !== 'free', pro_source: source } : null }
+  })
 
   return NextResponse.json({
     data: withPlans,

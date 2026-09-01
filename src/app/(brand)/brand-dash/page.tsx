@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
+import { ConfigurableWidgets, type DashboardWidgetDefinition } from '@/components/dashboard/ConfigurableWidgets'
 
 type DeliverableStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'published'
 
@@ -117,6 +118,27 @@ export default function BrandDashboard() {
       .map(ci => ci.influencer?.id)
       .filter(Boolean)
   ).size
+  const widgetDefinitions = useMemo<DashboardWidgetDefinition[]>(() => [
+    { id: 'active_campaigns', label: 'Campañas activas', value: activeCampaigns.length, tone: 'violet' },
+    { id: 'total_campaigns', label: 'Cantidad de campañas', value: campaigns.length, tone: 'blue' },
+    { id: 'completed_campaigns', label: 'Campañas completadas', value: completedCampaigns.length, tone: 'green' },
+    {
+      id: 'participating_influencers',
+      label: 'Influencers participantes',
+      value: totalInfluencers,
+      subtitle: 'Influencers aceptadas en tus campañas',
+      tone: 'blue',
+      filterLabel: 'Campaña',
+      filterOptions: campaigns.map(campaign => ({ value: campaign.id, label: campaign.name })),
+      valueForFilter: campaignId => new Set(
+        campaigns.find(campaign => campaign.id === campaignId)?.campaign_influencers
+          .filter(item => item.application_status === 'accepted')
+          .map(item => item.influencer?.id)
+          .filter(Boolean) ?? [],
+      ).size,
+    },
+    { id: 'pending_review', label: 'Para revisar', value: totalPendingItems, tone: 'amber' },
+  ], [activeCampaigns.length, campaigns, completedCampaigns.length, totalInfluencers, totalPendingItems])
 
   if (loading) {
     return (
@@ -150,22 +172,11 @@ export default function BrandDashboard() {
         </div>
       )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: 'Campañas activas', value: activeCampaigns.length, icon: Target, color: 'text-violet-600', bg: 'bg-violet-50' },
-          { label: 'Influencers',      value: totalInfluencers,        icon: Users,  color: 'text-blue-600',   bg: 'bg-blue-50' },
-          { label: 'Para revisar',     value: totalPendingItems, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
-        ].map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="bg-white rounded-2xl border border-gray-100 p-5">
-            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center mb-3', bg)}>
-              <Icon className={cn('h-5 w-5', color)} />
-            </div>
-            <div className="text-2xl font-bold text-gray-900">{value}</div>
-            <div className="text-sm text-gray-500 mt-0.5">{label}</div>
-          </div>
-        ))}
-      </div>
+      <ConfigurableWidgets
+        portal="brand"
+        available={widgetDefinitions}
+        defaults={['active_campaigns', 'participating_influencers', 'pending_review']}
+      />
 
       {/* Contenido para revisar */}
       {pendingDeliverables.length > 0 && (

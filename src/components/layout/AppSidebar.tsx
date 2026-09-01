@@ -15,7 +15,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Menu, X, LogOut, ChevronDown, Settings } from 'lucide-react'
+import { Menu, X, LogOut, ChevronDown, Settings, ListTodo } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -77,6 +77,8 @@ function SidebarContent({
   onNavClick?: () => void
 }) {
   const cfg = PORTAL_CONFIG[portal]
+  const todoHref = portal === 'admin' ? '/admin-todo' : portal === 'brand' ? '/brand-todo' : '/inf-todo'
+  const todoActive = pathname === todoHref
 
   return (
     <div className="flex flex-col h-full">
@@ -155,6 +157,19 @@ function SidebarContent({
             })}
           </div>
         ))}
+        <div className="pt-2">
+          <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-wider px-2 py-1">
+            Personal
+          </p>
+          <Link
+            href={todoHref}
+            onClick={onNavClick}
+            className={cn('nav-link', todoActive && 'active')}
+          >
+            <ListTodo className="h-4 w-4 flex-shrink-0" />
+            <span className="flex-1">To-Do</span>
+          </Link>
+        </div>
       </nav>
 
       {/* Footer */}

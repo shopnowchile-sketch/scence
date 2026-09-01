@@ -6,14 +6,13 @@ import {
   Activity,
   ArrowUpRight,
   BarChart3,
-  Building2,
-  CalendarDays,
   ExternalLink,
   Loader2,
   RefreshCw,
   UserCheck,
   Users,
 } from 'lucide-react'
+import { ConfigurableWidgets, type DashboardWidgetDefinition } from '@/components/dashboard/ConfigurableWidgets'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -256,56 +255,6 @@ function fetchDashboard() {
     dashboardRequest = { expiresAt: Date.now() + 30_000, promise }
   }
   return dashboardRequest.promise
-}
-
-function KpiCard({
-  icon,
-  value,
-  title,
-  subtitle,
-  tone,
-  href,
-}: {
-  icon: React.ReactNode
-  value: string
-  title: string
-  subtitle: string
-  tone: 'purple' | 'blue' | 'green' | 'red' | 'yellow' | 'gray'
-  href?: string
-}) {
-  const tones = {
-    purple: 'bg-purple-100 text-purple-600',
-    blue: 'bg-blue-100 text-blue-600',
-    green: 'bg-emerald-100 text-emerald-600',
-    red: 'bg-rose-100 text-rose-600',
-    yellow: 'bg-amber-100 text-amber-600',
-    gray: 'bg-gray-100 text-gray-600',
-  }
-
-  const content = (
-    <>
-      <div className={`mb-5 flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone]}`}>
-        {icon}
-      </div>
-      <div className="text-3xl font-black tracking-tight text-gray-950">{value}</div>
-      <div className="mt-1 text-sm font-medium text-gray-500">{title}</div>
-      <div className="mt-1 text-xs text-gray-300">{subtitle}</div>
-    </>
-  )
-
-  if (href) {
-    return (
-      <Link href={href} className="block rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hover:border-purple-300 hover:shadow-md transition-all">
-        {content}
-      </Link>
-    )
-  }
-
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      {content}
-    </div>
-  )
 }
 
 function PortalAccessCard({
@@ -626,6 +575,15 @@ export function DashboardClient() {
     }
   }, [state])
 
+  const widgetDefinitions = useMemo<DashboardWidgetDefinition[]>(() => [
+    { id: 'active_campaigns', label: 'Campañas en curso', value: computed.campaignCount, subtitle: 'Operación actual', tone: 'violet', href: '/admin-campaigns' },
+    { id: 'total_influencers', label: 'Influencers en roster', value: computed.influencersTotal, subtitle: 'Activas + inactivas', tone: 'blue', href: '/admin-influencers' },
+    { id: 'total_brands', label: 'Marcas registradas', value: computed.brandsTotal, tone: 'gray', href: '/admin-brands' },
+    { id: 'pending_brands', label: 'Marcas pendientes', value: computed.pendingBrandsCount, subtitle: 'Revisar y aprobar', tone: 'amber', href: '/admin-brands?status=pending_approval' },
+    { id: 'pending_campaigns', label: 'Campañas pendientes', value: computed.pendingCampaignsCount, subtitle: 'Revisar y aprobar', tone: 'amber', href: '/admin-campaigns?status=pending_approval' },
+    { id: 'pending_deliverables', label: 'Contenido por revisar', value: computed.pendingDeliverablesCount, subtitle: 'Entregables enviados', tone: 'violet', href: '/admin-campaigns' },
+  ], [computed])
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
@@ -646,44 +604,11 @@ export function DashboardClient() {
           {state.error && <p className="mt-2 text-sm text-rose-500">{state.error}</p>}
         </header>
 
-        <section className="space-y-2">
-          <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Operación</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <KpiCard
-              icon={<CalendarDays className="h-5 w-5" />}
-              value={String(computed.campaignCount)}
-              title="Campañas en curso"
-              subtitle="este mes"
-              tone="purple"
-              href="/admin-campaigns"
-            />
-            <KpiCard
-              icon={<Users className="h-5 w-5" />}
-              value={String(computed.influencersTotal)}
-              title="Influencers en roster"
-              subtitle="total (activos + inactivos)"
-              tone="blue"
-              href="/admin-influencers"
-            />
-            <KpiCard
-              icon={<Building2 className="h-5 w-5" />}
-              value={String(computed.brandsTotal)}
-              title="Marcas registradas"
-              subtitle="en el sistema"
-              tone="gray"
-              href="/admin-brands"
-            />
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Pendiente de revisión</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <KpiCard icon={<Building2 className="h-5 w-5" />} value={String(computed.pendingBrandsCount)} title="Marcas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-brands?status=pending_approval" />
-            <KpiCard icon={<CalendarDays className="h-5 w-5" />} value={String(computed.pendingCampaignsCount)} title="Campañas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-campaigns?status=pending_approval" />
-            <KpiCard icon={<UserCheck className="h-5 w-5" />} value={String(computed.pendingDeliverablesCount)} title="Contenido por revisar" subtitle="entregables enviados" tone="purple" href="/admin-campaigns" />
-          </div>
-        </section>
+        <ConfigurableWidgets
+          portal="admin"
+          available={widgetDefinitions}
+          defaults={['active_campaigns', 'total_influencers', 'total_brands', 'pending_brands', 'pending_campaigns', 'pending_deliverables']}
+        />
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">

@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest) {
   let body: Record<string, unknown>
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { full_name, display_name, phone, timezone, locale, avatar_url, notification_preferences, signer_rut, signer_role } = body
+  const { full_name, display_name, phone, timezone, locale, avatar_url, notification_preferences, dashboard_widgets, signer_rut, signer_role } = body
 
   if (locale !== undefined && locale !== 'es' && locale !== 'en') {
     return NextResponse.json({ error: 'Unsupported locale' }, { status: 400 })
@@ -49,13 +49,16 @@ export async function PATCH(request: NextRequest) {
   if (has('signer_rut')) update.signer_rut = signer_rut ?? null
   if (has('signer_role')) update.signer_role = signer_role ?? null
 
-  // Preferencias de notificación: se guardan dentro de metadata (JSONB) para
-  // no crear una columna/tabla nueva. Merge con lo existente, nunca se pisa
-  // el resto de metadata.
-  if (notification_preferences && typeof notification_preferences === 'object') {
+  // Preferencias personales reutilizables por portal. Se guardan en metadata
+  // para mantener una única fuente por usuario sin crear tablas adicionales.
+  if ((notification_preferences && typeof notification_preferences === 'object') || (dashboard_widgets && typeof dashboard_widgets === 'object')) {
     const { data: current } = await admin.from('profiles').select('metadata').eq('id', user.id).maybeSingle()
     const currentMeta = (current?.metadata as Record<string, unknown> | null) ?? {}
-    update.metadata = { ...currentMeta, notification_preferences }
+    update.metadata = {
+      ...currentMeta,
+      ...(notification_preferences && typeof notification_preferences === 'object' ? { notification_preferences } : {}),
+      ...(dashboard_widgets && typeof dashboard_widgets === 'object' ? { dashboard_widgets } : {}),
+    }
   }
 
   const { data, error } = await admin

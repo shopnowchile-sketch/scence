@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
+import { CampaignImageLightbox } from '@/components/campaigns/CampaignImageLightbox'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
 import Image from 'next/image'
@@ -734,7 +735,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
       {/* Card combinada: nombre, marca, badge, fechas, fee, brief colapsado */}
       <div className="overflow-hidden bg-white rounded-2xl border border-gray-100">
-        {c.cover_url && <CampaignCover name={c.name} src={c.cover_url} className="h-44" />}
+        {c.cover_url && <CampaignImageLightbox src={c.cover_url} alt={`Banner de ${c.name}`} className="h-44 w-full"><CampaignCover name={c.name} src={c.cover_url} className="h-44" /></CampaignImageLightbox>}
         <div className="p-5">
         <div className="flex items-start gap-3 mb-3">
           {c.brand?.logo_url

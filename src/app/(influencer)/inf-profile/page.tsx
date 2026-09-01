@@ -313,8 +313,9 @@ export default function ProfilePage() {
       {/* VIEW MODE */}
       {!editing && (
         <>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1fr)]">
           <div className="bg-white rounded-2xl border border-gray-100 p-6">
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-5 h-full">
               <div className="flex-shrink-0">
                 {profile.avatar_url ? (
                   <Image
@@ -343,6 +344,20 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Campañas activas', value: activeCampaigns, icon: Target, color: 'text-violet-600', bg: 'bg-violet-50', href: '/inf-campaigns?status=active' },
+              { label: 'Campañas pendientes', value: pendingCampaigns, icon: Zap, color: 'text-amber-600', bg: 'bg-amber-50' },
+              { label: 'Total cobrado', value: fmtMoney(totalEarned, currency), icon: Banknote, color: 'text-green-600', bg: 'bg-green-50' },
+              { label: 'Marcas referidas', value: profile.referred_brands_count ?? 0, icon: Share2, color: 'text-blue-600', bg: 'bg-blue-50' },
+            ].map(({ label, value, icon: Icon, color, bg, href }) => {
+              const content = <><div className={cn('w-8 h-8 rounded-xl flex items-center justify-center mb-3', bg)}><Icon className={cn('h-4 w-4', color)} /></div><div className="text-lg font-bold text-gray-900 truncate">{value}</div><div className="text-xs text-gray-400 mt-0.5">{label}</div></>
+              return href
+                ? <a key={label} href={href} className="bg-white rounded-2xl border border-gray-100 p-4 text-left transition-all hover:border-violet-200 hover:shadow-sm">{content}</a>
+                : <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4">{content}</div>
+            })}
+          </div>
+          </div>
 
           <div className="flex flex-wrap gap-1 rounded-xl border border-gray-100 bg-white p-1">
             {[
@@ -361,21 +376,6 @@ export default function ProfilePage() {
           </div>
 
           {activeTab === 'profile' && <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: 'Campañas activas',  value: activeCampaigns,                icon: Target,   color: 'text-violet-600', bg: 'bg-violet-50' },
-              { label: 'Campañas pendientes', value: pendingCampaigns,              icon: Zap,      color: 'text-amber-600',  bg: 'bg-amber-50' },
-              { label: 'Total cobrado',     value: fmtMoney(totalEarned, currency), icon: Banknote, color: 'text-green-600',  bg: 'bg-green-50' },
-              { label: 'Marcas referidas',  value: profile.referred_brands_count ?? 0, icon: Share2, color: 'text-blue-600',   bg: 'bg-blue-50' },
-            ].map(({ label, value, icon: Icon, color, bg }) => (
-              <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4">
-                <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center mb-3', bg)}><Icon className={cn('h-4 w-4', color)} /></div>
-                <div className="text-lg font-bold text-gray-900 truncate">{value}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{label}</div>
-              </div>
-            ))}
-          </div>
-
           <div className="rounded-2xl border border-gray-100 bg-white p-5">
             <h2 className="text-sm font-bold text-gray-900">Información personal</h2>
             <div className="mt-4 grid gap-3 text-sm text-gray-600 sm:grid-cols-2">

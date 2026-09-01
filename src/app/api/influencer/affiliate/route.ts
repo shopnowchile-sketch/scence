@@ -15,8 +15,15 @@ export async function GET() {
   const username = primary?.username?.replace(/^@/, '') ?? ''
   if (!username) return NextResponse.json({ error: 'Agrega tu Instagram para crear tu link.' }, { status: 422 })
 
-  const { data: existing } = await admin.from('affiliate_links').select('id, code, full_link, clicks, conversions, revenue, currency, is_active').eq('influencer_id', influencer.id).is('campaign_id', null).eq('name', 'Recomienda SCENCE').maybeSingle()
-  if (existing) return NextResponse.json({ data: existing })
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://scence-app.vercel.app'
+  const canonicalDestination = `${appUrl}/register/brand?ref=${encodeURIComponent(username)}`
+  const { data: existing } = await admin.from('affiliate_links').select('id, code, full_link, clicks, conversions, revenue, currency, is_active').eq('influencer_id', influencer.id).is('campaign_id', null).order('created_at', { ascending: true }).limit(1).maybeSingle()
+  if (existing) {
+    const canonicalLink = `${appUrl}/track/${existing.code}`
+    const { data: corrected, error: correctionError } = await admin.from('affiliate_links').update({ name: 'Recomienda SCENCE', redirect_url: canonicalDestination, full_link: canonicalLink, is_active: true }).eq('id', existing.id).select('id, code, full_link, clicks, conversions, revenue, currency, is_active').single()
+    if (correctionError) return NextResponse.json({ error: 'No se pudo corregir el link de afiliado.' }, { status: 500 })
+    return NextResponse.json({ data: corrected })
+  }
 
   let code = ''
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -26,14 +33,13 @@ export async function GET() {
   }
   if (!code) return NextResponse.json({ error: 'No se pudo crear el link.' }, { status: 500 })
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   const { data, error } = await admin.from('affiliate_links').insert({
     organization_id: influencer.organization_id,
     influencer_id: influencer.id,
     campaign_id: null,
     name: 'Recomienda SCENCE',
     code,
-    redirect_url: `${appUrl}/register/brand?ref=${encodeURIComponent(username)}`,
+    redirect_url: canonicalDestination,
     full_link: `${appUrl}/track/${code}`,
     clicks: 0,
     conversions: 0,

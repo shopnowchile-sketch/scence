@@ -204,6 +204,11 @@ export default function MyCampaignsPage() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('status')
+    if (status && status in STATUS_CONFIG) setCampStatusFilter(status)
+  }, [])
+
   async function handleApply(campaignId: string, campaignName: string) {
     if (!confirm(`¿Enviar solicitud para unirte a "${campaignName}"? El equipo la revisará y te confirmará.`)) return
     setApplying(campaignId)

@@ -110,7 +110,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       {!active && billing?.account_active && (
         <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
           <div className="flex items-center justify-between bg-violet-600 px-5 py-4 text-white">
-            <div><p className="text-xs font-semibold text-violet-100">PLAN ACTUAL: GRATIS</p><h2 className="text-xl font-bold">Influencer Pro</h2></div>
+            <div><p className="text-xs font-semibold text-violet-100">Plan Actual</p><p className="text-xl font-bold">Gratis</p></div>
             <div className="text-right"><strong className="text-xl">US${INFLUENCER_PRO_PRICING.promoAmount}/mes</strong><p className="text-xs text-violet-100">durante los primeros 3 meses</p><p className="text-xs text-violet-100">Luego US${INFLUENCER_PRO_PRICING.regularAmount}/mes</p></div>
           </div>
           <div className="p-5">
@@ -123,7 +123,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
               ))}
             </div>
             <button onClick={upgradeToPro} disabled={upgrading} className="mt-5 w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-violet-700 disabled:opacity-50">
-              {upgrading ? 'ABRIENDO PAYPAL…' : 'CAMBIAR A PLAN PRO'}
+              {upgrading ? 'ABRIENDO PAYPAL…' : 'Cambiar a Plan Pro'}
             </button>
             <p className="mt-2 text-center text-xs text-gray-500">Equivalente comercial aproximado: $7.990 CLP/mes por 3 meses; luego $14.990 CLP/mes. PayPal cobra en USD.</p>
             {billing?.paypal_pricing && !billing.paypal_pricing.structure_valid && <p className="mt-2 text-center text-xs font-semibold text-red-600">El plan PayPal configurado no coincide con estos precios y el checkout está bloqueado.</p>}

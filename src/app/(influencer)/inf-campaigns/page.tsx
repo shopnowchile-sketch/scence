@@ -530,7 +530,7 @@ export default function MyCampaignsPage() {
                         href="/inf-profile?tab=plan"
                         className="rounded-lg bg-violet-600 px-3 py-1.5 text-center text-[10px] font-bold text-white transition-colors hover:bg-violet-700"
                       >
-                        ACTIVAR PLAN PRO
+                        Únete al Plan Pro para postular
                       </Link>
                     ) : (
                       <button

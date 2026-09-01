@@ -155,7 +155,7 @@ const TIER_COLORS: Record<string, string> = {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function InfluencerProfile({ id }: { id: string }) {
-  const [tab, setTab] = useState<'overview' | 'campaigns' | 'deliverables' | 'history' | 'notes'>('overview')
+  const [tab, setTab] = useState<'overview' | 'plan' | 'campaigns' | 'deliverables' | 'history' | 'notes'>('overview')
   const [removingCi, setRemovingCi] = useState<string | null>(null)
   const [deactivating, setDeactivating] = useState(false)
   const [deletingHard, setDeletingHard] = useState(false)
@@ -666,6 +666,7 @@ export function InfluencerProfile({ id }: { id: string }) {
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
         {([
           { id: 'overview',     label: 'Overview' },
+          { id: 'plan',         label: 'Plan' },
           { id: 'campaigns',    label: `Campañas (${campaignInfluencers.length})` },
           { id: 'deliverables', label: `Deliverables (${deliverables.length})` },
           { id: 'history',      label: `Historial (${history.length})` },
@@ -680,6 +681,28 @@ export function InfluencerProfile({ id }: { id: string }) {
           </button>
         ))}
       </div>
+
+      {tab === 'plan' && (
+        <div className="card max-w-xl p-5">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500">Plan actual</h3>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className={cn('w-fit rounded-full px-3 py-1.5 text-xs font-extrabold', influencer.is_pro ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600')}>
+              {influencer.is_pro ? 'PLAN PRO' : 'GRATIS'}
+            </span>
+            <select
+              value={influencer.is_pro ? 'pro' : 'free'}
+              disabled={!isAdmin || changingPro || influencer.pro_source === 'paid'}
+              onChange={event => void handleManualPro(event.target.value === 'pro')}
+              className="input-base min-w-44 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="free">Gratis</option>
+              <option value="pro">Plan Pro</option>
+            </select>
+          </div>
+          {influencer.pro_source === 'paid' && <p className="mt-3 text-xs text-gray-500">Plan Pro pagado activo. Se mantienen sus permisos y facturación actuales.</p>}
+          {influencer.pro_source === 'manual' && <p className="mt-3 text-xs font-semibold text-amber-700">Plan Pro habilitado manualmente por Admin con los mismos permisos Pro.</p>}
+        </div>
+      )}
 
       {/* ── Overview ── */}
       {tab === 'overview' && (

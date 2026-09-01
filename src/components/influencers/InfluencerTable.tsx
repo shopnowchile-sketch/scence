@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send } from 'lucide-react'
+import { CheckCircle2, Star, ExternalLink, Trash2, Columns3, Send } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
@@ -11,11 +11,11 @@ import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 import Image from 'next/image'
 
-type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
+type ColKey = 'display_name' | 'plan' | 'location' | 'country' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
-  display_name: 280, platforms: 120, categories: 160, followers: 130,
-  engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 100, lastConnection: 170,
+  display_name: 240, plan: 110, location: 170, country: 110, platforms: 120, categories: 160, followers: 130,
+  engagement: 140, rate: 120, rating: 90, status: 100, birthDate: 100, lastConnection: 170,
   registeredBy: 140, associatedBrands: 220,
 }
 
@@ -96,6 +96,9 @@ export function InfluencerTable({
     setInvitingId(null)
   }
   const [visible, setVisible] = useLocalStorageState('scence:admin:influencer-table:columns', {
+    plan: true,
+    location: true,
+    country: true,
     platforms: true,
     categories: true,
     followers: true,
@@ -103,7 +106,6 @@ export function InfluencerTable({
     rate: true,
     rating: true,
     status: true,
-    commune: true,
     birthDate: true,
     lastConnection: true,
     registeredBy: true,
@@ -140,6 +142,9 @@ export function InfluencerTable({
           {showColumns && (
             <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-2 z-20">
               {([
+                ['plan', 'Plan'],
+                ['location', 'Ciudad/Comuna'],
+                ['country', 'País'],
                 ['platforms', 'Plataformas'],
                 ['categories', 'Categorías'],
                 ['followers', 'Seguidores'],
@@ -147,7 +152,6 @@ export function InfluencerTable({
                 ['rate', 'Rate base'],
                 ['rating', 'Rating'],
                 ['status', 'Estado'],
-                ['commune', 'Comuna'],
                 ['birthDate', 'Edad'],
                 ...(portal === 'admin' ? ([
                   ['lastConnection', 'Última conexión'],
@@ -175,6 +179,9 @@ export function InfluencerTable({
           <colgroup>
             {selectable && <col style={{ width: 40 }} />}
             <col style={{ width: widths.display_name }} />
+            {visible.plan           && <col style={{ width: widths.plan }} />}
+            {visible.location       && <col style={{ width: widths.location }} />}
+            {visible.country        && <col style={{ width: widths.country }} />}
             {visible.platforms      && <col style={{ width: widths.platforms }} />}
             {visible.categories     && <col style={{ width: widths.categories }} />}
             {visible.followers      && <col style={{ width: widths.followers }} />}
@@ -182,7 +189,6 @@ export function InfluencerTable({
             {visible.rate           && <col style={{ width: widths.rate }} />}
             {visible.rating         && <col style={{ width: widths.rating }} />}
             {visible.status         && <col style={{ width: widths.status }} />}
-            {visible.commune        && <col style={{ width: widths.commune }} />}
             {visible.birthDate      && <col style={{ width: widths.birthDate }} />}
             {portal === 'admin' && visible.lastConnection && <col style={{ width: widths.lastConnection }} />}
             {portal === 'admin' && visible.registeredBy      && <col style={{ width: widths.registeredBy }} />}
@@ -198,6 +204,9 @@ export function InfluencerTable({
                 </th>
               )}
               <TH col="display_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('display_name', e)}>Influencer</TH>
+              {visible.plan && <SortableTH<ColKey> onResizeStart={e => startResize('plan', e)}>Plan</SortableTH>}
+              {visible.location && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('location', e)}>Ciudad/Comuna</TH>}
+              {visible.country && <SortableTH<ColKey> onResizeStart={e => startResize('country', e)}>País</SortableTH>}
               {visible.platforms && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('platforms', e)}>Plataformas</SortableTH>
               )}
@@ -211,7 +220,6 @@ export function InfluencerTable({
               )}
               {visible.rating && <TH col="rating" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('rating', e)}>Rating</TH>}
               {visible.status && <TH col="is_active" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('status', e)}>Estado</TH>}
-              {visible.commune && <TH col="commune" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('commune', e)}>Comuna</TH>}
               {visible.birthDate && <TH col="birth_date" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('birthDate', e)}>Edad</TH>}
               {portal === 'admin' && visible.lastConnection && (
                 <TH col="last_sign_in_at" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('lastConnection', e)}>Última conexión</TH>
@@ -247,7 +255,7 @@ export function InfluencerTable({
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className={cn(
-                        'w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gradient-to-br',
+                        'relative w-9 h-9 overflow-hidden rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gradient-to-br',
                         gradient
                       )}>
                         {inf.avatar_url
@@ -272,9 +280,6 @@ export function InfluencerTable({
                               {inf.display_name}
                             </Link>
                           )}
-                          <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', inf.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : inf.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
-                            {inf.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
-                          </span>
                           {inf.is_verified && (
                             <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
                           )}
@@ -293,16 +298,14 @@ export function InfluencerTable({
                               <ExternalLink className="h-3 w-3" aria-hidden="true" />
                             </a>
                           )}
-                          {(inf.commune || inf.city || inf.country) && (
-                            <span className="flex min-w-0 items-center gap-1 truncate text-gray-400" title={[inf.commune ?? inf.city, inf.country].filter(Boolean).join(', ')}>
-                              <MapPin className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{[inf.commune ?? inf.city, inf.country].filter(Boolean).join(', ')}</span>
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
                   </td>
+
+                  {visible.plan && <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-1 text-[10px] font-bold', inf.is_pro ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600')}>{inf.is_pro ? 'PLAN PRO' : 'GRATIS'}</span></td>}
+                  {visible.location && <td className="px-4 py-3 text-sm text-gray-600">{Array.from(new Set([inf.city, inf.commune].filter(Boolean))).join(' / ') || '—'}</td>}
+                  {visible.country && <td className="px-4 py-3 text-sm text-gray-600">{inf.country || '—'}</td>}
 
                   {/* Plataformas */}
                   {visible.platforms && (
@@ -394,13 +397,6 @@ export function InfluencerTable({
                       {(inf.metadata as Record<string,unknown>|null)?.status === 'draft' ? 'Draft' :
                        inf.is_active ? 'Activo' : 'Inactivo'}
                     </span>
-                    </td>
-                  )}
-
-                  {/* Comuna */}
-                  {visible.commune && (
-                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                      {inf.commune ?? inf.city ?? '—'}
                     </td>
                   )}
 

@@ -19,6 +19,12 @@ type PayPalBillingCycle = {
   pricing_scheme?: { fixed_price?: { value?: string; currency_code?: string } }
 }
 
+function samePayPalAmount(actual: string | undefined, expected: string) {
+  const actualAmount = Number(actual)
+  const expectedAmount = Number(expected)
+  return Number.isFinite(actualAmount) && Number.isFinite(expectedAmount) && actualAmount === expectedAmount
+}
+
 export async function getInfluencerPayPalPlanPricing() {
   const planId = process.env.PAYPAL_INFLUENCER_PRO_PLAN_ID
   if (!planId) return null
@@ -46,8 +52,8 @@ export async function getInfluencerPayPalPlanPricing() {
     && !!regularPrice?.value
     && promoPrice.currency_code === regularPrice.currency_code
     && promoPrice.currency_code === INFLUENCER_PRO_PRICING.currency
-    && promoPrice.value === INFLUENCER_PRO_PRICING.promoAmount
-    && regularPrice.value === INFLUENCER_PRO_PRICING.regularAmount
+    && samePayPalAmount(promoPrice.value, INFLUENCER_PRO_PRICING.promoAmount)
+    && samePayPalAmount(regularPrice.value, INFLUENCER_PRO_PRICING.regularAmount)
   return {
     plan_id: planId,
     currency: promoPrice?.currency_code ?? null,

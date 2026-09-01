@@ -5,7 +5,7 @@ import {
   AlertCircle, RefreshCw, Edit2, Save, X, Plus, Trash2,
   Target, Zap, Banknote, MapPin, Tag, Share2, Mail, User,
   Phone, Globe, Calendar, Camera, ImagePlus,
-  Bell, CreditCard, FileText, Link2, ExternalLink,
+  Bell, CreditCard, FileText, Link2, ExternalLink, Trophy,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -13,6 +13,7 @@ import NotificationPreferencesForm from '@/components/settings/NotificationPrefe
 import { InfluencerPlanSettings } from '../inf-plan/InfluencerPlanSettings'
 import { InfluencerDocuments } from './_components/InfluencerDocuments'
 import { InfluencerAffiliate } from './_components/InfluencerAffiliate'
+import { InfluencerPoints, type InfluencerPointsData } from './_components/InfluencerPoints'
 import Image from 'next/image'
 
 type SocialProfile = {
@@ -114,11 +115,12 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', textar
 }
 
 export default function ProfilePage() {
-  const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'plan' | 'documents' | 'affiliate'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'plan' | 'documents' | 'affiliate' | 'points'>('profile')
   const [profile,   setProfile]   = useState<InfluencerProfile | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [payments,  setPayments]  = useState<{ pending: Payment[]; completed: Payment[] }>({ pending: [], completed: [] })
   const [isPro,     setIsPro]     = useState(false)
+  const [points,    setPoints]    = useState<InfluencerPointsData | null>(null)
   const [loading,   setLoading]   = useState(true)
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
@@ -131,18 +133,20 @@ export default function ProfilePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [meRes, campRes, payRes, billingRes] = await Promise.all([
+      const [meRes, campRes, payRes, billingRes, pointsRes] = await Promise.all([
         fetch('/api/influencer/me'),
         fetch('/api/influencer/campaigns'),
         fetch('/api/influencer/payments'),
         fetch('/api/influencer/billing', { cache: 'no-store' }),
+        fetch('/api/influencer/points', { cache: 'no-store' }),
       ])
       if (!meRes.ok) { toast.error('Error cargando perfil'); setLoading(false); return }
-      const [meData, campData, payData, billingData] = await Promise.all([meRes.json(), campRes.json(), payRes.json(), billingRes.json()])
+      const [meData, campData, payData, billingData, pointsData] = await Promise.all([meRes.json(), campRes.json(), payRes.json(), billingRes.json(), pointsRes.json()])
       setProfile(meData.data)
       setCampaigns(campData.data ?? [])
       setPayments({ pending: payData.pending ?? [], completed: payData.completed ?? [] })
       setIsPro(billingRes.ok && billingData.is_pro === true)
+      setPoints(pointsRes.ok ? pointsData.data : null)
     } catch { toast.error('Error cargando perfil') }
     setLoading(false)
   }, [])
@@ -151,7 +155,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get('tab')
-    if (tab === 'plan' || tab === 'documents' || tab === 'affiliate') setActiveTab(tab)
+    if (tab === 'plan' || tab === 'documents' || tab === 'affiliate' || tab === 'points') setActiveTab(tab)
   }, [])
 
   // Perfil obligatorio: si falta Instagram, comuna o dirección, se fuerza el
@@ -335,17 +339,19 @@ export default function ProfilePage() {
                   </button>
                 </div>
                 {primarySocial && primarySocialUrl && <a href={primarySocialUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-600 hover:underline">Instagram: @{primarySocial.username.replace(/^@/, '')}<ExternalLink className="h-3.5 w-3.5" /></a>}
+                {points && <button type="button" onClick={() => setActiveTab('points')} className="block text-xs font-semibold text-gray-500 hover:text-violet-700">SCENCE Score: {points.score.toLocaleString('es-CL')}</button>}
               </div>
             </div>
           </div>
 
-          <div className="flex gap-1 rounded-xl border border-gray-100 bg-white p-1">
+          <div className="flex flex-wrap gap-1 rounded-xl border border-gray-100 bg-white p-1">
             {[
               { id: 'profile' as const, label: 'Perfil', icon: User },
               { id: 'notifications' as const, label: 'Notificaciones', icon: Bell },
               { id: 'plan' as const, label: 'Mi Plan', icon: CreditCard },
               { id: 'documents' as const, label: 'Documentos', icon: FileText },
               { id: 'affiliate' as const, label: 'Mi link de afiliado', icon: Link2 },
+              { id: 'points' as const, label: 'Mis puntos', icon: Trophy },
             ].map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" onClick={() => setActiveTab(id)}
                 className={cn('flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors', activeTab === id ? 'bg-violet-50 text-violet-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900')}>
@@ -421,6 +427,7 @@ export default function ProfilePage() {
       {activeTab === 'plan' && <InfluencerPlanSettings embedded />}
       {activeTab === 'documents' && <InfluencerDocuments />}
       {activeTab === 'affiliate' && <InfluencerAffiliate />}
+      {activeTab === 'points' && <InfluencerPoints data={points} />}
 
       {/* EDIT MODE */}
       {editing && activeTab === 'profile' && (

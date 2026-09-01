@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (!detailsResponse.ok || subscription?.status !== 'ACTIVE' || subscription?.plan_id !== process.env.PAYPAL_INFLUENCER_PRO_PLAN_ID || !reference || reference.influencerId !== influencer.id) return NextResponse.json({ error: 'La suscripción aún no está activa o no corresponde al Plan Pro.' }, { status: 409 })
   const { data: plan } = await admin.from('subscription_plans').select('id').eq('tier', 'pro').eq('is_active', true).maybeSingle()
   if (!plan) return NextResponse.json({ error: 'El Plan Pro no está configurado en SCENCE.' }, { status: 500 })
-  const metadata = { account_type: 'influencer', influencer_id: influencer.id, campaign_commitments: reference.campaignId ? [reference.campaignId] : [] }
+  const metadata = { account_type: 'influencer', payment_provider: 'paypal', influencer_id: influencer.id, paypal_plan_id: subscription.plan_id, campaign_commitments: reference.campaignId ? [reference.campaignId] : [] }
   const row = { organization_id: influencer.organization_id, plan_id: plan.id, status: 'active', current_period_start: subscription.start_time ?? subscription.create_time, current_period_end: subscription.billing_info?.next_billing_time ?? subscription.start_time ?? subscription.create_time, paypal_subscription_id: subscriptionId, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: null, updated_at: new Date().toISOString() }
   const { data: existing } = await admin.from('subscriptions').select('id').eq('paypal_subscription_id', subscriptionId).maybeSingle()
   const result = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)

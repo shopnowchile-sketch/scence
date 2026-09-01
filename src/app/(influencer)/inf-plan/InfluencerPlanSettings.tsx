@@ -5,6 +5,7 @@ import { Check, LockKeyhole, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
+import { INFLUENCER_PRO_PRICING } from '@/lib/influencer-pro-pricing'
 
 type Billing = {
   subscription: { status: string; current_period_end: string | null; plan: { name: string; tier: string } | null } | null
@@ -13,6 +14,7 @@ type Billing = {
   is_pro: boolean
   account_active: boolean
   blocked_reason?: 'campaign_active' | 'deliverables_pending' | null
+  paypal_pricing?: { currency: string | null; promo_amount: string | null; promo_cycles: number | null; regular_amount: string | null; structure_valid: boolean } | null
 }
 
 async function responseJson(response: Response) {
@@ -108,8 +110,8 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       {!active && billing?.account_active && (
         <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
           <div className="flex items-center justify-between bg-violet-600 px-5 py-4 text-white">
-            <div><p className="text-xs font-semibold text-violet-100">PLAN ACTUAL: GRATIS</p><h2 className="text-xl font-bold">Cambia a Plan Pro</h2></div>
-            <div className="text-right"><strong className="text-xl">$7.990</strong><p className="text-xs text-violet-100">CLP / mes</p></div>
+            <div><p className="text-xs font-semibold text-violet-100">PLAN ACTUAL: GRATIS</p><h2 className="text-xl font-bold">Influencer Pro</h2></div>
+            <div className="text-right"><strong className="text-xl">US${INFLUENCER_PRO_PRICING.promoAmount}/mes</strong><p className="text-xs text-violet-100">durante los primeros 3 meses</p><p className="text-xs text-violet-100">Luego US${INFLUENCER_PRO_PRICING.regularAmount}/mes</p></div>
           </div>
           <div className="p-5">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -123,6 +125,8 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
             <button onClick={upgradeToPro} disabled={upgrading} className="mt-5 w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-violet-700 disabled:opacity-50">
               {upgrading ? 'ABRIENDO PAYPAL…' : 'CAMBIAR A PLAN PRO'}
             </button>
+            <p className="mt-2 text-center text-xs text-gray-500">Equivalente comercial aproximado: $7.990 CLP/mes por 3 meses; luego $14.990 CLP/mes. PayPal cobra en USD.</p>
+            {billing?.paypal_pricing && !billing.paypal_pricing.structure_valid && <p className="mt-2 text-center text-xs font-semibold text-red-600">El plan PayPal configurado no coincide con estos precios y el checkout está bloqueado.</p>}
             <p className="mt-2 text-center text-[11px] text-gray-400">Pago mensual con PayPal. Al continuar aceptas los <Link href="/terms/influencer-pro" target="_blank" className="text-violet-600 hover:underline">términos del Plan Pro</Link>.</p>
           </div>
         </section>
@@ -130,7 +134,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
 
       {active && (
         <section className="rounded-2xl border border-violet-200 bg-white p-5">
-          <div className="flex items-center justify-between"><h3 className="font-bold text-gray-900">PLAN PRO</h3><span className="font-bold text-violet-700">$7.990/mes</span></div>
+          <div className="flex items-center justify-between"><h3 className="font-bold text-gray-900">PLAN PRO</h3><span className="text-right font-bold text-violet-700">US${INFLUENCER_PRO_PRICING.promoAmount}/mes por 3 meses<br /><span className="text-xs font-semibold">Luego US${INFLUENCER_PRO_PRICING.regularAmount}/mes</span></span></div>
           <div className="mt-4 space-y-3">{benefits.map(benefit => <div key={benefit} className="flex items-start gap-2 text-sm text-gray-700"><Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" /><span>{benefit}</span></div>)}</div>
         </section>
       )}

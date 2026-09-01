@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getInfluencerPayPalToken, influencerPayPalBaseUrl } from '@/lib/influencer-paypal'
+import { getInfluencerPayPalPlanPricing, getInfluencerPayPalToken, influencerPayPalBaseUrl } from '@/lib/influencer-paypal'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 
 export async function POST(request: NextRequest) {
@@ -11,6 +11,14 @@ export async function POST(request: NextRequest) {
   const { data: influencer } = await admin.from('influencers').select('id, organization_id, is_active').eq('user_id', user.id).maybeSingle()
   if (!influencer?.is_active) return NextResponse.json({ error: 'Tu cuenta de influencer no está activa.' }, { status: 403 })
   if (!influencer.organization_id) return NextResponse.json({ error: 'Tu cuenta no tiene una organización asociada.' }, { status: 409 })
+
+  const { data: activeSubscription } = await admin.from('subscriptions')
+    .select('id')
+    .eq('metadata->>influencer_id', influencer.id)
+    .in('status', ['active', 'trialing'])
+    .limit(1)
+    .maybeSingle()
+  if (activeSubscription) return NextResponse.json({ error: 'Ya tienes una suscripción Pro activa.' }, { status: 409 })
 
   const { data: termsAcceptance } = await admin.from('influencer_terms_acceptances').select('id').eq('influencer_id', influencer.id).eq('document_key', INFLUENCER_PRO_TERMS.key).eq('document_version', INFLUENCER_PRO_TERMS.version).eq('status', 'accepted').maybeSingle()
   if (!termsAcceptance) return NextResponse.json({ error: 'Debes aceptar los Términos y Condiciones vigentes antes de continuar.' }, { status: 409 })
@@ -24,6 +32,10 @@ export async function POST(request: NextRequest) {
 
   const paypalPlanId = process.env.PAYPAL_INFLUENCER_PRO_PLAN_ID
   if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavía no está configurado para Influencer Pro.' }, { status: 503 })
+  const configuredPricing = await getInfluencerPayPalPlanPricing().catch(() => null)
+  if (!configuredPricing?.structure_valid) {
+    return NextResponse.json({ error: 'El plan PayPal de Influencer Pro no tiene la promoción de 3 meses y renovación mensual requeridas.' }, { status: 503 })
+  }
   const accessToken = await getInfluencerPayPalToken()
   if (!accessToken) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
   const appUrl = process.env.VERCEL_ENV === 'preview' ? request.nextUrl.origin : (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin)

@@ -28,6 +28,9 @@ export async function POST(request: NextRequest) {
   const subscription = await detailsResponse.json().catch(() => null)
   const influencerRef = parseInfluencerReference(subscription?.custom_id)
   if (detailsResponse.ok && influencerRef) {
+    if (!process.env.PAYPAL_INFLUENCER_PRO_PLAN_ID || subscription?.plan_id !== process.env.PAYPAL_INFLUENCER_PRO_PLAN_ID) {
+      return NextResponse.json({ received: true })
+    }
     const admin = createAdminClient()
     const [{ data: influencer }, { data: plan }, { data: existing }] = await Promise.all([
       admin.from('influencers').select('id, organization_id').eq('id', influencerRef.influencerId).maybeSingle(),

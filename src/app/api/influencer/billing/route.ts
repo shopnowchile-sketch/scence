@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasActiveCampaignCommitment } from '@/lib/influencer-pro-commitment'
 import { isInfluencerPro } from '@/lib/influencer-pro'
+import { getInfluencerPayPalPlanPricing } from '@/lib/influencer-paypal'
 
 export async function GET() {
   const supabase = createServerClient()
@@ -20,12 +21,13 @@ export async function GET() {
   if (error) return NextResponse.json({ error: 'No se pudo consultar tu plan.' }, { status: 500 })
 
   const subscription = subscriptions?.[0] ?? null
-  if (!subscription) return NextResponse.json({ subscription: null, commitment: null, can_cancel: false, is_pro: false, account_active: influencer.is_active })
+  const paypal_pricing = await getInfluencerPayPalPlanPricing().catch(() => null)
+  if (!subscription) return NextResponse.json({ subscription: null, commitment: null, can_cancel: false, is_pro: false, account_active: influencer.is_active, paypal_pricing })
 
   try {
     const commitment = await hasActiveCampaignCommitment(admin, influencer.id, subscription.metadata)
     const isPro = await isInfluencerPro(admin, influencer.id)
-    return NextResponse.json({ subscription, commitment: commitment.commitment, can_cancel: ['active', 'trialing'].includes(subscription.status) && !commitment.blocked, blocked_reason: commitment.reason, is_pro: isPro, account_active: influencer.is_active })
+    return NextResponse.json({ subscription, commitment: commitment.commitment, can_cancel: ['active', 'trialing'].includes(subscription.status) && !commitment.blocked, blocked_reason: commitment.reason, is_pro: isPro, account_active: influencer.is_active, paypal_pricing })
   } catch (commitmentError) {
     console.error('[GET /api/influencer/billing] commitment check:', commitmentError)
     return NextResponse.json({ error: 'No se pudo validar el compromiso de campaña.' }, { status: 500 })

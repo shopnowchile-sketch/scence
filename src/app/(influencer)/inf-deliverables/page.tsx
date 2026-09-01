@@ -28,6 +28,7 @@ type Deliverable = {
   campaign_id: string
   campaign_name: string
   campaign_status: string
+  campaign_start_date: string | null
   campaign_end_date: string | null
   campaign_influencer_id: string
 }
@@ -45,7 +46,7 @@ const isCompleteDeliverable = isDeliverableComplete
 
 const DELIVERABLE_STATUS: Record<string, { label: string; color: string }> = {
   pending:    { label: 'Pendiente',    color: 'bg-amber-100 text-amber-700' },
-  in_review:  { label: 'En revisión', color: 'bg-blue-100 text-blue-700' },
+  in_review:  { label: 'En revisión', color: 'bg-amber-100 text-amber-700' },
   approved:   { label: 'Aprobado',    color: 'bg-green-100 text-green-700' },
   rejected:   { label: 'Corrección pendiente', color: 'bg-amber-100 text-amber-700' },
   published:  { label: 'Publicado',   color: 'bg-violet-100 text-violet-700' },
@@ -79,6 +80,25 @@ function urgencyColor(iso: string | null): string {
   if (diff <= 2) return 'text-red-500 font-semibold'
   if (diff <= 7) return 'text-amber-600'
   return 'text-gray-400'
+}
+
+function campaignCountdown(eventDate: string | null, lastDeliveryDate: string | null) {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const remaining = (value: string) => {
+    const target = new Date(value)
+    target.setHours(0, 0, 0, 0)
+    return Math.ceil((target.getTime() - now.getTime()) / 86_400_000)
+  }
+  if (eventDate) {
+    const days = remaining(eventDate)
+    if (days >= 0) return days === 0 ? 'El evento es hoy' : `Faltan ${days} día${days === 1 ? '' : 's'} para el evento`
+  }
+  if (lastDeliveryDate) {
+    const days = remaining(lastDeliveryDate)
+    if (days >= 0) return days === 0 ? 'La última entrega vence hoy' : `Faltan ${days} día${days === 1 ? '' : 's'} para entregar el contenido`
+  }
+  return null
 }
 
 // Ícono por tipo de entregable. `type` es texto libre (ver
@@ -157,15 +177,15 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
   // entregable) sin perder la señal de estado (ya cubierta por cfg.label
   // más abajo, esto solo la refuerza con color).
   const avatarCls = isDone
-    ? 'bg-green-50 text-green-500'
+    ? 'bg-gray-100 text-gray-500'
     : d.status === 'in_review'
-    ? 'bg-blue-50 text-blue-500'
+    ? 'bg-amber-50 text-amber-600'
     : d.status === 'rejected'
     ? 'bg-amber-50 text-amber-500'
     : 'bg-amber-50 text-amber-500'
 
   return (
-    <div className={cn('border rounded-xl p-3.5 space-y-2', isDone ? 'border-green-100 bg-green-50/30' : 'border-gray-100 bg-white')}>
+    <div className={cn('border rounded-xl p-3.5 space-y-2', isDone ? 'border-gray-200 bg-gray-50/60' : 'border-amber-200 bg-amber-50/40')}>
       <div className="flex items-start gap-3">
         {/* Ícono por tipo de entregable, coloreado por estado */}
         <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', avatarCls)}>
@@ -186,7 +206,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
           )}
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('text-sm font-semibold truncate', isDone ? 'text-gray-400 line-through' : 'text-gray-900')}>
+            <span className={cn('text-sm font-semibold truncate', isDone ? 'text-gray-700' : 'text-gray-900')}>
               {typeLabel(d.type)}{d.sequence_number ? ` ${d.sequence_number}` : ''}
             </span>
             <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', cfg.color)}>{cfg.label}</span>
@@ -344,6 +364,7 @@ function DeliverablesPageInner() {
             campaign_id: c.id,
             campaign_name: c.name,
             campaign_status: c.status ?? '',
+            campaign_start_date: c.start_date ?? null,
             campaign_end_date: c.end_date ?? null,
             campaign_influencer_id: ci.id,
           })
@@ -474,6 +495,7 @@ function DeliverablesPageInner() {
             const pending  = g.deliverables.filter(d => !isCompleteDeliverable(d))
             const pct      = total > 0 ? Math.round((doneCt / total) * 100) : 0
             const nextDue  = pending.map(d => d.due_date).filter(Boolean).sort()[0] ?? null
+            const lastDue = g.deliverables.map(d => d.due_date).filter((date): date is string => Boolean(date)).sort().at(-1) ?? null
             const typeCounts = new Map<string, number>()
             for (const d of g.deliverables) typeCounts.set(d.type, (typeCounts.get(d.type) ?? 0) + 1)
             const summary = Array.from(typeCounts.entries()).map(([t, n]) => `${n} ${typeLabel(t)}`).join(' · ')
@@ -485,9 +507,10 @@ function DeliverablesPageInner() {
               && campaignInfo.campaign_status === 'completed'
               && !!campaignInfo.campaign_end_date
               && new Date(campaignInfo.campaign_end_date) < new Date()
+            const countdown = campaignCountdown(campaignInfo.campaign_start_date, lastDue)
 
             return (
-              <div key={g.campaign_id} id={`campaign-group-${g.campaign_id}`} className={cn('rounded-2xl border overflow-hidden scroll-mt-4 transition-opacity', isArchived ? 'bg-gray-50 border-gray-100 opacity-60 grayscale-[0.35]' : 'bg-white border-gray-100')}>
+              <div key={g.campaign_id} id={`campaign-group-${g.campaign_id}`} className={cn('rounded-2xl border overflow-hidden scroll-mt-4', isArchived ? 'bg-gray-50/70 border-gray-200' : 'bg-amber-50/40 border-amber-200')}>
                 <div className="w-full text-left p-4">
                   <div className="flex items-center justify-between gap-3">
                     {/* Único link a la campaña de todo el grupo — lleva al
@@ -505,6 +528,7 @@ function DeliverablesPageInner() {
                       {pct}%
                     </span>
                   </div>
+                  {countdown && <p className={cn('mt-2 text-sm font-extrabold', isArchived ? 'text-gray-600' : 'text-amber-800')}>{countdown}</p>}
 
                   <button
                     type="button"
@@ -527,12 +551,12 @@ function DeliverablesPageInner() {
 
                     <div className="flex items-center gap-2 mt-2">
                       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={cn('h-full rounded-full', isArchived ? 'bg-gray-400' : pct === 100 ? 'bg-green-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} />
+                        <div className={cn('h-full rounded-full', isArchived ? 'bg-gray-400' : 'bg-amber-500')} style={{ width: `${pct}%` }} />
                       </div>
-                      <span className={cn('text-xs font-semibold whitespace-nowrap', isArchived ? 'text-gray-500' : 'text-violet-600')}>
+                      <span className={cn('text-xs font-semibold whitespace-nowrap', isArchived ? 'text-gray-600' : 'text-amber-700')}>
                         {expanded ? 'Ocultar entregables' : `Ver ${total} entregable${total !== 1 ? 's' : ''}`}
                       </span>
-                      <span className={cn('w-9 h-9 rounded-full shadow-sm flex items-center justify-center flex-shrink-0', isArchived ? 'bg-gray-400' : 'bg-violet-600')}>
+                      <span className={cn('w-9 h-9 rounded-full shadow-sm flex items-center justify-center flex-shrink-0', isArchived ? 'bg-gray-500' : 'bg-amber-500')}>
                         <ChevronDown className={cn('h-5 w-5 text-white transition-transform duration-200', expanded && 'rotate-180')} />
                       </span>
                     </div>

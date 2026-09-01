@@ -8,7 +8,7 @@
 //   - tiene contenido subido (content_url) o publicado (published_url), o
 //   - su status ya pasó revisión (approved/published) o quedó marcado
 //     "completed" (usado en algunos flujos legacy).
-export const DELIVERABLE_COMPLETE_STATUSES = ['approved', 'completed', 'published'] as const
+export const DELIVERABLE_COMPLETE_STATUSES = ['in_review', 'approved', 'completed', 'published'] as const
 
 export interface DeliverableStatusFields {
   type?: string | null

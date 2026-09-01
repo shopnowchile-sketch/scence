@@ -328,7 +328,7 @@ export default function InfluencerDashboard() {
       {/* Cabecera: el estado de hoy queda claro antes de mostrar campañas. */}
       <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
+          <div className="relative w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
             {profile?.avatar_url ? <Image src={profile.avatar_url} alt={profile.display_name} fill className="w-full h-full object-cover" sizes="100vw" /> : profile?.display_name?.charAt(0).toUpperCase() ?? '?'}
           </div>
           <div>
@@ -435,7 +435,7 @@ export default function InfluencerDashboard() {
               return (
                 <div key={c.id} className="flex items-start gap-3 bg-violet-50/50 rounded-xl border border-violet-100 p-3">
                   {c.brand?.logo_url ? (
-                    <Image src={c.brand.logo_url} alt={c.brand.name} fill className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" sizes="96px" />
+                    <Image src={c.brand.logo_url} alt={c.brand.name} width={36} height={36} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
                   ) : (
                     <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
                       {c.brand?.name?.charAt(0) ?? '?'}

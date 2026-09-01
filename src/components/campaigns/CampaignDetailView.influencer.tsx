@@ -5,13 +5,12 @@ import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Building2, FileText, Circle, CheckCircle2,
   Clock, Download, RefreshCw, Gift,
-  Plus, X, Loader2, AlertCircle, ChevronDown,
-  Instagram, CalendarClock, MapPin,
+  Plus, X, Loader2, AlertCircle,
+  CalendarClock, MapPin,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
-import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { CampaignImageLightbox } from '@/components/campaigns/CampaignImageLightbox'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
@@ -27,6 +26,7 @@ type Deliverable = {
   // descripción/requisitos en el acordeón mobile solo cuando existen.
   description?: string | null
   hashtags?: string[] | null
+  tag_handles?: string[] | null
   attendance_response?: 'confirmed' | 'declined' | null
   attendance_outcome?: 'attended' | 'excused_absence' | 'no_show' | null
 }
@@ -105,7 +105,13 @@ function activationText(benefit: CampaignBenefitOffer) {
   return 'Activación informada por la marca'
 }
 
-function EventBookingCard({ booking, showLocation }: { booking: NonNullable<CampaignRow['event_booking']>; showLocation: boolean }) {
+function googleCalendarDate(value?: string) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+}
+
+function EventBookingCard({ booking, showLocation, campaignName }: { booking: NonNullable<CampaignRow['event_booking']>; showLocation: boolean; campaignName: string }) {
   const schedule = booking.location_details?.schedule?.filter(slot => slot.starts_at && slot.ends_at)
     ?? (booking.starts_at && booking.ends_at ? [{ starts_at: booking.starts_at, ends_at: booking.ends_at }] : [])
   const scheduleLabel = schedule.length ? schedule.map(slot => {
@@ -117,6 +123,14 @@ function EventBookingCard({ booking, showLocation }: { booking: NonNullable<Camp
     const end = endsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })
     return `${day} · ${start}–${end}`
   }).filter(Boolean) : ['Fecha y hora por confirmar']
+  const firstSlot = schedule[0]
+  const calendarStart = googleCalendarDate(firstSlot?.starts_at)
+  const calendarEnd = googleCalendarDate(firstSlot?.ends_at)
+  const calendarUrl = calendarStart && calendarEnd
+    ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(campaignName)}&dates=${calendarStart}/${calendarEnd}&location=${encodeURIComponent(booking.location_details?.venue_name ?? booking.location ?? '')}&details=${encodeURIComponent('Campaña SCENCE')}`
+    : null
+  const mapLabel = booking.location_details?.venue_name ?? booking.location
+  const mapQuery = [booking.location_details?.venue_name, booking.location].filter(Boolean).join(', ')
 
   return (
     <section className="mt-4 rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
@@ -125,8 +139,8 @@ function EventBookingCard({ booking, showLocation }: { booking: NonNullable<Camp
         <h3 className="text-sm font-extrabold text-violet-950">Información del evento</h3>
       </div>
       <div className="mt-3 space-y-2 text-sm">
-        <div className="flex gap-2.5 text-violet-950"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {scheduleLabel.map((label, index) => <span key={index} className={index ? 'block mt-1' : ''}>{label}</span>)}</span></div>
-        {showLocation && <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Lugar:</b> {booking.location_details?.venue_name && <span className="block font-semibold">{booking.location_details.venue_name}</span>}{booking.location ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location)}`} target="_blank" rel="noopener noreferrer" className="block text-violet-700 underline underline-offset-2">{booking.location}</a> : 'La marca confirmará la dirección pronto.'}</span></div>}
+        <div className="flex flex-wrap items-start justify-between gap-2 text-violet-950"><div className="flex gap-2.5"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {scheduleLabel.map((label, index) => <span key={index} className={index ? 'block mt-1' : ''}>{label}</span>)}</span></div>{calendarUrl && <a href={calendarUrl} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100">Agregar a Google Calendar</a>}</div>
+        {showLocation && <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Lugar:</b> {mapLabel ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`} target="_blank" rel="noopener noreferrer" className="block font-semibold text-violet-700 underline underline-offset-2">{mapLabel}</a> : 'La marca confirmará la dirección pronto.'}{booking.location && booking.location !== mapLabel && <span className="block text-xs text-violet-800">{booking.location}</span>}</span></div>}
         {showLocation && booking.location_details?.instructions?.trim() && <div className="ml-6 rounded-lg bg-white/70 px-3 py-2 text-xs leading-relaxed text-violet-900"><b>Cómo llegar:</b> {booking.location_details.instructions}</div>}
       </div>
       <p className="mt-3 border-t border-violet-200 pt-3 text-xs font-medium leading-relaxed text-violet-800">Tu entrada o confirmación llegará por correo cuando la marca la envíe y, como máximo, el día anterior al evento.</p>
@@ -217,14 +231,15 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
           const isAttendance = d.type === 'event_attendance'
           const isNoShow = isAttendance && d.attendance_outcome === 'no_show'
           const attendanceExpired = isAttendanceExpired(d)
-          const canSubmit = d.status === 'pending' || d.status === 'rejected'
+          const isStory = ['story', 'stories', 'historia', 'historias', 'instagram_story'].includes(d.type.toLowerCase())
+          const canSubmit = (d.status === 'pending' || d.status === 'rejected') && !isStory
           const isReview = d.status === 'in_review'
           const complete = isDeliverableComplete(d) && !isReview
           const isRejected = d.status === 'rejected'
           const opened = openId === d.id
-          const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
+          const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No podré asistir' : null
           return <div key={d.id} className={cn('rounded-xl border p-3 sm:p-4', isNoShow ? 'border-slate-200 bg-slate-50' : attendanceExpired ? 'border-amber-200 bg-amber-50/60' : isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="flex cursor-pointer flex-col gap-3 sm:flex-row sm:items-start" role="button" tabIndex={0} onClick={() => setOpenId(opened ? null : d.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setOpenId(opened ? null : d.id) }}>
               <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
                 {complete ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
@@ -232,8 +247,9 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
                 <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 font-semibold text-gray-600">Tipo: {d.type}</span>
                   <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                    {isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
+                    {isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'No confirmó dentro del plazo' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
                   </span>
                   {d.due_date && <span className="text-gray-400">Vence: {fmtDate(d.due_date)}</span>}
                 </div>
@@ -244,14 +260,16 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
                 {d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
               </div>
               </div>
-              {isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
+              {isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button type="button" disabled={attendanceSaving === d.id} onClick={event => { event.stopPropagation(); void respondAttendance(d, 'confirmed') }} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button type="button" disabled={attendanceSaving === d.id} onClick={event => { event.stopPropagation(); void respondAttendance(d, 'declined') }} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button type="button" onClick={event => { event.stopPropagation(); setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
                 {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
               </button>}
             </div>
-            {opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
-              <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+            {opened && <div className="mt-3 space-y-2 border-t border-gray-100 pt-3" onClick={event => event.stopPropagation()}>
+              {d.description?.trim() && <div className="rounded-lg bg-white/80 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Qué debes hacer</p><p className="mt-1 whitespace-pre-line text-sm text-gray-700">{d.description}</p></div>}
+              {(d.tag_handles?.length ?? 0) > 0 && <div className="rounded-lg bg-white/80 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Cuentas que debes mencionar</p><div className="mt-2 flex flex-wrap gap-2">{d.tag_handles!.map(handle => <span key={handle} className="rounded-full bg-fuchsia-50 px-2.5 py-1 text-xs font-semibold text-fuchsia-700">@{handle.replace(/^@/, '')}</span>)}</div></div>}
+              {canSubmit && <><input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
               <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
-              <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div>
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button type="button" disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div></>}
             </div>}
           </div>
         })}
@@ -332,45 +350,6 @@ function AddDeliverableForm({ campaignId, onAdded }: { campaignId: string; onAdd
               {saving ? 'Guardando…' : 'Agregar'}
             </button>
           </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Brief colapsado (mobile-first, cerrado por defecto) ───────────────────────
-function CollapsibleBrief({ text, guidelines, briefUrl }: { text: string | null; guidelines?: string | null; briefUrl?: string | null }) {
-  const [open, setOpen] = useState(false)
-  if (!text?.trim() && !guidelines?.trim() && !briefUrl?.trim()) return null
-  return (
-    <div className="pt-3 mt-3 border-t border-gray-50">
-      {/* Más grande + en violeta (color = clickeable, mismo criterio que
-          el resto del portal: nombre de campaña, botones Postular/Subir). */}
-      <button onClick={() => setOpen(v => !v)} className="w-full flex items-center gap-2 text-left">
-        <FileText className="h-4 w-4 text-violet-500 flex-shrink-0" />
-        <span className="text-sm font-bold text-violet-600 flex-1">Ver brief de la campaña</span>
-        <ChevronDown className={cn('h-4 w-4 text-violet-400 flex-shrink-0 transition-transform', open && 'rotate-180')} />
-      </button>
-      {open && (
-        <div className="mt-3 space-y-3">
-          {text?.trim() && <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{text}</p>}
-          {guidelines?.trim() && (
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-gray-500 mb-1">Lineamientos de contenido</p>
-              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{guidelines}</p>
-            </div>
-          )}
-          {briefUrl?.trim() && (
-            <a
-              href={briefUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-violet-600 hover:text-violet-700"
-            >
-              <FileText className="h-4 w-4" />
-              Abrir brief completo
-            </a>
-          )}
         </div>
       )}
     </div>
@@ -505,7 +484,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', pStatus.color)}>{pStatus.label}</span>
           </div>
 
-  {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, location: p.event_booking.location ?? null, title: null, status: null }} showLocation />}
+  {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, location: p.event_booking.location ?? null, title: null, status: null }} showLocation campaignName={p.name} />}
 
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
             <div>
@@ -650,9 +629,10 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const campStatus   = isPending
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
-  const participantBrands = [c.brand, ...(c.campaign_brands ?? []).map(row => row.brand)]
-    .filter((brand): brand is NonNullable<typeof c.brand> => !!brand)
-    .filter((brand, index, all) => all.findIndex(item => item.id === brand.id) === index)
+  const eventDateValue = data.event_booking?.starts_at ?? c.start_date
+  const eventDateLabel = eventDateValue
+    ? new Date(eventDateValue).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', timeZone: 'America/Santiago' })
+    : null
   // Los entregables se muestran también aquí: esta es la ruta natural al
   // abrir una campaña desde "Campañas" y permite subir/corregir sin cambiar
   // de sección. "Mis entregables" conserva la vista consolidada.
@@ -744,8 +724,10 @@ export function InfluencerCampaignView({ id }: { id: string }) {
                 <Building2 className="h-5 w-5 text-violet-400" />
               </div>}
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-bold text-gray-900 leading-snug">{c.name}</h2>
+            <h2 className="text-xl font-bold text-gray-900 leading-snug">{c.name}</h2>
+            {eventDateLabel && <p className="mt-1 text-sm font-semibold text-gray-600">{eventDateLabel}</p>}
             {c.brand && <p className="text-sm text-gray-400 mt-0.5">{c.brand.name}</p>}
+            {isAccepted && <p className="mt-2 text-sm font-semibold text-emerald-700">Fuiste aprobada y seleccionada para esta campaña.</p>}
           </div>
           <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', campStatus.color)}>
             {campStatus.label}
@@ -754,20 +736,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
         {/* Fecha y hora se informan desde el inicio. Lugar e instrucciones solo
             aparecen cuando la influencer ya fue aceptada. */}
-        {data.event_booking && <EventBookingCard booking={data.event_booking} showLocation />}
-
-      {/* El brief es la primera acción disponible luego del resumen del evento. */}
-        {/* Un brief cargado como archivo es la versión operativa más reciente.
-            Antes se mostraba primero el texto legacy de la campaña (por ejemplo,
-            el brief anterior de Pickleball) y el PDF nuevo quedaba perdido abajo
-            como un asset más. Cuando existe un archivo marcado como brief, éste
-            reemplaza visualmente ese contenido anterior para la influencer. */}
-        {isAccepted && (() => {
-          const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
-          return uploadedBrief
-            ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />
-            : <CollapsibleBrief text={null} guidelines={c.content_guidelines} briefUrl={c.brief_url} />
-        })()}
+        {data.event_booking && <EventBookingCard booking={data.event_booking} showLocation campaignName={c.name} />}
 
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
           <div>
@@ -787,21 +756,13 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         </div>
 
         {/* KPIs y marca participante, antes de cualquier detalle operativo. */}
-        {!isPending && (
+        {!isPending && !isAccepted && (
           <div className="mt-4 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              {isAccepted && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <Image
-  src={brand.logo_url}
-  alt=""
-  width={16}
-  height={16}
-  className="w-4 h-4 object-contain"
-/>}{brand.name}</span>)}</div></div>}
               <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
                 <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>
             </div>
-            <BartersReadonly endpoint={`/api/influencer/campaigns/${c.id}/barters`} variant="kpi" />
           </div>
         )}
         </div>
@@ -810,7 +771,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}
       {!isPending && <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />}
 
-      {!isPending && assets.some(asset => asset.metadata?.asset_type !== 'brief') && (
+      {!isPending && !isAccepted && assets.some(asset => asset.metadata?.asset_type !== 'brief') && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
           <div className="flex items-center gap-2 mb-3">
             <Download className="h-4 w-4 text-violet-600" />
@@ -845,7 +806,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           faltaba. Los entregables (progreso, subir link) viven en la tab
           Entregables del portal, no se repiten en este detalle. Gateado por
           isPending: antes de aceptar no se muestran tags. */}
-      {!isPending && ((c.platforms?.length ?? 0) > 0 || (c.hashtags?.length ?? 0) > 0) && (
+      {!isPending && !isAccepted && ((c.platforms?.length ?? 0) > 0 || (c.hashtags?.length ?? 0) > 0) && (
         <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-wrap gap-2">
           {(c.platforms ?? []).map(pl => (
             <span key={pl} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-violet-50 text-violet-600 capitalize">{pl}</span>

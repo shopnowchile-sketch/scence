@@ -29,7 +29,7 @@ export async function GET() {
       ),
       campaign_deliverables (
         id, title, description, type, status, due_date, scheduled_at, sequence_number,
-        platform, content_url, published_url, submitted_at
+        platform, content_url, published_url, submitted_at, attendance_response
       )
     `)
     .eq('influencer_id', influencer.id)

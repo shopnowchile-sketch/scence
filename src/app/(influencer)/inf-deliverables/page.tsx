@@ -25,6 +25,7 @@ type Deliverable = {
   status: string
   content_url: string | null
   published_url: string | null
+  attendance_response: string | null
   campaign_id: string
   campaign_name: string
   campaign_status: string
@@ -152,6 +153,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
   const cfg = DELIVERABLE_STATUS[d.status] ?? { label: d.status, color: 'bg-gray-100 text-gray-500' }
   const canSubmit = d.status === 'pending' || d.status === 'rejected'
   const isDone = d.status === 'approved' || d.status === 'published'
+  const isSubmitted = isCompleteDeliverable(d)
 
   async function submit() {
     if (!url) { toast.error('Agrega el link del contenido'); return }
@@ -217,7 +219,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
             <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{d.description}</p>
           )}
 
-          {d.due_date && !isDone && (
+          {d.due_date && !isSubmitted && (
             <div className="flex items-center gap-1.5 mt-1">
               <span className="text-[10px] text-gray-300">Vence:</span>
               <span className={cn('text-[10px] font-medium', urgencyColor(d.due_date))}>
@@ -226,7 +228,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
             </div>
           )}
 
-          {d.scheduled_at && !isDone && (
+          {d.scheduled_at && !isSubmitted && (
             <p className="text-[10px] font-medium text-violet-600 mt-1">
               Publicar: {formatDateTime(d.scheduled_at)}
             </p>
@@ -361,6 +363,7 @@ function DeliverablesPageInner() {
             status: d.status,
             content_url: d.content_url ?? null,
             published_url: d.published_url ?? null,
+            attendance_response: d.attendance_response ?? null,
             campaign_id: c.id,
             campaign_name: c.name,
             campaign_status: c.status ?? '',

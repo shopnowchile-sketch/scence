@@ -73,6 +73,25 @@ function hasInstagram(profile: InfluencerProfile | null) {
   )
 }
 
+function campaignCountdown(eventDate?: string | null, lastDeliveryDate?: string | null) {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const daysTo = (value: string) => {
+    const target = new Date(value)
+    target.setHours(0, 0, 0, 0)
+    return Math.ceil((target.getTime() - now.getTime()) / 86_400_000)
+  }
+  if (eventDate) {
+    const days = daysTo(eventDate)
+    if (days >= 0) return days === 0 ? 'El evento es hoy' : `Faltan ${days} día${days === 1 ? '' : 's'} para el evento`
+  }
+  if (lastDeliveryDate) {
+    const days = daysTo(lastDeliveryDate)
+    if (days >= 0) return days === 0 ? 'La última entrega vence hoy' : `Faltan ${days} día${days === 1 ? '' : 's'} para la última entrega de contenido`
+  }
+  return null
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // Estado a mostrar: la postulación (application_status) manda si sigue
@@ -329,8 +348,8 @@ export default function InfluencerDashboard() {
       </div>
 
       <section className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Descubre y participa</p><h2 className="mt-1 text-xl font-bold text-gray-950">Campañas disponibles para postular</h2></div><Sparkles className="h-6 w-6 text-violet-500" /></div>
-        {availableCampaigns.length > 0 ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{availableCampaigns.slice(0, 6).map(c => <Link key={c.id} href={`/inf-campaign/${c.id}`} className="group overflow-hidden rounded-2xl border border-white bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200"><CampaignCover name={c.name} src={c.cover_url} className="h-28" /><div className="p-4"><BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} compact /><div className="mt-3 flex items-center justify-between gap-3"><p className="truncate text-sm font-bold text-gray-900">{c.name}</p><ArrowRight className="h-4 w-4 shrink-0 text-violet-500 transition-transform group-hover:translate-x-1" /></div><p className="mt-2 text-xs font-semibold text-violet-700">Ver campaña y postular</p></div></Link>)}</div> : <p className="rounded-2xl bg-white/70 p-5 text-sm text-gray-500">No hay campañas abiertas por ahora.</p>}
+        <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Descubre y participa</p><h2 className="mt-1 text-xl font-bold text-gray-950">Campañas pendientes de postulación</h2></div><Sparkles className="h-6 w-6 text-violet-500" /></div>
+        {availableCampaigns.length > 0 ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{availableCampaigns.slice(0, 6).map(c => { const countdown = campaignCountdown(c.start_date); return <Link key={c.id} href={`/inf-campaign/${c.id}`} className="group overflow-hidden rounded-2xl border border-white bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200"><CampaignCover name={c.name} src={c.cover_url} className="h-28" /><div className="p-4"><BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} compact /><div className="mt-3 flex items-center justify-between gap-3"><p className="truncate text-sm font-bold text-gray-900">{c.name}</p><ArrowRight className="h-4 w-4 shrink-0 text-violet-500 transition-transform group-hover:translate-x-1" /></div>{countdown && <p className="mt-3 rounded-lg bg-violet-50 px-3 py-2 text-sm font-extrabold text-violet-800">{countdown}</p>}<p className="mt-2 text-xs font-semibold text-violet-700">Ver campaña y postular</p></div></Link> })}</div> : <p className="rounded-2xl bg-white/70 p-5 text-sm text-gray-500">No hay campañas abiertas por ahora.</p>}
         {availableCampaigns.length > 6 && <Link href="/inf-campaigns" className="mt-4 block text-center text-xs font-semibold text-violet-700 hover:underline">Ver todas las campañas disponibles →</Link>}
       </section>
 
@@ -465,23 +484,26 @@ export default function InfluencerDashboard() {
           pendiente); con menos, lleva directo a sus entregables. */}
       {activeCampaigns.length > 0 && (
         <section>
-          <div className="flex items-center justify-between mb-3"><div><h2 className="text-base font-bold text-gray-900">Mis campañas</h2><p className="text-xs text-gray-400">Campañas en las que estás participando</p></div><Link href="/inf-campaigns" className="text-xs font-semibold text-violet-600">Ver todas</Link></div>
+          <div className="flex items-center justify-between mb-3"><div><h2 className="text-base font-bold text-emerald-800">Campañas activas</h2><p className="text-xs text-emerald-600">Campañas en las que estás participando</p></div><Link href="/inf-campaigns" className="text-xs font-semibold text-emerald-700">Ver todas</Link></div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {activeCampaigns.map(({ ci, pct, total, pendingTitles }) => {
               const c = ci.campaign!
               const done = pct === 100
+              const lastDeliveryDate = (ci.campaign_deliverables ?? []).map(deliverable => deliverable.due_date).filter((date): date is string => Boolean(date)).sort().at(-1) ?? null
+              const countdown = campaignCountdown(ci.event_booking?.starts_at ?? c.start_date, lastDeliveryDate)
               return (
-                <button key={c.id} onClick={() => router.push(`/inf-campaign/${c.id}`)} className="group overflow-hidden rounded-3xl border border-gray-100 bg-white text-left hover:border-violet-200 hover:shadow-lg transition-all">
+                <button key={c.id} onClick={() => router.push(`/inf-campaign/${c.id}`)} className="group overflow-hidden rounded-3xl border border-emerald-200 bg-emerald-50/30 text-left hover:border-emerald-400 hover:shadow-lg transition-all">
                   <CampaignCover name={c.name} src={c.cover_url} className="h-40 transition-transform duration-300 group-hover:scale-[1.02]" />
                   <div className="p-5">
                     <BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} />
+                    {countdown && <p className="mt-3 rounded-xl bg-emerald-100 px-3 py-2 text-base font-extrabold text-emerald-800">{countdown}</p>}
                     <div className="mt-3 space-y-1 text-xs text-gray-500">{ci.event_booking?.starts_at && <p className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-violet-500" />{new Date(ci.event_booking.starts_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}<Clock className="ml-2 h-3.5 w-3.5 text-violet-500" />{new Date(ci.event_booking.starts_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</p>}{ci.event_booking?.location && <p className="flex items-start gap-1.5"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" /><span className="line-clamp-2">{ci.event_booking.location}</span></p>}</div>
                     <div className="flex items-end justify-between gap-3 mt-5">
                       <div className="min-w-0"><p className="text-sm font-bold text-gray-900">{done ? 'Todo enviado' : 'Acción pendiente'}</p><p className="text-xs text-gray-400 mt-1">{total ? `${total} entregable${total !== 1 ? 's' : ''} en esta campaña` : 'Revisa el brief de la campaña'}</p></div>
-                      <span className={cn('text-2xl font-bold tracking-tight', done ? 'text-emerald-500' : 'text-violet-600')}>{pct}%</span>
+                      <span className="text-2xl font-bold tracking-tight text-emerald-600">{pct}%</span>
                     </div>
                     {pendingTitles.length > 0 && <p className="mt-2 line-clamp-2 text-xs text-gray-500">Por entregar: {pendingTitles.join(' · ')}</p>}
-                    {total > 0 && <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mt-4"><div className={cn('h-full rounded-full', done ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} /></div>}
+                    {total > 0 && <div className="h-1.5 rounded-full bg-emerald-100 overflow-hidden mt-4"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} /></div>}
                   </div>
                 </button>
               )
@@ -490,7 +512,7 @@ export default function InfluencerDashboard() {
         </section>
       )}
 
-      {appliedCampaigns.length > 0 && <section className="rounded-2xl border border-gray-200 bg-gray-100/70 p-5"><div className="mb-3"><h2 className="text-base font-bold text-gray-700">Campañas a las que ya postulé</h2><p className="text-xs text-gray-500">Tu postulación está en revisión. El contenido privado de la campaña permanece bloqueado.</p></div><div className="grid grid-cols-1 gap-3 md:grid-cols-2">{appliedCampaigns.map(c => <article key={c.id} className="rounded-xl border border-gray-200 bg-gray-100 p-4 opacity-75 grayscale-[0.35]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-gray-700">{c.name}</p><p className="mt-1 text-xs text-gray-500">{c.brand?.name ?? 'Marca'} · En revisión</p></div><a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-sm hover:text-violet-700"><Download className="h-3.5 w-3.5" />Descargar mi PDF</a></div></article>)}</div></section>}
+      {appliedCampaigns.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50/80 p-5"><div className="mb-3"><h2 className="text-base font-bold text-amber-900">Campañas pendientes</h2><p className="text-xs text-amber-700">Tu postulación está en revisión. El contenido privado de la campaña permanece bloqueado.</p></div><div className="grid grid-cols-1 gap-3 md:grid-cols-2">{appliedCampaigns.map(c => <article key={c.id} className="rounded-xl border border-amber-200 bg-amber-100/70 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-amber-950">{c.name}</p><p className="mt-1 text-xs font-medium text-amber-700">{c.brand?.name ?? 'Marca'} · Pendiente de aprobación</p></div><a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-bold text-amber-800 shadow-sm hover:text-amber-950"><Download className="h-3.5 w-3.5" />Descargar mi PDF</a></div></article>)}</div></section>}
 
       {/* Accesos rápidos al resto del portal */}
       <div className="flex items-center justify-around bg-white rounded-2xl border border-gray-100 py-3 px-4 text-xs">

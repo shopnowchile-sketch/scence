@@ -175,10 +175,10 @@ function SidebarContent({
           </Link>
         )}
         {portal === 'influencer' && (
-          <Link href="/inf-profile" onClick={onNavClick}
+          <a href="/inf-profile" onClick={onNavClick}
             className={cn('nav-link', pathname === '/inf-profile' && 'active')}>
             <Settings className="h-4 w-4" /> Mi Perfil
-          </Link>
+          </a>
         )}
         <div className="px-3 py-2 flex items-center gap-2.5">
           <div className={cn('w-7 h-7 rounded-full bg-gradient-to-br flex items-center justify-center text-white text-xs font-bold flex-shrink-0', cfg.avatarGradient)}>

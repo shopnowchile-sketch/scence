@@ -67,6 +67,9 @@ export async function GET() {
 
   const enriched = (data ?? [])
     .filter(c => {
+      // El marketplace influencer muestra únicamente campañas asociadas a una
+      // marca. Las campañas personales creadas por influencers no se publican.
+      if (!c.brand) return false
       // Quien ya postuló conserva la campaña visible con estado "En revisión",
       // aunque la marca cierre después. Para nuevas postulantes se ocultan las
       // campañas cerradas manualmente o sin cupos.

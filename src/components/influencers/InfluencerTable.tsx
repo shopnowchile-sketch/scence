@@ -10,12 +10,18 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 
-type ColKey = 'display_name' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
+type ColKey = 'display_name' | 'plan' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
-  display_name: 280, platforms: 120, categories: 160, followers: 130,
+  display_name: 280, plan: 130, platforms: 120, categories: 160, followers: 130,
   engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 100, lastConnection: 170,
   registeredBy: 140, associatedBrands: 220,
+}
+
+// Username de Instagram guardado a veces trae un email colado (dato sucio de
+// importación/edición manual) — no debe mostrarse como si fuera el handle.
+function isEmailLike(value: string): boolean {
+  return /\S+@\S+\.\S+/.test(value)
 }
 
 function calculateAge(birthDate: string): number | null {
@@ -95,6 +101,7 @@ export function InfluencerTable({
     setInvitingId(null)
   }
   const [visible, setVisible] = useLocalStorageState('scence:admin:influencer-table:columns', {
+    plan: true,
     platforms: true,
     categories: true,
     followers: true,
@@ -139,6 +146,7 @@ export function InfluencerTable({
           {showColumns && (
             <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-2 z-20">
               {([
+                ...(portal === 'admin' ? ([['plan', 'Plan']] as const) : []),
                 ['platforms', 'Plataformas'],
                 ['categories', 'Categorías'],
                 ['followers', 'Seguidores'],
@@ -174,6 +182,7 @@ export function InfluencerTable({
           <colgroup>
             {selectable && <col style={{ width: 40 }} />}
             <col style={{ width: widths.display_name }} />
+            {portal === 'admin' && visible.plan && <col style={{ width: widths.plan }} />}
             {visible.platforms      && <col style={{ width: widths.platforms }} />}
             {visible.categories     && <col style={{ width: widths.categories }} />}
             {visible.followers      && <col style={{ width: widths.followers }} />}
@@ -197,6 +206,9 @@ export function InfluencerTable({
                 </th>
               )}
               <TH col="display_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('display_name', e)}>Influencer</TH>
+              {portal === 'admin' && visible.plan && (
+                <SortableTH<ColKey> onResizeStart={e => startResize('plan', e)}>Plan</SortableTH>
+              )}
               {visible.platforms && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('platforms', e)}>Plataformas</SortableTH>
               )}
@@ -254,54 +266,87 @@ export function InfluencerTable({
                           : initials
                         }
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           {portal === 'admin' ? (
                             <Link
                               href={`/admin-influencers/${inf.id}`}
-                              className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
+                              className="truncate text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
                             >
                               {inf.display_name}
                             </Link>
                           ) : (
                             <Link
                               href={`/brand-influencers/${inf.id}`}
-                              className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
+                              className="truncate text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
                             >
                               {inf.display_name}
                             </Link>
                           )}
-                          <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', inf.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : inf.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
-                            {inf.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
-                          </span>
-                          {inf.is_verified && (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
-                          )}
-                        </div>
-                        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs">
-                          {primaryProfile?.username && (
-                            <a
-                              href={primaryProfile.profile_url || `https://www.instagram.com/${primaryProfile.username.replace(/^@/, '')}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={event => event.stopPropagation()}
-                              className="inline-flex shrink-0 items-center gap-1 font-medium text-violet-600 hover:text-violet-800 hover:underline"
-                              title={`Abrir @${primaryProfile.username.replace(/^@/, '')} en Instagram`}
-                            >
-                              @{primaryProfile.username.replace(/^@/, '')}
-                              <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                            </a>
-                          )}
-                          {(inf.commune || inf.city || inf.country) && (
-                            <span className="flex min-w-0 items-center gap-1 truncate text-gray-400" title={[inf.commune ?? inf.city, inf.country].filter(Boolean).join(', ')}>
-                              <MapPin className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{[inf.commune ?? inf.city, inf.country].filter(Boolean).join(', ')}</span>
+                          {portal !== 'admin' && (
+                            <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-bold', inf.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : inf.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500')}>
+                              {inf.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
                             </span>
                           )}
+                          {inf.is_verified && (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          )}
                         </div>
+                        {portal === 'admin' ? (
+                          <div className="mt-0.5 text-xs">
+                            {primaryProfile?.username && !isEmailLike(primaryProfile.username) ? (
+                              <a
+                                href={primaryProfile.profile_url || `https://www.instagram.com/${primaryProfile.username.replace(/^@/, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={event => event.stopPropagation()}
+                                className="inline-flex shrink-0 items-center gap-1 font-medium text-violet-600 hover:text-violet-800 hover:underline"
+                                title={`Abrir @${primaryProfile.username.replace(/^@/, '')} en Instagram`}
+                              >
+                                @{primaryProfile.username.replace(/^@/, '')}
+                                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                              </a>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs">
+                            {primaryProfile?.username && (
+                              <a
+                                href={primaryProfile.profile_url || `https://www.instagram.com/${primaryProfile.username.replace(/^@/, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={event => event.stopPropagation()}
+                                className="inline-flex shrink-0 items-center gap-1 font-medium text-violet-600 hover:text-violet-800 hover:underline"
+                                title={`Abrir @${primaryProfile.username.replace(/^@/, '')} en Instagram`}
+                              >
+                                @{primaryProfile.username.replace(/^@/, '')}
+                                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                              </a>
+                            )}
+                            {(inf.commune || inf.city || inf.country) && (
+                              <span className="flex min-w-0 items-center gap-1 truncate text-gray-400" title={[inf.commune ?? inf.city, inf.country].filter(Boolean).join(', ')}>
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{[inf.commune ?? inf.city, inf.country].filter(Boolean).join(', ')}</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>
+
+                  {/* Plan */}
+                  {portal === 'admin' && visible.plan && (
+                    <td className="px-4 py-3">
+                      <span className={cn('inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold',
+                        inf.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : inf.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'
+                      )}>
+                        {inf.pro_source === 'manual' ? 'PRO manual' : inf.is_pro ? 'PRO pagado' : 'Gratis'}
+                      </span>
+                    </td>
+                  )}
 
                   {/* Plataformas */}
                   {visible.platforms && (

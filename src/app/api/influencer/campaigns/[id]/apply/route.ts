@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { acceptCampaignApplication } from '@/lib/campaign-applications'
 import { isInfluencerPro } from '@/lib/influencer-pro'
+import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 
 type Params = { params: { id: string } }
 
@@ -48,11 +49,32 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (campaign.visibility !== 'open' && campaign.visibility !== 'private') {
     return NextResponse.json({ error: 'Esta campaña no está abierta a postulaciones' }, { status: 422 })
   }
-  if (campaign.visibility === 'private' && !(await isInfluencerPro(admin, influencer.id))) {
-    return NextResponse.json(
-      { error: 'Activa Plan Pro para postular a esta campaña privada.', code: 'INFLUENCER_PRO_REQUIRED' },
-      { status: 403 }
-    )
+  if (campaign.visibility === 'private') {
+    if (!(await isInfluencerPro(admin, influencer.id))) {
+      return NextResponse.json(
+        { error: 'Activa Plan Pro para postular a esta campaña privada.', code: 'INFLUENCER_PRO_REQUIRED' },
+        { status: 403 }
+      )
+    }
+    // Postular con Plan Pro a una campaña privada exige haber aceptado la
+    // versión vigente de los Términos del Plan Pro (mismo check que ya hace
+    // /api/influencer/paypal/checkout — acá se repite porque la influencer
+    // puede llevar meses con Pro activo y nunca haber vuelto a esa pantalla
+    // desde que se publicó una versión nueva).
+    const { data: termsAcceptance } = await admin
+      .from('influencer_terms_acceptances')
+      .select('id')
+      .eq('influencer_id', influencer.id)
+      .eq('document_key', INFLUENCER_PRO_TERMS.key)
+      .eq('document_version', INFLUENCER_PRO_TERMS.version)
+      .eq('status', 'accepted')
+      .maybeSingle()
+    if (!termsAcceptance) {
+      return NextResponse.json(
+        { error: 'Debes aceptar la versión vigente de los Términos del Plan Pro antes de postular.', code: 'INFLUENCER_PRO_TERMS_REQUIRED' },
+        { status: 409 }
+      )
+    }
   }
   if (campaign.status !== 'active') {
     return NextResponse.json({ error: 'Esta campaña no acepta postulaciones en este momento' }, { status: 422 })

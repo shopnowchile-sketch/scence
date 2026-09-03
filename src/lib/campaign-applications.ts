@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { getResend, FROM_EMAIL, campaignApplicationApprovedEmail } from '@/lib/resend'
+import { isInfluencerPro } from '@/lib/influencer-pro'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -28,7 +29,7 @@ export async function acceptCampaignApplication(
   const { data: application } = await admin
     .from('campaign_influencers')
     .select(`
-      id, influencer_id, application_status, fee, deliverables_spec,
+      id, influencer_id, application_status, origin, fee, deliverables_spec,
       influencer:influencers ( display_name, email )
     `)
     .eq('id', applicationId)
@@ -36,7 +37,7 @@ export async function acceptCampaignApplication(
     .single()
 
   const app = application as unknown as {
-    id: string; influencer_id: string; application_status: string | null; fee: number | null
+    id: string; influencer_id: string; application_status: string | null; origin: string | null; fee: number | null
     deliverables_spec: unknown
     influencer: { display_name: string; email: string | null } | null
   } | null
@@ -48,11 +49,23 @@ export async function acceptCampaignApplication(
 
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, organization_id, status, brand_id, deliverable_templates, max_influencers')
+    .select('id, name, organization_id, status, visibility, brand_id, deliverable_templates, max_influencers')
     .eq('id', campaignId)
     .single()
 
   if (!campaign) return { ok: false, error: 'Campaña no encontrada', status: 404 }
+
+  // Una postulación (no invitación) a campaña privada solo pudo crearse con
+  // Plan Pro activo (ver /api/influencer/campaigns/[id]/apply). Si para cuando
+  // se revisa ya no tiene Pro, no se puede aprobar — mismo criterio de
+  // elegibilidad en el punto de decisión, sin tocar la fila (no se rechaza
+  // sola acá; ver cron close-expired-campaign-applications para el barrido
+  // automático de postulaciones/aceptaciones que quedan sin Pro).
+  if (app.origin === 'application' && campaign.visibility === 'private') {
+    if (!(await isInfluencerPro(admin, app.influencer_id))) {
+      return { ok: false, error: 'La influencer ya no cuenta con Plan Pro activo — no se puede aceptar esta postulación.', status: 422 }
+    }
+  }
 
   if (campaign.max_influencers && campaign.max_influencers > 0) {
     const { count: acceptedCount, error: countError } = await admin

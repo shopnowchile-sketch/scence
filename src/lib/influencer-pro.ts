@@ -15,13 +15,13 @@ function grantsPro(subscription: SubscriptionState): boolean {
 
 export async function getInfluencerProIds(admin: SupabaseAdmin, influencerIds: string[]): Promise<Set<string>> {
   const statuses = await getInfluencerProStatuses(admin, influencerIds)
-  return new Set([...statuses].filter(([, status]) => status !== 'free').map(([id]) => id))
+  return new Set(Array.from(statuses).filter(([, status]) => status !== 'free').map(([id]) => id))
 }
 
 export type InfluencerProSource = 'paid' | 'manual' | 'free'
 
 export async function getInfluencerProStatuses(admin: SupabaseAdmin, influencerIds: string[]): Promise<Map<string, InfluencerProSource>> {
-  const ids = [...new Set(influencerIds.filter(Boolean))]
+  const ids = Array.from(new Set(influencerIds.filter(Boolean)))
   if (ids.length === 0) return new Map()
 
   const [{ data, error }, { data: influencers, error: influencerError }] = await Promise.all([

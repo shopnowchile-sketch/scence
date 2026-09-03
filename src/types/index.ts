@@ -428,12 +428,17 @@ export interface InfluencerFilters {
   isVerified: boolean | null
   isActive: boolean | null
   statusFilter: 'all' | 'active' | 'draft' | 'inactive'
+  // Plan (Gratis/PRO pagado/PRO manual) — derivado server-side de
+  // getInfluencerProStatuses (PayPal subscriptions + manual_pro), no una
+  // columna de `influencers`. Solo Admin (ver InfluencersClient.tsx).
+  plan: 'all' | 'pro' | 'free'
   // followers/engagement_rate quedan en el tipo por compatibilidad con la UI histórica,
   // pero /api/influencers no puede ordenar por ellos (viven en el join
   // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
   // Columnas que sí ordenan de verdad server-side: display_name, rating, commune,
-  // city, country, is_verified, created_at, updated_at.
-  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at'
+  // city, country, is_verified, created_at, updated_at. 'plan' tampoco es columna
+  // directa — mismo tratamiento server-side que followers/engagement_rate.
+  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at' | 'plan'
   sortOrder: 'asc' | 'desc'
 }
 
@@ -450,6 +455,7 @@ export const DEFAULT_INFLUENCER_FILTERS: InfluencerFilters = {
   isVerified: null,
   isActive: true,
   statusFilter: 'all',
+  plan: 'all',
   sortBy: 'created_at',
   sortOrder: 'desc',
 }

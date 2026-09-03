@@ -26,9 +26,10 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
     commune: filters.commune,
     isVerified: filters.isVerified,
     isActive: filters.isActive,
+    plan: filters.plan,
     sortBy: filters.sortBy,
     sortOrder: filters.sortOrder,
-  }), [filters.platforms, filters.categories, filters.country, filters.commune, filters.isVerified, filters.isActive, filters.sortBy, filters.sortOrder])
+  }), [filters.platforms, filters.categories, filters.country, filters.commune, filters.isVerified, filters.isActive, filters.plan, filters.sortBy, filters.sortOrder])
 
   const fetchInfluencers = useCallback(async (
     currentPage: number,
@@ -50,6 +51,7 @@ export function useInfluencers(_orgId?: string, apiBase = '/api/influencers') {
       if (currentFilters.isVerified !== null)         params.set('verified', String(currentFilters.isVerified))
       if (currentFilters.isActive === false)          params.set('is_active', 'false')
       else if (currentFilters.isActive === true)      params.set('is_active', 'true')
+      if (currentFilters.plan !== 'all')              params.set('plan', currentFilters.plan)
       if (currentFilters.sortBy !== 'created_at')     params.set('sort_by', currentFilters.sortBy)
       params.set('sort_dir', currentFilters.sortOrder)
 

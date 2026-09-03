@@ -6,7 +6,7 @@ import { fetchJsonCached } from '@/lib/client/requestCache'
 
 export type InfluencerView = 'list'
 
-type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at'
+type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at' | 'plan'
 
 type Filters = {
   search?: string

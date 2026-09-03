@@ -21,6 +21,14 @@ import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 // direcciones — pedido explícito.
 const JOIN_SORT_COLS = ['followers', 'engagement_rate', 'last_sign_in_at'] as const
 
+// 'plan' (Gratis/PRO pagado/PRO manual) tampoco es columna de `influencers` —
+// se deriva de getInfluencerProStatuses (PayPal subscriptions + manual_pro).
+// Mismo tratamiento que JOIN_SORT_COLS: hace falta el dataset filtrado
+// completo (no solo la página) para poder filtrar/ordenar por plan antes de
+// paginar. Ranking ascendente: Gratis(0) < PRO manual(1) < PRO pagado(2), así
+// "desc" (primer clic) da PRO pagado → PRO manual → Gratis, pedido por Pri.
+const PLAN_RANK: Record<'free' | 'manual' | 'paid', number> = { free: 0, manual: 1, paid: 2 }
+
 // ── GET /api/influencers ──────────────────────────────────────────────────────
 // Roster global — SOLO admin/staff SCENCE. Marca e influencer usan sus propias
 // rutas (/api/brand/influencers, etc.) que sí acotan por org/relación.
@@ -53,6 +61,8 @@ export async function GET(request: NextRequest) {
   const communeList = commune ? commune.split(',').map(s => s.trim()).filter(Boolean) : []
   const verified   = searchParams.get('verified')
   const isActive   = searchParams.get('is_active')
+  const rawPlan    = searchParams.get('plan')
+  const planParam  = rawPlan === 'pro' || rawPlan === 'free' ? rawPlan : null
   // Columnas ordenables directo en Postgres. 'followers'/'engagement_rate' se
   // manejan aparte (ver JOIN_SORT_COLS arriba) porque viven en la tabla join.
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune', 'birth_date'] as const
@@ -166,14 +176,24 @@ export async function GET(request: NextRequest) {
     `
 
   const isJoinSort = (JOIN_SORT_COLS as readonly string[]).includes(rawSort)
+  const isPlanSort = rawSort === 'plan'
+  // Filtrar por plan también exige el dataset completo antes de paginar,
+  // aunque el sort activo sea uno normal (ej. filtrar Gratis pero seguir
+  // ordenado por "Más recientes").
+  const needsFullDataset = isJoinSort || isPlanSort || Boolean(planParam)
 
   let data: Record<string, unknown>[] = []
   let count = 0
   let queryError: { message: string } | null = null
+  // Se calcula una sola vez acá cuando hace falta traer todo el roster
+  // filtrado (por sort o por filtro de plan) y se reutiliza más abajo al
+  // enriquecer la página final — evita repetir la consulta de subscriptions.
+  let fullProStatuses: Map<string, 'paid' | 'manual' | 'free'> | null = null
 
-  if (isJoinSort) {
-    // Sort por followers/engagement_rate: traer todo el dataset filtrado
-    // (sin sort/paginación en la query) y ordenar/paginar en JS.
+  if (needsFullDataset) {
+    // Sort por followers/engagement_rate/plan, o filtro por plan: traer todo
+    // el dataset filtrado (sin sort/paginación en la query) y ordenar/paginar
+    // en JS.
     const { data: allRows, error } = await fetchAllRows<Record<string, unknown>>(
       (from, to) => {
         let q = admin.from('influencers').select(SELECT).range(from, to)
@@ -198,14 +218,34 @@ export async function GET(request: NextRequest) {
         ? allRows.filter(inf => (inf.social_profiles as Array<{ platform: string }>).some(sp => sp.platform === platform))
         : allRows
 
+      // Plan: se calcula sobre el dataset filtrado completo (antes de sort y
+      // de paginar) porque hace falta tanto para el filtro Todos/PRO/Gratis
+      // como para poder ordenar por esta columna.
+      let withPlan = withPlatform
+      if (isPlanSort || planParam) {
+        fullProStatuses = await getInfluencerProStatuses(admin, withPlatform.map(inf => inf.id as string))
+        if (planParam) {
+          withPlan = withPlatform.filter(inf => {
+            const source = fullProStatuses!.get(inf.id as string) ?? 'free'
+            return planParam === 'pro' ? source !== 'free' : source === 'free'
+          })
+        }
+      }
+
       let sorted: Record<string, unknown>[]
 
-      if (rawSort === 'last_sign_in_at') {
+      if (isPlanSort) {
+        sorted = [...withPlan].sort((a, b) => {
+          const ra = PLAN_RANK[fullProStatuses!.get(a.id as string) ?? 'free']
+          const rb = PLAN_RANK[fullProStatuses!.get(b.id as string) ?? 'free']
+          return sortDir ? ra - rb : rb - ra
+        })
+      } else if (rawSort === 'last_sign_in_at') {
         // Se busca acá, ANTES de paginar, porque hace falta para ordenar el
         // dataset completo (no solo la página final).
-        const uids = withPlatform.map(inf => inf.user_id as string | null).filter(Boolean) as string[]
+        const uids = withPlan.map(inf => inf.user_id as string | null).filter(Boolean) as string[]
         const seenMap = await resolveLastSeen(admin, uids)
-        const withTs = withPlatform.map(inf => {
+        const withTs = withPlan.map(inf => {
           const uid = inf.user_id as string | null
           const seen = uid ? seenMap[uid] ?? null : null
           return { inf, ts: seen ? new Date(seen).getTime() : null }
@@ -215,16 +255,31 @@ export async function GET(request: NextRequest) {
         const withoutDate = withTs.filter(x => x.ts === null).map(x => x.inf)
         withDate.sort((a, b) => sortDir ? a.ts - b.ts : b.ts - a.ts)
         sorted = [...withDate.map(x => x.inf), ...withoutDate]
-      } else {
-        const joinField = rawSort === 'followers' ? 'followers' : 'engagement_rate'
+      } else if (rawSort === 'followers' || rawSort === 'engagement_rate') {
+        const joinField = rawSort
         const valueOf = (inf: Record<string, unknown>) => {
           const primary = getPrimarySocial(inf as never) as { followers?: number | null; engagement_rate?: number | null } | null
           return Number((joinField === 'followers' ? primary?.followers : primary?.engagement_rate) ?? 0)
         }
-        sorted = [...withPlatform].sort((a, b) => {
+        sorted = [...withPlan].sort((a, b) => {
           const va = valueOf(a)
           const vb = valueOf(b)
           return sortDir ? va - vb : vb - va
+        })
+      } else {
+        // Filtro de plan con un sort normal (ej. "Más recientes"): la
+        // columna vive en `influencers`, pero como ya se trajo todo el
+        // dataset para poder filtrar por plan, también hay que ordenarlo acá
+        // en vez de con .order() de Postgres.
+        sorted = [...withPlan].sort((a, b) => {
+          const va = a[sortBy] as string | number | boolean | null
+          const vb = b[sortBy] as string | number | boolean | null
+          if (va == null && vb == null) return 0
+          if (va == null) return 1
+          if (vb == null) return -1
+          if (va < vb) return sortDir ? -1 : 1
+          if (va > vb) return sortDir ? 1 : -1
+          return 0
         })
       }
 
@@ -327,7 +382,11 @@ export async function GET(request: NextRequest) {
     .single()
   const scenceOrgId = oldestOrg?.id ?? null
 
-  const proStatuses = await getInfluencerProStatuses(admin, withLastSeen.map(inf => inf.id as string))
+  // Reutiliza el mapa ya calculado sobre el dataset completo (filtro/sort de
+  // plan) en vez de repetir la consulta — si no se calculó (caso normal, sin
+  // filtro/sort de plan), se resuelve acá solo para la página actual, igual
+  // que antes.
+  const proStatuses = fullProStatuses ?? await getInfluencerProStatuses(admin, withLastSeen.map(inf => inf.id as string))
   const enriched = withLastSeen.map(inf => {
     const orgId = inf.organization_id as string | null
     const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []

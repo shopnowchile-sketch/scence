@@ -93,14 +93,6 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     urlFiltersApplied.current = true
   }, [statusParam, communeParam, noCommune, nicheParam, noNiche, updateFilter])
 
-  // Filtro Plan (Todos/PRO/Gratis) — solo portal admin. is_pro/pro_source ya
-  // vienen calculados por el servidor desde PayPal (subscriptions) + override
-  // manual (ver getInfluencerProStatuses en src/lib/influencer-pro.ts); no hay
-  // columna is_pro en la tabla influencers. Sin equivalente server-side (es
-  // derivado, no una columna), se resuelve client-side sobre la página ya
-  // cargada — mismo patrón que los filtros de abajo.
-  const [planFilter, setPlanFilter] = useState<'' | 'pro' | 'free'>('')
-
   // "Sin Instagram" / "Sin comuna" / "Sin nicho" — sin equivalente de filtro
   // server-side ("IS NULL" / array vacío), se resuelven client-side sobre la
   // página ya cargada (mismo patrón para los 3).
@@ -108,8 +100,6 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     if (missingInstagram && inf.social_profiles?.some(sp => sp.platform === 'instagram' && (sp.username || sp.profile_url))) return false
     if (noCommune && inf.commune?.trim()) return false
     if (noNiche && inf.categories && inf.categories.length > 0) return false
-    if (!isBrandPortal && planFilter === 'pro' && !inf.is_pro) return false
-    if (!isBrandPortal && planFilter === 'free' && inf.is_pro) return false
     return true
   })
 
@@ -371,12 +361,12 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
         />
         {!isBrandPortal && (
           <div className="flex items-center gap-1.5">
-            {([['', 'Todos'], ['pro', 'PRO'], ['free', 'Gratis']] as const).map(([value, label]) => (
+            {([['all', 'Todos'], ['pro', 'PRO'], ['free', 'Gratis']] as const).map(([value, label]) => (
               <button
-                key={value || 'all'}
-                onClick={() => setPlanFilter(value)}
+                key={value}
+                onClick={() => updateFilter({ plan: value })}
                 className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
-                  planFilter === value ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  filters.plan === value ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 )}
               >
                 {label}

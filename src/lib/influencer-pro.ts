@@ -20,26 +20,35 @@ export async function getInfluencerProIds(admin: SupabaseAdmin, influencerIds: s
 
 export type InfluencerProSource = 'paid' | 'manual' | 'free'
 
+// PostgREST arma el filtro .in(...) como querystring — con roster completo
+// (miles de ids) se pasa de largo la URL. Se parte en tandas; cada tanda
+// dispara las mismas 2 queries en paralelo, igual que antes.
+const PRO_STATUS_BATCH_SIZE = 200
+
 export async function getInfluencerProStatuses(admin: SupabaseAdmin, influencerIds: string[]): Promise<Map<string, InfluencerProSource>> {
   const ids = Array.from(new Set(influencerIds.filter(Boolean)))
   if (ids.length === 0) return new Map()
 
-  const [{ data, error }, { data: influencers, error: influencerError }] = await Promise.all([
-    admin.from('subscriptions').select('status, current_period_end, metadata').in('metadata->>influencer_id', ids),
-    admin.from('influencers').select('id, metadata').in('id', ids),
-  ])
-
-  if (error) throw error
-  if (influencerError) throw influencerError
-
   const result = new Map<string, InfluencerProSource>(ids.map(id => [id, 'free']))
-  for (const influencer of influencers ?? []) {
-    const metadata = influencer.metadata as { manual_pro?: { active?: boolean } } | null
-    if (metadata?.manual_pro?.active === true) result.set(influencer.id, 'manual')
-  }
-  for (const row of ((data ?? []) as SubscriptionState[]).filter(grantsPro)) {
-    const id = row.metadata?.influencer_id
-    if (id) result.set(id, 'paid')
+
+  for (let offset = 0; offset < ids.length; offset += PRO_STATUS_BATCH_SIZE) {
+    const batch = ids.slice(offset, offset + PRO_STATUS_BATCH_SIZE)
+    const [{ data, error }, { data: influencers, error: influencerError }] = await Promise.all([
+      admin.from('subscriptions').select('status, current_period_end, metadata').in('metadata->>influencer_id', batch),
+      admin.from('influencers').select('id, metadata').in('id', batch),
+    ])
+
+    if (error) throw error
+    if (influencerError) throw influencerError
+
+    for (const influencer of influencers ?? []) {
+      const metadata = influencer.metadata as { manual_pro?: { active?: boolean } } | null
+      if (metadata?.manual_pro?.active === true) result.set(influencer.id, 'manual')
+    }
+    for (const row of ((data ?? []) as SubscriptionState[]).filter(grantsPro)) {
+      const id = row.metadata?.influencer_id
+      if (id) result.set(id, 'paid')
+    }
   }
   return result
 }

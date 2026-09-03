@@ -207,7 +207,7 @@ export function InfluencerTable({
               )}
               <TH col="display_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('display_name', e)}>Influencer</TH>
               {portal === 'admin' && visible.plan && (
-                <SortableTH<ColKey> onResizeStart={e => startResize('plan', e)}>Plan</SortableTH>
+                <TH col="plan" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('plan', e)}>Plan</TH>
               )}
               {visible.platforms && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('platforms', e)}>Plataformas</SortableTH>

@@ -1,0 +1,28 @@
+-- Elimina la policy RLS rota `subscriptions_select_own_org` sobre public.subscriptions.
+--
+-- Motivo (ver auditoría de planes/billing, 2026-09-03): el `qual` de la policy es
+--   organization_id = (SELECT subscriptions.organization_id FROM profiles WHERE profiles.id = auth.uid())
+-- `public.profiles` no tiene columna `organization_id`, por lo que el subquery no
+-- puede resolverla contra `profiles` y Postgres la resuelve como referencia
+-- correlacionada a la fila EXTERNA de `subscriptions` (la misma fila evaluada).
+-- El qual se reduce en la práctica a `organization_id = organization_id` (siempre
+-- TRUE) AND `EXISTS fila en profiles con id = auth.uid()` — es decir, CUALQUIER
+-- usuario autenticado con perfil puede leer TODAS las filas de `subscriptions` de
+-- CUALQUIER organización (incluye paypal_subscription_id, paypal_payer_id y
+-- metadata con influencer_id) si esa tabla llegara a consultarse alguna vez con
+-- el cliente de sesión del usuario en vez del cliente admin/service-role.
+--
+-- Todo el código de la aplicación (grep -rn ".from('subscriptions')" en todo el
+-- repo, 2026-09-03) consulta esta tabla exclusivamente con createAdminClient()
+-- (service-role, bypassa RLS por diseño) — no existe ninguna ruta que la
+-- consulte con el cliente de sesión del usuario ni desde el navegador. No se
+-- crea ninguna policy de reemplazo: con RLS habilitado (relrowsecurity = true)
+-- y cero policies, Postgres deniega por defecto el acceso a los roles
+-- `authenticated`/`anon` para cualquier operación — patrón ya usado en esta
+-- misma base para otras tablas (ej. _backup_dedup_influencers).
+--
+-- Esta migración NO fue aplicada contra el proyecto Supabase remoto. Queda
+-- como archivo local para revisión antes de aplicarla (recomendado: probar
+-- primero en un Supabase branch de desarrollo).
+
+DROP POLICY IF EXISTS subscriptions_select_own_org ON public.subscriptions;

@@ -55,7 +55,11 @@ const campaignBenefitSchema = z.object({
 
 const schema = z.object({
   name: z.string().min(3, 'Mínimo 3 caracteres').max(120),
-  description: z.string().max(500).optional(),
+  // 3000, no 500: description es ahora el único concepto de "descripción"
+  // (antes 500 alcanzaba porque content_guidelines existía aparte; ahora
+  // absorbe ese contenido también). Mismo límite que ya usa el panel de
+  // edición del admin. Pedido de Pri 2026-09-04.
+  description: z.string().max(3000).optional(),
   type: z.enum(['sponsored_post', 'ambassador', 'ugc', 'event_appearance', 'product_seeding', 'live', 'commission']),
   platforms: z.array(z.string()).min(1, 'Selecciona al menos una plataforma'),
   start_date: z.string().optional(),
@@ -279,7 +283,7 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, arrivalInstructions, setArrivalInstructions, setRemovedEventBookingIds }: StepProps & {
+function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, arrivalInstructions, setArrivalInstructions, setRemovedEventBookingIds, portal = 'admin' }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
   setEventDays: (updater: (days: Array<{ id?: string; starts_at: string; ends_at: string }>) => Array<{ id?: string; starts_at: string; ends_at: string }>) => void
   venueName: string
@@ -287,6 +291,7 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
   arrivalInstructions: string
   setArrivalInstructions: (value: string) => void
   setRemovedEventBookingIds: (updater: (ids: string[]) => string[]) => void
+  portal?: 'admin' | 'brand'
 }) {
   const watchedVisibility = useWatch({ control, name: 'visibility' })
   const watchedType = useWatch({ control, name: 'type' })
@@ -304,6 +309,19 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
         {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
       </div>
 
+      {portal === 'admin' && (
+        <Controller control={control} name="brand_id" render={({ field }) => (
+          <BrandSelector value={field.value ?? ''} onChange={field.onChange} />
+        )} />
+      )}
+
+      {/* Canje/Beneficio destacado en el Paso 1 — la influencer lo mira primero
+          para decidir si postula (pedido de Pri 2026-09-04). Antes vivía en el
+          Paso 2, después de que ya existiera la campaña. */}
+      <Controller control={control} name="campaign_benefits" render={({ field }) => (
+        <CampaignBenefitsInput value={field.value ?? []} onChange={field.onChange} errors={errors.campaign_benefits as Array<{ description?: { message?: string } }> | undefined} />
+      )} />
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
           Descripción de la campaña <span className="text-gray-400 text-xs">(visible antes de postular)</span>
@@ -311,6 +329,7 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
         <textarea
           {...register('description')}
           rows={3}
+          maxLength={3000}
           className="input-base w-full resize-none"
           placeholder="Breve descripción de los objetivos de la campaña…"
         />
@@ -458,9 +477,10 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
 }
 
 // ── Step 2 — Budget & Fechas ──────────────────────────────────────────────────
-function CampaignBenefitsInput({ value = [], onChange }: {
+function CampaignBenefitsInput({ value = [], onChange, errors }: {
   value?: CampaignBenefitInput[]
   onChange: (value: CampaignBenefitInput[]) => void
+  errors?: Array<{ description?: { message?: string } }>
 }) {
   function add() {
     onChange([...value, {
@@ -495,7 +515,10 @@ function CampaignBenefitsInput({ value = [], onChange }: {
               {ACTIVATION_RULES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </div>
-          <input value={benefit.description} onChange={e => update(index, { description: e.target.value })} maxLength={500} className="input-base w-full" placeholder="Ej. Entrada general para Maturana Sunset" />
+          <input value={benefit.description} onChange={e => update(index, { description: e.target.value })} maxLength={500}
+            className={cn('input-base w-full', errors?.[index]?.description && 'border-red-400 focus:border-red-400')}
+            placeholder="Ej. Entrada general para Maturana Sunset" />
+          {errors?.[index]?.description?.message && <p className="text-xs text-red-500">{errors[index]!.description!.message}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {benefit.activation_rule === 'sales_target' && (
               <input type="number" min="1" step="1" value={benefit.sales_target ?? ''} onChange={e => update(index, { sales_target: Number(e.target.value) || undefined })} className="input-base w-full" placeholder="Ventas necesarias" />
@@ -545,12 +568,6 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
         </div>
       )}
 
-      {portal === 'admin' && (
-        <Controller control={control} name="brand_id" render={({ field }) => (
-          <BrandSelector value={field.value ?? ''} onChange={field.onChange} />
-        )} />
-      )}
-
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Budget total</label>
@@ -580,10 +597,6 @@ function Step2({ register, control, errors, portal = 'admin' }: StepProps & { po
             <p className="text-xs text-violet-600 mt-1">Porcentaje del total de ventas que recibirá cada influencer</p>
           </div>
         ) : <></>
-      )} />
-
-      <Controller control={control} name="campaign_benefits" render={({ field }) => (
-        <CampaignBenefitsInput value={field.value ?? []} onChange={field.onChange} />
       )} />
 
       <div>
@@ -667,80 +680,11 @@ function Step3({ register, control, setValue, campaignType, campaignId }: StepPr
           )} />
       </div>
 
-      {campaignId && <Controller control={control} name="collaborator_ids" render={({ field }) => <CollaboratorSelector campaignId={campaignId} value={field.value ?? []} onChange={field.onChange} />} />}
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Tags obligatorios en publicaciones
-        </label>
-        <p className="text-xs text-gray-400 mb-2">Se muestran al influencer como requisito en cada post/historia</p>
-        <Controller control={control} name="social_tags"
-          render={({ field }) => (
-            <TagInput value={field.value} onChange={field.onChange} placeholder="@influencers.snc o @marca" />
-          )} />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Hashtags</label>
-        <Controller control={control} name="hashtags"
-          render={({ field }) => <HashtagInput value={field.value} onChange={field.onChange} />} />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Guía de contenido</label>
-        <textarea {...register('content_guidelines')} rows={5}
-          className="input-base w-full resize-none"
-          placeholder="Instrucciones de estilo, qué incluir/excluir, tono de voz, colores, referencias de marca…" />
-        <p className="text-xs text-gray-400 mt-1">Máx. 2000 caracteres. Se compartirá con los influencers.</p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Link de referencia o instrucciones</label>
-          <input type="url" {...register('reference_url')} className="input-base w-full" placeholder="https://drive.google.com/..." />
-          <p className="text-xs text-gray-400 mt-1">Disponible también para Stories.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Brief</label>
-          <input type="url" {...register('brief_url')} className="input-base w-full" placeholder="Enlace al brief compartido" />
-          <p className="text-xs text-gray-400 mt-1">Pega el enlace del brief para que sea visible desde la campaña.</p>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Tags internos <span className="text-gray-400 text-xs">(opcional)</span>
-        </label>
-        <Controller control={control} name="tags"
-          render={({ field }) => <TagInput value={field.value} onChange={field.onChange} placeholder="Ej. q2, verano, nike" />} />
-      </div>
-
-      <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-gray-50">
-        <Controller control={control} name="approval_required"
-          render={({ field }) => (
-            <button type="button" role="switch" aria-checked={field.value}
-              onClick={() => field.onChange(!field.value)}
-              className={cn(
-                'relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0',
-                field.value ? 'bg-violet-600' : 'bg-gray-300'
-              )}>
-              <span className={cn(
-                'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                field.value ? 'translate-x-4' : 'translate-x-0.5'
-              )} />
-            </button>
-          )} />
-        <div>
-          <div className="text-sm font-medium text-gray-800">Requerir aprobación de contenido</div>
-          <div className="text-xs text-gray-400">La influencer deberá subir su contenido al enlace compartido antes de publicarlo.</div>
-        </div>
-      </div>
-      <Controller control={control} name="approval_required" render={({ field }) => field.value ? (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Enlace para revisión de contenido</label>
-          <input type="url" {...register('approval_submission_url')} className="input-base w-full" placeholder="Drive, Dropbox u otro enlace compartido" />
-        </div>
-      ) : <></>} />
+      {/* Marcas colaboradoras, tags/hashtags, brief, tags internos, aprobación
+          de contenido: se editan después, con la campaña ya creada en draft
+          (Marcas participantes, panel de edición "Contenido", subida de brief
+          desde el detalle). Paso 3 queda enfocado solo en deliverables — pedido
+          de Pri 2026-09-04, simplificar la creación. */}
     </div>
   )
 }
@@ -768,12 +712,6 @@ function Step4({ values }: { values: FormValues }) {
           </div>
         ))}
       </div>
-      {values.content_guidelines && (
-        <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Guía de contenido</p>
-          <p className="text-sm text-gray-700 bg-gray-50 rounded-xl p-4 whitespace-pre-wrap">{values.content_guidelines}</p>
-        </div>
-      )}
     </div>
   )
 }
@@ -1050,20 +988,38 @@ export function CampaignForm({
   // devolver al usuario al paso correcto cuando falla la validación final.
   const STEP_BY_FIELD: Record<string, number> = {
     name: 1, type: 1, platforms: 1, visibility: 1,
-    start_date: 1, end_date: 1, event_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 2, goals: 2,
+    start_date: 1, end_date: 1, event_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 1, goals: 2,
     hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
-    application_questions: 1, application_deadline: 2, max_influencers: 2,
+    application_questions: 1, application_deadline: 2, max_influencers: 2, campaign_benefits: 1,
+  }
+
+  // formErrors puede anidar arrays (ej. campaign_benefits[2].description) — un
+  // lookup plano en el primer nivel no encuentra el mensaje real ahí, y el
+  // toast quedaba genérico sin decir qué campo revisar. Bajamos recursivo
+  // hasta el primer nodo con .message.
+  function findFirstError(node: unknown, path: string[] = []): { path: string[]; message?: string } | null {
+    if (!node || typeof node !== 'object') return null
+    const record = node as Record<string, unknown>
+    if (typeof record.message === 'string' && typeof record.type === 'string') {
+      return { path, message: record.message }
+    }
+    for (const key of Object.keys(record)) {
+      if (key === 'ref' || key === 'types') continue
+      const found = findFirstError(record[key], [...path, key])
+      if (found) return found
+    }
+    return null
   }
 
   function onInvalid(formErrors: FieldErrors<FormValues>) {
     console.error('[CampaignForm] validación falló:', formErrors)
-    const firstField = Object.keys(formErrors)[0]
-    const firstError = firstField ? (formErrors as Record<string, { message?: string }>)[firstField] : undefined
-    const targetStep = firstField ? (STEP_BY_FIELD[firstField] ?? 1) : 1
+    const found = findFirstError(formErrors)
+    const rootField = found?.path[0]
+    const targetStep = rootField ? (STEP_BY_FIELD[rootField] ?? 1) : 1
     setStep(targetStep)
     toast.error(
-      firstError?.message
-        ? `Paso ${targetStep}: ${firstError.message}`
+      found?.message
+        ? `Paso ${targetStep}: ${found.message}`
         : 'Revisa los campos marcados en rojo antes de crear la campaña'
     )
   }
@@ -1109,7 +1065,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-6">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} />}
           {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
           {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} campaignId={campaignId} />}
         </div>

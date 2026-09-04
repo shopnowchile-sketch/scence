@@ -523,11 +523,37 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             {p.visibility === 'private' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-violet-100 text-violet-700">Privada · Pro</span>}
           </div>
 
+          {/* Canje/Beneficio primero — es lo que la influencer mira primero para
+              decidir si postula (pedido de Pri 2026-09-04). Antes aparecía como
+              tarjeta separada más abajo, después de la descripción. */}
+          {(p.campaign_benefits?.length ?? 0) > 0 && (
+            <div className="mt-3 rounded-xl border-2 border-violet-200 bg-violet-50/40 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Gift className="h-4 w-4 text-violet-600" />
+                <p className="text-sm font-bold text-violet-900">Beneficios de esta campaña</p>
+              </div>
+              <div className="space-y-2">
+                {p.campaign_benefits.map((benefit, index) => (
+                  <div key={index} className="rounded-lg bg-white px-3 py-2.5">
+                    <p className="text-sm font-bold text-violet-900">{benefit.quantity ?? 1}× {benefit.description}</p>
+                    <p className="text-xs text-violet-700 mt-1">{activationText(benefit)}</p>
+                    {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && (
+                      <p className="text-xs font-bold text-violet-900 mt-1">{benefit.commission_rate}% de comisión sobre ventas</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Descripción general de la campaña — mismo campo campaigns.description
               que ya se guarda en el form de creación ("visible antes de postular")
               y que ya se muestra truncada en la tarjeta del marketplace. Acá se
               muestra completa; no es el brief privado (eso sigue gateado por
-              isAccepted más abajo). */}
+              isAccepted más abajo). Único concepto de "descripción" — ya no existe
+              un bloque separado de "Guía de contenido" (content_guidelines quedó
+              fusionado en description vía backfill; el brief privado gateado por
+              isAccepted sigue usando content_guidelines por separado, sin cambios). */}
           {p.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{p.description}</p>}
 
   {/* Fecha/hora del evento ya se muestra antes de postular; el lugar exacto
@@ -565,30 +591,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               <p className="mt-1 text-sm text-gray-600">{fmtMoney(p.budget_total, p.currency)}</p>
             </div>
           )}
-
-          {p.content_guidelines && <div className="mt-3 rounded-xl bg-gray-50 px-3 py-3"><p className="text-xs font-bold text-gray-700">Guía de contenido</p><p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">{p.content_guidelines}</p></div>}
         </div>
-
-        {(p.campaign_benefits?.length ?? 0) > 0 && (
-          <div className="bg-white rounded-2xl border-2 border-violet-200 p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Gift className="h-5 w-5 text-violet-600" />
-              <h2 className="text-base font-bold text-gray-900">Beneficios de esta campaña</h2>
-            </div>
-            <p className="text-xs text-gray-500 mb-3">Estas condiciones aplican por igual a todas las influencers.</p>
-            <div className="space-y-2">
-              {p.campaign_benefits.map((benefit, index) => (
-                <div key={index} className="rounded-xl bg-violet-50 px-3 py-3">
-                  <p className="text-sm font-bold text-violet-900">{benefit.quantity ?? 1}× {benefit.description}</p>
-                  <p className="text-xs text-violet-700 mt-1">{activationText(benefit)}</p>
-                  {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && (
-                    <p className="text-xs font-bold text-violet-900 mt-1">{benefit.commission_rate}% de comisión sobre ventas</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* CTA arriba, antes del detalle de deliverables (pedido: que se vea
             de inmediato, sin scrollear todo el brief primero). */}

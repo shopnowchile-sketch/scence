@@ -984,6 +984,9 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
     platforms: [...(campaign.platforms ?? [])] as string[],
     hashtags: (campaign.hashtags ?? []).join(', '),
     social_tags: (campaign.social_tags ?? []).join(', '),
+    tags: (campaign.tags ?? []).join(', '),
+    reference_url: String((campaign as unknown as { metadata?: Record<string, unknown> | null }).metadata?.reference_url ?? ''),
+    approval_submission_url: String((campaign as unknown as { metadata?: Record<string, unknown> | null }).metadata?.approval_submission_url ?? ''),
     goals: { ...(campaign.goals ?? {}) } as Record<string, number>,
     deliverable_templates: (
       campaign.deliverable_templates?.length
@@ -1014,6 +1017,9 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
       platforms: form.platforms,
       hashtags: form.hashtags.split(',').map(item => item.trim()).filter(Boolean),
       social_tags: form.social_tags.split(',').map(item => item.trim()).filter(Boolean),
+      tags: form.tags.split(',').map(item => item.trim()).filter(Boolean),
+      reference_url: form.reference_url.trim() || null,
+      approval_submission_url: form.approval_submission_url.trim() || null,
       goals: form.goals,
       deliverable_templates: form.deliverable_templates,
     })
@@ -1046,11 +1052,34 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
         </div>
       </div>
       {section === 'content' && <div className="card p-5 space-y-4">
-        <label className="text-xs font-semibold text-gray-600">Guías de contenido<textarea value={form.content_guidelines} maxLength={3000} rows={5} onChange={e => field('content_guidelines', e.target.value)} className={`${inputClass} mt-1 resize-y`} /></label>
+        {/* Único campo de "descripción" — content_guidelines dejó de mostrarse
+            como concepto aparte (ya fusionado en description vía backfill).
+            Sigue guardándose sin cambios (form.content_guidelines pasa intacto
+            en submit) porque el brief privado gateado por isAccepted sigue
+            usándolo, sin tocar esa lógica. Pedido de Pri 2026-09-04. */}
+        <label className="text-xs font-semibold text-gray-600">Descripción de la campaña<textarea value={form.description} maxLength={3000} rows={5} onChange={e => field('description', e.target.value)} className={`${inputClass} mt-1 resize-y`} /></label>
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="text-xs font-semibold text-gray-600">Hashtags, separados por coma<input value={form.hashtags} onChange={e => field('hashtags', e.target.value)} className={`${inputClass} mt-1`} /></label>
-          <label className="text-xs font-semibold text-gray-600">Tags, separados por coma<input value={form.social_tags} onChange={e => field('social_tags', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          <label className="text-xs font-semibold text-gray-600">Tags obligatorios en publicaciones, separados por coma<input value={form.social_tags} onChange={e => field('social_tags', e.target.value)} className={`${inputClass} mt-1`} /></label>
         </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <label className="text-xs font-semibold text-gray-600">Tags internos, separados por coma<input value={form.tags} onChange={e => field('tags', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          <label className="text-xs font-semibold text-gray-600">Link de referencia o instrucciones<input type="url" value={form.reference_url} onChange={e => field('reference_url', e.target.value)} placeholder="https://drive.google.com/..." className={`${inputClass} mt-1`} /></label>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <button type="button" role="switch" aria-checked={form.approval_required}
+            onClick={() => field('approval_required', !form.approval_required)}
+            className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0', form.approval_required ? 'bg-violet-600' : 'bg-gray-300')}>
+            <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', form.approval_required ? 'translate-x-4' : 'translate-x-0.5')} />
+          </button>
+          <div>
+            <div className="text-sm font-medium text-gray-800">Requerir aprobación de contenido</div>
+            <div className="text-xs text-gray-400">La influencer deberá subir su contenido al enlace compartido antes de publicarlo.</div>
+          </div>
+        </div>
+        {form.approval_required && (
+          <label className="text-xs font-semibold text-gray-600 block">Enlace para revisión de contenido<input type="url" value={form.approval_submission_url} onChange={e => field('approval_submission_url', e.target.value)} placeholder="Drive, Dropbox u otro enlace compartido" className={`${inputClass} mt-1`} /></label>
+        )}
         <div className="grid sm:grid-cols-3 gap-3">{goalFields.map(([key, label]) => (
           <label key={key} className="text-xs font-semibold text-gray-600">{label}<input type="number" min="0" step={key === 'engagement_rate' ? '0.1' : '1'} value={form.goals[key] ?? ''}
             onChange={e => setForm(previous => ({ ...previous, goals: { ...previous.goals, [key]: Number(e.target.value) || 0 } }))} className={`${inputClass} mt-1`} /></label>

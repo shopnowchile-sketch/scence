@@ -650,7 +650,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <button onClick={() => router.push('/admin-brands')} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-violet-600">
+      <button onClick={() => router.back()} className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-violet-600">
         <ArrowLeft className="h-4 w-4" /> Volver a marcas
       </button>
 

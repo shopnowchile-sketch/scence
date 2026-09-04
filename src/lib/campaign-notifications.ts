@@ -224,7 +224,7 @@ export async function notifyPreassignedInfluencersOnActivation(
               campaignUrl:    `${APP_URL}/inf-campaign/${campaign.id}`,
             })
         const subject = isInvitationPending
-          ? `${brandName || 'Una marca'} te invitó a una campaña en Scence`
+          ? 'Fuiste seleccionada para una campaña privada ✨'
           : `Fuiste asignada a la campaña "${campaign.name}"`
 
         const { error: emailErr } = await getResend().emails.send({

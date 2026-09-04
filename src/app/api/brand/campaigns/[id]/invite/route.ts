@@ -167,7 +167,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: influencer.email,
-        subject: `${brand.name} te invitó a una campaña en Scence`,
+        subject: 'Fuiste seleccionada para una campaña privada ✨',
         html: influencerInviteEmail({
           influencerName: influencer.display_name,
           campaignName:   campaign.name,

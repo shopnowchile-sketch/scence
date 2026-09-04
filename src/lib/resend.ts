@@ -90,7 +90,7 @@ export function influencerInviteEmail({
 }): string {
   return `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Invitación a campaña</title></head>
+<head><meta charset="utf-8"><title>Invitación a campaña privada</title></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:32px 0">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
     <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:32px;text-align:center">
@@ -100,14 +100,19 @@ export function influencerInviteEmail({
       </div>
     </div>
     <div style="padding:32px">
-      <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${influencerName} 👋</h1>
+      <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${influencerName},</h1>
+      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 16px">
+        Fuiste seleccionada especialmente por <strong style="color:#111827">${brandName}</strong> para participar en una campaña
+        <strong style="color:#7c3aed">privada y exclusiva</strong> en SCENCE:
+        <strong style="color:#111827">${campaignName}</strong>.
+      </p>
       <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
-        <strong style="color:#111827">${brandName}</strong> te invita a participar en la campaña
-        <strong style="color:#7c3aed">${campaignName}</strong>.
+        Esta invitación no está disponible para todos los influencers.
+        Revisa los detalles de la campaña y, si puedes participar, confirma tu asistencia directamente en SCENCE para continuar con el proceso.
       </p>
       ${message ? `<div style="background:#f3f4f6;border-radius:10px;padding:16px;margin-bottom:24px;font-size:14px;color:#374151;line-height:1.6"><em>"${message}"</em></div>` : ''}
       <a href="${inviteUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px;margin-bottom:24px">
-        Ver invitación →
+        Revisar campaña →
       </a>
       <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:0">
         Si no esperabas esta invitación puedes ignorar este correo.

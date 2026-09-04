@@ -196,7 +196,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
         to: inf.email,
-        subject: attendance ? `Confirma tu asistencia: ${camp.name}` : invite ? `Tienes una invitación privada: ${camp.name}` : `Fuiste asignada a la campaña "${camp.name}"`,
+        subject: attendance ? `Confirma tu asistencia: ${camp.name}` : invite ? 'Fuiste seleccionada para una campaña privada ✨' : `Fuiste asignada a la campaña "${camp.name}"`,
         html: attendance
           ? attendanceConfirmationEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, campaignId: params.id, dueDate: attendance.due_date })
           : invite

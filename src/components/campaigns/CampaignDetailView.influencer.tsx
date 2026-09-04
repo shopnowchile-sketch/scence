@@ -523,6 +523,13 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             {p.visibility === 'private' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-violet-100 text-violet-700">Privada · Pro</span>}
           </div>
 
+          {/* Descripción general de la campaña — mismo campo campaigns.description
+              que ya se guarda en el form de creación ("visible antes de postular")
+              y que ya se muestra truncada en la tarjeta del marketplace. Acá se
+              muestra completa; no es el brief privado (eso sigue gateado por
+              isAccepted más abajo). */}
+          {p.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{p.description}</p>}
+
   {/* Fecha/hora del evento ya se muestra antes de postular; el lugar exacto
       sigue siendo privado hasta la aceptación (misma regla que ya aplicaba
       acá — showLocation ya existía en EventBookingCard para esto, solo se
@@ -796,6 +803,12 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             {campStatus.label}
           </span>
         </div>
+
+        {/* Descripción general de la campaña — mismo campaigns.description que
+            ya se muestra antes de postular (arriba, en el preview) y en la
+            tarjeta del marketplace. Debe seguir visible en pending; el brief
+            privado sigue gateado por isAccepted más abajo, sin cambios. */}
+        {c.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{c.description}</p>}
 
         {/* Fecha y hora se informan desde el inicio. Lugar e instrucciones solo
             aparecen cuando la influencer ya fue aceptada. */}

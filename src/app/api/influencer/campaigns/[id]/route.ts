@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data: campaign, error } = await admin
     .from('campaigns')
     .select(`
-      id, name, description, content_guidelines, brief_url, type, status, visibility, metadata,
+      id, name, description, content_guidelines, brief_url, type, status, visibility, metadata, created_by,
       start_date, end_date, budget_total, currency, hashtags, platforms,
       deliverable_templates, application_deadline, applications_closed_at, max_influencers, application_questions,
       campaign_benefits,
@@ -44,6 +44,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // la influencer aunque tenga fila en campaign_influencers. Solo al activarla.
   if (campaign.status === 'draft' || campaign.status === 'pending_approval') {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
+
+  // Campañas personales: creadas por una influencer para sí misma (ver
+  // POST /api/influencer/my-campaigns) no son parte del marketplace público
+  // — mismo criterio ya aplicado en GET /api/influencer/campaigns/open,
+  // reutilizando `created_by` contra `influencers.user_id`. El único caso
+  // donde el creador puede ver este detalle es el suyo propio, pero ese
+  // flujo nunca llega hasta acá (CampaignDetailView.influencer.tsx resuelve
+  // las campañas self-created vía /api/influencer/my-campaigns primero).
+  if (campaign.created_by && campaign.created_by !== user.id) {
+    const { data: creatorIsInfluencer } = await admin
+      .from('influencers')
+      .select('id')
+      .eq('user_id', campaign.created_by)
+      .maybeSingle()
+    if (creatorIsInfluencer) {
+      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    }
   }
 
   const { data: existing } = await admin
@@ -84,6 +102,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // presupuesto/remuneración, entregables generales, plazo) quedan visibles.
   const isAccepted = existing?.application_status === 'accepted'
   const payload: Record<string, unknown> = { ...campaign }
+  delete payload.created_by
   const covers = await getCampaignCoverUrls(admin, [campaign.id])
   payload.cover_url = covers.get(campaign.id) ?? null
   if (!isAccepted) {

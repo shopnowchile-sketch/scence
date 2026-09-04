@@ -47,7 +47,7 @@ export async function GET() {
   let query = admin
     .from('campaigns')
     .select(`
-      id, name, status, description, type, start_date, end_date, visibility,
+      id, name, status, description, type, start_date, end_date, visibility, created_by,
       application_deadline, applications_closed_at, max_influencers, campaign_benefits,
       brand:brands!brand_id (id, name, logo_url, instagram),
       campaign_influencers (id, application_status)
@@ -65,7 +65,26 @@ export async function GET() {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const enriched = (data ?? [])
+  // Campañas personales: creadas por una influencer para sí misma (ver
+  // POST /api/influencer/my-campaigns) no son parte del marketplace público
+  // — cada influencer ya las ve en su propia sección "Mis campañas". Se
+  // excluyen acá reutilizando `created_by` (ya existe en campaigns) contra
+  // `influencers.user_id` — misma relación que ya usa
+  // /api/influencer/my-campaigns para distinguir self-created.
+  const creatorIds = Array.from(new Set((data ?? []).map(c => c.created_by).filter(Boolean))) as string[]
+  let influencerCreatorIds = new Set<string>()
+  if (creatorIds.length > 0) {
+    const { data: influencerCreators } = await admin
+      .from('influencers')
+      .select('user_id')
+      .in('user_id', creatorIds)
+    influencerCreatorIds = new Set(
+      (influencerCreators ?? []).map(r => r.user_id).filter(Boolean) as string[]
+    )
+  }
+  const marketplaceRows = (data ?? []).filter(c => !influencerCreatorIds.has(c.created_by as string))
+
+  const enriched = marketplaceRows
     .filter(c => {
       // Quien ya postuló conserva la campaña visible con estado "En revisión",
       // aunque la marca cierre después. Para nuevas postulantes se ocultan las
@@ -78,16 +97,19 @@ export async function GET() {
       ).length
       return !c.max_influencers || accepted < c.max_influencers
     })
-    .map(c => ({
-      ...c,
-      accepted_count: (c.campaign_influencers ?? []).filter(
-        row => row.application_status === 'accepted'
-      ).length,
-      _applied: pendingMap.has(c.id),
-      application_status: pendingMap.has(c.id) ? 'pending' : null,
-      can_apply: c.visibility === 'open' || isPro,
-      requires_pro: c.visibility === 'private' && !isPro,
-    }))
+    .map(c => {
+      const { created_by: _createdBy, ...rest } = c
+      return {
+        ...rest,
+        accepted_count: (c.campaign_influencers ?? []).filter(
+          row => row.application_status === 'accepted'
+        ).length,
+        _applied: pendingMap.has(c.id),
+        application_status: pendingMap.has(c.id) ? 'pending' : null,
+        can_apply: c.visibility === 'open' || isPro,
+        requires_pro: c.visibility === 'private' && !isPro,
+      }
+    })
 
   const covers = await getCampaignCoverUrls(admin, enriched.map(c => c.id))
   return NextResponse.json({ is_pro: isPro, data: enriched.map(c => ({ ...c, cover_url: covers.get(c.id) ?? null })) })

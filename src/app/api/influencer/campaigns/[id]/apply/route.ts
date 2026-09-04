@@ -41,11 +41,28 @@ export async function POST(req: NextRequest, { params }: Params) {
   // directas a borradores o campañas todavía en revisión.
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, status, visibility, organization_id, application_deadline, applications_closed_at, max_influencers, brand_id, application_questions')
+    .select('id, name, status, visibility, organization_id, application_deadline, applications_closed_at, max_influencers, brand_id, application_questions, created_by')
     .eq('id', params.id)
     .single()
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+
+  // Campañas personales: creadas por una influencer para sí misma (ver
+  // POST /api/influencer/my-campaigns) no aceptan postulaciones de otras
+  // influencers — mismo criterio ya aplicado en GET /api/influencer/campaigns/open
+  // y GET /api/influencer/campaigns/[id], reutilizando `created_by` contra
+  // `influencers.user_id`.
+  if (campaign.created_by && campaign.created_by !== user.id) {
+    const { data: creatorIsInfluencer } = await admin
+      .from('influencers')
+      .select('id')
+      .eq('user_id', campaign.created_by)
+      .maybeSingle()
+    if (creatorIsInfluencer) {
+      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    }
+  }
+
   if (campaign.visibility !== 'open' && campaign.visibility !== 'private') {
     return NextResponse.json({ error: 'Esta campaña no está abierta a postulaciones' }, { status: 422 })
   }

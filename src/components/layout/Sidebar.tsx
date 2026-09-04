@@ -29,7 +29,7 @@ export function Sidebar() {
     const refresh = () => loadNavigationSummary().then(d => {
         if (!active) return
         setRole(d.role ?? null)
-        setBookingCount(typeof d.bookings === 'number' ? d.bookings : null)
+        setBookingCount(typeof d.bookings === 'number' && d.bookings > 0 ? d.bookings : null)
         setReviewCount(typeof d.pendingCampaigns === 'number' && d.pendingCampaigns > 0 ? d.pendingCampaigns : null)
         setBrandCount(typeof d.pendingBrands === 'number' && d.pendingBrands > 0 ? d.pendingBrands : null)
         setTicketCount(typeof d.openTickets === 'number' && d.openTickets > 0 ? d.openTickets : null)

@@ -50,9 +50,21 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
     if (params.get('checkout') !== 'processing') return
     const subscriptionId = params.get('subscription_id')
     if (!subscriptionId) return
+    // Si el upgrade se inició desde una campaña (return_campaign_id viaja en
+    // el return_url de PayPal, ver /api/influencer/paypal/checkout), volvemos
+    // ahí en vez de quedarnos en Mi Plan — no cambia nada de la confirmación
+    // de la suscripción en sí.
+    const returnCampaignId = params.get('return_campaign_id')
     setUpgrading(true)
     fetch(`/api/influencer/paypal/complete?subscription_id=${encodeURIComponent(subscriptionId)}`, { method: 'POST' })
-      .then(async response => { const result = await responseJson(response); if (!response.ok) throw new Error(result.error); toast.success('Tu Plan Pro está activo.'); window.history.replaceState({}, '', '/inf-profile?tab=plan'); return load() })
+      .then(async response => {
+        const result = await responseJson(response)
+        if (!response.ok) throw new Error(result.error)
+        toast.success('Tu Plan Pro está activo.')
+        if (returnCampaignId) { window.location.replace(`/inf-campaign/${returnCampaignId}`); return }
+        window.history.replaceState({}, '', '/inf-profile?tab=plan')
+        return load()
+      })
       .catch(error => toast.error(error instanceof Error ? error.message : 'No se pudo confirmar la suscripción.'))
       .finally(() => setUpgrading(false))
   }, [load])
@@ -63,7 +75,12 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       const acceptanceResponse = await fetch('/api/influencer/terms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accepted: true, document_key: INFLUENCER_PRO_TERMS.key, version: INFLUENCER_PRO_TERMS.version }) })
       const acceptanceResult = await responseJson(acceptanceResponse)
       if (!acceptanceResponse.ok) throw new Error(acceptanceResult.error)
-      const response = await fetch('/api/influencer/paypal/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const returnCampaignId = new URLSearchParams(window.location.search).get('return_campaign_id')
+      const response = await fetch('/api/influencer/paypal/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(returnCampaignId ? { return_campaign_id: returnCampaignId } : {}),
+      })
       const result = await responseJson(response)
       if (!response.ok || !result.url) throw new Error(result.error ?? 'No se pudo iniciar PayPal.')
       window.location.href = result.url

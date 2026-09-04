@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const { data: termsAcceptance } = await admin.from('influencer_terms_acceptances').select('id').eq('influencer_id', influencer.id).eq('document_key', INFLUENCER_PRO_TERMS.key).eq('document_version', INFLUENCER_PRO_TERMS.version).eq('status', 'accepted').maybeSingle()
   if (!termsAcceptance) return NextResponse.json({ error: 'Debes aceptar los Términos y Condiciones vigentes antes de continuar.' }, { status: 409 })
 
-  const body = await request.json().catch(() => ({})) as { campaign_id?: string }
+  const body = await request.json().catch(() => ({})) as { campaign_id?: string; return_campaign_id?: string }
   if (body.campaign_id) {
     const { data: relationship } = await admin.from('campaign_influencers').select('id, campaigns!inner(status)').eq('campaign_id', body.campaign_id).eq('influencer_id', influencer.id).eq('application_status', 'accepted').maybeSingle()
     const campaign = relationship?.campaigns as unknown as { status?: string } | null
@@ -28,9 +28,16 @@ export async function POST(request: NextRequest) {
   if (!accessToken) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
   const appUrl = process.env.VERCEL_ENV === 'preview' ? request.nextUrl.origin : (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin)
   const customId = `influencer:${influencer.id}${body.campaign_id ? `:${body.campaign_id}` : ''}`
+  // return_campaign_id (2026-09-03, Pri): solo afecta a dónde vuelve el
+  // navegador tras el pago — NO toca custom_id ni la reconciliación del
+  // webhook (/api/paypal/webhook sigue leyendo custom_id igual que siempre).
+  // Se usa cuando la influencer entra al upgrade desde una campaña privada
+  // (aún no aceptada, por eso no puede reusar el campaign_id de arriba).
+  const returnCampaignId = typeof body.return_campaign_id === 'string' && body.return_campaign_id.trim() ? body.return_campaign_id.trim() : null
+  const returnQuery = returnCampaignId ? `&return_campaign_id=${encodeURIComponent(returnCampaignId)}` : ''
   const response = await fetch(`${influencerPayPalBaseUrl()}/v1/billing/subscriptions`, {
     method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `scence-influencer-${influencer.id}-${Date.now()}` },
-    body: JSON.stringify({ plan_id: paypalPlanId, custom_id: customId, application_context: { brand_name: 'SCENCE', user_action: 'SUBSCRIBE_NOW', return_url: `${appUrl}/inf-profile?tab=plan&checkout=processing`, cancel_url: `${appUrl}/inf-profile?tab=plan&checkout=cancelled` } }),
+    body: JSON.stringify({ plan_id: paypalPlanId, custom_id: customId, application_context: { brand_name: 'SCENCE', user_action: 'SUBSCRIBE_NOW', return_url: `${appUrl}/inf-profile?tab=plan&checkout=processing${returnQuery}`, cancel_url: `${appUrl}/inf-profile?tab=plan&checkout=cancelled${returnQuery}` } }),
   })
   const result = await response.json().catch(() => null)
   if (!response.ok) return NextResponse.json({ error: result?.message ?? 'No se pudo iniciar la suscripción con PayPal.' }, { status: 502 })

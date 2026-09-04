@@ -14,7 +14,8 @@ import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
-import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
+import { isAttendanceDeadlineExpired, getCampaignDateKey } from '@/lib/attendance-state'
+import Link from 'next/link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
@@ -70,7 +71,7 @@ type PreviewCampaign = {
   event_booking?: { id: string; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; instructions?: string } | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
-  deliverable_templates: Array<{ type: string; quantity?: number; description?: string }> | null
+  deliverable_templates: Array<{ type: string; quantity?: number; description?: string; due_date?: string | null }> | null
   application_questions: string[] | null
   application_deadline: string | null
   applications_closed_at: string | null
@@ -81,6 +82,9 @@ type PreviewCampaign = {
   _applied: boolean
   application_status: string | null
   campaign_benefits: CampaignBenefitOffer[]
+  // Privada + Plan Pro (reusa isInfluencerPro() en el backend — sin is_pro nuevo)
+  can_apply?: boolean
+  requires_pro?: boolean
 }
 
 type CampaignBenefitOffer = {
@@ -156,6 +160,16 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
     if (deliverable.type !== 'event_attendance' || deliverable.attendance_response || !deliverable.due_date) return false
     return isAttendanceDeadlineExpired(deliverable.due_date)
   }
+  // Mismo criterio de vencimiento que asistencia, extendido a Reel/Story:
+  // vencido si tiene fecha límite ya pasada y todavía no se completó. Reusa
+  // isDeliverableComplete() (fuente única) y getCampaignDateKey() (mismo huso
+  // horario que ya usa asistencia) — no crea un estado nuevo.
+  const isContentOverdue = (deliverable: Deliverable) => {
+    if (deliverable.type === 'event_attendance' || !deliverable.due_date) return false
+    return !isDeliverableComplete(deliverable) && deliverable.due_date < getCampaignDateKey()
+  }
+  const daysRemaining = (dueDate: string) =>
+    Math.round((new Date(`${dueDate}T00:00:00`).getTime() - new Date(`${getCampaignDateKey()}T00:00:00`).getTime()) / 86400000)
   const expiredAttendance = items.filter(isAttendanceExpired).length
   const pending = total - submitted - expiredAttendance
   const pct = total ? Math.round((submitted / total) * 100) : 0
@@ -215,13 +229,15 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
           const isAttendance = d.type === 'event_attendance'
           const isNoShow = isAttendance && d.attendance_outcome === 'no_show'
           const attendanceExpired = isAttendanceExpired(d)
+          const contentOverdue = isContentOverdue(d)
           const canSubmit = d.status === 'pending' || d.status === 'rejected'
           const isReview = d.status === 'in_review'
           const complete = isDeliverableComplete(d) && !isReview
           const isRejected = d.status === 'rejected'
           const opened = openId === d.id
           const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
-          return <div key={d.id} className={cn('rounded-xl border p-3 sm:p-4', isNoShow ? 'border-slate-200 bg-slate-50' : attendanceExpired ? 'border-amber-200 bg-amber-50/60' : isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
+          const dueDays = d.due_date && !complete ? daysRemaining(d.due_date) : null
+          return <div key={d.id} className={cn('rounded-xl border p-3 sm:p-4', isNoShow ? 'border-slate-200 bg-slate-50' : attendanceExpired ? 'border-amber-200 bg-amber-50/60' : contentOverdue ? 'border-amber-200 bg-amber-50/60' : isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
@@ -231,9 +247,12 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
                 <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
                 <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
                   <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                    {isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
+                    {isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : contentOverdue ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
                   </span>
-                  {d.due_date && <span className="text-gray-400">Vence: {fmtDate(d.due_date)}</span>}
+                  {d.due_date && <span className={cn(dueDays != null && dueDays < 0 ? 'text-amber-700 font-semibold' : dueDays != null && dueDays <= 2 ? 'text-amber-600 font-semibold' : 'text-gray-400')}>
+                    Vence: {fmtDate(d.due_date)}
+                    {dueDays != null && (dueDays < 0 ? ` · vencido hace ${Math.abs(dueDays)} día${Math.abs(dueDays) === 1 ? '' : 's'}` : dueDays === 0 ? ' · vence hoy' : ` · faltan ${dueDays} día${dueDays === 1 ? '' : 's'}`)}
+                  </span>}
                 </div>
                 {isAttendance && !d.attendance_response && (attendanceExpired
                   ? <p className="mt-2 text-xs leading-relaxed text-amber-800">El plazo de confirmación venció. Si necesitas ayuda, contacta al equipo de SCENCE.</p>
@@ -501,9 +520,14 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               {p.brand && <p className="text-sm text-gray-400 mt-0.5">{p.brand.name}</p>}
             </div>
             <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', pStatus.color)}>{pStatus.label}</span>
+            {p.visibility === 'private' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-violet-100 text-violet-700">Privada · Pro</span>}
           </div>
 
-  {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, location: p.event_booking.location ?? null, title: null, status: null }} showLocation />}
+  {/* Fecha/hora del evento ya se muestra antes de postular; el lugar exacto
+      sigue siendo privado hasta la aceptación (misma regla que ya aplicaba
+      acá — showLocation ya existía en EventBookingCard para esto, solo se
+      usa correctamente en vez de forzarlo siempre en true). */}
+  {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, location: p.event_booking.location ?? null, title: null, status: null }} showLocation={p._applied && p.application_status === 'accepted'} />}
 
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
             <div>
@@ -516,15 +540,22 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           </div>
 
-          {p.max_influencers && (
+          {(p.max_influencers || p.application_deadline) && (
             <div className="mt-3 rounded-xl bg-violet-50 border border-violet-100 px-3 py-2">
-              <p className="text-xs font-bold text-violet-800">Cupos limitados</p>
+              {p.max_influencers && <p className="text-xs font-bold text-violet-800">Cupos limitados</p>}
               <p className="text-xs text-violet-600 mt-0.5">
-                {Math.max(p.max_influencers - p.accepted_count, 0)} de {p.max_influencers} cupos disponibles
+                {p.max_influencers ? `${Math.max(p.max_influencers - p.accepted_count, 0)} de ${p.max_influencers} cupos disponibles` : null}
                 {p.application_deadline
-                  ? ` · Postula hasta ${new Date(p.application_deadline).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  ? `${p.max_influencers ? ' · ' : ''}Postula hasta ${new Date(p.application_deadline).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })}`
                   : ''}
               </p>
+            </div>
+          )}
+
+          {p.budget_total != null && p.budget_total > 0 && (
+            <div className="mt-3 rounded-xl bg-gray-50 px-3 py-3">
+              <p className="text-xs font-bold text-gray-700">Compensación</p>
+              <p className="mt-1 text-sm text-gray-600">{fmtMoney(p.budget_total, p.currency)}</p>
             </div>
           )}
 
@@ -589,6 +620,16 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               <Clock className="h-4 w-4" />
               {noSpots ? 'Cupos agotados' : deadlinePassed ? 'El plazo de postulación finalizó' : 'La marca cerró las postulaciones'}
             </div>
+          ) : p.requires_pro ? (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-violet-700">🔒 Para postular debes ser PRO</p>
+              <Link
+                href={`/inf-profile?tab=plan&return_campaign_id=${p.id}`}
+                className="block w-full py-3.5 text-center text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors"
+              >
+                ACTIVAR PLAN PRO
+              </Link>
+            </div>
           ) : (
             <button onClick={handleApply} disabled={applying}
               className="w-full py-3.5 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
@@ -601,12 +642,18 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <h2 className="text-sm font-bold text-gray-900 mb-3">Deliverables requeridos</h2>
             <div className="space-y-2">
-              {templates.map((t, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                  <Circle className="h-3 w-3 text-gray-300 flex-shrink-0" />
-                  {t.quantity ?? 1}× {t.description || t.type}
-                </div>
-              ))}
+              {templates.map((t, i) => {
+                const isAttendance = t.type === 'event_attendance'
+                const isFinalContent = t.type === 'reel' || t.type === 'story'
+                const dateLabel = isAttendance ? 'Plazo de confirmación' : isFinalContent ? 'Fecha final' : null
+                return (
+                  <div key={i} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                    <Circle className="h-3 w-3 text-gray-300 flex-shrink-0" />
+                    <span>{t.quantity ?? 1}× {t.description || t.type}</span>
+                    {dateLabel && t.due_date && <span className="ml-auto text-xs text-gray-400 flex-shrink-0">{dateLabel}: {fmtDate(t.due_date)}</span>}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}

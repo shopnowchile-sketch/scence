@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
+import { isInfluencerPro } from '@/lib/influencer-pro'
 
 type Params = { params: { id: string } }
 
 // GET /api/influencer/campaigns/[id]
 // Preview de una campaña ANTES de postular (botón "Ver detalles" desde
-// "Campañas Disponibles"). Una campaña activa y pública pertenece al
-// marketplace y puede verla cualquier influencer; una privada exige una fila
-// existente en campaign_influencers.
+// "Campañas Disponibles"). Una campaña activa, pública o privada, pertenece
+// al marketplace y puede verla cualquier influencer (mismo set de
+// visibilidades que ya usa GET /api/influencer/campaigns/open); privada
+// además exige Plan Pro para postular — eso se valida en /apply, no acá.
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authErr } = await supabase.auth.getUser()
@@ -51,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .eq('influencer_id', influencer.id)
     .maybeSingle()
 
-  if (!existing && campaign.visibility !== 'open') {
+  if (!existing && campaign.visibility !== 'open' && campaign.visibility !== 'private') {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   }
 
@@ -90,18 +92,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     delete payload.brief_url
   }
 
-  // El booking operativo (incluidos fecha y hora) sólo pertenece al portal de
-  // una influencer aceptada en la campaña.
-  const { data: eventBooking } = isAccepted
-    ? await admin
-      .from('bookings')
-      .select('id, starts_at, ends_at, location, location_details')
-      .eq('campaign_id', params.id)
-      .is('influencer_id', null)
-      .order('starts_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-    : { data: null }
+  // Fecha y hora del evento ya son visibles antes de aceptar (para decidir si
+  // postular); el LUGAR exacto sigue siendo privado hasta la aceptación —
+  // misma regla de siempre, solo que ahora se aplica campo por campo en vez
+  // de ocultar el booking completo.
+  const { data: eventBooking } = await admin
+    .from('bookings')
+    .select('id, starts_at, ends_at, location, location_details')
+    .eq('campaign_id', params.id)
+    .is('influencer_id', null)
+    .order('starts_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
 
   const { count: acceptedCount } = await admin
     .from('campaign_influencers')
@@ -114,9 +116,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ? campaign.metadata as Record<string, unknown>
       : {}
   const fallbackLocation = typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null
-  const visibleEventBooking = isAccepted
-    ? eventBooking ?? (fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
-    : null
+  const visibleEventBooking = eventBooking
+    ? {
+        id: isAccepted ? eventBooking.id : null,
+        starts_at: eventBooking.starts_at,
+        ends_at: eventBooking.ends_at,
+        location: isAccepted ? eventBooking.location : null,
+        location_details: isAccepted ? eventBooking.location_details : null,
+      }
+    : (isAccepted && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
+
+  const isPro = await isInfluencerPro(admin, influencer.id)
 
   return NextResponse.json({
     data: {
@@ -125,6 +135,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       _applied: !!existing,
       application_status: existing?.application_status ?? null,
       event_booking: visibleEventBooking,
+      can_apply: campaign.visibility === 'open' || isPro,
+      requires_pro: campaign.visibility === 'private' && !isPro,
     },
   })
 }

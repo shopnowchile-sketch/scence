@@ -41,7 +41,8 @@ export async function GET() {
     ticketsQuery,
     admin.from('bookings')
       .select('id', { count: 'exact', head: true })
-      .eq('organization_id', orgId),
+      .eq('organization_id', orgId)
+      .eq('status', 'proposed'),
   ])
 
   return NextResponse.json({

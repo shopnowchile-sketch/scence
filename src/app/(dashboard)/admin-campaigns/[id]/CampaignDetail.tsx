@@ -1538,6 +1538,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const deliverableCount = reelDeliverables.length
   const pendingDeliverableReviewCount = campaignDeliverables.filter(d => d.type !== 'event_attendance' && d.status === 'in_review').length
   const deliverableDone  = reelDeliverables.filter(d => d.status === 'published').length
+  // Fuente canónica para las fechas mostradas en "Deliverables requeridos por
+  // campaña" (Overview): campaign_deliverables reales (una fila por entregable
+  // asignado), no la plantilla. Si aún no hay entregables reales generados para
+  // un tipo (campaña sin influencers aceptadas todavía), cae al due_date de la
+  // plantilla — no se inventa una fecha nueva.
+  const canonicalDeliverableDueDates = campaignDeliverables.reduce((map, d) => {
+    if (d.type && d.due_date && !map.has(d.type)) map.set(d.type, d.due_date)
+    return map
+  }, new Map<string, string>())
 
   // Métricas reales de contenido (Apify) agregadas a nivel campaña — solo
   // suma deliverables ya sincronizados (performance != null). No incluye
@@ -2329,7 +2338,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} title={coverAsset ? 'Cambiar banner' : 'Subir banner'} aria-label={coverAsset ? 'Cambiar banner' : 'Subir banner'} className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-violet-700 shadow-md transition hover:bg-violet-700 hover:text-white disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5" /></button></>}
             </div>
             </div>
-            {!editingEvent && (c.start_date || c.end_date) && <div className="mt-2 flex max-w-48 items-start gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] font-medium leading-tight text-gray-600"><Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" /><span>Campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}{campaignDurationLabel ? ` · ${campaignDurationLabel}` : ''}</span></div>}
+            {/* Se oculta cuando duplica la fecha del evento (misma fecha, un solo
+                día): esa fecha ya se ve en la caja de día/mes de la izquierda.
+                Se muestra solo cuando aporta información real — sin evento
+                agendado, o un rango de campaña de varios días. */}
+            {!editingEvent && (c.start_date || c.end_date) && (!eventDateDay || (campaignDurationLabel && campaignDurationLabel !== 'Mismo día')) && <div className="mt-2 flex max-w-48 items-start gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] font-medium leading-tight text-gray-600"><Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" /><span>Campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}{campaignDurationLabel ? ` · ${campaignDurationLabel}` : ''}</span></div>}
           </div>
           <div className="min-w-0 flex-1 lg:min-w-[260px]">
             <div className="mb-1 flex items-center gap-1.5">
@@ -2366,34 +2379,34 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </div>
                         {editingEvent && <label className="mt-3 block max-w-md text-xs font-semibold text-gray-600">Nombre del lugar<input value={eventForm.venue_name} onChange={e => setEventForm(previous => ({ ...previous, venue_name: e.target.value }))} placeholder="Ej. Hotel Marriott Santiago" className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></label>}
             {editingEvent && <div className="mt-3 flex items-center gap-2"><label className="text-xs font-semibold text-gray-600">Visibilidad</label><select value={eventForm.visibility} onChange={e => setEventForm(previous => ({ ...previous, visibility: e.target.value }))} className="rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none"><option value="private">Privada</option><option value="open">Pública</option></select></div>}
-            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><>{eventBookings.map((booking, index) => { const start = booking.starts_at ? format(new Date(booking.starts_at), "EEE d MMM", { locale: es }) : null; const startTime = booking.starts_at ? formatEventTime(booking.starts_at) : null; const endTime = booking.ends_at ? formatEventTime(booking.ends_at) : null; return start && startTime ? <span key={booking.id ?? index} className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{start.replace(/^./, letter => letter.toUpperCase())} <Clock className="ml-1 h-4 w-4 text-violet-600" />{endTime ? `${startTime}–${endTime}` : startTime}</span> : null })}{!hasEventSchedule && (canEditCampaign ? <div className="relative"><button type="button" onClick={openTimeEditor} className="inline-flex items-center gap-2 font-semibold text-amber-700 hover:underline"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</button>{timeEditOpen && <div className="absolute left-0 top-8 z-40 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><div className="grid grid-cols-2 gap-2"><input type="date" value={timeEditForm.date} onChange={event => setTimeEditForm(previous => ({ ...previous, date: event.target.value }))} aria-label="Fecha del evento" className="input-base col-span-2 w-full" /><input type="time" value={timeEditForm.start_time} onChange={event => setTimeEditForm(previous => ({ ...previous, start_time: event.target.value }))} aria-label="Hora de inicio" className="input-base w-full" /><input type="time" value={timeEditForm.end_time} onChange={event => setTimeEditForm(previous => ({ ...previous, end_time: event.target.value }))} aria-label="Hora de término" className="input-base w-full" /></div><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setTimeEditOpen(false)} disabled={summaryEditSaving} className="px-2 py-1.5 text-xs font-semibold text-gray-500">Cancelar</button><button type="button" onClick={saveTimeEditor} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div> : <span className="inline-flex items-center gap-2 font-semibold text-amber-700"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</span>)}<div className="relative inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" />{canEditCampaign ? <button type="button" onClick={openLocationEditor} className="truncate text-left hover:text-violet-700 hover:underline" title="Abrir ubicación en Google Maps">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</button> : <span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span>}{locationEditOpen && <div className="absolute left-0 top-7 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><label className="block text-xs font-semibold text-gray-700">Ubicación del evento</label><input autoFocus value={locationEditValue} onChange={event => setLocationEditValue(event.target.value)} placeholder="Dirección o lugar" className="input-base mt-1 w-full" /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setLocationEditOpen(false)} disabled={locationEditSaving} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveLocation()} disabled={locationEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{locationEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
             {!editingEvent && !timeEditOpen && (eventVenueName || eventBooking?.location_details?.instructions?.trim()) && <p className="mt-2 flex max-w-3xl items-center gap-2 text-xs text-gray-500"><MapPin className="h-3.5 w-3.5 shrink-0 text-violet-500" />{eventVenueName && <span className="font-semibold text-gray-700">{eventVenueName}</span>}{eventVenueName && eventBooking?.location_details?.instructions?.trim() && <span>·</span>}{eventBooking?.location_details?.instructions?.trim() && <span>{eventBooking.location_details.instructions.trim()}</span>}</p>}
+            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><>{eventBookings.map((booking, index) => { const start = booking.starts_at ? format(new Date(booking.starts_at), "EEE d MMM", { locale: es }) : null; const startTime = booking.starts_at ? formatEventTime(booking.starts_at) : null; const endTime = booking.ends_at ? formatEventTime(booking.ends_at) : null; return start && startTime ? <span key={booking.id ?? index} className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{start.replace(/^./, letter => letter.toUpperCase())} <Clock className="ml-1 h-4 w-4 text-violet-600" />{endTime ? `${startTime}–${endTime}` : startTime}</span> : null })}{!hasEventSchedule && (canEditCampaign ? <div className="relative"><button type="button" onClick={openTimeEditor} className="inline-flex items-center gap-2 font-semibold text-amber-700 hover:underline"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</button>{timeEditOpen && <div className="absolute left-0 top-8 z-40 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><div className="grid grid-cols-2 gap-2"><input type="date" value={timeEditForm.date} onChange={event => setTimeEditForm(previous => ({ ...previous, date: event.target.value }))} aria-label="Fecha del evento" className="input-base col-span-2 w-full" /><input type="time" value={timeEditForm.start_time} onChange={event => setTimeEditForm(previous => ({ ...previous, start_time: event.target.value }))} aria-label="Hora de inicio" className="input-base w-full" /><input type="time" value={timeEditForm.end_time} onChange={event => setTimeEditForm(previous => ({ ...previous, end_time: event.target.value }))} aria-label="Hora de término" className="input-base w-full" /></div><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setTimeEditOpen(false)} disabled={summaryEditSaving} className="px-2 py-1.5 text-xs font-semibold text-gray-500">Cancelar</button><button type="button" onClick={saveTimeEditor} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div> : <span className="inline-flex items-center gap-2 font-semibold text-amber-700"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</span>)}<div className="relative inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" />{canEditCampaign ? <button type="button" onClick={openLocationEditor} className="truncate text-left hover:text-violet-700 hover:underline" title="Abrir ubicación en Google Maps">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</button> : <span className="truncate">{eventLocation ?? 'Ubicación por confirmar'}{eventCommune ? `, ${eventCommune}` : ''}</span>}{locationEditOpen && <div className="absolute left-0 top-7 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><label className="block text-xs font-semibold text-gray-700">Ubicación del evento</label><input autoFocus value={locationEditValue} onChange={event => setLocationEditValue(event.target.value)} placeholder="Dirección o lugar" className="input-base mt-1 w-full" /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setLocationEditOpen(false)} disabled={locationEditSaving} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveLocation()} disabled={locationEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{locationEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
           </div>
           <div className="grid w-full grid-cols-3 gap-2 lg:w-[480px] lg:grid-cols-4 lg:flex-none">
-            <button type="button" onClick={() => showAttendanceKpi('confirmed')} className="rounded-lg bg-emerald-50 px-2 py-1.5 text-center transition hover:bg-emerald-100 hover:ring-1 hover:ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300" title="Ver confirmadas que asistieron">
+            {attendanceConfirmedInfluencers.length > 0 && <button type="button" onClick={() => showAttendanceKpi('confirmed')} className="rounded-lg bg-emerald-50 px-2 py-1.5 text-center transition hover:bg-emerald-100 hover:ring-1 hover:ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300" title="Ver confirmadas que asistieron">
               <div className="text-sm font-bold text-emerald-700">{attendanceConfirmedInfluencers.length}</div>
               <div className="text-[10px] font-medium text-emerald-700">Confirmaron</div>
-            </button>
-            <button type="button" onClick={() => showAttendanceKpi('no_show')} className="rounded-lg bg-gray-100 px-2 py-1.5 text-center transition hover:bg-gray-200 hover:ring-1 hover:ring-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400" title="Ver confirmadas que no asistieron">
+            </button>}
+            {noShowInfluencers.length > 0 && <button type="button" onClick={() => showAttendanceKpi('no_show')} className="rounded-lg bg-gray-100 px-2 py-1.5 text-center transition hover:bg-gray-200 hover:ring-1 hover:ring-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400" title="Ver confirmadas que no asistieron">
               <div className="text-sm font-bold text-gray-700">{noShowInfluencers.length}</div>
               <div className="text-[10px] font-medium text-gray-600">No asistieron</div>
-            </button>
-            <button type="button" onClick={() => showAttendanceKpi('declined')} className="rounded-lg bg-rose-50 px-2 py-1.5 text-center transition hover:bg-rose-100 hover:ring-1 hover:ring-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300" title="Ver quienes avisaron que no podrán asistir">
+            </button>}
+            {attendanceDeclinedInfluencers.length > 0 && <button type="button" onClick={() => showAttendanceKpi('declined')} className="rounded-lg bg-rose-50 px-2 py-1.5 text-center transition hover:bg-rose-100 hover:ring-1 hover:ring-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300" title="Ver quienes avisaron que no podrán asistir">
               <div className="text-sm font-bold text-rose-700">{attendanceDeclinedInfluencers.length}</div>
               <div className="text-[10px] font-medium text-rose-700">No podrán asistir</div>
-            </button>
-            <button type="button" onClick={() => showAttendanceKpi('unconfirmed')} className="rounded-lg bg-amber-50 px-2 py-1.5 text-center transition hover:bg-amber-100 hover:ring-1 hover:ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300" title="Ver aprobadas que no confirmaron asistencia">
+            </button>}
+            {noConfirmedInfluencers.length > 0 && <button type="button" onClick={() => showAttendanceKpi('unconfirmed')} className="rounded-lg bg-amber-50 px-2 py-1.5 text-center transition hover:bg-amber-100 hover:ring-1 hover:ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300" title="Ver aprobadas que no confirmaron asistencia">
               <div className="text-sm font-bold text-amber-700">{noConfirmedInfluencers.length}</div>
               <div className="text-[10px] font-medium text-amber-700">No confirmaron</div>
-            </button>
-            <button type="button" onClick={() => goToKpiSection('influencers', true)} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver historial de postulaciones">
+            </button>}
+            {historicalApplications.length > 0 && <button type="button" onClick={() => goToKpiSection('influencers', true)} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver historial de postulaciones">
               <div className="text-sm font-bold text-gray-900">{historicalApplications.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Postularon</div>
-            </button>
-            <button type="button" onClick={() => goToKpiSection('overview')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver marcas participantes">
+            </button>}
+            {campaignBrands.length > 0 && <button type="button" onClick={() => goToKpiSection('overview')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver marcas participantes">
               <div className="text-sm font-bold text-gray-900">{campaignBrands.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Marcas</div>
-            </button>
+            </button>}
             <button type="button" onClick={() => goToKpiSection('overview')} className="rounded-lg bg-blue-50 px-2 py-1.5 text-center transition hover:bg-blue-100 hover:ring-1 hover:ring-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-300" title="Ver resumen de campaña">
               <div className="text-sm font-bold text-blue-700">{c.visibility === 'open' ? 'Pública' : 'Privada'}</div>
               <div className="text-[10px] font-medium text-blue-600">Visibilidad</div>
@@ -2402,22 +2415,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <div className={cn('text-xs font-bold', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>{c.visibility === 'open' ? (c.applications_closed_at ? 'Cerradas' : 'Abiertas') : 'No aplica'}</div>
               <div className={cn('text-[10px] font-medium', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>Postulaciones</div>
             </button>
-            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
-              <div className="text-sm font-bold text-gray-900">{hasCampaignViews ? formatFollowers(totalViews) : '—'}</div>
+            {hasCampaignViews && totalViews > 0 && <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
+              <div className="text-sm font-bold text-gray-900">{formatFollowers(totalViews)}</div>
               <div className="text-[10px] font-medium text-gray-500">Visualizaciones</div>
-            </button>
-            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
-              <div className="text-sm font-bold text-gray-900">{avgCampaignEngagement != null ? `${avgCampaignEngagement}%` : '—'}</div>
+            </button>}
+            {avgCampaignEngagement != null && avgCampaignEngagement > 0 && <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
+              <div className="text-sm font-bold text-gray-900">{`${avgCampaignEngagement}%`}</div>
               <div className="text-[10px] font-medium text-gray-500">Engagement promedio</div>
-            </button>
-            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver entregables">
+            </button>}
+            {deliverableCount > 0 && <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver entregables">
               <div className="text-sm font-bold text-gray-900">{deliverableDone}/{deliverableCount}</div>
               <div className="text-[10px] font-medium text-gray-500">Entregables publicados</div>
-            </button>
-            <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver métricas de entregables">
-              <div className="text-sm font-bold text-gray-900">—</div>
-              <div className="text-[10px] font-medium text-gray-500">Alcance total</div>
-            </button>
+            </button>}
           </div>
         </div>
       </div>
@@ -2439,17 +2448,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
       {/* ── OVERVIEW ───────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
-        editingOverview ? (
-          <OverviewEditPanel
-            key={c.updated_at}
-            campaign={c}
-            saving={patchCampaign.isPending}
-            isBrandPortal={isBrandPortal}
-            section={overviewEditSection}
-            onCancel={() => setOverviewEditMode(false)}
-            onSave={saveOverview}
-          />
-        ) : <>
+        <>
         {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
           <CampaignBrandsPanel
             campaignId={id}
@@ -2471,7 +2470,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 el overview lo entienda por completo las marcas... las guías de
                 contenido" — es lo primero que una marca necesita leer para saber
                 qué se espera de la campaña. */}
-            {(
+            {/* Edit a nivel de card (Pri, 2026-09-03): "Editar" en esta card debe
+                entrar en modo edición SOLO acá — el resto del Overview (panel de
+                marcas, card de deliverables, Notificar influencers, Summary,
+                KPIs, tabs) permanece montado tal cual. */}
+            {editingOverview && overviewEditSection === 'content' ? (
+              <OverviewEditPanel
+                key={c.updated_at}
+                campaign={c}
+                saving={patchCampaign.isPending}
+                isBrandPortal={isBrandPortal}
+                section="content"
+                onCancel={() => setOverviewEditMode(false)}
+                onSave={saveOverview}
+              />
+            ) : (
               <div className="card p-5 border-2 border-violet-100 bg-violet-50/20">
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <h3 className="text-sm font-semibold text-violet-800 flex items-center gap-2"><FileText className="h-4 w-4" /> Guías de contenido</h3>
@@ -2484,23 +2497,47 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </div>
             )}
 
-            {/* Deliverable templates */}
-            {(
+            {/* Deliverable templates — misma regla: "Editar" entra en modo
+                edición solo en esta card. Fechas mostradas: canonicalDeliverableDueDates
+                (campaign_deliverables reales) con fallback al due_date de la
+                plantilla; asistencia muestra además el resumen ya calculado
+                arriba en los KPI (misma lógica, sin datos nuevos). */}
+            {editingOverview && overviewEditSection === 'deliverables' ? (
+              <OverviewEditPanel
+                key={c.updated_at}
+                campaign={c}
+                saving={patchCampaign.isPending}
+                isBrandPortal={isBrandPortal}
+                section="deliverables"
+                onCancel={() => setOverviewEditMode(false)}
+                onSave={saveOverview}
+              />
+            ) : (
               <div className="card p-5">
                 <div className="flex items-center justify-between gap-3 mb-3"><h3 className="text-sm font-semibold text-gray-700">Deliverables requeridos por campaña</h3>{(!isBrandPortal || c._brand_permissions?.canEdit) && <button type="button" onClick={() => setOverviewEditMode(true, 'deliverables')} className="text-xs font-semibold text-violet-700 hover:underline">Editar</button>}</div>
                 {(c.deliverable_templates?.length ?? 0) > 0 ? <div className="space-y-2">
-                  {c.deliverable_templates!.map(dt => (
-                    <div key={dt.type} className="flex items-start gap-3 rounded-xl bg-gray-50 p-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-gray-800 capitalize">{dt.type.replace(/_/g,' ')}</span>
-                          <span className="badge badge-gray text-[10px]">x{dt.quantity}</span>
-                          {dt.due_date && <span className="text-xs text-gray-400">→ {dt.due_date}</span>}
+                  {c.deliverable_templates!.map(dt => {
+                    const canonicalDue = canonicalDeliverableDueDates.get(dt.type) ?? dt.due_date ?? null
+                    const isAttendance = dt.type === 'event_attendance'
+                    const isFinalContent = dt.type === 'reel' || dt.type === 'story'
+                    const dateLabel = isAttendance ? 'Plazo de confirmación' : isFinalContent ? 'Fecha final de publicación' : 'Fecha límite'
+                    const attendanceTracked = attendanceConfirmedInfluencers.length + noConfirmedInfluencers.length + attendanceDeclinedInfluencers.length + noShowInfluencers.length
+                    return (
+                      <div key={dt.type} className="flex items-start gap-3 rounded-xl bg-gray-50 p-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-800 capitalize">{dt.type.replace(/_/g,' ')}</span>
+                            <span className="badge badge-gray text-[10px]">x{dt.quantity}</span>
+                            {canonicalDue && <span className="text-xs text-gray-400">{dateLabel}: {formatDate(canonicalDue)}</span>}
+                          </div>
+                          {dt.description && <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{dt.description}</p>}
+                          {isAttendance && attendanceTracked > 0 && (
+                            <p className="mt-1 text-[11px] text-gray-500">Confirmaron {attendanceConfirmedInfluencers.length} · No confirmaron {noConfirmedInfluencers.length} · No podrán asistir {attendanceDeclinedInfluencers.length} · No asistieron {noShowInfluencers.length}</p>
+                          )}
                         </div>
-                        {dt.description && <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{dt.description}</p>}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div> : <p className="text-sm text-gray-400">Aún no se han definido entregables.</p>}
               </div>
             )}

@@ -750,12 +750,17 @@ function CampaignBrandsPanel({
   brands,
   canManage,
   canChangePrimary,
+  linkToBrandProfile,
   onChanged,
 }: {
   campaignId: string
   brands: Array<{ id?: string; name?: string; logo_url?: string | null; instagram?: string | null; _role?: string }>
   canManage: boolean
   canChangePrimary: boolean
+  // Solo Admin tiene acceso a /admin-brands — en el portal de marca (mismo
+  // componente, ver brand-campaigns/[id]) el chip no debe linkear ahí, el
+  // middleware redirigiría a la marca fuera de la campaña.
+  linkToBrandProfile: boolean
   onChanged: () => void
 }) {
   if (brands.length === 0 && !canManage) return null
@@ -771,19 +776,31 @@ function CampaignBrandsPanel({
         <div className="mt-2 flex flex-wrap gap-1.5">
           {brands.map((brand, idx) => (
             <div key={`${brand.id ?? idx}`} className={cn('group flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5', brand.instagram ? instagramColors[idx % instagramColors.length] : 'border-gray-100 bg-gray-50 text-gray-800')}>
-              <div className="flex min-w-0 items-center gap-1.5">
-                {brand.logo_url ? (
-                  <img src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-5 w-5 flex-shrink-0 rounded object-contain" />
-                ) : (
-                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-violet-50 text-[10px] font-bold text-violet-600">{(brand.name ?? '?').slice(0, 1).toUpperCase()}</span>
-                )}
-                {brand.instagram ? (
-                  <a href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="max-w-[170px] truncate text-xs font-semibold text-current hover:underline">@{brand.instagram.replace(/^@/, '')}</a>
-                ) : (
-                  <span className="max-w-[150px] truncate text-xs font-semibold text-gray-800">{brand.name ?? 'Marca sin nombre'}</span>
-                )}
-                {brand._role === 'Principal' && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-medium text-violet-700">Principal</span>}
-              </div>
+              {(() => {
+                const identity = (
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    {brand.logo_url ? (
+                      <img src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-5 w-5 flex-shrink-0 rounded object-contain" />
+                    ) : (
+                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-violet-50 text-[10px] font-bold text-violet-600">{(brand.name ?? '?').slice(0, 1).toUpperCase()}</span>
+                    )}
+                    {brand.instagram ? (
+                      <span className="max-w-[170px] truncate text-xs font-semibold text-current">@{brand.instagram.replace(/^@/, '')}</span>
+                    ) : (
+                      <span className="max-w-[150px] truncate text-xs font-semibold text-gray-800">{brand.name ?? 'Marca sin nombre'}</span>
+                    )}
+                    {brand._role === 'Principal' && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-medium text-violet-700">Principal</span>}
+                  </div>
+                )
+                // Link al perfil de la marca en /admin-brands/[id] (misma ruta que ya
+                // usa el módulo Marcas) — reutiliza brand.id, la relación real ya
+                // presente en campaign.brand / campaign_brands, sin buscar por nombre.
+                return brand.id && linkToBrandProfile ? (
+                  <Link href={`/admin-brands/${brand.id}`} className="min-w-0 hover:underline" title={`Ver perfil de ${brand.name ?? 'esta marca'}`}>
+                    {identity}
+                  </Link>
+                ) : identity
+              })()}
               {canManage && brand._role === 'Colaboradora' && brand.id && (
                 <button type="button" aria-label={`Quitar ${brand.name ?? 'marca'}`} className="ml-1 text-gray-300 hover:text-red-500" onClick={async () => {
                   if (!confirm(`¿Quitar ${brand.name ?? 'esta marca'} de la campaña?`)) return
@@ -2461,6 +2478,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             }))}
             canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
             canChangePrimary={!isBrandPortal}
+            linkToBrandProfile={!isBrandPortal}
             onChanged={() => void refetch()}
           />
         )}

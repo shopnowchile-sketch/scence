@@ -27,12 +27,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Get membership + fee
   const { data: membership } = await admin
     .from('campaign_influencers')
-    .select('id, fee, currency, status, notes')
+    .select('id, fee, currency, status, notes, application_status')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .single()
 
   if (!membership) return new NextResponse('No tienes acceso a esta campaña', { status: 403 })
+
+  // Gate por postulación: el brief/reporte completo es privado hasta que la
+  // postulación esté aceptada — mismo criterio que ya usa
+  // /api/influencer/campaigns/[id] (isAccepted) y resolveCampaignAssetAccess
+  // (canViewBrief). Esto cierra el acceso también por URL/endpoint directo,
+  // no solo ocultando el botón en el frontend.
+  if (membership.application_status !== 'accepted') {
+    return new NextResponse('El brief completo estará disponible cuando tu postulación sea aprobada.', { status: 403 })
+  }
 
   // Get campaign + brand
   const { data: campaign, error } = await admin

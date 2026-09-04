@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Calendar,
   LogOut, RefreshCw,
-  CheckSquare, Sparkles, Instagram, AlertCircle, Lightbulb, Film, ArrowRight, CalendarClock, CheckCircle2, Clock, Download, MapPin,
+  CheckSquare, Sparkles, Instagram, AlertCircle, Lightbulb, Film, ArrowRight, CalendarClock, CheckCircle2, Clock, MapPin,
 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -489,7 +489,7 @@ export default function InfluencerDashboard() {
         </section>
       )}
 
-      {appliedCampaigns.length > 0 && <section className="rounded-2xl border border-gray-200 bg-gray-100/70 p-5"><div className="mb-3"><h2 className="text-base font-bold text-gray-700">Campañas a las que ya postulé</h2><p className="text-xs text-gray-500">Tu postulación está en revisión. El contenido privado de la campaña permanece bloqueado.</p></div><div className="grid grid-cols-1 gap-3 md:grid-cols-2">{appliedCampaigns.map(c => <article key={c.id} className="rounded-xl border border-gray-200 bg-gray-100 p-4 opacity-75 grayscale-[0.35]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-gray-700">{c.name}</p><p className="mt-1 text-xs text-gray-500">{c.brand?.name ?? 'Marca'} · En revisión</p></div><a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-sm hover:text-violet-700"><Download className="h-3.5 w-3.5" />Descargar mi PDF</a></div></article>)}</div></section>}
+      {appliedCampaigns.length > 0 && <section className="rounded-2xl border border-gray-200 bg-gray-100/70 p-5"><div className="mb-3"><h2 className="text-base font-bold text-gray-700">Campañas a las que ya postulé</h2><p className="text-xs text-gray-500">Tu postulación está en revisión. El contenido privado de la campaña permanece bloqueado.</p></div><div className="grid grid-cols-1 gap-3 md:grid-cols-2">{appliedCampaigns.map(c => <article key={c.id} className="rounded-xl border border-gray-200 bg-gray-100 p-4 opacity-75 grayscale-[0.35]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-gray-700">{c.name}</p><p className="mt-1 text-xs text-gray-500">{c.brand?.name ?? 'Marca'} · En revisión</p></div><span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-50 px-3 py-2 text-[11px] font-semibold text-gray-400 text-right max-w-[140px]">El brief completo estará disponible cuando tu postulación sea aprobada.</span></div></article>)}</div></section>}
 
       {/* Accesos rápidos al resto del portal */}
       <div className="flex items-center justify-around bg-white rounded-2xl border border-gray-100 py-3 px-4 text-xs">

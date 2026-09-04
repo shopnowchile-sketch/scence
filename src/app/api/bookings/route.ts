@@ -120,6 +120,23 @@ export async function POST(req: NextRequest) {
   ])).filter(Boolean)
   const primaryInfluencerId: string | null = allInfluencerIds[0] ?? null
 
+  // Idempotencia: si es el booking general de una campaña (sin influencer) y ya
+  // existe uno con el mismo horario, no crear un duplicado (evita doble-submit
+  // desde el editor de fecha/hora del Admin/Marca creando 2 filas idénticas).
+  if (campaign_id && !primaryInfluencerId && starts_at && ends_at) {
+    const { data: existingBooking } = await admin
+      .from('bookings')
+      .select('*')
+      .eq('campaign_id', campaign_id)
+      .is('influencer_id', null)
+      .eq('starts_at', new Date(starts_at).toISOString())
+      .eq('ends_at', new Date(ends_at).toISOString())
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (existingBooking) return NextResponse.json(existingBooking, { status: 200 })
+  }
+
   // 1. Crear en Google Calendar
   let gcalEventId: string | null = null
   let gcalLink: string | null = null

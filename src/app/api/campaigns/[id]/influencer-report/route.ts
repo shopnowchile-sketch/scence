@@ -24,8 +24,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   let campaignQuery = admin
     .from('campaigns')
     .select(`
-      id, name, description, type, status, start_date, end_date, currency,
-      content_guidelines
+      id, name, description, type, status, start_date, end_date, currency
     `)
     .eq('id', params.id)
 
@@ -103,7 +102,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const published = delivs.filter(d => d.status === 'published').length
   const progress  = delivs.length > 0 ? Math.round((published / delivs.length) * 100) : 0
   const igProfile = (influencer.influencer_social_profiles as Array<{platform:string;username:string|null;followers:number;engagement_rate:number|null}>)?.find(s => s.platform === 'instagram')
-  const hasBrief  = !!(campaign!.description || campaign!.content_guidelines)
+  const hasBrief  = !!campaign!.description
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -168,8 +167,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     ${hasBrief ? `
     <div class="section">
       <div class="section-title">Brief de la Campaña</div>
-      ${campaign!.description ? `<div class="brief-box">${campaign!.content_guidelines ? '<div class="brief-subtitle">Descripción</div>' : ''}${campaign!.description}</div>` : ''}
-      ${campaign!.content_guidelines ? `<div class="brief-box"><div class="brief-subtitle">Lineamientos de contenido</div>${campaign!.content_guidelines}</div>` : ''}
+      ${campaign!.description ? `<div class="brief-box">${campaign!.description}</div>` : ''}
     </div>` : ''}
 
     <div class="summary-row">

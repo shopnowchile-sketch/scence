@@ -48,7 +48,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('campaigns')
     .select(`
       id, name, description, type, status, start_date, end_date,
-      currency, hashtags, platforms, content_guidelines,
+      currency, hashtags, platforms,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email)
     `)
     .eq('id', params.id)
@@ -284,13 +284,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ${brand?.contact_name ? `<div class="info-row"><span class="info-k">Contacto en marca</span><span class="info-v">${brand.contact_name}${brand.contact_email ? ` · ${brand.contact_email}` : ''}</span></div>` : ''}
       ${brand?.website ? `<div class="info-row"><span class="info-k">Sitio web</span><span class="info-v">${brand.website}</span></div>` : ''}
     </div>
-
-    <!-- Brief -->
-    ${camp.content_guidelines || (camp as {brief?:string|null}).brief ? `
-    <div class="section">
-      <div class="section-title">Brief y lineamientos</div>
-      <div style="font-size:14px;color:#374151;line-height:1.7;white-space:pre-line">${(camp as {brief?:string|null}).brief ?? camp.content_guidelines}</div>
-    </div>` : ''}
 
     <!-- Hashtags -->
     ${Array.isArray(camp.hashtags) && camp.hashtags.length > 0 ? `

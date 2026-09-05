@@ -59,7 +59,6 @@ interface CampaignReport {
   brand: { id: string; name: string; logo_url: string | null } | null
   hashtags: string[]
   platforms: string[]
-  content_guidelines: string | null
   campaign_influencers: CampaignInfluencer[]
   campaign_deliverables: Deliverable[]
   created_at: string
@@ -214,7 +213,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
   const showBudgetTotal = campaign.budget_total != null && campaign.budget_total > 0
   const showBudgetSpent = (campaign.budget_spent ?? 0) > 0
 
-  const hasBrief = !!(campaign.description || campaign.content_guidelines)
+  const hasBrief = !!campaign.description
 
   const today = new Date().toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' })
 
@@ -357,14 +356,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
               <div className="section-title">Brief de la Campaña</div>
               {campaign.description && (
                 <div className="brief-box">
-                  {campaign.content_guidelines && <div className="brief-subtitle">Descripción</div>}
                   {campaign.description}
-                </div>
-              )}
-              {campaign.content_guidelines && (
-                <div className="brief-box">
-                  <div className="brief-subtitle">Lineamientos de contenido</div>
-                  {campaign.content_guidelines}
                 </div>
               )}
             </div>

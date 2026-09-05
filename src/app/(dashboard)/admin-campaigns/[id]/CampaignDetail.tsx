@@ -2512,15 +2512,24 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           />
         )}
         <div className="space-y-4">
-            {/* Guías de contenido — movida arriba (antes al final de la columna,
-                casi invisible después de scrollear). Pri: "necesito que al abrir
-                el overview lo entienda por completo las marcas... las guías de
-                contenido" — es lo primero que una marca necesita leer para saber
-                qué se espera de la campaña. */}
+            {/* Descripción de la campaña — movida arriba (antes al final de la
+                columna, casi invisible después de scrollear). Pri: "necesito que
+                al abrir el overview lo entienda por completo las marcas" — es lo
+                primero que una marca necesita leer para saber qué se espera de
+                la campaña. */}
             {/* Edit a nivel de card (Pri, 2026-09-03): "Editar" en esta card debe
                 entrar en modo edición SOLO acá — el resto del Overview (panel de
                 marcas, card de deliverables, Notificar influencers, Summary,
                 KPIs, tabs) permanece montado tal cual. */}
+            {/* FIX (Pri, 2026-09-05): esta card leía c.content_guidelines, un
+                campo deprecado desde el backfill del 2026-09-04 (commit
+                a2bb6c4) que fusionó su contenido dentro de campaigns.description.
+                El formulario de edición (OverviewEditPanel, sección "content")
+                ya editaba form.description — pero esta card seguía pintando el
+                content_guidelines viejo/congelado, así que un guardado exitoso
+                nunca se reflejaba acá. Única fuente ahora: c.description.
+                content_guidelines NO se borra de la BD (aún la usa el brief
+                privado gateado por isAccepted, pendiente de revisión aparte). */}
             {editingOverview && overviewEditSection === 'content' ? (
               <OverviewEditPanel
                 key={c.updated_at}
@@ -2534,13 +2543,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             ) : (
               <div className="card p-5 border-2 border-violet-100 bg-violet-50/20">
                 <div className="flex items-center justify-between gap-3 mb-2">
-                  <h3 className="text-sm font-semibold text-violet-800 flex items-center gap-2"><FileText className="h-4 w-4" /> Guías de contenido</h3>
+                  <h3 className="text-sm font-semibold text-violet-800 flex items-center gap-2"><FileText className="h-4 w-4" /> Descripción de la campaña</h3>
                   {(!isBrandPortal || c._brand_permissions?.canEdit) && <button type="button" onClick={() => setOverviewEditMode(true, 'content')} className="text-xs font-semibold text-violet-700 hover:underline">Editar</button>}
                 </div>
-                {c.content_guidelines ? <>
-                  <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap line-clamp-4">{c.content_guidelines}</p>
-                  {c.content_guidelines.length > 420 && <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold text-violet-700">Ver guía completa</summary><p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{c.content_guidelines}</p></details>}
-                </> : <p className="text-sm text-gray-400">Aún no hay guías de contenido.</p>}
+                {c.description ? <>
+                  <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap line-clamp-4">{c.description}</p>
+                  {c.description.length > 420 && <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold text-violet-700">Ver descripción completa</summary><p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{c.description}</p></details>}
+                </> : <p className="text-sm text-gray-400">Aún no hay descripción de la campaña.</p>}
               </div>
             )}
 

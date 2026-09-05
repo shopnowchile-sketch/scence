@@ -50,7 +50,6 @@ type CampaignRow = {
   campaign: {
     id: string; name: string; status: string
     description: string | null
-    content_guidelines: string | null
     brief_url?: string | null
     hashtags: string[] | null; platforms: string[] | null
     start_date: string | null; end_date: string | null
@@ -65,7 +64,7 @@ type CampaignRow = {
 // Preview de campaña open aún no postulada (GET /api/influencer/campaigns/[id])
 type PreviewCampaign = {
   id: string; name: string; status: string; visibility: string
-  description: string | null; content_guidelines: string | null; brief_url?: string | null
+  description: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
   cover_url?: string | null
   event_booking?: { id: string; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; instructions?: string } | null } | null
@@ -356,9 +355,9 @@ function AddDeliverableForm({ campaignId, onAdded }: { campaignId: string; onAdd
 }
 
 // ── Brief colapsado (mobile-first, cerrado por defecto) ───────────────────────
-function CollapsibleBrief({ text, guidelines, briefUrl }: { text: string | null; guidelines?: string | null; briefUrl?: string | null }) {
+function CollapsibleBrief({ text, briefUrl }: { text: string | null; briefUrl?: string | null }) {
   const [open, setOpen] = useState(false)
-  if (!text?.trim() && !guidelines?.trim() && !briefUrl?.trim()) return null
+  if (!text?.trim() && !briefUrl?.trim()) return null
   return (
     <div className="pt-3 mt-3 border-t border-gray-50">
       {/* Más grande + en violeta (color = clickeable, mismo criterio que
@@ -371,12 +370,6 @@ function CollapsibleBrief({ text, guidelines, briefUrl }: { text: string | null;
       {open && (
         <div className="mt-3 space-y-3">
           {text?.trim() && <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{text}</p>}
-          {guidelines?.trim() && (
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-gray-500 mb-1">Lineamientos de contenido</p>
-              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{guidelines}</p>
-            </div>
-          )}
           {briefUrl?.trim() && (
             <a
               href={briefUrl}
@@ -550,10 +543,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               que ya se guarda en el form de creación ("visible antes de postular")
               y que ya se muestra truncada en la tarjeta del marketplace. Acá se
               muestra completa; no es el brief privado (eso sigue gateado por
-              isAccepted más abajo). Único concepto de "descripción" — ya no existe
-              un bloque separado de "Guía de contenido" (content_guidelines quedó
-              fusionado en description vía backfill; el brief privado gateado por
-              isAccepted sigue usando content_guidelines por separado, sin cambios). */}
+              isAccepted más abajo, y hoy solo cubre el PDF/link de brief_url —
+              content_guidelines quedó deprecado, ver fix 2026-09-05). Única
+              fuente de "descripción" para la influencer: description. */}
           {p.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{p.description}</p>}
 
   {/* Fecha/hora del evento ya se muestra antes de postular; el lugar exacto
@@ -810,7 +802,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         {/* Descripción general de la campaña — mismo campaigns.description que
             ya se muestra antes de postular (arriba, en el preview) y en la
             tarjeta del marketplace. Debe seguir visible en pending; el brief
-            privado sigue gateado por isAccepted más abajo, sin cambios. */}
+            privado (solo el PDF/link de brief_url) sigue gateado por isAccepted
+            más abajo, sin cambios en ese gate. */}
         {c.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{c.description}</p>}
 
         {/* Fecha y hora se informan desde el inicio. Lugar e instrucciones solo
@@ -823,11 +816,16 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             el brief anterior de Pickleball) y el PDF nuevo quedaba perdido abajo
             como un asset más. Cuando existe un archivo marcado como brief, éste
             reemplaza visualmente ese contenido anterior para la influencer. */}
+        {/* FIX (Pri, 2026-09-05): se dejó de pasar content_guidelines acá —
+            campo deprecado, ya fusionado en description (ver card equivalente
+            en CampaignDetail.tsx admin). description ya se muestra arriba sin
+            gate; mostrarlo también acá duplicaría el mismo texto. El gate
+            isAccepted NO cambió: solo protege briefUrl (PDF/link) como antes. */}
         {isAccepted && (() => {
           const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
           return uploadedBrief
             ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />
-            : <CollapsibleBrief text={null} guidelines={c.content_guidelines} briefUrl={c.brief_url} />
+            : <CollapsibleBrief text={null} briefUrl={c.brief_url} />
         })()}
 
         <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">

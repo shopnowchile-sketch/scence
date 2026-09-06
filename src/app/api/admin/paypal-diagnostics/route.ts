@@ -62,6 +62,26 @@ export async function GET() {
     points_to_scence_route: typeof hook.url === 'string' && hook.url.endsWith('/api/paypal/webhook'),
   }))
 
+  // ¿Contra CUÁL de los webhooks registrados valida la firma esta app? El
+  // código usa un solo PAYPAL_WEBHOOK_ID. Si ese id no es el del webhook que
+  // realmente entrega los eventos, verify-webhook-signature falla y la ruta
+  // responde 401 a TODO evento — se descartan en silencio.
+  const configuredWebhookId = process.env.PAYPAL_WEBHOOK_ID ?? process.env.PAYPAL_INFLUENCER_WEBHOOK_ID ?? null
+  const matched = webhooks.find((hook: { id?: string }) => hook.id === configuredWebhookId)
+  const webhookValidation = {
+    configured_id_esta_registrado_en_paypal: Boolean(matched),
+    url_del_webhook_configurado: matched?.url ?? null,
+    // Este es el chequeo que decide si las activaciones llegan o no.
+    valida_contra_la_ruta_correcta: matched ? matched.points_to_scence_route === true : false,
+    diagnostico: !configuredWebhookId
+      ? 'No hay PAYPAL_WEBHOOK_ID configurado: la ruta responde 503 a todo evento.'
+      : !matched
+        ? 'El PAYPAL_WEBHOOK_ID configurado no corresponde a ningún webhook registrado en PayPal: la verificación de firma falla y todo evento se descarta con 401.'
+        : matched.points_to_scence_route
+          ? 'OK: la app valida la firma contra el webhook que apunta a la ruta real.'
+          : 'El PAYPAL_WEBHOOK_ID configurado es el de un webhook que apunta a una URL que no existe en la app. Los eventos que llegan por el webhook correcto se rechazan por firma inválida.',
+  }
+
   const planRes = config.pro_plan_id ? await call(`/v1/billing/plans/${encodeURIComponent(config.pro_plan_id)}`) : null
   const plan = planRes?.ok
     ? { id: planRes.body?.id, name: planRes.body?.name, status: planRes.body?.status, product_id: planRes.body?.product_id }
@@ -93,5 +113,5 @@ export async function GET() {
     })
   }
 
-  return NextResponse.json({ config, webhooks, plan, subscriptions })
+  return NextResponse.json({ config, webhook_validation: webhookValidation, webhooks, plan, subscriptions })
 }

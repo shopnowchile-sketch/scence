@@ -1,146 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getResend, FROM_EMAIL, campaignOpenAvailableEmail } from '@/lib/resend'
-import { getPrimarySocial, type RankingInfluencerRow } from '@/lib/influencers/ranking'
+import { announceCampaignToInfluencers, resolvePendingCampaignAnnouncement } from '@/lib/campaign-notifications'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
-const BATCH_SIZE = 50
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+// El envío recorre todo el roster en lotes de 100 (resend.batch.send). Con el
+// default de Vercel se cortaba a mitad de camino y dejaba influencers sin aviso.
+export const maxDuration = 300
+
+async function requireAdmin(userId: string, userMetadata: unknown, admin: ReturnType<typeof createAdminClient>) {
+  // Autorización por organization_members (fuente canónica), nunca profiles.role.
+  const orgId = await getOrgId(userId, userMetadata as Record<string, unknown>, admin)
+  const { isAdmin } = orgId ? await getUserRole(userId, orgId, admin) : { isAdmin: false }
+  return isAdmin
+}
+
+// GET /api/campaigns/[id]/notify-influencers
+// Cuántas influencers quedan por avisar. El detalle de campaña lo usa para
+// mostrar el pendiente sin que la fundadora tenga que adivinar ni escribirle a
+// nadie (principio 3: el producto hace visible qué falta hacer).
+export async function GET(_req: NextRequest, { params }: Params) {
+  const supabase = createServerClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = createAdminClient()
+  if (!(await requireAdmin(user.id, user.user_metadata, admin))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { campaign, pending, skipped } = await resolvePendingCampaignAnnouncement(params.id, admin)
+  if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+
+  return NextResponse.json({
+    pending: pending.length,
+    requires_pro: campaign.visibility === 'private',
+    skipped: skipped ?? null,
+  })
+}
 
 // POST /api/campaigns/[id]/notify-influencers
-// Botón manual (admin) — envía email de "campaña abierta disponible" a las
-// siguientes 50 influencers elegibles con más seguidores que aún no fueron
-// notificadas para esta campaña. Cada click avanza al siguiente batch (no
-// repite), vía campaign_influencer_notifications.
+// Envío manual del aviso "nueva campaña disponible". Manda a TODAS las que aún
+// no fueron avisadas (antes iba de a 50 por click: con 2.000+ influencers eran
+// decenas de clicks). La idempotencia la sigue dando
+// campaign_influencer_notifications, así que repetir el botón no duplica correos.
 export async function POST(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  // FIX (2026-09-06): mismo caso que /api/influencers/ranking — autorizaba con
-  // profiles.role en vez de organization_members. Esta ruta dispara correo
-  // masivo a influencers, así que el criterio debe ser el mismo que el resto.
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  if (!isAdmin) {
+  if (!(await requireAdmin(user.id, user.user_metadata, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data: campaign, error: campErr } = await admin
-    .from('campaigns')
-    .select('id, name, type, visibility, organization_id')
-    .eq('id', params.id)
-    .maybeSingle()
+  const result = await announceCampaignToInfluencers(params.id, admin)
 
-  if (campErr) return NextResponse.json({ error: campErr.message }, { status: 500 })
-  if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
-  if (campaign.visibility !== 'open') {
-    return NextResponse.json({ error: 'Solo campañas públicas (visibility=open) pueden notificarse' }, { status: 422 })
+  if (result.skipped === 'not_found') return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  if (result.skipped === 'not_active') {
+    return NextResponse.json({ error: 'La campaña debe estar activa para avisar a las influencers' }, { status: 422 })
   }
-
-  // Ya asignadas/postuladas a esta campaña — no notificar de nuevo
-  const { data: existingRows } = await admin
-    .from('campaign_influencers')
-    .select('influencer_id')
-    .eq('campaign_id', params.id)
-
-  // Ya notificadas antes para esta campaña — el botón avanza al siguiente batch
-  const { data: notifiedRows } = await admin
-    .from('campaign_influencer_notifications')
-    .select('influencer_id')
-    .eq('campaign_id', params.id)
-
-  const excludeIds = new Set([
-    ...(existingRows ?? []).map(r => r.influencer_id).filter(Boolean),
-    ...(notifiedRows ?? []).map(r => r.influencer_id).filter(Boolean),
-  ])
-
-  // Sin filtro por organization_id: este endpoint ya es admin-only (chequeado
-  // arriba), y las marcas quedan con organization_id propia y aislada — filtrar
-  // por la org de la campaña dejaba fuera a casi todas las influencers del
-  // roster real. Mismo criterio que notifyAllInfluencersOfOpenCampaign.
-  const { data: candidates, error: infErr } = await admin
-    .from('influencers')
-    .select(`
-      id, user_id, display_name, email,
-      social_profiles:influencer_social_profiles ( platform, username, followers, is_primary )
-    `)
-    .eq('is_active', true)
-    .not('email', 'is', null)
-
-  if (infErr) return NextResponse.json({ error: infErr.message }, { status: 500 })
-
-  // La comunicación de campañas públicas es siempre voluntaria. Por
-  // compatibilidad, una cuenta sin preferencias guardadas conserva el valor
-  // inicial del formulario (recibir campañas públicas).
-  const userIds = (candidates ?? []).map(inf => inf.user_id).filter((id): id is string => Boolean(id))
-  const { data: profiles } = userIds.length
-    ? await admin.from('profiles').select('id, metadata').in('id', userIds)
-    : { data: [] }
-  const acceptsPublicCampaignEmails = new Map(
-    (profiles ?? []).map(profile => {
-      const metadata = profile.metadata && typeof profile.metadata === 'object'
-        ? profile.metadata as Record<string, unknown>
-        : {}
-      const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
-        ? metadata.notification_preferences as Record<string, unknown>
-        : {}
-      return [profile.id, preferences.public_campaigns_email !== false]
-    })
-  )
-
-  const eligible = (candidates ?? [])
-    .filter(inf => !excludeIds.has(inf.id))
-    .filter(inf => !inf.user_id || acceptsPublicCampaignEmails.get(inf.user_id) !== false)
-    .map(inf => ({
-      ...inf,
-      followers: Number(getPrimarySocial(inf as unknown as RankingInfluencerRow)?.followers ?? 0),
-    }))
-    .sort((a, b) => b.followers - a.followers)
-
-  const batch = eligible.slice(0, BATCH_SIZE)
-
-  if (batch.length === 0) {
-    return NextResponse.json({ sent: 0, failed: 0, remaining: 0, message: 'No quedan influencers elegibles por notificar' })
+  if (result.skipped === 'not_announceable') {
+    return NextResponse.json({ error: 'Esta campaña no es anunciable' }, { status: 422 })
   }
-
-  let sent = 0
-  let failed = 0
-
-  for (const inf of batch) {
-    try {
-      const { error: emailErr } = await getResend().emails.send({
-        from: FROM_EMAIL,
-        to: inf.email as string,
-        subject: `Nueva campaña abierta: ${campaign.name}`,
-        html: campaignOpenAvailableEmail({
-          influencerName: inf.display_name ?? 'influencer',
-          campaignName: campaign.name,
-          campaignType: campaign.type,
-          applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
-        }),
-      })
-      // Resend no lanza excepción en errores de API (key inválida, dominio no
-      // verificado) — hay que revisar `error` explícitamente.
-      if (emailErr) throw new Error(emailErr.message ?? 'Resend error')
-
-      await admin
-        .from('campaign_influencer_notifications')
-        .upsert({ campaign_id: campaign.id, influencer_id: inf.id }, { onConflict: 'campaign_id,influencer_id' })
-
-      sent += 1
-    } catch (e) {
-      console.error('[notify-influencers] error enviando a', inf.id, e)
-      failed += 1
-    }
-  }
+  if (result.skipped) return NextResponse.json({ error: 'No se pudo completar el envío' }, { status: 500 })
 
   return NextResponse.json({
-    sent,
-    failed,
-    remaining: Math.max(0, eligible.length - batch.length),
+    ...result,
+    message: result.sent === 0 ? 'No quedan influencers por avisar' : undefined,
   })
 }

@@ -1151,6 +1151,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [notifying, setNotifying] = useState(false)
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
+  // Pendientes por avisar. Se consulta al abrir la campaña activa para que el
+  // panel muestre el número real en vez de obligar a hacer click para saberlo.
+  const [notifyPending, setNotifyPending] = useState<{ pending: number; requires_pro: boolean } | null>(null)
   const [addingDeliverable, setAddingDeliverable] = useState(false)
   const [deliverableStatusFilter, setDeliverableStatusFilter] = useState<DeliverableStatus | null>(null)
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
@@ -1203,6 +1206,24 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [bulkRejectingPending, setBulkRejectingPending] = useState(false)
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
+
+  // Pendientes por avisar de una campaña ya activa. Debe ir después de
+  // useCampaignDetail (usa res) y antes de cualquier return condicional, para
+  // no romper el orden de hooks.
+  const campaignStatus = res?.data?.status as string | undefined
+  useEffect(() => {
+    if (isBrandPortal || campaignStatus !== 'active') { setNotifyPending(null); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const r = await fetch(`/api/campaigns/${id}/notify-influencers`)
+        if (!r.ok) return
+        const json = await r.json() as { pending?: number; requires_pro?: boolean }
+        if (!cancelled) setNotifyPending({ pending: json.pending ?? 0, requires_pro: !!json.requires_pro })
+      } catch { /* el panel cae al texto genérico */ }
+    })()
+    return () => { cancelled = true }
+  }, [id, campaignStatus, isBrandPortal])
   const patchCampaign = usePatchCampaign(id, apiBase)
   const removeInfluencer = useRemoveCampaignInfluencer(id)
 
@@ -2599,17 +2620,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               </div>
             )}
 
-            {!isBrandPortal && (c as {visibility?: string}).visibility === 'open' && (
+            {!isBrandPortal && c.status === 'active' && (
               <div className="card p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-700">Notificar influencers</h3>
+                    <h3 className="text-sm font-semibold text-gray-700">Avisar a influencers</h3>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      Envío manual a las siguientes 50 influencers con más seguidores que aún no fueron notificadas y tienen activado recibir campañas públicas por email.
+                      {notifyPending
+                        ? notifyPending.pending > 0
+                          ? `Faltan ${notifyPending.pending} influencers por avisar${notifyPending.requires_pro ? ' — el correo las lleva a postular con Plan Pro' : ''}.`
+                          : 'Todas las influencers elegibles ya fueron avisadas.'
+                        : 'Envía el aviso de campaña disponible a todas las influencers que aún no lo recibieron y tienen activado recibir campañas por email.'}
                     </p>
                   </div>
                   <button
-                    disabled={notifying}
+                    disabled={notifying || notifyPending?.pending === 0}
                     onClick={async () => {
                       setNotifying(true)
                       setNotifyResult(null)
@@ -2618,8 +2643,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         const json = await r.json()
                         if (!r.ok) throw new Error(json.error ?? 'Error al notificar')
                         setNotifyResult(json)
+                        setNotifyPending({ pending: json.remaining ?? 0, requires_pro: notifyPending?.requires_pro ?? false })
                         if (json.sent > 0) toast.success(`Email enviado a ${json.sent} influencer(s)`)
-                        else toast.success(json.message ?? 'No quedan influencers elegibles')
+                        else toast.success(json.message ?? 'No quedan influencers por avisar')
                       } catch (e) {
                         toast.error(e instanceof Error ? e.message : 'Error al notificar')
                       }
@@ -2628,14 +2654,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     className="flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-full bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 whitespace-nowrap"
                   >
                     {notifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                    Notificar siguiente batch
+                    {notifying
+                      ? 'Enviando…'
+                      : notifyPending && notifyPending.pending > 0
+                        ? `Avisar a ${notifyPending.pending}`
+                        : 'Avisar a todas'}
                   </button>
                 </div>
                 {notifyResult && (
                   <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
                     Enviados: <strong className="text-gray-700">{notifyResult.sent}</strong>
                     {notifyResult.failed > 0 && <> · Fallidos: <strong className="text-red-500">{notifyResult.failed}</strong></>}
-                    {' · '}Quedan por notificar: <strong className="text-gray-700">{notifyResult.remaining}</strong>
+                    {' · '}Quedan por avisar: <strong className="text-gray-700">{notifyResult.remaining}</strong>
                   </p>
                 )}
               </div>

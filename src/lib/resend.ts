@@ -350,12 +350,21 @@ export function campaignOpenAvailableEmail({
   campaignName,
   campaignType,
   applyUrl,
+  // `requiresPro` = la campaña es privada (visibility='private'), que segun el
+  // invariante 16.3 NO significa oculta sino "requiere Plan Pro para postular".
+  // Es visible para todas, asi que se anuncia a todas; solo cambia el copy y el
+  // CTA, que lleva al mismo flujo de upgrade que ya existe.
+  requiresPro = false,
+  spotsNote,
 }: {
   influencerName: string
   campaignName: string
   campaignType?: string | null
   applyUrl: string
+  requiresPro?: boolean
+  spotsNote?: string | null
 }): string {
+  const cupos = spotsNote ?? 'Los cupos son limitados y se asignan por orden de postulación.'
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Nueva campaña disponible</title></head>
@@ -366,13 +375,20 @@ export function campaignOpenAvailableEmail({
     </div>
     <div style="padding:32px">
       <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${influencerName} 👋</h1>
-      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
-        Hay una nueva campaña abierta para postular:
+      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 16px">
+        Hay una nueva campaña disponible:
         <strong style="color:#7c3aed">${campaignName}</strong>${campaignType ? ` (${campaignType.replace(/_/g, ' ')})` : ''}.
-        Te la mandamos porque estás entre las influencers con más alcance del roster.
       </p>
+      <div style="background:#fef3c7;border-radius:10px;padding:12px 16px;margin:0 0 24px">
+        <p style="color:#92400e;font-size:14px;font-weight:600;line-height:1.5;margin:0">
+          ⏳ Cupos limitados — ${cupos}
+        </p>
+      </div>
+      ${requiresPro ? `<p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 20px">
+        Esta es una campaña <strong>exclusiva para Plan Pro</strong>. Puedes verla completa y activar tu plan desde el mismo botón.
+      </p>` : ''}
       <a href="${applyUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px;margin-bottom:24px">
-        Ver campaña y postular →
+        ${requiresPro ? 'Ver campaña y postular con Pro →' : 'Ver campaña y postular →'}
       </a>
       <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:0">
         Postular no es un compromiso — el equipo revisa y confirma antes de asignarte a la campaña.

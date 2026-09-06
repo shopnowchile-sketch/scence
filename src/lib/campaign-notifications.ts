@@ -32,119 +32,161 @@ export async function notifyEligibleBrandsOfSponsorOpportunity(campaignId: strin
 }
 
 /**
- * notifyAllInfluencersOfOpenCampaign — al activar una campaña pública
- * (visibility='open'), avisa por email a TODAS las influencers elegibles
- * del sistema (no solo top-50 por seguidores, y sin filtrar por
- * organization_id — las marcas quedan con organization_id propia y aislada,
- * ver fix 2026-07-02 en /api/campaigns, así que filtrar por org dejaría a
- * casi todas las influencers sin avisar).
+ * resolvePendingCampaignAnnouncement — FUENTE ÚNICA de "a quién le falta el
+ * aviso de esta campaña". La usan los tres puntos de entrada (envío automático
+ * al activar, botón manual y el contador que muestra el detalle), para que
+ * ninguno pueda quedar con un criterio distinto al de los otros.
  *
- * Reutiliza el mismo template (campaignOpenAvailableEmail) y la misma tabla
- * de idempotencia (campaign_influencer_notifications) que el botón manual
- * en /api/campaigns/[id]/notify-influencers — por eso si alguien ya fue
- * notificada (por el botón manual o por un envío automático previo), no se
- * le vuelve a escribir.
- *
- * No lanza excepción: un fallo de email nunca debe bloquear la activación
- * de la campaña.
+ * FIX (2026-09-06, causa raíz de "la activé y no llegó ningún correo"): el
+ * criterio era `visibility === 'open'`, así que una campaña PRIVADA activa no
+ * avisaba a nadie — ni por activación ni por el botón, que respondía 422. Pero
+ * `private` no significa oculta (invariante 16.3): significa "requiere Plan Pro
+ * para postular" y es visible para TODAS en el marketplace. Anunciarla es
+ * consistente con esa regla y es la conversión natural a Plan Pro. La campaña
+ * debe estar ACTIVA: una en borrador no se anuncia.
  */
-export async function notifyAllInfluencersOfOpenCampaign(
+export async function resolvePendingCampaignAnnouncement(
   campaignId: string,
   admin: ReturnType<typeof createAdminClient>
-): Promise<{ sent: number; failed: number; skipped?: string }> {
+) {
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .select('id, name, type, visibility, status')
+    .eq('id', campaignId)
+    .maybeSingle()
+
+  if (!campaign) return { campaign: null, pending: [], skipped: 'not_found' as const }
+  if (campaign.status !== 'active') return { campaign, pending: [], skipped: 'not_active' as const }
+  if (campaign.visibility !== 'open' && campaign.visibility !== 'private') {
+    return { campaign, pending: [], skipped: 'not_announceable' as const }
+  }
+
+  // Ya asignadas/postuladas, o ya notificadas antes: la tabla de idempotencia
+  // es lo que impide que reactivar una campaña reenvíe el correo.
+  const [{ data: existingRows }, { data: notifiedRows }] = await Promise.all([
+    admin.from('campaign_influencers').select('influencer_id').eq('campaign_id', campaignId),
+    admin.from('campaign_influencer_notifications').select('influencer_id').eq('campaign_id', campaignId),
+  ])
+
+  const excludeIds = new Set([
+    ...(existingRows ?? []).map(r => r.influencer_id).filter(Boolean),
+    ...(notifiedRows ?? []).map(r => r.influencer_id).filter(Boolean),
+  ])
+
+  // Sin filtro por organization_id: las marcas quedan con organization_id propia
+  // y aislada (fix 2026-07-02), así que filtrar por la org de la campaña dejaría
+  // fuera a casi todo el roster.
+  const { data: candidates, error: infErr } = await admin
+    .from('influencers')
+    .select('id, user_id, display_name, email')
+    .eq('is_active', true)
+    .not('email', 'is', null)
+
+  if (infErr || !candidates) {
+    console.error('[resolvePendingCampaignAnnouncement] error listando influencers', infErr)
+    return { campaign, pending: [], skipped: 'query_error' as const }
+  }
+
+  // La comunicación de campañas es siempre voluntaria. Una cuenta sin
+  // preferencias guardadas conserva el valor inicial del formulario (recibir).
+  const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
+  const optedOut = new Set<string>()
+  for (let i = 0; i < userIds.length; i += 500) {
+    const { data: profiles } = await admin.from('profiles').select('id, metadata').in('id', userIds.slice(i, i + 500))
+    for (const profile of profiles ?? []) {
+      const metadata = profile.metadata && typeof profile.metadata === 'object'
+        ? profile.metadata as Record<string, unknown>
+        : {}
+      const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
+        ? metadata.notification_preferences as Record<string, unknown>
+        : {}
+      if (preferences.public_campaigns_email === false) optedOut.add(profile.id)
+    }
+  }
+
+  const pending = candidates
+    .filter(inf => !excludeIds.has(inf.id))
+    .filter(inf => !inf.user_id || !optedOut.has(inf.user_id))
+
+  return { campaign, pending, skipped: undefined }
+}
+
+/**
+ * announceCampaignToInfluencers — envía el aviso de campaña disponible a todas
+ * las influencers pendientes (o a las primeras `limit`, para el botón manual).
+ *
+ * Reutiliza el template campaignOpenAvailableEmail y la tabla de idempotencia
+ * campaign_influencer_notifications, que es lo que garantiza que reactivar una
+ * campaña no reenvíe correos.
+ *
+ * No lanza excepción: un fallo de email nunca debe bloquear la activación.
+ */
+export async function announceCampaignToInfluencers(
+  campaignId: string,
+  admin: ReturnType<typeof createAdminClient>,
+  options: { limit?: number } = {}
+): Promise<{ sent: number; failed: number; remaining: number; skipped?: string }> {
   try {
-    const { data: campaign } = await admin
-      .from('campaigns')
-      .select('id, name, type, visibility')
-      .eq('id', campaignId)
-      .maybeSingle()
+    const { campaign, pending, skipped } = await resolvePendingCampaignAnnouncement(campaignId, admin)
+    if (!campaign || skipped) return { sent: 0, failed: 0, remaining: 0, skipped }
+    if (pending.length === 0) return { sent: 0, failed: 0, remaining: 0 }
 
-    if (!campaign || campaign.visibility !== 'open') {
-      return { sent: 0, failed: 0, skipped: 'not_open' }
-    }
-
-    const [{ data: existingRows }, { data: notifiedRows }] = await Promise.all([
-      admin.from('campaign_influencers').select('influencer_id').eq('campaign_id', campaignId),
-      admin.from('campaign_influencer_notifications').select('influencer_id').eq('campaign_id', campaignId),
-    ])
-
-    const excludeIds = new Set([
-      ...(existingRows ?? []).map(r => r.influencer_id).filter(Boolean),
-      ...(notifiedRows ?? []).map(r => r.influencer_id).filter(Boolean),
-    ])
-
-    const { data: candidates, error: infErr } = await admin
-      .from('influencers')
-      .select('id, user_id, display_name, email')
-      .eq('is_active', true)
-      .not('email', 'is', null)
-
-    if (infErr || !candidates) {
-      console.error('[notifyAllInfluencersOfOpenCampaign] error listando influencers', infErr)
-      return { sent: 0, failed: 0, skipped: 'query_error' }
-    }
-
-    const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
-    const { data: profiles } = userIds.length
-      ? await admin.from('profiles').select('id, metadata').in('id', userIds)
-      : { data: [] }
-    const acceptsPublicCampaignEmails = new Map(
-      (profiles ?? []).map(profile => {
-        const metadata = profile.metadata && typeof profile.metadata === 'object'
-          ? profile.metadata as Record<string, unknown>
-          : {}
-        const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
-          ? metadata.notification_preferences as Record<string, unknown>
-          : {}
-        return [profile.id, preferences.public_campaigns_email !== false]
-      })
-    )
-
-    const eligible = candidates
-      .filter(inf => !excludeIds.has(inf.id))
-      .filter(inf => !inf.user_id || acceptsPublicCampaignEmails.get(inf.user_id) !== false)
-    if (eligible.length === 0) return { sent: 0, failed: 0 }
+    const targets = typeof options.limit === 'number' ? pending.slice(0, options.limit) : pending
+    const requiresPro = campaign.visibility === 'private'
 
     let sent = 0
     let failed = 0
 
-    for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
-      const chunk = eligible.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+      const chunk = targets.slice(i, i + BATCH_SIZE)
       try {
         const { error: batchErr } = await getResend().batch.send(
           chunk.map(inf => ({
             from: FROM_EMAIL,
             to: inf.email as string,
-            subject: `Nueva campaña abierta: ${campaign.name}`,
+            subject: `Nueva campaña disponible: ${campaign.name} — cupos limitados`,
             html: campaignOpenAvailableEmail({
               influencerName: inf.display_name ?? 'influencer',
               campaignName: campaign.name,
               campaignType: campaign.type,
               applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
+              requiresPro,
             }),
           }))
         )
         if (batchErr) throw new Error(batchErr.message ?? 'Resend batch error')
 
-        await admin
+        // Solo se marca como notificada la influencer a la que el envío salió
+        // bien: si un chunk falla, queda pendiente para el siguiente intento.
+        const { error: markErr } = await admin
           .from('campaign_influencer_notifications')
           .upsert(
             chunk.map(inf => ({ campaign_id: campaignId, influencer_id: inf.id })),
             { onConflict: 'campaign_id,influencer_id' }
           )
+        if (markErr) console.error('[announceCampaignToInfluencers] error marcando notificadas', markErr)
         sent += chunk.length
       } catch (e) {
-        console.error('[notifyAllInfluencersOfOpenCampaign] error en batch', e)
+        console.error('[announceCampaignToInfluencers] error en batch', e)
         failed += chunk.length
       }
     }
 
-    return { sent, failed }
+    return { sent, failed, remaining: Math.max(0, pending.length - sent) }
   } catch (e) {
-    console.error('[notifyAllInfluencersOfOpenCampaign] fallo no bloqueante', e)
-    return { sent: 0, failed: 0, skipped: 'exception' }
+    console.error('[announceCampaignToInfluencers] fallo no bloqueante', e)
+    return { sent: 0, failed: 0, remaining: 0, skipped: 'exception' }
   }
 }
+
+/**
+ * Alias histórico: se mantiene el nombre que ya importa
+ * PATCH /api/campaigns/[id] para no tocar ese call site.
+ */
+export const notifyAllInfluencersOfOpenCampaign = (
+  campaignId: string,
+  admin: ReturnType<typeof createAdminClient>
+) => announceCampaignToInfluencers(campaignId, admin)
 
 /**
  * notifyPreassignedInfluencersOnActivation — al activar una campaña (pública o

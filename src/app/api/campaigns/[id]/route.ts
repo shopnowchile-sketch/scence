@@ -10,6 +10,10 @@ import {
 
 type Params = { params: { id: string } }
 
+// La activación anuncia la campaña a todo el roster en lotes. Con el default de
+// Vercel el PATCH se cortaba antes de terminar de enviar (fix 2026-09-06).
+export const maxDuration = 300
+
 async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient>, userId: string, campaignId: string) {
   // La relación de marca vive en brands/brand_members, no en user_metadata.
   // Esto protege miembros antiguos cuyo JWT no tenga is_brand actualizado.

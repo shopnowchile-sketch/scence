@@ -19,13 +19,13 @@ const DEFAULTS: NotificationPreferences = {
 const OPTIONS: { key: keyof NotificationPreferences; label: string; help: string }[] = [
   {
     key: 'public_campaigns_email',
-    label: 'Campañas públicas',
-    help: 'Recibir un email cuando se publique una nueva campaña abierta a todos.',
+    label: 'Campañas abiertas',
+    help: 'Avisarme cuando se publique una campaña abierta a la que puede postular cualquier influencer.',
   },
   {
     key: 'private_campaigns_email',
-    label: 'Campañas privadas',
-    help: 'Recibir un email cuando te inviten o asignen a una campaña privada.',
+    label: 'Campañas Plan Pro',
+    help: 'Avisarme cuando se publique una campaña exclusiva para Plan Pro, y cuando me inviten o asignen a una campaña privada.',
   },
   {
     key: 'deadline_alerts',
@@ -36,9 +36,13 @@ const OPTIONS: { key: keyof NotificationPreferences; label: string; help: string
 
 // Componente compartido entre admin-settings, brand-settings e inf-profile.
 // Guarda las preferencias dentro de profiles.metadata (sin tabla nueva) vía
-// el endpoint ya existente /api/settings/profile. Por ahora solo persiste la
-// preferencia — el envío real de emails/alertas se conecta en una fase
-// posterior.
+// el endpoint ya existente /api/settings/profile.
+//
+// Los dos toggles de campañas ya están conectados al envío real
+// (resolvePendingCampaignAnnouncement en @/lib/campaign-notifications):
+// 'open' respeta public_campaigns_email y 'private' respeta
+// private_campaigns_email. Apagar los dos = no recibir avisos de campañas.
+// deadline_alerts todavía solo persiste la preferencia.
 export default function NotificationPreferencesForm() {
   const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULTS)
   const [loading, setLoading] = useState(true)
@@ -89,7 +93,9 @@ export default function NotificationPreferencesForm() {
       <h2 className="text-base font-semibold text-gray-900 mb-1 flex items-center gap-2">
         <Bell className="h-4 w-4 text-violet-500" /> Notificaciones por email
       </h2>
-      <p className="text-xs text-gray-400 mb-4">Elige qué avisos quieres recibir por correo.</p>
+      <p className="text-xs text-gray-400 mb-4">
+        Elige qué avisos quieres recibir por correo. Si apagas los dos tipos de campaña, no te llegará ningún aviso de campañas nuevas.
+      </p>
 
       <div className="divide-y divide-gray-100">
         {OPTIONS.map(({ key, label, help }) => (

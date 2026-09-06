@@ -87,8 +87,19 @@ export async function resolvePendingCampaignAnnouncement(
     return { campaign, pending: [], skipped: 'query_error' as const }
   }
 
-  // La comunicación de campañas es siempre voluntaria. Una cuenta sin
+  // La comunicación de campañas es siempre voluntaria y la decide cada
+  // influencer en su perfil → Notificaciones. Los dos toggles ya existían y ya
+  // se guardaban en profiles.metadata.notification_preferences; lo que faltaba
+  // era que el ENVÍO los respetara por separado:
+  //   visibility 'open'    → public_campaigns_email
+  //   visibility 'private' → private_campaigns_email  (campañas Plan Pro)
+  // Antes ambos casos miraban public_campaigns_email, así que apagar
+  // "Campañas privadas" no tenía ningún efecto real. Una cuenta sin
   // preferencias guardadas conserva el valor inicial del formulario (recibir).
+  const preferenceKey = campaign.visibility === 'private'
+    ? 'private_campaigns_email'
+    : 'public_campaigns_email'
+
   const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
   const optedOut = new Set<string>()
   for (let i = 0; i < userIds.length; i += 500) {
@@ -100,7 +111,7 @@ export async function resolvePendingCampaignAnnouncement(
       const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
         ? metadata.notification_preferences as Record<string, unknown>
         : {}
-      if (preferences.public_campaigns_email === false) optedOut.add(profile.id)
+      if (preferences[preferenceKey] === false) optedOut.add(profile.id)
     }
   }
 

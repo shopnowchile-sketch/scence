@@ -15,7 +15,13 @@ async function token() {
 function reference(value?: string) { const [organizationId, planId, tier] = (value ?? '').split(':'); return organizationId && planId && tier ? { organizationId, planId, tier } : null }
 export async function POST(request: NextRequest) {
   const event = await request.json().catch(() => null)
-  const accessToken = await token(), webhookId = process.env.PAYPAL_WEBHOOK_ID
+  // FIX (2026-09-06): esta línea leía solo PAYPAL_WEBHOOK_ID, pero la variable
+  // que existe en el entorno se llama PAYPAL_INFLUENCER_WEBHOOK_ID. Con el
+  // nombre desalineado la ruta devolvía 503 en TODO evento y ninguna
+  // suscripción llegaba a activarse. Se aceptan los dos nombres para no
+  // depender de cuál esté cargada.
+  const accessToken = await token()
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID ?? process.env.PAYPAL_INFLUENCER_WEBHOOK_ID
   if (!event) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   if (!accessToken || !webhookId) return NextResponse.json({ error: 'PayPal webhook is not configured' }, { status: 503 })
   const verification = await fetch(`${baseUrl()}/v1/notifications/verify-webhook-signature`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ auth_algo: request.headers.get('paypal-auth-algo'), cert_url: request.headers.get('paypal-cert-url'), transmission_id: request.headers.get('paypal-transmission-id'), transmission_sig: request.headers.get('paypal-transmission-sig'), transmission_time: request.headers.get('paypal-transmission-time'), webhook_id: webhookId, webhook_event: event }) })

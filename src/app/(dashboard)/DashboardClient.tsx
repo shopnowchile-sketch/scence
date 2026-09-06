@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
+  AlertTriangle,
   ArrowUpRight,
   BarChart3,
   Building2,
@@ -11,6 +12,7 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
+  Star,
   UserCheck,
   Users,
 } from 'lucide-react'
@@ -513,6 +515,8 @@ export function DashboardClient() {
     }
   }, [])
 
+  const [showProAttempts, setShowProAttempts] = useState(false)
+
   const computed = useMemo(() => {
     const activeCampaigns = state.campaigns.filter(isActiveCampaign)
     const campaignCount =
@@ -523,6 +527,21 @@ export function DashboardClient() {
 
     const brandsTotal =
       deepNumber(state.dashboard, ['total_brands', 'totalBrands', 'brandsTotal', 'registeredBrands'], 0)
+
+    // Plan Pro: viene tal cual de /api/dashboard (bloque pro_plan). No se
+    // recalcula acá para que el dashboard no pueda contradecir a la API.
+    const proPlanRaw = (state.dashboard as Record<string, unknown> | null)?.pro_plan as {
+      active?: number
+      roster?: number
+      attempts?: number
+      attempt_list?: { influencer_id: string; name: string; email: string | null; status: string; created_at: string }[]
+    } | undefined
+    const proPlan = {
+      active: proPlanRaw?.active ?? 0,
+      roster: proPlanRaw?.roster ?? influencersTotal,
+      attempts: proPlanRaw?.attempts ?? 0,
+      attemptList: proPlanRaw?.attempt_list ?? [],
+    }
 
     // FIX (2026-07-02): estas 3 métricas siempre daban $0/0% — buscaban keys
     // ('revenue', 'facturado', 'payroll', 'inboundCosts', etc.) que no existen
@@ -600,6 +619,7 @@ export function DashboardClient() {
     }))
 
     return {
+      proPlan,
       campaignCount,
       influencersTotal,
       brandsTotal,
@@ -683,6 +703,73 @@ export function DashboardClient() {
             <KpiCard icon={<CalendarDays className="h-5 w-5" />} value={String(computed.pendingCampaignsCount)} title="Campañas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-campaigns?status=pending_approval" />
             <KpiCard icon={<UserCheck className="h-5 w-5" />} value={String(computed.pendingDeliverablesCount)} title="Contenido por revisar" subtitle="entregables enviados" tone="purple" href="/admin-campaigns" />
           </div>
+        </section>
+
+        {/* Plan Pro: conversión del roster. Los INTENTOS son suscripciones que se
+            crearon en PayPal y nunca se activaron — sin este número no había
+            forma de ver que alguien quiso pagar y no pudo. */}
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Plan Pro</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <KpiCard
+              icon={<Star className="h-5 w-5" />}
+              value={String(computed.proPlan.active)}
+              title="Influencers Pro"
+              subtitle={computed.proPlan.roster > 0 ? `${Math.round((computed.proPlan.active / computed.proPlan.roster) * 100)}% del roster` : 'suscripción activa'}
+              tone="green"
+              href="/admin-influencers?plan=pro"
+            />
+            <button
+              type="button"
+              onClick={() => setShowProAttempts(v => !v)}
+              className="text-left"
+            >
+              <KpiCard
+                icon={<AlertTriangle className="h-5 w-5" />}
+                value={String(computed.proPlan.attempts)}
+                title="Intentaron suscribirse"
+                subtitle={computed.proPlan.attempts > 0 ? 'no completaron el pago — ver quiénes' : 'sin intentos pendientes'}
+                tone={computed.proPlan.attempts > 0 ? 'yellow' : 'gray'}
+              />
+            </button>
+            <KpiCard
+              icon={<Users className="h-5 w-5" />}
+              value={String(computed.proPlan.roster)}
+              title="Roster total"
+              subtitle="influencers registradas"
+              tone="blue"
+              href="/admin-influencers"
+            />
+          </div>
+
+          {showProAttempts && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4">
+              <h3 className="mb-3 text-sm font-bold text-gray-900">Suscripciones iniciadas y no completadas</h3>
+              {computed.proPlan.attemptList.length === 0 ? (
+                <p className="text-sm text-gray-500">No hay intentos pendientes.</p>
+              ) : (
+                <div className="divide-y divide-amber-100">
+                  {computed.proPlan.attemptList.map(attempt => (
+                    <Link
+                      key={`${attempt.influencer_id}-${attempt.created_at}`}
+                      href={`/admin-influencers/${attempt.influencer_id}`}
+                      className="flex items-center justify-between gap-4 py-2.5 hover:bg-amber-50 -mx-2 px-2 rounded-lg transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{attempt.name}</p>
+                        {attempt.email && <p className="truncate text-xs text-gray-500">{attempt.email}</p>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3 text-xs text-gray-500">
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">{attempt.status}</span>
+                        <span>{new Date(attempt.created_at).toLocaleDateString('es-CL')}</span>
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">

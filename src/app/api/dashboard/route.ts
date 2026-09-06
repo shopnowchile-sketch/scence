@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
+import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
 // ── GET /api/dashboard — aggregated KPIs ──────────────────────────────────────
@@ -21,6 +22,7 @@ export async function GET() {
     return NextResponse.json({
       kpis: { active_campaigns: 0, total_influencers: 0, revenue_month: 0, payroll_month: 0, margin: 0, margin_pct: 0 },
       influencer_portal: { entered: 0, pending: 0 },
+      pro_plan: { active: 0, roster: 0, attempts: 0, attempt_list: [] },
       live_influencers: [],
       pending_deliverables: [],
       pending_applications_count: 0,
@@ -222,6 +224,56 @@ export async function GET() {
       )
   }
 
+  // ── Plan Pro: convertidas, intentos y roster ───────────────────────────────
+  // Toda la información sale de tablas que ya existen: `subscriptions` (una
+  // fila por suscripción PayPal, con el influencer en metadata.influencer_id) e
+  // `influencers.metadata.manual_pro`. Sin tabla ni columna nueva.
+  //
+  // Un INTENTO es una suscripción que se creó en PayPal y nunca llegó a
+  // activarse ('incomplete' = APPROVAL_PENDING). Es el dato que faltaba: sin
+  // él no hay forma de ver que alguien quiso pagar y no pudo.
+  const { data: proSubscriptions } = await db
+    .from('subscriptions')
+    .select('id, status, paypal_subscription_id, created_at, updated_at, metadata')
+    .order('created_at', { ascending: false })
+
+  const influencerSubscriptions = (proSubscriptions ?? []).filter(row => {
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
+    return metadata.account_type === 'influencer' && typeof metadata.influencer_id === 'string'
+  })
+
+  const attemptRows = influencerSubscriptions.filter(row => row.status !== 'active' && row.status !== 'trialing' && row.status !== 'canceled')
+  const attemptInfluencerIds = Array.from(new Set(attemptRows.map(row => (row.metadata as Record<string, unknown>).influencer_id as string)))
+
+  const { data: attemptInfluencers } = attemptInfluencerIds.length
+    ? await db.from('influencers').select('id, display_name, email').in('id', attemptInfluencerIds)
+    : { data: [] }
+  const attemptInfluencerById = new Map((attemptInfluencers ?? []).map(inf => [inf.id, inf]))
+
+  // Pro reales: misma fuente que usa el resto del sistema (pagadas + manuales),
+  // nunca un conteo propio que pueda contradecir a getInfluencerProStatuses.
+  const { data: allInfluencerIds } = await db.from('influencers').select('id')
+  const proStatuses = await getInfluencerProStatuses(db, (allInfluencerIds ?? []).map(row => row.id))
+  const proActiveCount = Array.from(proStatuses.values()).filter(status => status !== 'free').length
+
+  const proPlan = {
+    active: proActiveCount,
+    roster: totalInfluencers,
+    attempts: attemptRows.length,
+    attempt_list: attemptRows.map(row => {
+      const influencerId = (row.metadata as Record<string, unknown>).influencer_id as string
+      const influencer = attemptInfluencerById.get(influencerId)
+      return {
+        influencer_id: influencerId,
+        name: influencer?.display_name ?? 'Influencer sin nombre',
+        email: influencer?.email ?? null,
+        status: row.status,
+        paypal_subscription_id: row.paypal_subscription_id,
+        created_at: row.created_at,
+      }
+    }),
+  }
+
   // Conteo real de conectados (antes de recortar la lista de preview).
   const liveInfluencersCount = liveInfluencers.length
   const liveInfluencersPreview = liveInfluencers.slice(0, 10)
@@ -251,6 +303,7 @@ export async function GET() {
       pending_brands_count: pendingBrandsRes.count ?? 0,
       pending_campaigns: pendingCampaignsRes.data ?? [],
       pending_brands: pendingBrandsRes.data ?? [],
+    pro_plan:             proPlan,
     recent_activity:      recentActivityRes.data ?? [],
     revenue_chart:        revenueChart,
   })

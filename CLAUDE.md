@@ -357,6 +357,16 @@ Al agregar o tocar un campo en `POST /api/campaigns` o `POST /api/brand/campaign
 
 La dirección de campaña vive en `metadata.address` y el lugar real del evento en `bookings`.
 
+### 16.8 Aviso de campaña disponible
+
+Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `open` **o** `private`. `private` no es "oculta" (ver 16.3), así que también se anuncia; solo cambia el copy y el CTA, que lleva al flujo Pro → PayPal ya existente.
+
+- La fuente única de "a quién le falta el aviso" es `resolvePendingCampaignAnnouncement()`. Los tres puntos de entrada (activación, botón manual y contador del detalle) deben usarla: no duplicar el criterio.
+- La idempotencia la da `campaign_influencer_notifications`. Reactivar una campaña no reenvía correos.
+- Se respeta el opt-out `profiles.metadata.notification_preferences.public_campaigns_email`.
+- El envío recorre ~2.400 influencers en lotes de 100 (`resend.batch.send`): toda ruta que lo dispare necesita `maxDuration = 300`, o Vercel corta el envío a medias.
+- Resend no lanza excepción ante errores de API: hay que revisar `error` en cada envío.
+
 ### 16.7 Verificación mínima antes de commit
 
 `npx tsc --noEmit` y `npx next lint`. `next build` no completa en el sandbox de Cowork (sin salida a `fonts.googleapis.com`); el build real lo confirma Vercel al desplegar.

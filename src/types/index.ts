@@ -290,7 +290,6 @@ export interface Campaign {
   goals: Record<string, number>
   hashtags: string[]
   platforms: SocialPlatform[]
-  content_guidelines: string | null
   approval_required: boolean
   tags: string[]
   influencer_count?: number

@@ -114,7 +114,13 @@ function mapToCampaign(ai: AIGeneratedCampaign, orgId: string | null, userId: st
 
   return {
     name:               ai.campaign_name,
-    description:        ai.description,
+    // FIX (limpieza legacy 2026-09-06): content_guidelines quedó deprecado y
+    // se eliminó (ver auditoría). El brief detallado que generaba la IA
+    // (ai.brief, 3-5 párrafos con qué debe incluir el contenido, tono, CTA)
+    // ya no tiene dónde vivir por separado — se fusiona en description junto
+    // al resumen ejecutivo, para que sea visible en el mismo lugar donde
+    // admin/marca/influencer ya leen la descripción de la campaña.
+    description:        ai.brief ? `${ai.description}\n\n${ai.brief}` : ai.description,
     type:               ai.campaign_type,
     status:             'draft',
     start_date:         startDate.toISOString().split('T')[0],
@@ -134,7 +140,6 @@ function mapToCampaign(ai: AIGeneratedCampaign, orgId: string | null, userId: st
     },
     hashtags:           ai.hashtags,
     platforms:          [],            // user fills in edit view
-    content_guidelines: ai.brief,      // brief → content guidelines
     approval_required:  true,
     tags:               ai.recommended_niches.slice(0, 5),
     brief_url:          null,

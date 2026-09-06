@@ -77,7 +77,6 @@ const schema = z.object({
   }).optional(),
   hashtags: z.array(z.string()).optional(),
   social_tags: z.array(z.string()).optional(),
-  content_guidelines: z.string().max(2000).optional(),
   approval_required: z.boolean(),
   approval_submission_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
   reference_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
@@ -989,7 +988,7 @@ export function CampaignForm({
   const STEP_BY_FIELD: Record<string, number> = {
     name: 1, type: 1, platforms: 1, visibility: 1,
     start_date: 1, end_date: 1, event_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 1, goals: 2,
-    hashtags: 3, social_tags: 3, content_guidelines: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
+    hashtags: 3, social_tags: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
     application_questions: 1, application_deadline: 2, max_influencers: 2, campaign_benefits: 1,
   }
 

@@ -134,9 +134,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'budget_total',
     'commission_rate',
     'currency',
-    'content_guidelines',
-    'mention_handles',
     'hashtags',
+    'social_tags',
     'deliverable_templates',
     'approval_required',
     'visibility',
@@ -150,8 +149,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
   }
-
-  if ('social_tags' in body) updates.mention_handles = body.social_tags
 
   if ('deliverable_templates' in updates) {
     try {

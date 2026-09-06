@@ -980,7 +980,6 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
     approval_required: campaign.approval_required ?? true,
     brand_id: campaign.brand_id ?? '',
     address: campaign.address ?? '',
-    content_guidelines: campaign.content_guidelines ?? '',
     platforms: [...(campaign.platforms ?? [])] as string[],
     hashtags: (campaign.hashtags ?? []).join(', '),
     social_tags: (campaign.social_tags ?? []).join(', '),
@@ -1013,7 +1012,6 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
       approval_required: form.approval_required,
       ...(!isBrandPortal ? { brand_id: form.brand_id || null } : {}),
       address: form.address.trim() || null,
-      content_guidelines: form.content_guidelines.trim() || null,
       platforms: form.platforms,
       hashtags: form.hashtags.split(',').map(item => item.trim()).filter(Boolean),
       social_tags: form.social_tags.split(',').map(item => item.trim()).filter(Boolean),
@@ -1052,11 +1050,10 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
         </div>
       </div>
       {section === 'content' && <div className="card p-5 space-y-4">
-        {/* Único campo de "descripción" — content_guidelines dejó de mostrarse
-            como concepto aparte (ya fusionado en description vía backfill).
-            Sigue guardándose sin cambios (form.content_guidelines pasa intacto
-            en submit) porque el brief privado gateado por isAccepted sigue
-            usándolo, sin tocar esa lógica. Pedido de Pri 2026-09-04. */}
+        {/* Único campo de "descripción". content_guidelines quedó deprecado
+            desde el 2026-09-04 y su columna se eliminó por completo el
+            2026-09-06 (limpieza de deuda legacy, ver auditoría) — el brief
+            privado gateado por isAccepted ya no depende de ese campo. */}
         <label className="text-xs font-semibold text-gray-600">Descripción de la campaña<textarea value={form.description} maxLength={3000} rows={5} onChange={e => field('description', e.target.value)} className={`${inputClass} mt-1 resize-y`} /></label>
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="text-xs font-semibold text-gray-600">Hashtags, separados por coma<input value={form.hashtags} onChange={e => field('hashtags', e.target.value)} className={`${inputClass} mt-1`} /></label>
@@ -2527,9 +2524,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 El formulario de edición (OverviewEditPanel, sección "content")
                 ya editaba form.description — pero esta card seguía pintando el
                 content_guidelines viejo/congelado, así que un guardado exitoso
-                nunca se reflejaba acá. Única fuente ahora: c.description.
-                content_guidelines NO se borra de la BD (aún la usa el brief
-                privado gateado por isAccepted, pendiente de revisión aparte). */}
+                nunca se reflejaba acá. Única fuente: c.description.
+                content_guidelines se eliminó por completo (código + columna
+                de BD) el 2026-09-06, tras confirmar cero dependencias. */}
             {editingOverview && overviewEditSection === 'content' ? (
               <OverviewEditPanel
                 key={c.updated_at}

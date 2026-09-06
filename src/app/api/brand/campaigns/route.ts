@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, name, description, type, status, visibility, application_deadline,
       max_influencers, start_date, end_date, created_at,
-      budget_total, currency, hashtags, platforms, content_guidelines,
+      budget_total, currency, hashtags, platforms,
       campaign_influencers (
         id, application_status, fee, currency,
         influencer:influencers (id, display_name, avatar_url, city,
@@ -142,7 +142,6 @@ export async function POST(req: NextRequest) {
     budget_total?: number
     application_deadline?: string
     max_influencers?: number
-    content_guidelines?: string
     hashtags?: string[]
     social_tags?: string[]
     platforms?: string[]
@@ -160,7 +159,7 @@ export async function POST(req: NextRequest) {
 
   const { name, type, visibility, description, start_date, end_date,
           budget_total, application_deadline, max_influencers,
-          content_guidelines, hashtags, social_tags, platforms, address, brief_url, metadata, deliverable_templates,
+          hashtags, social_tags, platforms, address, brief_url, metadata, deliverable_templates,
           application_questions } = body
   const campaignBenefits = normalizeCampaignBenefits(body.campaign_benefits)
 
@@ -191,9 +190,7 @@ export async function POST(req: NextRequest) {
       // la invitación) — opcionales en cualquier visibilidad. Se filtran
       // vacías/blancas.
       application_questions: (application_questions ?? []).map(q => String(q ?? '').trim()).filter(Boolean),
-      content_guidelines:   content_guidelines ?? null,
       hashtags:             hashtags ?? [],
-      mention_handles:      (social_tags ?? []).map(tag => String(tag).trim()).filter(Boolean),
       platforms:            platforms ?? [],
       brief_url:            brief_url ?? null,
       // El wizard crea un borrador antes de llegar al último paso. Persistir

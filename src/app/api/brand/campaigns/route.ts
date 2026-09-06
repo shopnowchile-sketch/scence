@@ -191,6 +191,11 @@ export async function POST(req: NextRequest) {
       // vacías/blancas.
       application_questions: (application_questions ?? []).map(q => String(q ?? '').trim()).filter(Boolean),
       hashtags:             hashtags ?? [],
+      // FIX (2026-09-06): social_tags se extraía del body pero nunca entraba al
+      // insert — las etiquetas que la marca escribía al crear la campaña se
+      // perdían sin ningún error. El PUT sí las guardaba, por eso solo fallaba
+      // en la creación.
+      social_tags:          Array.isArray(social_tags) ? social_tags : [],
       platforms:            platforms ?? [],
       brief_url:            brief_url ?? null,
       // El wizard crea un borrador antes de llegar al último paso. Persistir

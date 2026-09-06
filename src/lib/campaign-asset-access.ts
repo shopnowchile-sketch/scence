@@ -14,11 +14,11 @@ export async function resolveCampaignAssetAccess(
     .maybeSingle()
 
   if (error) throw error
-  if (!campaign) return { admin, campaign: null, canView: false, canViewBrief: false, canViewSponsorBrief: false, canManage: false }
+  if (!campaign) return { admin, campaign: null, canView: false, canViewBrief: false, canViewSponsorBrief: false, canViewBrandGuide: false, canManage: false }
 
   const orgId = await getOrgId(userId, userMetadata, admin)
   const { isAdmin } = orgId ? await getUserRole(userId, orgId, admin) : { isAdmin: false }
-  if (isAdmin) return { admin, campaign, canView: true, canViewBrief: true, canViewSponsorBrief: true, canManage: true }
+  if (isAdmin) return { admin, campaign, canView: true, canViewBrief: true, canViewSponsorBrief: true, canViewBrandGuide: true, canManage: true }
 
   const access = await resolveBrandAccess(userId)
   if (access) {
@@ -30,6 +30,7 @@ export async function resolveCampaignAssetAccess(
       canView: hasBrandPermission(access, 'campaign.read'),
       canViewBrief: hasBrandPermission(access, 'campaign.read'),
       canViewSponsorBrief: hasBrandPermission(access, 'campaign.read'),
+      canViewBrandGuide: hasBrandPermission(access, 'campaign.read'),
       canManage: hasBrandPermission(access, 'campaign.manage'),
     }
 
@@ -41,7 +42,7 @@ export async function resolveCampaignAssetAccess(
       .maybeSingle()
 
     const canRead = !!coBrand && hasBrandPermission(access, 'campaign.read')
-    if (canRead) return { admin, campaign, canView: true, canViewBrief: true, canViewSponsorBrief: true, canManage: false }
+    if (canRead) return { admin, campaign, canView: true, canViewBrief: true, canViewSponsorBrief: true, canViewBrandGuide: true, canManage: false }
 
     const { data: opportunityCampaign } = await admin
       .from('campaigns')
@@ -56,7 +57,7 @@ export async function resolveCampaignAssetAccess(
       ? metadata.collaboration_opportunity as Record<string, unknown>
       : null
     const canViewSponsorBrief = Boolean(opportunity?.enabled) && hasBrandPermission(access, 'campaign.read')
-    return { admin, campaign, canView: false, canViewBrief: false, canViewSponsorBrief, canManage: false }
+    return { admin, campaign, canView: false, canViewBrief: false, canViewSponsorBrief, canViewBrandGuide: false, canManage: false }
   }
 
   const { data: influencer } = await admin
@@ -78,8 +79,14 @@ export async function resolveCampaignAssetAccess(
     // accepted. A pending application only receives the limited public DTO
     // from /api/influencer/campaigns/[id].
     const canViewBrief = canView
-    return { admin, campaign, canView, canViewBrief, canViewSponsorBrief: false, canManage: false }
+    // El MANUAL DE MARCA (asset_type 'brand_guide') es la excepción: la
+    // influencer necesita entender la identidad y los lineamientos de la marca
+    // ANTES de postular, así que se abre a cualquier influencer sobre una
+    // campaña ya publicada — mismo gate de marketplace que usa
+    // GET /api/influencer/campaigns/[id]. No abre ningún otro asset.
+    const canViewBrandGuide = canView || (campaign.status !== 'draft' && campaign.status !== 'pending_approval')
+    return { admin, campaign, canView, canViewBrief, canViewSponsorBrief: false, canViewBrandGuide, canManage: false }
   }
 
-  return { admin, campaign, canView: false, canViewBrief: false, canViewSponsorBrief: false, canManage: false }
+  return { admin, campaign, canView: false, canViewBrief: false, canViewSponsorBrief: false, canViewBrandGuide: false, canManage: false }
 }

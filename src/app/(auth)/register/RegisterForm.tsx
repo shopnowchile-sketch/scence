@@ -325,17 +325,17 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre y apellido</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre y apellido <span className="text-red-500" aria-hidden="true">*</span></label>
           <input {...register('display_name')} autoComplete="name" className="input-base w-full" placeholder="Sofía Contreras" />
           {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Instagram</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Instagram <span className="text-red-500" aria-hidden="true">*</span></label>
           <input {...register('instagram_username')} autoComplete="off" className="input-base w-full" placeholder="@sofiacontreras" />
           {errors.instagram_username && <p className="text-xs text-red-500 mt-1">{errors.instagram_username.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna <span className="text-red-500" aria-hidden="true">*</span></label>
           <input {...register('commune')} list="influencer-register-communes" className="input-base w-full" placeholder="Providencia" />
           <datalist id="influencer-register-communes">
             {COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}
@@ -343,22 +343,22 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
           {errors.commune && <p className="text-xs text-red-500 mt-1">{errors.commune.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección <span className="text-red-500" aria-hidden="true">*</span></label>
           <input {...register('address')} autoComplete="street-address" className="input-base w-full" placeholder="Av. Providencia 1234" />
           {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha de nacimiento</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha de nacimiento <span className="text-red-500" aria-hidden="true">*</span></label>
           <input {...register('birth_date')} type="date" autoComplete="bday" className="input-base w-full" />
           {errors.birth_date && <p className="text-xs text-red-500 mt-1">{errors.birth_date.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Email <span className="text-red-500" aria-hidden="true">*</span></label>
           <input {...register('email')} type="email" autoComplete="email" className="input-base w-full" placeholder="sofia@email.com" />
           {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Contraseña</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Contraseña <span className="text-red-500" aria-hidden="true">*</span></label>
           <div className="relative">
             <input {...register('password')} type={showPwd ? 'text' : 'password'} autoComplete="new-password" className="input-base w-full pr-10" placeholder="••••••••" />
             <button type="button" onClick={() => setShowPwd(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -377,7 +377,7 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
           {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirmar contraseña</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirmar contraseña <span className="text-red-500" aria-hidden="true">*</span></label>
           <input {...register('confirm')} type={showPwd ? 'text' : 'password'} autoComplete="new-password" className="input-base w-full" placeholder="••••••••" />
           {errors.confirm && <p className="text-xs text-red-500 mt-1">{errors.confirm.message}</p>}
         </div>

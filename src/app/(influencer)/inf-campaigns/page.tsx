@@ -11,6 +11,9 @@ import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { BrandBadge, CampaignCover } from '@/components/influencer/CampaignVisual'
 import { toast } from 'sonner'
+import { acceptCurrentInfluencerProTerms, hasAcceptedCurrentInfluencerProTerms } from '@/lib/influencer-pro-terms'
+import { ApplyConfirmDialog } from '@/components/campaigns/ApplyConfirmDialog'
+import { eventCountdown, EventCountdownPill } from '@/components/campaigns/CampaignDetailView.influencer'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Campaign = {
@@ -46,6 +49,9 @@ type OpenCampaign = {
   can_apply: boolean
   requires_pro: boolean
   campaign_benefits?: Array<{ description: string; quantity?: number }>
+  // Fecha del evento (bookings.starts_at de la campaña), solo para el contador
+  // de días de la tarjeta. La misma que ya entrega el detalle antes de postular.
+  event_starts_at?: string | null
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -143,6 +149,9 @@ export default function MyCampaignsPage() {
   })
   const [openCampaigns, setOpenCampaigns] = useState<OpenCampaign[]>([])
   const [applying,      setApplying]      = useState<string | null>(null)
+  // Confirmación única de postulación (misma que el detalle): el consentimiento
+  // de una versión nueva de los Términos Pro viaja en esta misma ventana.
+  const [applyDialog, setApplyDialog] = useState<{ id: string; name: string; checking: boolean; needsTerms: boolean } | null>(null)
   const [respondingInvite, setRespondingInvite] = useState<string | null>(null)
   const [brandFilter,   setBrandFilter]   = useState<string>('')
   // Filtro por status para "Asignadas por agencia" / "Mis campañas" — antes
@@ -204,14 +213,37 @@ export default function MyCampaignsPage() {
   useEffect(() => { load() }, [load])
 
   async function handleApply(campaignId: string, campaignName: string) {
-    if (!confirm(`¿Enviar solicitud para unirte a "${campaignName}"? El equipo la revisará y te confirmará.`)) return
+    const campaign = openCampaigns.find(c => c.id === campaignId)
+    const isPrivate = campaign?.visibility === 'private'
+    setApplyDialog({ id: campaignId, name: campaignName, checking: isPrivate, needsTerms: false })
+    // Los Términos Pro solo aplican a campañas privadas (lo mismo exige /apply).
+    if (isPrivate) {
+      const accepted = await hasAcceptedCurrentInfluencerProTerms().catch(() => false)
+      setApplyDialog(prev => prev && prev.id === campaignId ? { ...prev, checking: false, needsTerms: !accepted } : prev)
+    }
+  }
+
+  // Confirmación del diálogo: registra la versión vigente SOLO si la influencer
+  // marcó el checkbox en esta misma ventana, y recién después postula.
+  async function confirmApply() {
+    if (!applyDialog || applyDialog.checking) return
+    const campaignId = applyDialog.id
     setApplying(campaignId)
     try {
+      // Consentimiento explícito de la versión vigente, marcado en el diálogo.
+      if (applyDialog.needsTerms) await acceptCurrentInfluencerProTerms()
       const res = await fetch(`/api/influencer/campaigns/${campaignId}/apply`, { method: 'POST' })
       const json = await res.json()
+      // No se acepta nada en silencio: si el backend pide términos igual (versión
+      // publicada entre el chequeo y el envío), se pide reintentar y el diálogo
+      // volverá a mostrar el consentimiento de la versión nueva.
+      if (!res.ok && json?.code === 'INFLUENCER_PRO_TERMS_REQUIRED') {
+        throw new Error('Los Términos del Plan Pro cambiaron. Vuelve a intentarlo para revisarlos y aceptarlos.')
+      }
       if (!res.ok) throw new Error(json.error)
       toast.success('¡Solicitud enviada! El equipo te confirmará pronto.')
       setOpenCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, _applied: true } : c))
+      setApplyDialog(null)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error al enviar solicitud')
     }
@@ -298,6 +330,16 @@ export default function MyCampaignsPage() {
 
   return (
     <div className="space-y-6">
+
+      <ApplyConfirmDialog
+        open={!!applyDialog}
+        campaignName={applyDialog?.name ?? ''}
+        checking={applyDialog?.checking ?? false}
+        needsTerms={applyDialog?.needsTerms ?? false}
+        submitting={applying === applyDialog?.id}
+        onCancel={() => setApplyDialog(null)}
+        onConfirm={() => void confirmApply()}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -512,6 +554,14 @@ export default function MyCampaignsPage() {
                         {c.end_date ? new Date(c.end_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                       </p>
                     )}
+                    {/* Contador de días al evento — mismo eventCountdown() del
+                        detalle, importado, no recalculado. Solo aparece si la
+                        campaña tiene evento con fecha futura. */}
+                    {(() => {
+                      const cd = eventCountdown(c.event_starts_at)
+                      if (!cd) return null
+                      return <EventCountdownPill countdown={cd} size="sm" className="mt-1.5 rounded-md px-2 py-1" />
+                    })()}
                   </div>
                   <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
                     <Link href={`/inf-campaign/${c.id}`} className="text-[10px] font-semibold text-gray-400 hover:text-violet-600 transition-colors">
@@ -521,10 +571,10 @@ export default function MyCampaignsPage() {
                       <span className="text-[10px] font-bold text-amber-600">⏳ En revisión</span>
                     ) : c.requires_pro ? (
                       <Link
-                        href="/inf-profile?tab=plan"
+                        href={`/inf-profile?tab=plan&return_campaign_id=${c.id}`}
                         className="rounded-lg bg-violet-600 px-3 py-1.5 text-center text-[10px] font-bold text-white transition-colors hover:bg-violet-700"
                       >
-                        ACTIVAR PLAN PRO
+                        POSTULAR CON PRO
                       </Link>
                     ) : (
                       <button

@@ -152,8 +152,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // el texto del email no haya cambiado.
     if (newEmail && (newEmail !== previousEmailNormalized || !currentBrand.user_id)) {
       // Cambio real de correo o reparación de owner → gate de super_admin.
-      const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).maybeSingle()
-      if (profile?.role !== 'super_admin') {
+      // FIX (2026-09-06): este gate leía profiles.role, una tabla distinta a la
+      // que usa requirePlatformAdmin (organization_members) unas líneas más
+      // arriba en esta misma ruta. Ahora ambos usan la misma fuente canónica.
+      if (!await requirePlatformAdmin(user, admin)) {
         return NextResponse.json(
           { error: 'Solo un super_admin puede cambiar el correo del owner de una marca' },
           { status: 403 },

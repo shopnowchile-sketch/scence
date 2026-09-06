@@ -66,10 +66,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: existing } = await admin
     .from('campaign_influencers')
-    .select('id, application_status')
+    .select('id, application_status, origin')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .maybeSingle()
+
+  // Mismo criterio que GET /api/influencer/campaigns/open: una invitación
+  // rechazada no deja rastro que bloquee la campaña — sigue visible y, con
+  // Plan Pro, postulable por cuenta propia.
+  const rejectedInvitation = existing?.application_status === 'rejected' && existing.origin === 'invitation'
 
   if (!existing && campaign.visibility !== 'open' && campaign.visibility !== 'private') {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
@@ -80,7 +85,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // 'rejected' y no hay deliverables, booking, contrato ni pago asociado,
   // se bloquea el acceso al detalle igual que si no existiera (pedido de
   // Pri 2026-07-13). No se toca la fila en la base.
-  if (existing?.application_status === 'rejected') {
+  if (existing?.application_status === 'rejected' && !rejectedInvitation) {
     const [delivRes, contractRes, invoiceRes, bookingRes] = await Promise.all([
       admin.from('campaign_deliverables').select('id').eq('campaign_influencer_id', existing.id).limit(1),
       admin.from('contracts').select('id').eq('campaign_influencer_id', existing.id).limit(1),
@@ -135,13 +140,34 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ? campaign.metadata as Record<string, unknown>
       : {}
   const fallbackLocation = typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null
+  // Redacción campo por campo del lugar: el NOMBRE del lugar y la comuna
+  // (bookings.location_details.venue_name / .commune — campos ya existentes,
+  // distintos de la dirección) se muestran antes de aceptar para que la
+  // influencer pueda decidir si le sirve. La DIRECCIÓN exacta
+  // (bookings.location y metadata.address) y las instrucciones de llegada
+  // siguen siendo privadas hasta application_status = 'accepted', igual que
+  // hasta ahora. No se abre ningún dato que hoy esté protegido.
+  const bookingDetails =
+    eventBooking?.location_details && typeof eventBooking.location_details === 'object' && !Array.isArray(eventBooking.location_details)
+      ? eventBooking.location_details as Record<string, unknown>
+      : null
+  // address_hidden distingue "todavía no hay dirección cargada" de "hay
+  // dirección pero es privada hasta aprobar", para no mostrar "Lugar por
+  // confirmar" cuando en realidad la marca ya la cargó.
+  const publicLocationDetails = eventBooking
+    ? {
+        venue_name: typeof bookingDetails?.venue_name === 'string' ? bookingDetails.venue_name : undefined,
+        commune: typeof bookingDetails?.commune === 'string' ? bookingDetails.commune : undefined,
+        address_hidden: !!eventBooking.location,
+      }
+    : null
   const visibleEventBooking = eventBooking
     ? {
         id: isAccepted ? eventBooking.id : null,
         starts_at: eventBooking.starts_at,
         ends_at: eventBooking.ends_at,
         location: isAccepted ? eventBooking.location : null,
-        location_details: isAccepted ? eventBooking.location_details : null,
+        location_details: isAccepted ? eventBooking.location_details : publicLocationDetails,
       }
     : (isAccepted && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
 
@@ -151,8 +177,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     data: {
       ...payload,
       accepted_count: acceptedCount ?? 0,
-      _applied: !!existing,
-      application_status: existing?.application_status ?? null,
+      _applied: !!existing && !rejectedInvitation,
+      application_status: rejectedInvitation ? null : (existing?.application_status ?? null),
       event_booking: visibleEventBooking,
       can_apply: campaign.visibility === 'open' || isPro,
       requires_pro: campaign.visibility === 'private' && !isPro,

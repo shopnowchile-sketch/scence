@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { BrandBadge, CampaignCover } from '@/components/influencer/CampaignVisual'
+import { eventCountdown, EventCountdownPill } from '@/components/campaigns/CampaignDetailView.influencer'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,9 @@ type OpenCampaign = {
   cover_url?: string | null
   brand: { id: string; name: string; logo_url: string | null; instagram?: string | null } | null
   _applied?: boolean
+  event_starts_at?: string | null
+  max_influencers?: number | null
+  accepted_count?: number
 }
 
 type SocialProfile = {
@@ -329,7 +333,15 @@ export default function InfluencerDashboard() {
 
       <section className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Descubre y participa</p><h2 className="mt-1 text-xl font-bold text-gray-950">Campañas disponibles para postular</h2></div><Sparkles className="h-6 w-6 text-violet-500" /></div>
-        {availableCampaigns.length > 0 ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{availableCampaigns.slice(0, 6).map(c => <Link key={c.id} href={`/inf-campaign/${c.id}`} className="group overflow-hidden rounded-2xl border border-white bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200"><CampaignCover name={c.name} src={c.cover_url} className="h-28" /><div className="p-4"><BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} compact /><div className="mt-3 flex items-center justify-between gap-3"><p className="truncate text-sm font-bold text-gray-900">{c.name}</p><ArrowRight className="h-4 w-4 shrink-0 text-violet-500 transition-transform group-hover:translate-x-1" /></div><p className="mt-2 text-xs font-semibold text-violet-700">Ver campaña y postular</p></div></Link>)}</div> : <p className="rounded-2xl bg-white/70 p-5 text-sm text-gray-500">No hay campañas abiertas por ahora.</p>}
+        {availableCampaigns.length > 0 ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{availableCampaigns.slice(0, 6).map(c => <Link key={c.id} href={`/inf-campaign/${c.id}`} className="group overflow-hidden rounded-2xl border border-white bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200"><CampaignCover name={c.name} src={c.cover_url} className="h-28" /><div className="p-4"><BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} compact /><div className="mt-3 flex items-center justify-between gap-3"><p className="truncate text-sm font-bold text-gray-900">{c.name}</p><ArrowRight className="h-4 w-4 shrink-0 text-violet-500 transition-transform group-hover:translate-x-1" /></div>{(() => {
+          const cd = eventCountdown(c.event_starts_at)
+          const spots = c.max_influencers ? Math.max(c.max_influencers - (c.accepted_count ?? 0), 0) : null
+          if (!cd && spots === null) return null
+          return <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {cd && <EventCountdownPill countdown={cd} size="sm" className="rounded-md px-2 py-1" />}
+            {spots !== null && <span className="rounded-md bg-violet-100 px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-violet-700">{spots} de {c.max_influencers} cupos</span>}
+          </div>
+        })()}<p className="mt-2 text-xs font-semibold text-violet-700">Ver campaña y postular</p></div></Link>)}</div> : <p className="rounded-2xl bg-white/70 p-5 text-sm text-gray-500">No hay campañas abiertas por ahora.</p>}
         {availableCampaigns.length > 6 && <Link href="/inf-campaigns" className="mt-4 block text-center text-xs font-semibold text-violet-700 hover:underline">Ver todas las campañas disponibles →</Link>}
       </section>
 

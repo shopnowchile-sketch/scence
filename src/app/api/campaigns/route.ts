@@ -312,6 +312,9 @@ export async function POST(request: NextRequest) {
       currency,
       goals: goals ?? {},
       hashtags: hashtags ?? [],
+      // FIX (2026-09-06): mismo bug que en /api/brand/campaigns — social_tags se
+      // extraía del body y no se insertaba, así que se perdía al crear.
+      social_tags: Array.isArray(social_tags) ? social_tags : [],
       platforms: platforms ?? [],
       approval_required,
       tags: tags ?? [],

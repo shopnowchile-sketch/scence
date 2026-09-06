@@ -22,3 +22,83 @@ export const INFLUENCER_PRO_TERMS_SNAPSHOT = [
   `Versión ${INFLUENCER_PRO_TERMS.version} · Vigente desde ${INFLUENCER_PRO_TERMS.effectiveDate}`,
   ...INFLUENCER_PRO_TERMS.sections.flatMap(section => [section.title, section.body]),
 ].join('\n\n')
+
+/**
+ * Acepta la versión vigente de los Términos del Plan Pro reutilizando el
+ * endpoint existente POST /api/influencer/terms.
+ *
+ * Necesario porque una influencer puede llevar meses con Pro activo y tener su
+ * última aceptación en una versión anterior (hoy: aceptaciones en 1.0 con la
+ * versión vigente en 2.0). En ese caso /apply responde 409
+ * INFLUENCER_PRO_TERMS_REQUIRED y la postulación no se puede completar desde
+ * ninguna pantalla. No duplica lógica: es el mismo POST que ya hace
+ * InfluencerPlanSettings al contratar el plan.
+ */
+export async function acceptCurrentInfluencerProTerms(): Promise<void> {
+  const response = await fetch('/api/influencer/terms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      accepted: true,
+      document_key: INFLUENCER_PRO_TERMS.key,
+      version: INFLUENCER_PRO_TERMS.version,
+    }),
+  })
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({})) as { error?: string }
+    throw new Error(result.error ?? 'No se pudo registrar la aceptación de los Términos del Plan Pro.')
+  }
+}
+
+/**
+ * ¿La influencer ya aceptó la versión VIGENTE de los Términos Pro?
+ * Reutiliza el GET que ya existe en /api/influencer/terms (devuelve las
+ * aceptaciones y `current_version`); no agrega endpoint ni columna. Sirve para
+ * saber ANTES de postular si la confirmación debe incluir el consentimiento,
+ * en vez de descubrirlo por el 409 del backend y abrir una segunda ventana.
+ */
+export async function hasAcceptedCurrentInfluencerProTerms(): Promise<boolean> {
+  const response = await fetch('/api/influencer/terms')
+  if (!response.ok) return false
+  const result = await response.json().catch(() => ({})) as {
+    data?: Array<{ document_key?: string; document_version?: string; status?: string }>
+    current_version?: string
+  }
+  const current = result.current_version ?? INFLUENCER_PRO_TERMS.version
+  return (result.data ?? []).some(row =>
+    row.document_key === INFLUENCER_PRO_TERMS.key
+    && row.document_version === current
+    && row.status === 'accepted')
+}
+
+/**
+ * Descarga los Términos Pro vigentes en PDF, generados en el cliente desde la
+ * MISMA constante que se muestra y se firma (INFLUENCER_PRO_TERMS). No cambia
+ * el texto ni la versión; jspdf ya es dependencia del proyecto.
+ */
+export async function downloadInfluencerProTermsPdf(): Promise<void> {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const marginX = 56
+  const maxWidth = 595 - marginX * 2
+  let y = 64
+
+  const write = (text: string, size: number, bold: boolean, gap: number) => {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setFontSize(size)
+    for (const line of doc.splitTextToSize(text, maxWidth) as string[]) {
+      if (y > 780) { doc.addPage(); y = 64 }
+      doc.text(line, marginX, y)
+      y += size + 4
+    }
+    y += gap
+  }
+
+  write(INFLUENCER_PRO_TERMS.title, 16, true, 4)
+  write(`Versión ${INFLUENCER_PRO_TERMS.version} · Vigente desde ${INFLUENCER_PRO_TERMS.effectiveDate}`, 10, false, 16)
+  for (const section of INFLUENCER_PRO_TERMS.sections) {
+    write(section.title, 12, true, 2)
+    write(section.body, 10, false, 12)
+  }
+  doc.save(`Terminos-Plan-Pro-SCENCE-v${INFLUENCER_PRO_TERMS.version}.pdf`)
+}

@@ -75,19 +75,15 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { admin, campaign, canView, canViewBrief, canViewSponsorBrief } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
-  if (!campaign || (!canView && !canViewBrief && !canViewSponsorBrief)) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  const { admin, campaign, canView, canViewBrief, canViewSponsorBrief, canViewBrandGuide } = await resolveCampaignAssetAccess(user.id, user.user_metadata, params.id)
+  if (!campaign || (!canView && !canViewBrief && !canViewSponsorBrief && !canViewBrandGuide)) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
-  let query = admin
+  const query = admin
     .from('media_files')
     .select('*')
     .eq('campaign_id', params.id)
     .is('deliverable_id', null)
     .order('created_at', { ascending: false })
-
-  // A candidate may access only the current campaign brief. Attachments,
-  // product files and any other assets stay restricted to accepted influencers.
-  if (!canView) query = query.contains('metadata', { asset_type: canViewSponsorBrief ? 'sponsor_brief' : 'brief' })
 
   const { data, error } = await query
 
@@ -96,9 +92,21 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Quien no tiene acceso completo recibe SOLO los tipos que su rol habilita.
+  // Antes esto era un .contains() de un único tipo, que no permitía combinar
+  // brief + manual de marca; el allowlist deja la misma regla explícita y
+  // sumable, sin abrir nada más. Adjuntos, piezas de ejecución y cualquier
+  // otro asset siguen restringidos a la influencer aceptada.
+  const allowedTypes = new Set<string>()
+  if (canViewBrief) allowedTypes.add('brief')
+  if (canViewSponsorBrief) allowedTypes.add('sponsor_brief')
+  if (canViewBrandGuide) allowedTypes.add('brand_guide')
+
   const visibleAssets = (data ?? []).filter(asset => {
-    const type = ((asset.metadata ?? {}) as Record<string, unknown>).asset_type
-    return type !== 'sponsor_brief' || canViewSponsorBrief
+    const type = String(((asset.metadata ?? {}) as Record<string, unknown>).asset_type ?? 'asset')
+    if (type === 'sponsor_brief') return canViewSponsorBrief
+    if (canView) return true
+    return allowedTypes.has(type)
   })
   const withUrls = await Promise.all(visibleAssets.map(async asset => {
     const meta = (asset.metadata ?? {}) as Record<string, unknown>

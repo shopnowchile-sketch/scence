@@ -7,7 +7,7 @@ import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter, BookOpen,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -1168,6 +1168,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [briefSaving, setBriefSaving] = useState(false)
   const briefInputRef = useRef<HTMLInputElement>(null)
   const assetUploadInputRef = useRef<HTMLInputElement>(null)
+  // Manual de marca: mismo flujo de carga y mismo bucket que el resto de los
+  // assets, solo cambia el asset_type con el que se registra en media_files.
+  const brandGuideUploadInputRef = useRef<HTMLInputElement>(null)
   const [coverSaving, setCoverSaving] = useState(false)
   const coverInputRef = useRef<HTMLInputElement>(null)
   const [locationFormOpen, setLocationFormOpen] = useState(false)
@@ -1977,7 +1980,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     toast.success('Asset eliminado')
   }
 
-  async function handleUploadCampaignAssets(files: FileList | null) {
+  async function handleUploadCampaignAssets(files: FileList | null, uploadAssetType: 'asset' | 'brand_guide' = 'asset') {
     const selectedFiles = Array.from(files ?? [])
     if (!selectedFiles.length) return
     setAssetSaving(true)
@@ -1986,7 +1989,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         const formData = new FormData()
         formData.append('filename', file.name)
         formData.append('file', file)
-        formData.append('asset_type', 'asset')
+        formData.append('asset_type', uploadAssetType)
         const response = await fetch(`/api/campaigns/${id}/assets`, { method: 'POST', body: formData })
         const json = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(json.error ?? `No se pudo subir ${file.name}`)
@@ -1998,6 +2001,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     } finally {
       setAssetSaving(false)
       if (assetUploadInputRef.current) assetUploadInputRef.current.value = ''
+      if (brandGuideUploadInputRef.current) brandGuideUploadInputRef.current.value = ''
     }
   }
 
@@ -3952,16 +3956,38 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   className="hidden"
                   onChange={event => void handleUploadCampaignAssets(event.target.files)}
                 />
-                <button
-                  type="button"
-                  onClick={() => assetUploadInputRef.current?.click()}
-                  disabled={assetSaving}
-                  title="Subir archivos"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-60"
-                >
-                  {assetSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  {assetSaving ? 'Subiendo…' : 'Subir archivos'}
-                </button>
+                <input
+                  ref={brandGuideUploadInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={event => void handleUploadCampaignAssets(event.target.files, 'brand_guide')}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* El manual de marca se sube igual que cualquier archivo,
+                      solo se marca como brand_guide: es el único asset visible
+                      para la influencer antes de que aprueben su postulación. */}
+                  <button
+                    type="button"
+                    onClick={() => brandGuideUploadInputRef.current?.click()}
+                    disabled={assetSaving}
+                    title="Subir manual de marca (visible para influencers antes de postular)"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50 disabled:opacity-60"
+                  >
+                    {assetSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpen className="h-3.5 w-3.5" />}
+                    Manual de marca
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => assetUploadInputRef.current?.click()}
+                    disabled={assetSaving}
+                    title="Subir archivos"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-60"
+                  >
+                    {assetSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    {assetSaving ? 'Subiendo…' : 'Subir archivos'}
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -4000,7 +4026,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       )}
                     </a>
                     <div className="flex items-center gap-1.5 p-2.5">
-                      <p className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-700" title={filename}>{filename}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-gray-700" title={filename}>{filename}</p>
+                        {((asset.metadata ?? {}) as Record<string, unknown>).asset_type === 'brand_guide' && (
+                          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-600">Manual de marca</p>
+                        )}
+                      </div>
                       <a
                         href={fileUrl}
                         target="_blank"

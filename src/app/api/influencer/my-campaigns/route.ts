@@ -39,6 +39,7 @@ export async function GET() {
       campaign:campaigns (
         id, name, status, description, hashtags, platforms,
         start_date, end_date, currency, created_by, visibility, application_questions,
+        campaign_benefits, social_tags,
         brand:brands!brand_id (id, name, logo_url, website, instagram, contact_name, contact_email),
         campaign_brands (
           id, role,
@@ -60,7 +61,7 @@ export async function GET() {
     .from('campaigns')
     .select(`
       id, name, status, description, hashtags, platforms,
-      start_date, end_date, currency, budget_total, created_by,
+      start_date, end_date, currency, budget_total, created_by, campaign_benefits, social_tags,
       brand:brands!brand_id (id, name, logo_url, website, instagram, contact_name, contact_email),
       campaign_brands (
         id, role,
@@ -141,7 +142,16 @@ export async function GET() {
 
   const visibleAssignedFiltered = visibleAssigned.filter((ci: Record<string, unknown>) => {
     const del = (ci.campaign_deliverables as unknown[]) ?? []
-    if (ci.application_status !== 'rejected' || del.length > 0) return true
+    if (ci.application_status !== 'rejected') return true
+    // Invitación RECHAZADA: no bloquea ver ni volver a postular a esa campaña
+    // (invariante 16.3). La fila no debe devolverse acá, porque el detalle la
+    // tomaría como "campaña asignada" y mostraría la vista de participación en
+    // vez del preview con el CTA de postulación. Sus entregables se generan
+    // solos al invitar, así que no cuentan como participación real; sí cuentan
+    // contrato, cobro o booking. El endpoint del detalle ya aplica este mismo
+    // criterio (rejectedInvitation). No se toca ninguna fila en la base.
+    const rejectedInvitation = ci.origin === 'invitation'
+    if (del.length > 0 && !rejectedInvitation) return true
     const ciId   = ci.id as string
     const campId = (ci.campaign as Record<string, unknown> | null)?.id as string | undefined
     return contractedIds.has(ciId) || invoicedIds.has(ciId) || (!!campId && bookedCampaignIds.has(campId))
@@ -235,12 +245,94 @@ export async function GET() {
     for (const row of merged as Array<Record<string, unknown>>) {
       const campaign = row.campaign as Record<string, unknown> | null
       if (!campaign?.id) continue
-      if (row.application_status !== 'accepted' && !row._self_created) continue
       const booking = byCampaign.get(campaign.id as string) ?? campaignEventByCampaign.get(campaign.id as string)
       if (!booking) continue
-      // La dirección permite a la influencer decidir si puede asistir. Brief y
-      // materiales privados continúan protegidos por el estado de aceptación.
-      row.event_booking = booking
+      const accepted = row.application_status === 'accepted' || row._self_created === true
+      if (accepted) {
+        // La dirección permite a la influencer decidir si puede asistir. Brief y
+        // materiales privados continúan protegidos por el estado de aceptación.
+        row.event_booking = booking
+        continue
+      }
+      // Postulación pendiente o rechazada: fecha y hora sí (son lo que permite
+      // decidir si postula), NOMBRE del lugar y comuna sí, DIRECCIÓN exacta e
+      // instrucciones de llegada no — misma redacción campo por campo que ya
+      // aplica GET /api/influencer/campaigns/[id] antes de aceptar. Antes esta
+      // rama descartaba el booking completo y la postulante no veía ni la fecha.
+      const details = booking.location_details && typeof booking.location_details === 'object' && !Array.isArray(booking.location_details)
+        ? booking.location_details as Record<string, unknown>
+        : null
+      row.event_booking = {
+        id: null,
+        campaign_id: booking.campaign_id,
+        title: booking.title ?? null,
+        starts_at: booking.starts_at ?? null,
+        ends_at: booking.ends_at ?? null,
+        location: null,
+        location_details: {
+          venue_name: typeof details?.venue_name === 'string' ? details.venue_name : undefined,
+          commune: typeof details?.commune === 'string' ? details.commune : undefined,
+          // Hay dirección cargada, pero es privada hasta la aprobación.
+          address_hidden: !!booking.location,
+        },
+        status: booking.status ?? null,
+      }
+    }
+  }
+
+  // ── Cuentas a etiquetar, por entregable ────────────────────────────────────
+  // Fuente ya existente, sin tabla ni campo nuevo:
+  //   1) campaign_deliverables.tag_brand_ids  → marcas (se resuelve a @instagram)
+  //   2) campaign_deliverables.tag_handles    → @handles sueltos del entregable
+  //   3) campaigns.social_tags                → "Tags obligatorios en
+  //      publicaciones" del formulario de campaña, respaldo SOLO cuando el
+  //      entregable no tiene tags propios (así Reel y Story pueden diferir).
+  // Son instrucciones de ejecución: la lista exacta se envía únicamente a la
+  // influencer ACEPTADA. Antes de aprobar se manda `tags_pending` (booleano) y
+  // NO se manda ninguna cuenta — ocultarlo en el frontend no protegería la API.
+  const tagBrandIds = new Set<string>()
+  for (const row of merged as Array<Record<string, unknown>>) {
+    if (row.application_status !== 'accepted' && row._self_created !== true) continue
+    for (const d of (row.campaign_deliverables as Array<Record<string, unknown>> | null) ?? []) {
+      for (const brandId of (d.tag_brand_ids as string[] | null) ?? []) tagBrandIds.add(brandId)
+    }
+  }
+  const tagBrandById = new Map<string, { name: string; instagram: string | null }>()
+  if (tagBrandIds.size > 0) {
+    const { data: tagBrands } = await admin.from('brands').select('id, name, instagram').in('id', Array.from(tagBrandIds))
+    for (const brand of tagBrands ?? []) tagBrandById.set(brand.id, { name: brand.name, instagram: brand.instagram })
+  }
+  const asHandle = (value: string) => {
+    const clean = value.trim().replace(/^@+/, '')
+    return clean ? `@${clean}` : null
+  }
+  for (const row of merged as Array<Record<string, unknown>>) {
+    const accepted = row.application_status === 'accepted' || row._self_created === true
+    const campaign = row.campaign as Record<string, unknown> | null
+    const campaignTags = (campaign?.social_tags as string[] | null) ?? []
+    if (campaign) delete campaign.social_tags
+    for (const d of (row.campaign_deliverables as Array<Record<string, unknown>> | null) ?? []) {
+      const own = [
+        ...((d.tag_brand_ids as string[] | null) ?? []).map(brandId => {
+          const brand = tagBrandById.get(brandId)
+          return brand ? (brand.instagram ? asHandle(brand.instagram) : brand.name) : null
+        }),
+        ...((d.tag_handles as string[] | null) ?? []).map(asHandle),
+      ].filter(Boolean) as string[]
+      // Respaldo de campaña: no aplica a la confirmación de asistencia, que no
+      // se publica en redes.
+      const fallback = own.length === 0 && d.type !== 'event_attendance'
+        ? campaignTags.map(asHandle).filter(Boolean) as string[]
+        : []
+      const accounts = Array.from(new Set(own.length ? own : fallback))
+      delete d.tag_brand_ids
+      delete d.tag_handles
+      if (accepted) {
+        d.tag_accounts = accounts
+        d.tags_pending = false
+      } else {
+        d.tags_pending = accounts.length > 0
+      }
     }
   }
 
@@ -295,6 +387,11 @@ export async function POST(req: NextRequest) {
     fee: fee ?? null,
     currency,
     status: 'active',
+    // La creadora de su propia campaña no está "postulando": queda aceptada.
+    // Sin esto tomaba el DEFAULT 'pending' de la columna y el nuevo gate de
+    // entregables (403 si no está accepted) la habría bloqueado en su propia
+    // campaña. Las 2 campañas propias que ya existen ya están en 'accepted'.
+    application_status: 'accepted',
   })
 
   return NextResponse.json({

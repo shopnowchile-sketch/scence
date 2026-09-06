@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/influencers/ranking'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
-
-const ADMIN_ROLES = ['super_admin']
-
-async function isAdmin(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle()
-
-  return ADMIN_ROLES.includes(String(data?.role ?? ''))
-}
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -25,7 +14,13 @@ export async function GET(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  if (!(await isAdmin(user.id, admin))) {
+  // FIX (2026-09-06): esta ruta autorizaba leyendo profiles.role con un
+  // isAdmin() local, mientras el resto del sistema autoriza con
+  // organization_members — dos tablas decidiendo lo mismo y con distinto
+  // resultado. Ahora usa getUserRole, la fuente canónica.
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  if (!isAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

@@ -15,8 +15,24 @@ export async function GET(request: NextRequest) {
   if (ids.length) {
     const { data: pending } = await admin.from('campaign_influencers').select('id').in('campaign_id', ids).eq('application_status', 'pending').eq('origin', 'application')
     pendingIds = (pending ?? []).map(row => row.id)
-    if (pendingIds.length) await admin.from('campaign_influencers').update({ application_status: 'rejected', status: 'inactive', notes: 'Postulación cerrada automáticamente al vencer la fecha límite.', updated_at: now }).in('id', pendingIds)
-    await admin.from('campaigns').update({ applications_closed_at: now, updated_at: now }).in('id', ids)
+    // FIX (2026-09-06, causa raíz de las postulaciones fantasma): antes esta
+    // línea escribía `status: 'inactive'`, un valor que NO existe en el enum
+    // campaign_status que tipa campaign_influencers.status. El UPDATE fallaba,
+    // el error nunca se revisaba, y el UPDATE siguiente sí marcaba la campaña
+    // como cerrada — resultado: campañas con applications_closed_at puesto y
+    // postulaciones que quedaban "pendientes" para siempre.
+    // application_status es la fuente de verdad del estado de la postulación;
+    // `status` ya no se escribe desde acá.
+    if (pendingIds.length) {
+      const { error: rejectError } = await admin
+        .from('campaign_influencers')
+        .update({ application_status: 'rejected', notes: 'Postulación cerrada automáticamente al vencer la fecha límite.', updated_at: now })
+        .in('id', pendingIds)
+      if (rejectError) return NextResponse.json({ error: rejectError.message }, { status: 500 })
+    }
+    // Solo después de cerrar las postulaciones se marca la campaña como cerrada.
+    const { error: closeError } = await admin.from('campaigns').update({ applications_closed_at: now, updated_at: now }).in('id', ids)
+    if (closeError) return NextResponse.json({ error: closeError.message }, { status: 500 })
   }
 
   // Plan Pro vencido durante el proceso: una postulación (origin='application',
@@ -38,11 +54,13 @@ export async function GET(request: NextRequest) {
     const proStatuses = await getInfluencerProStatuses(admin, rows.map(row => row.influencer_id))
     proExpiredIds = rows.filter(row => (proStatuses.get(row.influencer_id) ?? 'free') === 'free').map(row => row.id)
     if (proExpiredIds.length) {
-      await admin.from('campaign_influencers').update({
-        application_status: 'rejected', status: 'inactive',
+      // Mismo fix que arriba: `status: 'inactive'` no existe en el enum.
+      const { error: proError } = await admin.from('campaign_influencers').update({
+        application_status: 'rejected',
         notes: 'Postulación cerrada automáticamente: la influencer ya no cuenta con Plan Pro activo.',
         updated_at: now,
       }).in('id', proExpiredIds)
+      if (proError) return NextResponse.json({ error: proError.message }, { status: 500 })
     }
   }
 

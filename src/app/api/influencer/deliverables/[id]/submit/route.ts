@@ -39,6 +39,22 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (deliverable.influencer_id !== influencer.id) {
     return NextResponse.json({ error: 'No tienes acceso a este deliverable' }, { status: 403 })
   }
+
+  // Solo una influencer ACEPTADA en la campaña puede accionar sus entregables.
+  // Una postulación pendiente o rechazada conserva la fila del entregable pero
+  // no puede usarla: esconder el botón en el frontend no protege el endpoint.
+  const { data: relation } = await admin
+    .from('campaign_influencers')
+    .select('application_status')
+    .eq('campaign_id', deliverable.campaign_id)
+    .eq('influencer_id', influencer.id)
+    .maybeSingle()
+  if (relation?.application_status !== 'accepted') {
+    return NextResponse.json(
+      { error: 'Tu participación en esta campaña aún no está aprobada.', code: 'APPLICATION_NOT_ACCEPTED' },
+      { status: 403 },
+    )
+  }
   // Gate por estado de campaña: no se puede entregar contenido a una campaña en
   // borrador/revisión (preasignación aún no activada).
   {

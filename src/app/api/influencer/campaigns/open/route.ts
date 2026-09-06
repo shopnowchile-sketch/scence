@@ -38,8 +38,16 @@ export async function GET() {
       .filter(r => r.application_status === 'pending' && r.origin !== 'invitation')
       .map(r => [r.campaign_id as string, true])
   )
+  // FIX (2026-09-06, causa de "la campaña privada no aparece"): una INVITACIÓN
+  // rechazada dejaba la campaña excluida del marketplace para siempre. La
+  // invitación quedó cerrada, pero la campaña privada sigue disponible y una
+  // influencer Pro puede postular por su cuenta (Términos Plan Pro, secc. 6:
+  // "Las campañas privadas son visibles para todas las influencers"). Las
+  // postulaciones rechazadas por la marca (origin='application') se siguen
+  // ocultando igual que antes.
   const excludeIds = (myRows ?? [])
     .filter(r => r.application_status !== 'pending')
+    .filter(r => !(r.application_status === 'rejected' && r.origin === 'invitation'))
     .map(r => r.campaign_id as string)
 
   // Marketplace público: una campaña abierta y activa puede ser descubierta por
@@ -84,6 +92,26 @@ export async function GET() {
   }
   const marketplaceRows = (data ?? []).filter(c => !influencerCreatorIds.has(c.created_by as string))
 
+  // Fecha del evento para el contador de días de la tarjeta. Solo se lee
+  // `starts_at` del booking de campaña (influencer_id null) — la MISMA fecha
+  // que el detalle ya entrega antes de postular. No se expone ni dirección ni
+  // instrucciones: esas siguen gateadas por application_status.
+  const eventStartByCampaign = new Map<string, string>()
+  const marketplaceIds = marketplaceRows.map(c => c.id as string)
+  if (marketplaceIds.length > 0) {
+    const { data: eventBookings } = await admin
+      .from('bookings')
+      .select('campaign_id, starts_at')
+      .in('campaign_id', marketplaceIds)
+      .is('influencer_id', null)
+      .order('starts_at', { ascending: true })
+    for (const booking of eventBookings ?? []) {
+      if (booking.campaign_id && booking.starts_at && !eventStartByCampaign.has(booking.campaign_id)) {
+        eventStartByCampaign.set(booking.campaign_id, booking.starts_at as string)
+      }
+    }
+  }
+
   const enriched = marketplaceRows
     .filter(c => {
       // Quien ya postuló conserva la campaña visible con estado "En revisión",
@@ -108,6 +136,7 @@ export async function GET() {
         application_status: pendingMap.has(c.id) ? 'pending' : null,
         can_apply: c.visibility === 'open' || isPro,
         requires_pro: c.visibility === 'private' && !isPro,
+        event_starts_at: eventStartByCampaign.get(c.id as string) ?? null,
       }
     })
 

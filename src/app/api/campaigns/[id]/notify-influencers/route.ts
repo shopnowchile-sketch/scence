@@ -2,17 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, campaignOpenAvailableEmail } from '@/lib/resend'
 import { getPrimarySocial, type RankingInfluencerRow } from '@/lib/influencers/ranking'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
-const ADMIN_ROLES = ['super_admin']
 const BATCH_SIZE = 50
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-
-async function isAdmin(userId: string, admin: ReturnType<typeof createAdminClient>) {
-  const { data } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
-  return ADMIN_ROLES.includes(String(data?.role ?? ''))
-}
 
 // POST /api/campaigns/[id]/notify-influencers
 // Botón manual (admin) — envía email de "campaña abierta disponible" a las
@@ -25,7 +20,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await isAdmin(user.id, admin))) {
+  // FIX (2026-09-06): mismo caso que /api/influencers/ranking — autorizaba con
+  // profiles.role en vez de organization_members. Esta ruta dispara correo
+  // masivo a influencers, así que el criterio debe ser el mismo que el resto.
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
+  if (!isAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

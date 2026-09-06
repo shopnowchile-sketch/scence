@@ -308,6 +308,59 @@ El objetivo final no es que SCENCE tenga muchas funcionalidades.
 
 El objetivo es que una marca piense: "¿Cómo hacía esto antes sin SCENCE?"
 
+## 16. Invariantes verificados (auditoría 2026-09-05/06)
+
+Verificados contra el schema real de Supabase y datos de producción. No re-derivarlos ni contradecirlos sin auditar de nuevo.
+
+### 16.1 Estado de participación en campaña
+
+`campaign_influencers.application_status` (`pending` | `accepted` | `rejected`) es la **única fuente de verdad**.
+
+**NUNCA escribir `campaign_influencers.status`.** Esa columna está tipada con el enum `campaign_status` (`draft | pending_approval | active | paused | completed | canceled`) — no acepta `inactive`. Escribirlo hacía fallar el UPDATE en silencio y dejaba postulaciones "pendientes" para siempre en campañas ya cerradas.
+
+Toda escritura con el admin client debe revisar `error` antes de continuar con el siguiente paso. Un UPDATE que falla y no se revisa deja la operación a medias.
+
+### 16.2 Autorización — una sola fuente
+
+Autorizar SIEMPRE con `organization_members`, vía `getUserRole()` (plataforma) o `resolveBrandAccess()` / `hasBrandPermission()` (marca).
+
+- **NUNCA usar `profiles.role` para autorizar.** No es fuente de autorización: solo dato de presentación, y `ensureOrg` lo sobrescribe. Llegó a haber 3 `super_admin` en `profiles` y 1 en `organization_members`.
+- **Nunca definir un `isAdmin()` local** en una ruta. Si falta el helper, importarlo.
+- Para campañas, el helper central es `authorizeCampaignBrandAction()`.
+- RLS está habilitado en todas las tablas, pero 148 de 154 rutas usan la service role key y lo omiten: **la protección real es el chequeo de cada ruta**. No hay segunda línea de defensa.
+
+### 16.3 Campañas privadas y Plan Pro
+
+`visibility = 'private'` **no** significa oculta. Significa "requiere Plan Pro para postular". Reglas:
+
+- Toda influencer VE las campañas privadas activas del marketplace (Términos Plan Pro, secc. 6).
+- Gratis: CTA "POSTULAR CON PRO" → `/inf-profile?tab=plan&return_campaign_id=<id>` → checkout PayPal existente. Pro: CTA "Postular".
+- Una **invitación rechazada** no bloquea ver ni postular a esa campaña. Una **postulación rechazada por la marca** sí se sigue ocultando.
+- `(campaign_id, influencer_id)` es UNIQUE: para re-postular sobre una invitación rechazada se **reutiliza la fila con UPDATE**, no se inserta.
+- Se excluyen del marketplace las campañas cuyo `created_by` corresponde a un `influencers.user_id` (campañas personales).
+
+### 16.4 Términos del Plan Pro son versionados
+
+`INFLUENCER_PRO_TERMS.version` se compara exacta contra `influencer_terms_acceptances.document_version` en `/apply` y en `/paypal/checkout`.
+
+**Al subir la versión, toda influencer con Pro activo queda bloqueada para postular a privadas** hasta aceptar la nueva. Usar `acceptCurrentInfluencerProTerms()` (llama al endpoint existente `POST /api/influencer/terms`) y reintentar; no duplicar esa lógica.
+
+### 16.5 Pagos
+
+PayPal es la única pasarela con datos reales. Stripe, MercadoPago y Oneclick no tienen ni una fila. **No crear checkouts nuevos**: el flujo Pro es `upgradeToPro()` → `/api/influencer/paypal/checkout` → `/api/influencer/paypal/complete`.
+
+Pro se deriva de `subscriptions` (`active`/`trialing`) + `influencers.metadata.manual_pro.active`, siempre vía `getInfluencerProStatuses()` / `isInfluencerPro()`.
+
+### 16.6 Creación de campaña
+
+Al agregar o tocar un campo en `POST /api/campaigns` o `POST /api/brand/campaigns`, **confirmar que entra al objeto del insert**, no solo al destructuring del body: `social_tags` se extraía y se descartaba en ambas rutas, y las etiquetas que escribía la marca se perdían sin error.
+
+La dirección de campaña vive en `metadata.address` y el lugar real del evento en `bookings`.
+
+### 16.7 Verificación mínima antes de commit
+
+`npx tsc --noEmit` y `npx next lint`. `next build` no completa en el sandbox de Cowork (sin salida a `fonts.googleapis.com`); el build real lo confirma Vercel al desplegar.
+
 ## Regla final para Claude
 
 Antes de escribir código, piensa como:

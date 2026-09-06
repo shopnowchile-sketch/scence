@@ -16,6 +16,8 @@ import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { isAttendanceDeadlineExpired, getCampaignDateKey } from '@/lib/attendance-state'
 import Link from 'next/link'
+import { acceptCurrentInfluencerProTerms, hasAcceptedCurrentInfluencerProTerms } from '@/lib/influencer-pro-terms'
+import { ApplyConfirmDialog } from '@/components/campaigns/ApplyConfirmDialog'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
@@ -28,6 +30,12 @@ type Deliverable = {
   hashtags?: string[] | null
   attendance_response?: 'confirmed' | 'declined' | null
   attendance_outcome?: 'attended' | 'excused_absence' | 'no_show' | null
+  // Cuentas a etiquetar de ESTE entregable, ya resueltas por el backend
+  // (tag_brand_ids → @instagram, tag_handles, o social_tags de la campaña como
+  // respaldo). Solo llega si la influencer está aceptada; si no, viene
+  // tags_pending para avisar que existen sin revelarlas.
+  tag_accounts?: string[] | null
+  tags_pending?: boolean
 }
 
 type CampaignRow = {
@@ -45,7 +53,7 @@ type CampaignRow = {
   campaign_deliverables: Deliverable[]
   event_booking?: {
     id: string; title: string | null; starts_at: string | null; ends_at: string | null
-    location: string | null; location_details?: { venue_name?: string; instructions?: string; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null; status: string | null
+    location: string | null; location_details?: { venue_name?: string; commune?: string; instructions?: string; address_hidden?: boolean; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null; status: string | null
   } | null
   campaign: {
     id: string; name: string; status: string
@@ -56,6 +64,7 @@ type CampaignRow = {
     cover_url?: string | null
     currency: string
     application_questions?: string[] | null
+    campaign_benefits?: CampaignBenefitOffer[] | null
     brand: { id: string; name: string; logo_url: string | null; website: string | null; instagram?: string | null } | null
     campaign_brands?: Array<{ id: string; role?: string | null; brand: { id: string; name: string; logo_url: string | null; website?: string | null; instagram?: string | null } | null }>
   } | null
@@ -67,7 +76,7 @@ type PreviewCampaign = {
   description: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
   cover_url?: string | null
-  event_booking?: { id: string; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; instructions?: string } | null } | null
+  event_booking?: { id: string | null; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; commune?: string; instructions?: string; address_hidden?: boolean } | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
   deliverable_templates: Array<{ type: string; quantity?: number; description?: string; due_date?: string | null }> | null
@@ -106,18 +115,98 @@ function activationText(benefit: CampaignBenefitOffer) {
   return 'Activación informada por la marca'
 }
 
-function EventBookingCard({ booking, showLocation }: { booking: NonNullable<CampaignRow['event_booking']>; showLocation: boolean }) {
-  const schedule = booking.location_details?.schedule?.filter(slot => slot.starts_at && slot.ends_at)
-    ?? (booking.starts_at && booking.ends_at ? [{ starts_at: booking.starts_at, ends_at: booking.ends_at }] : [])
-  const scheduleLabel = schedule.length ? schedule.map(slot => {
+// Zona de datos clave del detalle: FECHA / HORA / LUGAR con más jerarquía que
+// la descripción — es lo que la influencer mira para decidir si postula.
+// Fuente única: la fila de `bookings` de la campaña (misma que alimenta el
+// calendario), con la fecha de inicio de la campaña como respaldo cuando aún
+// no hay evento cargado. `showLocation` sigue significando lo mismo que antes
+// (solo aceptada ve la DIRECCIÓN exacta y las instrucciones de llegada); el
+// nombre del lugar y la comuna, cuando la marca los cargó, ya no se ocultan.
+type EventBookingLike = {
+  id?: string | null
+  starts_at: string | null
+  ends_at: string | null
+  location?: string | null
+  location_details?: { venue_name?: string; commune?: string; instructions?: string; address_hidden?: boolean; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null
+}
+
+const EVENT_TZ = 'America/Santiago'
+
+// Contador de días al evento. UNA sola función para la card previa a postular y
+// para el bloque "Información del evento": reusa getCampaignDateKey() — el
+// mismo "hoy" en huso de Santiago que ya usan asistencia y entregables — y la
+// fecha real del evento que ya existe. No crea fuente ni estado nuevo.
+export function eventCountdown(value: string | null | undefined) {
+  if (!value) return null
+  const key = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value
+    : (() => {
+        const parsed = new Date(value)
+        return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString('en-CA', { timeZone: EVENT_TZ })
+      })()
+  if (!key) return null
+  const days = Math.round((new Date(`${key}T00:00:00`).getTime() - new Date(`${getCampaignDateKey()}T00:00:00`).getTime()) / 86400000)
+  // Evento pasado: sin contador, igual que hoy.
+  if (days < 0) return null
+  // Contadores en color pleno para que resalten sobre el fondo lila del bloque
+  // de evento y sobre el blanco de la card. Gradiente violeta→fucsia de SCENCE
+  // cuando falta tiempo, ámbar cerca del plazo, verde el mismo día. El número
+  // viaja aparte (`count`) para poder mostrarlo más grande que el texto.
+  const AMBER = 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm'
+  if (days === 0) return { prefix: null, count: null, suffix: '¡Es hoy!', cls: 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-sm' }
+  if (days === 1) return { prefix: 'Falta', count: '1', suffix: 'día', cls: AMBER }
+  if (days <= 7) return { prefix: 'Faltan', count: String(days), suffix: 'días', cls: AMBER }
+  return { prefix: 'Faltan', count: String(days), suffix: 'días para este evento', cls: 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-sm' }
+}
+
+// Render compartido del contador: el número siempre más grande que el texto.
+export function EventCountdownPill({ countdown, size, className }: {
+  countdown: NonNullable<ReturnType<typeof eventCountdown>>
+  size: 'sm' | 'lg'
+  className?: string
+}) {
+  return (
+    <span className={cn('inline-flex items-baseline gap-1.5 font-extrabold uppercase tracking-wide', countdown.cls, className)}>
+      {countdown.prefix && <span className={size === 'lg' ? 'text-sm' : 'text-[11px]'}>{countdown.prefix}</span>}
+      {countdown.count && <span className={cn('leading-none', size === 'lg' ? 'text-2xl' : 'text-lg')}>{countdown.count}</span>}
+      <span className={size === 'lg' ? 'text-sm' : 'text-[11px]'}>{countdown.suffix}</span>
+    </span>
+  )
+}
+
+function EventBookingCard({ booking, showLocation, fallbackDate }: { booking: EventBookingLike | null; showLocation: boolean; fallbackDate?: string | null }) {
+  // Sin evento cargado no hay card: una campaña solo de contenido no debe
+  // mostrar un bloque de evento vacío (sus fechas ya están en Inicio/Termina).
+  if (!booking) return null
+  const rawSlots = booking?.location_details?.schedule?.filter(slot => slot.starts_at)
+    ?? (booking?.starts_at ? [{ starts_at: booking.starts_at, ends_at: booking.ends_at ?? undefined }] : [])
+  const slots = rawSlots.map(slot => {
     const startsAt = new Date(String(slot.starts_at))
-    const endsAt = new Date(String(slot.ends_at))
-    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return null
-    const day = startsAt.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Santiago' })
-    const start = startsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })
-    const end = endsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' })
-    return `${day} · ${start}–${end}`
-  }).filter(Boolean) : ['Fecha y hora por confirmar']
+    if (Number.isNaN(startsAt.getTime())) return null
+    const endsAt = slot.ends_at ? new Date(String(slot.ends_at)) : null
+    const start = startsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: EVENT_TZ })
+    const end = endsAt && !Number.isNaN(endsAt.getTime())
+      ? endsAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: EVENT_TZ })
+      : null
+    return {
+      day: startsAt.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: EVENT_TZ }),
+      time: end ? `${start} – ${end}` : start,
+    }
+  }).filter(Boolean) as Array<{ day: string; time: string }>
+
+  const rows = slots.length
+    ? slots
+    : fallbackDate
+    ? [{ day: new Date(`${fallbackDate.slice(0, 10)}T00:00:00`).toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }), time: 'Hora por confirmar' }]
+    : []
+  const countdown = eventCountdown(rawSlots[0]?.starts_at ?? fallbackDate)
+  const venueName = booking?.location_details?.venue_name?.trim() || null
+  const commune = booking?.location_details?.commune?.trim() || null
+  const address = showLocation ? booking?.location?.trim() || null : null
+  // Dirección cargada por la marca pero todavía privada (postulación sin aprobar).
+  const addressHidden = !address && booking?.location_details?.address_hidden === true
+  const hasPlace = !!venueName || !!commune || !!address || addressHidden
+  if (!rows.length && !hasPlace) return null
 
   return (
     <section className="mt-4 rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
@@ -125,13 +214,64 @@ function EventBookingCard({ booking, showLocation }: { booking: NonNullable<Camp
         <CalendarClock className="h-5 w-5 text-violet-700" />
         <h3 className="text-sm font-extrabold text-violet-950">Información del evento</h3>
       </div>
-      <div className="mt-3 space-y-2 text-sm">
-        <div className="flex gap-2.5 text-violet-950"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Fecha y hora:</b> {scheduleLabel.map((label, index) => <span key={index} className={index ? 'block mt-1' : ''}>{label}</span>)}</span></div>
-        {showLocation && <div className="flex gap-2.5 text-violet-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" /><span><b>Lugar:</b> {booking.location_details?.venue_name && <span className="block font-semibold">{booking.location_details.venue_name}</span>}{booking.location ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.location)}`} target="_blank" rel="noopener noreferrer" className="block text-violet-700 underline underline-offset-2">{booking.location}</a> : 'La marca confirmará la dirección pronto.'}</span></div>}
-        {showLocation && booking.location_details?.instructions?.trim() && <div className="ml-6 rounded-lg bg-white/70 px-3 py-2 text-xs leading-relaxed text-violet-900"><b>Cómo llegar:</b> {booking.location_details.instructions}</div>}
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">Fecha del evento</p>
+          {rows.length
+            ? rows.map((row, index) => <p key={index} className="mt-0.5 text-base font-extrabold capitalize leading-tight text-violet-950">{row.day}</p>)
+            : <p className="mt-0.5 text-base font-extrabold leading-tight text-violet-950">Por confirmar</p>}
+          {/* Contador destacado bajo la fecha, mismo pill que ya usa el resto
+              del portal (rounded-md + uppercase + tracking). */}
+          {countdown && <EventCountdownPill countdown={countdown} size="sm" className="mt-1.5 rounded-md px-2 py-1" />}
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">Hora</p>
+          {rows.length
+            ? rows.map((row, index) => <p key={index} className="mt-0.5 text-base font-extrabold leading-tight text-violet-950 tabular-nums">{row.time}</p>)
+            : <p className="mt-0.5 text-base font-extrabold leading-tight text-violet-950">Hora por confirmar</p>}
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">Lugar</p>
+          {venueName && <p className="mt-0.5 text-base font-extrabold leading-tight text-violet-950">{venueName}</p>}
+          {address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noopener noreferrer" className="mt-0.5 block text-sm font-semibold text-violet-700 underline underline-offset-2">{address}</a>}
+          {commune && <p className="mt-0.5 text-sm font-semibold text-violet-800">{commune}</p>}
+          {!venueName && !address && !commune && !addressHidden && <p className="mt-0.5 text-base font-extrabold leading-tight text-violet-950">Lugar por confirmar</p>}
+          {addressHidden && <p className={cn('text-[11px] font-medium leading-snug text-violet-700', venueName || commune ? 'mt-1' : 'mt-0.5')}>Dirección exacta al aprobarse tu postulación.</p>}
+        </div>
       </div>
+      {showLocation && booking?.location_details?.instructions?.trim() && (
+        <div className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-xs leading-relaxed text-violet-900"><b>Cómo llegar:</b> {booking.location_details.instructions}</div>
+      )}
       <p className="mt-3 border-t border-violet-200 pt-3 text-xs font-medium leading-relaxed text-violet-800">Tu entrada o confirmación llegará por correo cuando la marca la envíe y, como máximo, el día anterior al evento.</p>
     </section>
+  )
+}
+
+// Canje/beneficios de la campaña. Fuente única: campaigns.campaign_benefits
+// (lo que la marca configuró al crear la campaña); `barters` es la ejecución
+// por influencer y sigue mostrándose aparte con BartersReadonly. Si la
+// campaña no tiene canje configurado, no se renderiza nada — sin bloque vacío
+// ni texto "Sin canje".
+function CampaignBenefitsCard({ benefits }: { benefits: CampaignBenefitOffer[] | null | undefined }) {
+  if (!benefits?.length) return null
+  return (
+    <div className="mt-4 rounded-2xl border-2 border-violet-200 bg-violet-50/40 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Gift className="h-4 w-4 text-violet-600" />
+        <p className="text-sm font-extrabold text-violet-900">Canje / Beneficios</p>
+      </div>
+      <div className="space-y-2">
+        {benefits.map((benefit, index) => (
+          <div key={index} className="rounded-lg bg-white px-3 py-2.5">
+            <p className="text-base font-bold leading-snug text-violet-900">{benefit.quantity ?? 1}× {benefit.description}</p>
+            <p className="text-xs text-violet-700 mt-1">{activationText(benefit)}</p>
+            {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && (
+              <p className="text-xs font-bold text-violet-900 mt-1">{benefit.commission_rate}% de comisión sobre ventas</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -144,7 +284,7 @@ type CampaignAsset = {
 // Entregables dentro del detalle: la influencer no tiene que volver al menú
 // "Mis entregables" para subir o corregir un link. Los rechazados conservan
 // su link anterior, pero se presentan como una corrección pendiente.
-function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUpdated: () => void }) {
+function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable[]; onUpdated: () => void; canAct: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [url, setUrl] = useState('')
   const [notes, setNotes] = useState('')
@@ -169,6 +309,21 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
   }
   const daysRemaining = (dueDate: string) =>
     Math.round((new Date(`${dueDate}T00:00:00`).getTime() - new Date(`${getCampaignDateKey()}T00:00:00`).getTime()) / 86400000)
+  // Fecha de publicación destacada: la misma due_date del entregable, sin
+  // inventar otra fuente. Formato compacto "25 SEPT 2026".
+  const fmtDueDate = (dueDate: string) =>
+    new Date(`${dueDate}T00:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }).replace(/\./g, '').toUpperCase()
+  // Contador por cercanía al plazo. Verde con holgura, ámbar cerca o el mismo
+  // día, rojo vencido.
+  const countdown = (days: number) => days < 0
+    ? { label: `Vencido hace ${Math.abs(days)} día${Math.abs(days) === 1 ? '' : 's'}`, cls: 'bg-red-100 text-red-700' }
+    : days === 0
+    ? { label: 'Hoy', cls: 'bg-amber-100 text-amber-800' }
+    : days === 1
+    ? { label: 'Falta 1 día', cls: 'bg-amber-100 text-amber-800' }
+    : days <= 3
+    ? { label: `Faltan ${days} días`, cls: 'bg-amber-100 text-amber-800' }
+    : { label: `Faltan ${days} días`, cls: 'bg-green-100 text-green-700' }
   const expiredAttendance = items.filter(isAttendanceExpired).length
   const pending = total - submitted - expiredAttendance
   const pct = total ? Math.round((submitted / total) * 100) : 0
@@ -213,16 +368,27 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
   if (!total) return null
   return (
     <section className="bg-white rounded-2xl border border-gray-100 p-5">
+      {/* Antes de aprobar, la sección solo anticipa QUÉ tendrá que hacer: el
+          avance, el contador y la barra son estado operativo y aparecen recién
+          cuando está aceptada. Un único mensaje corto reemplaza los avisos
+          repetidos dentro de cada entregable. */}
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
           <h2 className="text-sm font-bold text-gray-900">Entregables</h2>
-          <p className={cn('text-xs font-medium mt-0.5', reviewState.color)}>{reviewState.label}</p>
+          {canAct && <p className={cn('text-xs font-medium mt-0.5', reviewState.color)}>{reviewState.label}</p>}
         </div>
-        <span className={cn('text-xs font-bold', reviewState.color)}>{submitted}/{total}</span>
+        {canAct && <span className={cn('text-xs font-bold', reviewState.color)}>{submitted}/{total}</span>}
       </div>
-      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
-        <div className={cn('h-full rounded-full transition-all', reviewState.bar)} style={{ width: `${pct}%` }} />
-      </div>
+      {!canAct && (
+        <p className="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
+          Más detalles al ser aprobada.
+        </p>
+      )}
+      {canAct && (
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
+          <div className={cn('h-full rounded-full transition-all', reviewState.bar)} style={{ width: `${pct}%` }} />
+        </div>
+      )}
       <div className="space-y-3">
         {items.map(d => {
           const isAttendance = d.type === 'event_attendance'
@@ -236,35 +402,86 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
           const opened = openId === d.id
           const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
           const dueDays = d.due_date && !complete ? daysRemaining(d.due_date) : null
-          return <div key={d.id} className={cn('rounded-xl border p-3 sm:p-4', isNoShow ? 'border-slate-200 bg-slate-50' : attendanceExpired ? 'border-amber-200 bg-amber-50/60' : contentOverdue ? 'border-amber-200 bg-amber-50/60' : isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
+          const statusLabel = isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : contentOverdue ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'
+          return <div key={d.id} className={cn('rounded-xl border p-3 sm:p-4', !canAct ? 'border-gray-100' : isNoShow ? 'border-slate-200 bg-slate-50' : attendanceExpired ? 'border-amber-200 bg-amber-50/60' : contentOverdue ? 'border-amber-200 bg-amber-50/60' : isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="flex min-w-0 flex-1 items-start gap-3">
-              <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
-                {complete ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+              <div className={cn('mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center', !canAct ? 'bg-violet-50 text-violet-600' : isRejected ? 'bg-amber-100 text-amber-600' : isReview ? 'bg-blue-100 text-blue-600' : complete ? 'bg-green-100 text-green-600' : 'bg-violet-50 text-violet-600')}>
+                {canAct && complete ? <CheckCircle2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900">{d.title || d.type}</p>
-                <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
-                  <span className={cn('font-bold px-2 py-0.5 rounded-full', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : d.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                    {isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : contentOverdue ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'}
-                  </span>
-                  {d.due_date && <span className={cn(dueDays != null && dueDays < 0 ? 'text-amber-700 font-semibold' : dueDays != null && dueDays <= 2 ? 'text-amber-600 font-semibold' : 'text-gray-400')}>
-                    Vence: {fmtDate(d.due_date)}
-                    {dueDays != null && (dueDays < 0 ? ` · vencido hace ${Math.abs(dueDays)} día${Math.abs(dueDays) === 1 ? '' : 's'}` : dueDays === 0 ? ' · vence hoy' : ` · faltan ${dueDays} día${dueDays === 1 ? '' : 's'}`)}
-                  </span>}
-                </div>
-                {isAttendance && !d.attendance_response && (attendanceExpired
+                {/* Solo etiqueta visible: los entregables de asistencia se
+                    guardan con title "event_attendance 1 de 1", que es el
+                    nombre técnico del type. El type y toda la lógica siguen
+                    intactos. */}
+                <p className="text-base font-bold uppercase leading-tight tracking-wide text-gray-900">{isAttendance ? 'Confirmar asistencia' : (d.title || d.type)}</p>
+
+                {/* ANTES DE APROBAR: solo qué tendrá que hacer. La única
+                    excepción es la asistencia, que sí anticipa hasta cuándo
+                    puede confirmar — pero sin estado ni botones. */}
+                {!canAct && isAttendance && (
+                  <p className="mt-1 text-xs font-medium text-gray-500">
+                    Fecha límite para confirmar: <span className="font-bold text-gray-700">{d.due_date ? fmtDueDate(d.due_date) : 'POR CONFIRMAR'}</span>
+                  </p>
+                )}
+
+                {/* YA APROBADA: vista operativa en grilla — Estado, Fecha
+                    límite y Plazo alineados en desktop, apilados en mobile.
+                    La asistencia no lleva columna de Plazo. */}
+                {canAct && (
+                  <div className={cn('mt-2 grid grid-cols-1 gap-x-6 gap-y-2', isAttendance ? 'sm:grid-cols-2' : 'sm:grid-cols-3')}>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Estado</p>
+                      <span className={cn('mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold', isRejected ? 'bg-amber-100 text-amber-700' : complete ? 'bg-green-100 text-green-700' : isReview ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                        {statusLabel}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Fecha límite</p>
+                      <p className={cn('mt-1 text-sm font-bold leading-tight tabular-nums', d.due_date ? 'text-gray-900' : 'text-gray-400')}>
+                        {d.due_date ? fmtDueDate(d.due_date) : 'POR CONFIRMAR'}
+                      </p>
+                    </div>
+                    {!isAttendance && (
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Plazo</p>
+                        {dueDays != null
+                          ? (() => {
+                              const cd = countdown(dueDays)
+                              return <span className={cn('mt-1 inline-block rounded-md px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide', cd.cls)}>{cd.label}</span>
+                            })()
+                          : <p className="mt-1 text-sm font-bold leading-tight text-gray-400">—</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Cuentas a etiquetar de ESTE entregable (Reel y Story pueden
+                    tener distintas). Solo cuando ya está aceptada — antes de
+                    aprobar no se revelan, y el aviso corto vive una sola vez
+                    arriba de la sección. */}
+                {canAct && (d.tag_accounts?.length ?? 0) > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cuentas a etiquetar</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {(d.tag_accounts ?? []).map(account => (
+                        <span key={account} className="rounded-md bg-fuchsia-50 px-2 py-0.5 text-xs font-bold text-fuchsia-700">{account}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {canAct && isAttendance && !d.attendance_response && (attendanceExpired
                   ? <p className="mt-2 text-xs leading-relaxed text-amber-800">El plazo de confirmación venció. Si necesitas ayuda, contacta al equipo de SCENCE.</p>
                   : <p className="mt-2 text-xs leading-relaxed text-amber-700">Confirma antes de la fecha límite para asegurar tu cupo.</p>)}
-                {isNoShow && <p className="mt-2 text-xs leading-relaxed text-slate-600">No se registró tu asistencia a este evento.</p>}
-                {d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
+                {canAct && isNoShow && <p className="mt-2 text-xs leading-relaxed text-slate-600">No se registró tu asistencia a este evento.</p>}
+                {canAct && d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
               </div>
               </div>
-              {isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
+              {canAct && (isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
                 {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
-              </button>}
+              </button>)}
             </div>
-            {opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
+            {canAct && opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
               <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
               <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
               <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div>
@@ -273,6 +490,36 @@ function CampaignDeliverables({ items, onUpdated }: { items: Deliverable[]; onUp
         })}
       </div>
     </section>
+  )
+}
+
+// Lista de archivos de campaña. Fuente única: media_files vía
+// GET /api/campaigns/[id]/assets, que ya decide por rol qué tipos entrega.
+// Acá solo se agrupa visualmente; no se cambia ninguna regla de acceso.
+function CampaignAssetList({ title, assets }: { title: string; assets: CampaignAsset[] }) {
+  if (!assets.length) return null
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <Download className="h-4 w-4 text-violet-600" />
+        <h2 className="text-sm font-bold text-gray-900">{title}</h2>
+      </div>
+      <div className="space-y-2">
+        {assets.map(asset => (
+          <a key={asset.id} href={asset.signed_url ?? asset.storage_path} target="_blank" rel="noopener noreferrer" download={asset.filename}
+            className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:border-violet-200 hover:bg-violet-50/30 transition-colors">
+            <div className="flex min-w-0 items-center gap-3">
+              {asset.mime_type?.startsWith('image/') && <img src={asset.signed_url ?? asset.storage_path} alt="" className="h-12 w-12 rounded-lg object-cover border border-gray-100" />}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">{asset.filename}</p>
+                <p className="text-[10px] text-gray-400">{asset.metadata?.asset_type === 'brand_guide' ? 'Manual de marca' : asset.mime_type ?? 'Archivo'}</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-violet-600 flex-shrink-0">Descargar</span>
+          </a>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -399,6 +646,9 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   // Respuestas a las preguntas de postulación (opcional, solo si la campaña
   // tiene application_questions) — pedido de Pri 2026-07-12.
   const [answers, setAnswers] = useState<string[]>([])
+  // Confirmación única de postulación. `needsTerms` se resuelve antes de
+  // mostrar el diálogo para que el consentimiento viaje en la MISMA ventana.
+  const [applyDialog, setApplyDialog] = useState<{ checking: boolean; needsTerms: boolean } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -435,18 +685,40 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       toast.error('Responde todas las preguntas para postular.')
       return
     }
-    if (!confirm(`¿Enviar solicitud para unirte a "${preview.name}"? El equipo la revisará y te confirmará.`)) return
+    setApplyDialog({ checking: preview.visibility === 'private', needsTerms: false })
+    // Los Términos Pro solo aplican a campañas privadas (lo mismo exige /apply).
+    if (preview.visibility === 'private') {
+      const accepted = await hasAcceptedCurrentInfluencerProTerms().catch(() => false)
+      setApplyDialog({ checking: false, needsTerms: !accepted })
+    }
+  }
+
+  // Confirmación del diálogo: registra la versión vigente SOLO si la influencer
+  // marcó el checkbox en esta misma ventana, y recién después postula.
+  async function confirmApply() {
+    if (!preview || !applyDialog || applyDialog.checking) return
     setApplying(true)
     try {
-      const res  = await fetch(`/api/influencer/campaigns/${id}/apply`, {
+      // Consentimiento explícito de la versión vigente, marcado en el diálogo.
+      if (applyDialog.needsTerms) await acceptCurrentInfluencerProTerms()
+      const send = () => fetch(`/api/influencer/campaigns/${id}/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answers }),
       })
+      const res  = await send()
       const json = await res.json()
+      // El backend solo debería pedir términos si el diálogo no los cubrió
+      // (por ejemplo, versión publicada entre el chequeo y el envío). No se
+      // acepta nada en silencio: se le pide reintentar y el diálogo volverá a
+      // mostrar el consentimiento de la versión nueva.
+      if (!res.ok && json?.code === 'INFLUENCER_PRO_TERMS_REQUIRED') {
+        throw new Error('Los Términos del Plan Pro cambiaron. Vuelve a intentarlo para revisarlos y aceptarlos.')
+      }
       if (!res.ok) throw new Error(json.error)
       toast.success('¡Solicitud enviada! El equipo te confirmará pronto.')
       setPreview(p => p ? { ...p, _applied: true, application_status: 'pending' } : p)
+      setApplyDialog(null)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error al enviar solicitud')
     }
@@ -477,6 +749,13 @@ export function InfluencerCampaignView({ id }: { id: string }) {
     }
     setResponding(false)
   }
+
+  // El endpoint de assets ya filtra por rol; acá solo se separa el manual de
+  // marca (visible siempre) de los assets operativos. La portada y el brief no
+  // se listan: la portada ya se muestra como imagen de cabecera y el brief
+  // tiene su propio bloque con su gate.
+  const brandGuideAssets = assets.filter(asset => asset.metadata?.asset_type === 'brand_guide')
+  const operationalAssets = assets.filter(asset => !['brand_guide', 'brief', 'sponsor_brief', 'campaign_cover'].includes(asset.metadata?.asset_type ?? 'asset'))
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
@@ -516,28 +795,16 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             {p.visibility === 'private' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-violet-100 text-violet-700">Privada · Pro</span>}
           </div>
 
-          {/* Canje/Beneficio primero — es lo que la influencer mira primero para
-              decidir si postula (pedido de Pri 2026-09-04). Antes aparecía como
-              tarjeta separada más abajo, después de la descripción. */}
-          {(p.campaign_benefits?.length ?? 0) > 0 && (
-            <div className="mt-3 rounded-xl border-2 border-violet-200 bg-violet-50/40 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Gift className="h-4 w-4 text-violet-600" />
-                <p className="text-sm font-bold text-violet-900">Beneficios de esta campaña</p>
-              </div>
-              <div className="space-y-2">
-                {p.campaign_benefits.map((benefit, index) => (
-                  <div key={index} className="rounded-lg bg-white px-3 py-2.5">
-                    <p className="text-sm font-bold text-violet-900">{benefit.quantity ?? 1}× {benefit.description}</p>
-                    <p className="text-xs text-violet-700 mt-1">{activationText(benefit)}</p>
-                    {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && (
-                      <p className="text-xs font-bold text-violet-900 mt-1">{benefit.commission_rate}% de comisión sobre ventas</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Fecha, hora, lugar y canje ANTES que la descripción: es lo que la
+              influencer necesita para decidir si postula, y quedaba enterrado
+              bajo el texto de la campaña. El lugar respeta la misma privacidad
+              de siempre (dirección exacta solo si está aceptada). */}
+          <EventBookingCard
+            booking={p.event_booking ?? null}
+            showLocation={p._applied && p.application_status === 'accepted'}
+            fallbackDate={p.start_date}
+          />
+          <CampaignBenefitsCard benefits={p.campaign_benefits} />
 
           {/* Descripción general de la campaña — mismo campo campaigns.description
               que ya se guarda en el form de creación ("visible antes de postular")
@@ -548,22 +815,22 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               fuente de "descripción" para la influencer: description. */}
           {p.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{p.description}</p>}
 
-  {/* Fecha/hora del evento ya se muestra antes de postular; el lugar exacto
-      sigue siendo privado hasta la aceptación (misma regla que ya aplicaba
-      acá — showLocation ya existía en EventBookingCard para esto, solo se
-      usa correctamente en vez de forzarlo siempre en true). */}
-  {p.event_booking && <EventBookingCard booking={{ ...p.event_booking, location: p.event_booking.location ?? null, title: null, status: null }} showLocation={p._applied && p.application_status === 'accepted'} />}
-
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
-            <div>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.start_date)}</p>
+          {/* Con evento cargado, la fecha que importa es la del evento (ya está
+              arriba, en "Información del evento"): el rango Inicio/Termina de la
+              campaña solo confundía. Se mantiene tal cual para campañas sin
+              evento, donde es la única fecha disponible. */}
+          {!p.event_booking?.starts_at && (
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
+                <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.start_date)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
+                <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.end_date)}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.end_date)}</p>
-            </div>
-          </div>
+          )}
 
           {(p.max_influencers || p.application_deadline) && (
             <div className="mt-3 rounded-xl bg-violet-50 border border-violet-100 px-3 py-2">
@@ -584,6 +851,16 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </div>
           )}
         </div>
+
+        <ApplyConfirmDialog
+          open={!!applyDialog}
+          campaignName={p.name}
+          checking={applyDialog?.checking ?? false}
+          needsTerms={applyDialog?.needsTerms ?? false}
+          submitting={applying}
+          onCancel={() => setApplyDialog(null)}
+          onConfirm={() => void confirmApply()}
+        />
 
         {/* CTA arriba, antes del detalle de deliverables (pedido: que se vea
             de inmediato, sin scrollear todo el brief primero). */}
@@ -623,14 +900,29 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               {noSpots ? 'Cupos agotados' : deadlinePassed ? 'El plazo de postulación finalizó' : 'La marca cerró las postulaciones'}
             </div>
           ) : p.requires_pro ? (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-violet-700">🔒 Para postular debes ser PRO</p>
-              <Link
-                href={`/inf-profile?tab=plan&return_campaign_id=${p.id}`}
-                className="block w-full py-3.5 text-center text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors"
-              >
-                ACTIVAR PLAN PRO
-              </Link>
+            // Privada + influencer Gratis. El destino es el flujo Pro que ya
+            // existe: /inf-profile?tab=plan monta InfluencerPlanSettings, que
+            // llama a upgradeToPro() → /api/influencer/paypal/checkout y vuelve
+            // a esta campaña con return_campaign_id. No hay checkout nuevo.
+            <div className="space-y-3">
+              <div className="rounded-xl bg-violet-50 px-3 py-2.5">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-violet-500">Solo disponible con Pro</p>
+                <p className="mt-0.5 text-sm font-bold text-violet-900">Campaña exclusiva para Influencers Pro</p>
+              </div>
+              {/* Verde de confirmación de pago, a propósito distinto del violeta
+                  del resto del portal: acá la acción no es "seguir navegando"
+                  sino "activo mi Pro y sigo". El destino y el flujo no cambian.
+                  Alto y tipografía bajan un punto en mobile para que domine sin
+                  volverse desproporcionado. */}
+              <div>
+                <Link
+                  href={`/inf-profile?tab=plan&return_campaign_id=${p.id}`}
+                  className="block w-full rounded-xl bg-emerald-600 py-3.5 text-center text-[15px] font-extrabold uppercase tracking-wide text-white shadow-md shadow-emerald-600/25 transition-colors hover:bg-emerald-700 sm:py-4 sm:text-base"
+                >
+                  Postular con Pro
+                </Link>
+                <p className="mt-2 text-center text-[11px] font-medium text-gray-400">Pago seguro con PayPal</p>
+              </div>
             </div>
           ) : (
             <button onClick={handleApply} disabled={applying}
@@ -639,6 +931,11 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             </button>
           )}
         </div>
+
+        {/* Manual de marca antes de postular: es lo que permite entender la
+            identidad y los lineamientos para decidir. El resto de los assets
+            sigue restringido hasta la aprobación. */}
+        <CampaignAssetList title="Manual de marca" assets={brandGuideAssets} />
 
         {templates.length > 0 && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -799,16 +1096,19 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           </span>
         </div>
 
+        {/* Mismo orden que el preview: fecha, hora, lugar y canje por encima de
+            la descripción. Antes el evento iba después del texto y, en pending,
+            el backend ni siquiera enviaba el booking. Lugar e instrucciones
+            exactas siguen apareciendo solo cuando la influencer fue aceptada. */}
+        <EventBookingCard booking={data.event_booking ?? null} showLocation={isAccepted || isSelfCreated} fallbackDate={c.start_date} />
+        <CampaignBenefitsCard benefits={c.campaign_benefits} />
+
         {/* Descripción general de la campaña — mismo campaigns.description que
             ya se muestra antes de postular (arriba, en el preview) y en la
             tarjeta del marketplace. Debe seguir visible en pending; el brief
             privado (solo el PDF/link de brief_url) sigue gateado por isAccepted
             más abajo, sin cambios en ese gate. */}
-        {c.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{c.description}</p>}
-
-        {/* Fecha y hora se informan desde el inicio. Lugar e instrucciones solo
-            aparecen cuando la influencer ya fue aceptada. */}
-        {data.event_booking && <EventBookingCard booking={data.event_booking} showLocation />}
+        {c.description && <p className="text-sm text-gray-600 mt-4 whitespace-pre-wrap">{c.description}</p>}
 
       {/* El brief es la primera acción disponible luego del resumen del evento. */}
         {/* Un brief cargado como archivo es la versión operativa más reciente.
@@ -828,22 +1128,30 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             : <CollapsibleBrief text={null} briefUrl={c.brief_url} />
         })()}
 
-        <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
-          <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
-            <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.start_date)}</p>
+        {/* Mismo criterio que el preview: con evento cargado no se repite el
+            rango de la campaña. "Tu fee" se conserva siempre. */}
+        {(!data.event_booking?.starts_at || !!data.fee) && (
+          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
+            {!data.event_booking?.starts_at && (
+              <>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
+                  <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.start_date)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
+                  <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.end_date)}</p>
+                </div>
+              </>
+            )}
+            {!!data.fee && (
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tu fee</p>
+                <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtMoney(data.fee, data.currency)}</p>
+              </div>
+            )}
           </div>
-          <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
-            <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.end_date)}</p>
-          </div>
-          {!!data.fee && (
-            <div>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tu fee</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtMoney(data.fee, data.currency)}</p>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* KPIs y marca participante, antes de cualquier detalle operativo. */}
         {!isPending && (
@@ -861,31 +1169,16 @@ export function InfluencerCampaignView({ id }: { id: string }) {
       </div>
 
       {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}
-      {!isPending && <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} />}
+      {/* Se muestra también a postulantes/rechazadas, pero solo como referencia:
+          las acciones (Subir, Confirmar asistencia) exigen application_status
+          'accepted', igual que el backend. */}
+      <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} canAct={isAccepted} />
 
-      {!isPending && assets.some(asset => asset.metadata?.asset_type !== 'brief') && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Download className="h-4 w-4 text-violet-600" />
-            <h2 className="text-sm font-bold text-gray-900">Archivos de la campaña</h2>
-          </div>
-          <div className="space-y-2">
-            {assets.filter(asset => asset.metadata?.asset_type !== 'brief').map(asset => (
-              <a key={asset.id} href={asset.signed_url ?? asset.storage_path} target="_blank" rel="noopener noreferrer" download={asset.filename}
-                className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:border-violet-200 hover:bg-violet-50/30 transition-colors">
-                <div className="flex min-w-0 items-center gap-3">
-                  {asset.mime_type?.startsWith('image/') && <img src={asset.signed_url ?? asset.storage_path} alt="" className="h-12 w-12 rounded-lg object-cover border border-gray-100" />}
-                  <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 truncate">{asset.filename}</p>
-                  <p className="text-[10px] text-gray-400">{asset.metadata?.asset_type === 'brief' ? 'Brief' : asset.mime_type ?? 'Archivo'}</p>
-                  </div>
-                </div>
-                <span className="text-xs font-bold text-violet-600 flex-shrink-0">Descargar</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* El manual de marca se ve desde el primer momento: la influencer lo
+          necesita para entender la identidad antes de decidir. El resto de los
+          assets operativos siguen apareciendo solo cuando ya está vinculada. */}
+      <CampaignAssetList title="Manual de marca" assets={brandGuideAssets} />
+      {!isPending && <CampaignAssetList title="Assets de campaña" assets={operationalAssets} />}
 
       {/* Tags obligatorios de la campaña (plataformas + hashtags) — mismo
           bloque que ya se mostraba en el preview antes de postular; acá

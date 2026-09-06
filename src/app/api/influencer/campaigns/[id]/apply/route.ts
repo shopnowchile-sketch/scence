@@ -121,12 +121,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que no haya postulación previa
   const { data: existing } = await admin
     .from('campaign_influencers')
-    .select('id, application_status')
+    .select('id, application_status, origin')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .single()
 
-  if (existing) {
+  // Una invitación ya rechazada quedó cerrada, pero no inhabilita a la
+  // influencer: con Plan Pro puede postular por su cuenta a esa misma campaña
+  // privada (mismo criterio que GET /api/influencer/campaigns/open y el
+  // detalle). Como (campaign_id, influencer_id) es UNIQUE, esa fila se
+  // reutiliza más abajo en vez de insertar una nueva.
+  const reusableRejectedInvitation =
+    existing?.application_status === 'rejected' && existing.origin === 'invitation'
+
+  if (existing && !reusableRejectedInvitation) {
     return NextResponse.json({
       error: existing.application_status === 'pending'
         ? 'Ya enviaste una postulación a esta campaña'
@@ -158,22 +166,31 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Crear postulación con nuevo schema
-  const { data, error } = await admin
-    .from('campaign_influencers')
-    .insert({
-      campaign_id:          params.id,
-      influencer_id:        influencer.id,
-      application_status:   'pending',
-      origin:               'application',
-      message:              message,
-      fee:                  null,
-      deliverables_spec:    '[]',
-      application_answers:  questions.length > 0
-        ? questions.map((q, i) => ({ question: q, answer: answers[i] }))
-        : [],
-    })
-    .select('id')
-    .single()
+  const applicationRow = {
+    campaign_id:          params.id,
+    influencer_id:        influencer.id,
+    application_status:   'pending' as const,
+    origin:               'application' as const,
+    message:              message,
+    fee:                  null,
+    deliverables_spec:    '[]',
+    application_answers:  questions.length > 0
+      ? questions.map((q, i) => ({ question: q, answer: answers[i] }))
+      : [],
+  }
+
+  const { data, error } = reusableRejectedInvitation
+    ? await admin
+        .from('campaign_influencers')
+        .update({ ...applicationRow, rejected_at: null, rejection_reason: null, notes: null, updated_at: new Date().toISOString() })
+        .eq('id', existing!.id)
+        .select('id')
+        .single()
+    : await admin
+        .from('campaign_influencers')
+        .insert(applicationRow)
+        .select('id')
+        .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

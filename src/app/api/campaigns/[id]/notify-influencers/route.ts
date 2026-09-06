@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { announceCampaignToInfluencers, resolvePendingCampaignAnnouncement } from '@/lib/campaign-notifications'
+import { announceCampaignToInfluencers, resolvePendingCampaignAnnouncement, sendCampaignAnnouncementPreview } from '@/lib/campaign-notifications'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
@@ -53,6 +53,16 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const admin = createAdminClient()
   if (!(await requireAdmin(user.id, user.user_metadata, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // ?test=1 → una sola copia al correo de quien aprieta el botón. No marca a
+  // nadie como notificada ni le escribe a ninguna influencer: sirve para
+  // revisar asunto, copy y links ANTES del envío real, que es irreversible.
+  if (_req.nextUrl.searchParams.get('test') === '1') {
+    if (!user.email) return NextResponse.json({ error: 'Tu cuenta no tiene email para enviar la prueba' }, { status: 422 })
+    const preview = await sendCampaignAnnouncementPreview(params.id, user.email, admin)
+    if (!preview.ok) return NextResponse.json({ error: preview.error ?? 'No se pudo enviar la prueba' }, { status: 500 })
+    return NextResponse.json({ test: true, sent: 1, failed: 0, remaining: 0, to: user.email })
   }
 
   const result = await announceCampaignToInfluencers(params.id, admin)

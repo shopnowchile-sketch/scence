@@ -191,6 +191,44 @@ export async function announceCampaignToInfluencers(
 }
 
 /**
+ * sendCampaignAnnouncementPreview — manda UNA copia del correo real a la
+ * dirección indicada (la admin que aprieta el botón), sin tocar
+ * campaign_influencer_notifications y sin escribirle a ninguna influencer.
+ *
+ * Existe porque no había forma de ver el correo antes de dispararlo a más de
+ * 2.000 personas: un asunto mal escrito o un link roto no se puede deshacer.
+ * Usa el MISMO template y los MISMOS datos que el envío real, así que lo que
+ * llega a la prueba es exactamente lo que van a recibir.
+ */
+export async function sendCampaignAnnouncementPreview(
+  campaignId: string,
+  to: string,
+  admin: ReturnType<typeof createAdminClient>
+): Promise<{ ok: boolean; error?: string }> {
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .select('id, name, type, visibility')
+    .eq('id', campaignId)
+    .maybeSingle()
+  if (!campaign) return { ok: false, error: 'Campaña no encontrada' }
+
+  const { error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `[PRUEBA] Nueva campaña disponible: ${campaign.name} — cupos limitados`,
+    html: campaignOpenAvailableEmail({
+      influencerName: 'Camila',
+      campaignName: campaign.name,
+      campaignType: campaign.type,
+      applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
+      requiresPro: campaign.visibility === 'private',
+    }),
+  })
+  if (error) return { ok: false, error: error.message ?? 'Resend error' }
+  return { ok: true }
+}
+
+/**
  * Alias histórico: se mantiene el nombre que ya importa
  * PATCH /api/campaigns/[id] para no tocar ese call site.
  */

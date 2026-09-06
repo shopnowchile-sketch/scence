@@ -2633,9 +2633,32 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         : 'Envía el aviso de campaña disponible a todas las influencers que aún no lo recibieron y tienen activado recibir campañas por email.'}
                     </p>
                   </div>
+                  <div className="flex items-center gap-2">
+                  {/* Prueba a mi correo: el envío real es irreversible, así que
+                      primero se puede ver exactamente el mismo email. */}
+                  <button
+                    disabled={notifying}
+                    onClick={async () => {
+                      setNotifying(true)
+                      try {
+                        const r = await fetch(`/api/campaigns/${id}/notify-influencers?test=1`, { method: 'POST' })
+                        const json = await r.json()
+                        if (!r.ok) throw new Error(json.error ?? 'Error al enviar la prueba')
+                        toast.success(`Prueba enviada a ${json.to}`)
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'Error al enviar la prueba')
+                      }
+                      setNotifying(false)
+                    }}
+                    className="text-xs font-semibold px-3 py-2 rounded-full border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    Enviarme una prueba
+                  </button>
                   <button
                     disabled={notifying || notifyPending?.pending === 0}
                     onClick={async () => {
+                      const total = notifyPending?.pending ?? 0
+                      if (total > 0 && !window.confirm(`Se enviará el correo a ${total} influencers. Esta acción no se puede deshacer. ¿Continuar?`)) return
                       setNotifying(true)
                       setNotifyResult(null)
                       try {
@@ -2660,6 +2683,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         ? `Avisar a ${notifyPending.pending}`
                         : 'Avisar a todas'}
                   </button>
+                  </div>
                 </div>
                 {notifyResult && (
                   <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">

@@ -365,6 +365,19 @@ export function campaignOpenAvailableEmail({
   spotsNote?: string | null
 }): string {
   const cupos = spotsNote ?? 'Los cupos son limitados y se asignan por orden de postulación.'
+  // Mismas etiquetas que ya usa CampaignFilters — el correo mostraba el valor
+  // crudo del enum ("event appearance"), en inglés y sin sentido para la
+  // influencer.
+  const TYPE_LABELS: Record<string, string> = {
+    sponsored_post: 'Sponsored Post',
+    event_appearance: 'Evento',
+    ambassador: 'Ambassador',
+    product_seeding: 'Product Seeding',
+    ugc: 'UGC',
+    live: 'Live',
+    commission: 'Comisión',
+  }
+  const typeLabel = campaignType ? (TYPE_LABELS[campaignType] ?? null) : null
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Nueva campaña disponible</title></head>
@@ -377,11 +390,11 @@ export function campaignOpenAvailableEmail({
       <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${influencerName} 👋</h1>
       <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 16px">
         Hay una nueva campaña disponible:
-        <strong style="color:#7c3aed">${campaignName}</strong>${campaignType ? ` (${campaignType.replace(/_/g, ' ')})` : ''}.
+        <strong style="color:#7c3aed">${campaignName}</strong>${typeLabel ? ` (${typeLabel})` : ''}.
       </p>
       <div style="background:#fef3c7;border-radius:10px;padding:12px 16px;margin:0 0 24px">
         <p style="color:#92400e;font-size:14px;font-weight:600;line-height:1.5;margin:0">
-          ⏳ Cupos limitados — ${cupos}
+          ⏳ ${cupos}
         </p>
       </div>
       ${requiresPro ? `<p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 20px">

@@ -41,19 +41,53 @@ type InfluencerProfile = {
   referred_brands_count?: number
 }
 
-// Perfil obligatorio: nombre + Instagram + comuna + dirección. Se usa para forzar la
-// edición al entrar al portal si falta alguno (ver useEffect más abajo).
-// NOTA (2026-07-04): fecha de nacimiento es obligatoria SOLO al guardar
-// (ver findMissingRequired) — no se agregó acá para no bloquear de golpe la
-// navegación de las 1432 cuentas ya activas que no la tienen (decisión Pri).
+// Secciones del formulario de edición — los mismos bloques que ya existen más
+// abajo. Se usan como anclaje para llevar a la persona exactamente donde tiene
+// que completar, en vez de dejarla adivinando (auditoría 2026-09-07).
+type ProfileSection = 'personal' | 'ubicacion' | 'redes'
+const SECTION_IDS: Record<ProfileSection, string> = {
+  personal:  'perfil-personal',
+  ubicacion: 'perfil-ubicacion',
+  redes:     'perfil-redes',
+}
+type MissingProfileItem = { label: string; section: ProfileSection; blocking: boolean }
+
+// `blocking` = impide postular a campañas (y guardar el perfil). La fecha de
+// nacimiento se informa como pendiente pero NO bloquea nada: exigirla al
+// guardar dejaba a 805 cuentas sin poder actualizar su propio perfil.
+function missingProfileItems(p: {
+  display_name?: string | null
+  address?: string | null
+  commune?: string | null
+  birth_date?: string | null
+  hasInstagram: boolean
+}): MissingProfileItem[] {
+  const missing: MissingProfileItem[] = []
+  if (!p.display_name?.trim()) missing.push({ label: 'Nombre',   section: 'personal',  blocking: true })
+  if (!p.hasInstagram)         missing.push({ label: 'Instagram', section: 'redes',     blocking: true })
+  if (!p.address?.trim())      missing.push({ label: 'Dirección', section: 'ubicacion', blocking: true })
+  if (!p.commune?.trim())      missing.push({ label: 'Comuna',    section: 'ubicacion', blocking: true })
+  if (!p.birth_date?.trim())   missing.push({ label: 'Fecha de nacimiento', section: 'personal', blocking: false })
+  return missing
+}
+
+function missingFromProfile(p: InfluencerProfile): MissingProfileItem[] {
+  return missingProfileItems({
+    display_name: p.display_name,
+    address: p.address,
+    commune: p.commune,
+    birth_date: p.birth_date,
+    hasInstagram: (p.influencer_social_profiles ?? []).some(
+      sp => sp.platform === 'instagram' && sp.username && sp.username.trim()
+    ),
+  })
+}
+
+// Perfil obligatorio para postular: nombre + Instagram + comuna + dirección.
+// Misma condición que isInfluencerProfileComplete() en (influencer)/layout.tsx
+// y que la validación de PATCH /api/influencer/me.
 function isProfileComplete(p: InfluencerProfile) {
-  const hasName      = !!(p.display_name && p.display_name.trim())
-  const hasAddress   = !!(p.address && p.address.trim())
-  const hasCommune   = !!(p.commune && p.commune.trim())
-  const hasInstagram = (p.influencer_social_profiles ?? []).some(
-    sp => sp.platform === 'instagram' && sp.username && sp.username.trim()
-  )
-  return hasName && hasAddress && hasCommune && hasInstagram
+  return missingFromProfile(p).every(item => !item.blocking)
 }
 
 type Deliverable = { id: string; status: string }
@@ -153,11 +187,26 @@ export default function ProfilePage() {
     if (tab === 'plan' || tab === 'documents' || tab === 'affiliate') setActiveTab(tab)
   }, [])
 
-  // Perfil obligatorio: si falta Instagram, comuna o dirección, se fuerza el
-  // modo edición al entrar (no se puede navegar el portal con el perfil
-  // incompleto — ver ProfileCompletionGate en el layout, que ya redirige acá).
+  // Llega desde el aviso del dashboard (/inf-profile?focus=redes) o desde el
+  // botón del aviso de acá: abre la edición y baja a la sección pendiente.
+  const scrollToSection = useCallback((section: ProfileSection) => {
+    requestAnimationFrame(() => {
+      document.getElementById(SECTION_IDS[section])?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }, [])
+
+  // Si falta algo, se abre la edición al entrar y se baja directo a la sección
+  // pendiente (la que pide ?focus=, o la primera que falte).
   useEffect(() => {
-    if (profile && !isProfileComplete(profile) && !editing) startEdit()
+    if (!profile) return
+    const missing = missingFromProfile(profile)
+    if (missing.length === 0) return
+    if (!editing) startEdit()
+    const requested = new URLSearchParams(window.location.search).get('focus')
+    const target = (['personal', 'ubicacion', 'redes'] as ProfileSection[]).includes(requested as ProfileSection)
+      ? (requested as ProfileSection)
+      : missing[0].section
+    scrollToSection(target)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile])
 
@@ -182,21 +231,23 @@ export default function ProfilePage() {
     setEditing(true)
   }
 
-  function findMissingRequired(): string[] {
-    const missing: string[] = []
-    if (!editForm.display_name.trim()) missing.push('Nombre')
-    if (!editForm.address.trim()) missing.push('Dirección')
-    if (!editForm.commune.trim()) missing.push('Comuna')
-    if (!editForm.birth_date.trim()) missing.push('Fecha de nacimiento')
-    const hasInstagram = socials.some(s => !s._delete && s.platform === 'instagram' && s.username.trim())
-    if (!hasInstagram) missing.push('Instagram (usuario)')
-    return missing
+  // Faltantes según lo que la persona tiene escrito AHORA en el formulario.
+  // La fecha de nacimiento sale como pendiente pero no bloquea el guardado.
+  function currentMissing(): MissingProfileItem[] {
+    return missingProfileItems({
+      display_name: editForm.display_name,
+      address: editForm.address,
+      commune: editForm.commune,
+      birth_date: editForm.birth_date,
+      hasInstagram: socials.some(s => !s._delete && s.platform === 'instagram' && s.username.trim()),
+    })
   }
 
   async function saveProfile() {
-    const missing = findMissingRequired()
-    if (missing.length > 0) {
-      toast.error(`Completa los campos obligatorios: ${missing.join(', ')}`)
+    const blocking = currentMissing().filter(item => item.blocking)
+    if (blocking.length > 0) {
+      toast.error(`Falta completar: ${blocking.map(item => item.label).join(', ')}`)
+      scrollToSection(blocking[0].section)
       return
     }
     setSaving(true)
@@ -277,6 +328,7 @@ export default function ProfilePage() {
   const pendingCampaigns = campaigns.filter(campaign => campaign.application_status === 'pending').length
   const activeSocials   = socials.filter(s => !s._delete)
   const profileComplete = isProfileComplete(profile)
+  const editMissing     = editing ? currentMissing() : []
 
   return (
     <div className="space-y-6">
@@ -417,16 +469,30 @@ export default function ProfilePage() {
       {/* EDIT MODE */}
       {editing && activeTab === 'profile' && (
         <div className="space-y-5">
-          {!profileComplete && (
-            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              Para usar el portal necesitas completar Instagram, comuna y dirección.
-            </div>
-          )}
-          {profileComplete && !editForm.birth_date.trim() && (
-            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              Para guardar cambios ahora necesitas completar tu fecha de nacimiento.
+          {editMissing.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p>
+                    <b>Falta completar:</b>{' '}
+                    {editMissing.map(item => item.label).join(', ')}.
+                  </p>
+                  {editMissing.some(item => item.blocking) && (
+                    <p className="mt-1 text-xs text-amber-700">
+                      Necesitas estos datos para postular a campañas y recibir productos.
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {editMissing.map(item => (
+                      <button key={item.label} type="button" onClick={() => scrollToSection(item.section)}
+                        className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100">
+                        Ir a {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -450,12 +516,12 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          <div id={SECTION_IDS.personal} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 scroll-mt-24">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /> Información personal</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Nombre" value={editForm.display_name} onChange={v => setEditForm(f => ({ ...f, display_name: v }))} placeholder="Tu nombre" />
               <Field label="Teléfono" value={editForm.phone} onChange={v => setEditForm(f => ({ ...f, phone: v }))} type="tel" placeholder="+56 9 1234 5678" />
-              <Field label="Fecha de nacimiento *" value={editForm.birth_date} onChange={v => setEditForm(f => ({ ...f, birth_date: v }))} type="date" />
+              <Field label="Fecha de nacimiento" value={editForm.birth_date} onChange={v => setEditForm(f => ({ ...f, birth_date: v }))} type="date" />
             </div>
             <Field label="Bio" value={editForm.bio} onChange={v => setEditForm(f => ({ ...f, bio: v }))} textarea placeholder="Cuéntanos sobre ti…" />
             {/* Categorías como bubbles seleccionables */}
@@ -491,7 +557,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          <div id={SECTION_IDS.ubicacion} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 scroll-mt-24">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-400" /> Dirección y ubicación</h2>
             <Field label="Dirección completa *" value={editForm.address} onChange={v => setEditForm(f => ({ ...f, address: v }))} placeholder="Av. Providencia 1234, Depto 5" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -501,7 +567,7 @@ export default function ProfilePage() {
             <Field label="País" value={editForm.country} onChange={v => setEditForm(f => ({ ...f, country: v }))} placeholder="Chile" />
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          <div id={SECTION_IDS.redes} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 scroll-mt-24">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Share2 className="h-4 w-4 text-gray-400" /> Redes Sociales <span className="text-red-500 font-normal">(Instagram obligatorio)</span></h2>
               <button onClick={() => setSocials(prev => [...prev, { platform: 'instagram', username: '', followers: 0, engagement_rate: null, profile_url: null }])}

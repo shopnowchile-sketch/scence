@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Calendar,
   LogOut, RefreshCw,
-  CheckSquare, Sparkles, Instagram, AlertCircle, Lightbulb, Film, ArrowRight, CalendarClock, CheckCircle2, Clock, MapPin,
+  CheckSquare, Sparkles, AlertCircle, Lightbulb, Film, ArrowRight, CalendarClock, CheckCircle2, Clock, MapPin,
 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -65,15 +65,33 @@ type InfluencerProfile = {
   display_name: string
   avatar_url: string | null
   email: string | null
+  address?: string | null
+  commune?: string | null
+  birth_date?: string | null
   influencer_social_profiles?: SocialProfile[]
 }
 
-function hasInstagram(profile: InfluencerProfile | null) {
-  return Boolean(
-    profile?.influencer_social_profiles?.some(
-      sp => sp.platform === 'instagram' && (sp.username || sp.profile_url)
-    )
+// Campos pendientes del perfil. Antes esto era un GATE que impedía entrar al
+// dashboard sin Instagram (y que resultaba en un callejón sin salida: la
+// tarjeta pedía solo el @, pero PATCH /api/influencer/me exigía además
+// dirección, comuna y fecha de nacimiento, sin ofrecer dónde completarlas —
+// 263 cuentas atrapadas ahí). Ahora es solo un AVISO: el dato se pide donde
+// realmente se necesita (al postular, ver /api/influencer/campaigns/[id]/apply).
+// `section` corresponde a los anclajes de /inf-profile.
+type MissingProfileItem = { label: string; section: 'personal' | 'ubicacion' | 'redes' }
+
+function missingProfileItems(profile: InfluencerProfile | null): MissingProfileItem[] {
+  if (!profile) return []
+  const missing: MissingProfileItem[] = []
+  if (!profile.display_name?.trim()) missing.push({ label: 'Nombre', section: 'personal' })
+  const hasInstagram = profile.influencer_social_profiles?.some(
+    sp => sp.platform === 'instagram' && (sp.username || sp.profile_url)
   )
+  if (!hasInstagram) missing.push({ label: 'Instagram', section: 'redes' })
+  if (!profile.address?.trim()) missing.push({ label: 'Dirección', section: 'ubicacion' })
+  if (!profile.commune?.trim()) missing.push({ label: 'Comuna', section: 'ubicacion' })
+  if (!profile.birth_date?.trim()) missing.push({ label: 'Fecha de nacimiento', section: 'personal' })
+  return missing
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -101,9 +119,6 @@ export default function InfluencerDashboard() {
   const [openCampaigns, setOpenCampaigns] = useState<OpenCampaign[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
-  const [igInput,   setIgInput]   = useState('')
-  const [igSaving,  setIgSaving]  = useState(false)
-  const [igError,   setIgError]   = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,35 +160,6 @@ export default function InfluencerDashboard() {
     router.push('/login')
   }
 
-  async function handleSaveInstagram() {
-    const raw = igInput.trim()
-    if (!raw) { setIgError('Ingresa tu usuario de Instagram.'); return }
-    const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '').split('?')[0]
-    if (!username) { setIgError('Usuario de Instagram inválido.'); return }
-
-    setIgSaving(true)
-    setIgError(null)
-    try {
-      const res = await fetch('/api/influencer/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          social_profiles: [{ platform: 'instagram', username, profile_url: `https://instagram.com/${username}` }],
-        }),
-      })
-      if (!res.ok) {
-        const { error: e } = await res.json()
-        setIgError(e ?? 'No se pudo guardar. Intenta de nuevo.')
-        setIgSaving(false)
-        return
-      }
-      await load()
-    } catch {
-      setIgError('Error de conexión. Intenta de nuevo.')
-    }
-    setIgSaving(false)
-  }
-
   // ── Loading / error states ─────────────────────────────────────────────────
 
   if (loading) {
@@ -205,44 +191,7 @@ export default function InfluencerDashboard() {
     )
   }
 
-  // Gate: sin Instagram no puede avanzar en el portal.
-  if (profile && !hasInstagram(profile)) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-100 p-6 text-center">
-          <div className="w-12 h-12 rounded-full bg-pink-50 flex items-center justify-center mx-auto mb-4">
-            <Instagram className="h-6 w-6 text-pink-500" />
-          </div>
-          <h1 className="text-lg font-bold text-gray-900">Falta tu Instagram</h1>
-          <p className="text-sm text-gray-400 mt-1 mb-5">
-            Para continuar en el portal necesitamos al menos tu usuario de Instagram.
-          </p>
-          <input
-            value={igInput}
-            onChange={e => setIgInput(e.target.value)}
-            placeholder="@tuusuario"
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-center outline-none focus:border-violet-400 mb-3"
-          />
-          {igError && (
-            <p className="text-xs text-red-500 flex items-center justify-center gap-1 mb-3">
-              <AlertCircle className="h-3.5 w-3.5" /> {igError}
-            </p>
-          )}
-          <button
-            onClick={handleSaveInstagram}
-            disabled={igSaving}
-            className="btn-primary w-full text-sm justify-center disabled:opacity-60"
-          >
-            {igSaving ? 'Guardando…' : 'Guardar y continuar'}
-          </button>
-          <button onClick={handleSignOut} className="mt-3 text-xs text-gray-400 hover:text-gray-600">
-            Cerrar sesión
-          </button>
-        </div>
-      </div>
-    )
-  }
-
+  const missingProfile = missingProfileItems(profile)
   const withStatus = campaigns.map(ci => ({ ci, status: resolveStatus(ci) }))
   const activasCount    = withStatus.filter(x => x.status === 'activa').length
   const postuladasCount = withStatus.filter(x => x.status === 'postulada').length
@@ -330,6 +279,22 @@ export default function InfluencerDashboard() {
           </button>
         </div>
       </div>
+
+      {missingProfile.length > 0 && (
+        <Link
+          href={`/inf-profile?focus=${missingProfile[0].section}`}
+          className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 transition-colors hover:bg-amber-100"
+        >
+          <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
+          <span className="min-w-0 flex-1">
+            <b>Te falta completar tu perfil:</b> {missingProfile.map(item => item.label).join(', ')}.
+            {' '}Necesitas estos datos para postular a campañas y recibir productos.
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white">
+            Completar ahora <ArrowRight className="h-3.5 w-3.5" />
+          </span>
+        </Link>
+      )}
 
       <section className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Descubre y participa</p><h2 className="mt-1 text-xl font-bold text-gray-950">Campañas disponibles para postular</h2></div><Sparkles className="h-6 w-6 text-violet-500" /></div>

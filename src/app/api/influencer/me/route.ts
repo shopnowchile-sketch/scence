@@ -62,19 +62,21 @@ export async function PATCH(req: Request) {
     if (key in body) profileUpdate[key] = body[key]
   }
 
-  // Perfil obligatorio (portal influencer): nombre + Instagram + comuna + dirección +
-  // fecha de nacimiento. Se valida el estado FINAL resultante (existente + lo
+  // Perfil obligatorio (portal influencer): nombre + Instagram + comuna + dirección.
+  // Se valida el estado FINAL resultante (existente + lo
   // que llega en este PATCH) antes de escribir nada, para que no se pueda
   // vaciar estos campos ni saltarse el requisito llamando el endpoint
   // directo. Ver ProfileCompletionGate.
-  // NOTA (2026-07-04): fecha de nacimiento se agregó DESPUÉS de que 1432
-  // influencers ya tenían acceso al portal sin este dato. Por decisión de Pri,
-  // solo se exige al GUARDAR el perfil (acá), no se agregó a
-  // isInfluencerProfileComplete() en (influencer)/layout.tsx — así no se
-  // bloquea la navegación de cuentas existentes, solo se pide cuando editan.
+  // NOTA (2026-09-07, auditoría de onboarding aprobada por Pri): la fecha de
+  // nacimiento YA NO bloquea el guardado. Exigirla acá dejaba a 805 cuentas
+  // sin poder guardar ningún cambio de perfil — incluido el @ de Instagram que
+  // la propia app les pedía — con un error que nombraba campos que no estaban
+  // editando. Sigue siendo obligatoria en el registro nuevo (ver el trigger
+  // handle_new_user) y se muestra como pendiente en /inf-profile, pero no
+  // impide guardar. Cuando se necesite de verdad (contratos, pagos) se exige
+  // en ese punto, no acá.
   const finalAddress = 'address' in profileUpdate ? String(profileUpdate.address ?? '').trim() : String(influencer.address ?? '').trim()
   const finalCommune = 'commune' in profileUpdate ? String(profileUpdate.commune ?? '').trim() : String(influencer.commune ?? '').trim()
-  const finalBirthDate = 'birth_date' in profileUpdate ? String(profileUpdate.birth_date ?? '').trim() : String(influencer.birth_date ?? '').trim()
   const finalDisplayName = 'display_name' in profileUpdate ? String(profileUpdate.display_name ?? '').trim() : String(influencer.display_name ?? '').trim()
 
   let finalHasInstagram: boolean
@@ -109,7 +111,6 @@ export async function PATCH(req: Request) {
   if (!finalDisplayName) missing.push('nombre')
   if (!finalAddress) missing.push('dirección')
   if (!finalCommune) missing.push('comuna')
-  if (!finalBirthDate) missing.push('fecha de nacimiento')
   if (!finalHasInstagram) missing.push('Instagram')
   if (missing.length > 0) {
     return NextResponse.json(

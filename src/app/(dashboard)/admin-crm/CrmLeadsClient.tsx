@@ -99,6 +99,7 @@ export function CrmLeadsClient() {
   const [search, setSearch] = useState('')
   const [qualification, setQualification] = useState('')
   const [commune, setCommune] = useState('')
+  const [source, setSource] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
@@ -106,6 +107,7 @@ export function CrmLeadsClient() {
   )
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [communes, setCommunes] = useState<string[]>([])
+  const [sources, setSources] = useState<string[]>([])
   const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, clicked: 0, failed: 0, bounced: 0, openRate: 0 })
   const [showAddModal, setShowAddModal] = useState(false)
   const [savingLead, setSavingLead] = useState(false)
@@ -138,6 +140,7 @@ export function CrmLeadsClient() {
     if (search) params.set('search', search)
     if (qualification) params.set('qualification', qualification)
     if (commune) params.set('commune', commune)
+    if (source) params.set('source', source)
     if (emailStatus) params.set('email_status', emailStatus)
     if (contactData) params.set('contact_data', contactData)
     try {
@@ -148,17 +151,18 @@ export function CrmLeadsClient() {
       setTotal(j.total ?? 0)
       if (j.stats) setStats(j.stats)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
+      if (Array.isArray(j.sources)) setSources(j.sources)
     } catch {
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, commune, emailStatus, contactData])
+  }, [page, search, qualification, commune, source, emailStatus, contactData])
 
   useEffect(() => { load() }, [load])
 
   // Cambiar de página conserva una selección global. Cambiar los filtros la
   // reinicia para que nunca se envíe a destinatarios de una búsqueda anterior.
-  useEffect(() => { setSelectedIds([]) }, [search, qualification, commune, emailStatus, contactData])
+  useEffect(() => { setSelectedIds([]) }, [search, qualification, commune, source, emailStatus, contactData])
 
   function updateForm<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -206,6 +210,7 @@ export function CrmLeadsClient() {
       if (search) params.set('search', search)
       if (qualification) params.set('qualification', qualification)
       if (commune) params.set('commune', commune)
+      if (source) params.set('source', source)
       if (emailStatus) params.set('email_status', emailStatus)
       if (contactData) params.set('contact_data', contactData)
       const r = await fetch(`/api/crm-leads?${params}`)
@@ -373,13 +378,14 @@ export function CrmLeadsClient() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
-  const activeFilterCount = [qualification, commune, emailStatus, contactData].filter(Boolean).length
+  const activeFilterCount = [qualification, commune, source, emailStatus, contactData].filter(Boolean).length
   const hasActiveFilters = Boolean(search || activeFilterCount)
 
   function clearFilters() {
     setSearch('')
     setQualification('')
     setCommune('')
+    setSource('')
     setEmailStatus('')
     setContactData('')
     setPage(1)
@@ -519,6 +525,19 @@ export function CrmLeadsClient() {
           >
             <option value="">Todas las comunas</option>
             {communes.map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+
+          <select
+            value={source}
+            aria-label="Filtrar por base de datos"
+            onChange={e => { setPage(1); setSource(e.target.value) }}
+            className={cn(
+              'h-9 min-w-[170px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
+              source ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+            )}
+          >
+            <option value="">Todas las bases</option>
+            {sources.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
 
           <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">

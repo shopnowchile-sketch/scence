@@ -251,22 +251,25 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  // La única dimensión de catálogo que sigue visible en el toolbar es comuna.
-  // Se pagina para no perder valores por el límite de filas de PostgREST.
+  // Dimensiones de catálogo visibles en el toolbar: comuna y base de datos
+  // (source). Se paginan para no perder valores por el límite de filas de
+  // PostgREST. Una sola pasada trae ambas columnas.
   const communesSet = new Set<string>()
+  const sourcesSet = new Set<string>()
   {
     const PAGE = 1000
     let from = 0
     for (;;) {
       const { data: filterRows } = await admin
         .from('crm_leads')
-        .select('commune')
+        .select('commune, source')
         .range(from, from + PAGE - 1)
 
       if (!filterRows || filterRows.length === 0) break
 
       for (const r of filterRows) {
         if (r.commune) communesSet.add(r.commune)
+        if (r.source) sourcesSet.add(r.source)
       }
 
       if (filterRows.length < PAGE) break
@@ -275,6 +278,7 @@ export async function GET(request: NextRequest) {
   }
 
   const communes = Array.from(communesSet).sort()
+  const sources = Array.from(sourcesSet).sort()
 
   const stats = {
     sent: emailEventSets.sent.size,
@@ -286,7 +290,7 @@ export async function GET(request: NextRequest) {
     openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
   }
 
-  return NextResponse.json({ data: enriched, total: count, page, limit, communes, stats })
+  return NextResponse.json({ data: enriched, total: count, page, limit, communes, sources, stats })
 }
 
 // ── POST /api/crm-leads — crear lead manual ──────────────────────────────────

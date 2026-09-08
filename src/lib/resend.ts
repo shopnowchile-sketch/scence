@@ -143,18 +143,23 @@ function escapeEmailHtml(value: string): string {
     .replaceAll("'", '&#039;')
 }
 
+// Layout de los emails COMERCIALES del CRM. Es el único con pie de baja: los
+// templates transaccionales no lo llevan ni deben llevarlo.
 export function crmCatalogEmail({
   message,
   buttonLabel,
   buttonUrl,
+  unsubscribeUrl,
 }: {
   message: string
   buttonLabel?: string
   buttonUrl?: string
+  unsubscribeUrl?: string | null
 }): string {
   const safeMessage = escapeEmailHtml(message).replaceAll('\n', '<br>')
   const safeButtonLabel = buttonLabel ? escapeEmailHtml(buttonLabel) : ''
   const safeButtonUrl = buttonUrl ? escapeEmailHtml(buttonUrl) : ''
+  const safeUnsubscribeUrl = unsubscribeUrl ? escapeEmailHtml(unsubscribeUrl) : ''
 
   return `<!DOCTYPE html>
 <html>
@@ -170,6 +175,7 @@ export function crmCatalogEmail({
     </div>
     <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
       <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence</p>
+      ${safeUnsubscribeUrl ? `<p style="color:#9ca3af;font-size:11px;line-height:1.6;margin:8px 0 0">Si no quieres recibir más correos como este, <a href="${safeUnsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">date de baja aquí</a>.</p>` : ''}
     </div>
   </div>
 </body>

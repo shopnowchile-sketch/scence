@@ -66,14 +66,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: leadsError.message }, { status: 500 })
   }
 
-  const { sent, skipped, failed } = await sendLeadBatch(
-    admin,
-    leads ?? [],
-    job.subject,
-    job.message ?? '',
-    job.created_by,
-    job.template_key ?? 'crm_intro'
-  )
+  // FAIL CLOSED: sendLeadBatch consulta la lista de bajas ANTES de mandar nada.
+  // Si esa consulta falla lanza, y acá se aborta la tanda con 0 emails enviados,
+  // dejando el `cursor` intacto para poder reintentar exactamente desde donde
+  // iba. Nunca se avanza en silencio.
+  let batchResult: { sent: number; skipped: number; failed: number }
+  try {
+    batchResult = await sendLeadBatch(
+      admin,
+      leads ?? [],
+      job.subject,
+      job.message ?? '',
+      job.created_by,
+      job.template_key ?? 'crm_intro'
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'error desconocido'
+    console.error('[bulk-send/process] tanda abortada sin enviar', error)
+    await admin.from('crm_bulk_send_jobs').update({
+      status: 'failed',
+      error: `Tanda abortada sin enviar (cursor ${job.cursor} intacto, se puede reintentar): ${message}`,
+      updated_at: new Date().toISOString(),
+    }).eq('id', jobId)
+    return NextResponse.json({ error: message }, { status: 503 })
+  }
+
+  const { sent, skipped, failed } = batchResult
 
   const newCursor = job.cursor + batchIds.length
   const isDone = newCursor >= job.total

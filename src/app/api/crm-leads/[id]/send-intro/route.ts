@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { buildUnsubscribeUrl, commercialEmailHeaders, isOptedOut, OptOutLookupError } from '@/lib/email-optouts'
 
 type Params = { params: { id: string } }
 
@@ -29,6 +30,34 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (leadErr || !lead) return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
   if (!lead.email) return NextResponse.json({ error: 'Este lead no tiene email' }, { status: 422 })
+
+  // Mismo bloqueo comercial que el envío masivo, evaluado al enviar.
+  // FAIL CLOSED: si la lista de bajas no se puede consultar, no se envía.
+  let optedOut: boolean
+  try {
+    optedOut = await isOptedOut(admin, lead.email)
+  } catch (error) {
+    if (!(error instanceof OptOutLookupError)) throw error
+    console.error('[send-intro] no se pudo verificar la lista de bajas — no se envía', error)
+    return NextResponse.json(
+      { error: 'No se pudo verificar la lista de bajas. Por seguridad no se envió el email. Intenta de nuevo en unos minutos.' },
+      { status: 503 },
+    )
+  }
+
+  if (optedOut) {
+    return NextResponse.json(
+      { error: 'Esta dirección está dada de baja de los emails comerciales (unsubscribe, rebote permanente o queja de spam). No se envió nada.' },
+      { status: 409 },
+    )
+  }
+
+  // Sin link de baja no se manda: es requisito legal y de reputación.
+  const unsubscribeUrl = buildUnsubscribeUrl(lead.id)
+  if (!unsubscribeUrl) {
+    console.error('[send-intro] falta UNSUBSCRIBE_SECRET/INTERNAL_JOB_SECRET — no se envía sin link de baja')
+    return NextResponse.json({ error: 'Falta configuración del servidor para el link de baja (UNSUBSCRIBE_SECRET)' }, { status: 500 })
+  }
 
   const templateKey = typeof body.template_key === 'string' ? body.template_key : 'crm_intro'
   const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey)
@@ -59,6 +88,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     message,
     buttonLabel: template.defaultButtonLabel,
     buttonUrl: template.defaultButtonUrl,
+    unsubscribeUrl,
   })
 
   const { data: emailData, error: emailErr } = await getResend().emails.send({
@@ -67,6 +97,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     subject,
     html,
     text: message,
+    headers: commercialEmailHeaders(unsubscribeUrl),
   })
 
   if (emailErr) {

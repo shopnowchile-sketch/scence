@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Webhook } from 'svix'
 import { createAdminClient } from '@/lib/supabase/server'
+import { classifyResendEvent, recordOptOut } from '@/lib/email-optouts'
 
 type ResendWebhookPayload = {
   type?: string
@@ -133,6 +134,32 @@ export async function POST(req: NextRequest) {
     occurred_at: occurredAt,
     raw_payload: event,
   })
+
+  // ── Bloqueo comercial automático ──────────────────────────────────────────
+  // Rebote PERMANENTE, queja de spam o supresión de Resend => la dirección deja
+  // de recibir prospección. Los rebotes transitorios (buzón lleno) NO bloquean.
+  // Esto solo afecta a los dos caminos comerciales del CRM: los emails
+  // transaccionales no consultan esta lista.
+  const decision = classifyResendEvent(eventType, data as { bounce?: { type?: string | null; subType?: string | null } | null })
+
+  if (decision.block && decision.reason && recipientEmail) {
+    const { ok, inserted } = await recordOptOut(admin, {
+      email: recipientEmail,
+      reason: decision.reason,
+      source: `webhook:${eventType}`,
+      leadId,
+      resendEmailId,
+    })
+
+    if (ok && inserted && leadId) {
+      await admin.from('crm_lead_activities').insert({
+        lead_id: leadId,
+        action_type: 'note',
+        description: `Bloqueado para envíos comerciales — ${decision.detail ?? eventType}.`,
+        created_by: null,
+      })
+    }
+  }
 
   if (leadId) {
     const label = EVENT_LABEL[eventType] ?? eventType

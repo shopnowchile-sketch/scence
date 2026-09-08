@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
+import { buildUnsubscribeUrl, commercialEmailHeaders, getBlockedEmails, normalizeEmail } from '@/lib/email-optouts'
 
 // Tamaño de tanda por invocación — mismo límite que existía antes como tope
 // duro (era "máximo 50 por vez"), ahora es el tamaño de cada lote interno del
@@ -30,9 +31,34 @@ export async function sendLeadBatch(
   let failed = 0
   const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey) ?? CRM_EMAIL_CATALOG[0]
 
+  // Bajas, rebotes permanentes y quejas de spam. Una sola consulta por tanda.
+  // Se evalúa AL ENVIAR, no al seleccionar: así ningún filtro nuevo, ningún
+  // "Seleccionar los 20.954" y ningún job encolado hace semanas puede colar a
+  // alguien que se dio de baja.
+  const blocked = await getBlockedEmails(admin, leads.map(lead => lead.email))
+
   for (const lead of leads) {
     if (!lead.email) {
       skipped++
+      continue
+    }
+
+    if (blocked.has(normalizeEmail(lead.email))) {
+      skipped++
+      await admin.from('crm_lead_activities').insert({
+        lead_id: lead.id,
+        action_type: 'note',
+        description: `Envío comercial omitido: ${lead.email} está en la lista de bajas (unsubscribe, rebote permanente o queja de spam).`,
+        created_by: userId,
+      })
+      continue
+    }
+
+    // Sin link de baja no se manda: es requisito legal y de reputación.
+    const unsubscribeUrl = buildUnsubscribeUrl(lead.id)
+    if (!unsubscribeUrl) {
+      failed++
+      console.error('[crm-bulk-send] falta UNSUBSCRIBE_SECRET/INTERNAL_JOB_SECRET — no se envía sin link de baja')
       continue
     }
 
@@ -47,6 +73,7 @@ export async function sendLeadBatch(
       message,
       buttonLabel: template?.defaultButtonLabel,
       buttonUrl: template?.defaultButtonUrl,
+      unsubscribeUrl,
     })
 
     const { data: emailData, error: emailError } = await getResend().emails.send({
@@ -55,6 +82,7 @@ export async function sendLeadBatch(
       subject: resolvedSubject,
       html,
       text: message,
+      headers: commercialEmailHeaders(unsubscribeUrl),
     })
 
     const now = new Date().toISOString()

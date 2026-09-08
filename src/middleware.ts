@@ -13,6 +13,7 @@ const PUBLIC_ROUTES = [
   '/api/stripe/webhook',   // Stripe webhook — no auth needed (verified by signature)
   '/api/webhooks/resend',  // Resend webhook — no auth needed (verified by Svix signature)
   '/api/crm-leads/bulk-send/process', // job interno server-to-server — verificado con INTERNAL_JOB_SECRET, no lleva cookies de usuario
+  '/api/unsubscribe',      // baja de emails comerciales — pública por diseño, autorizada por HMAC en el token
 ]
 
 export async function middleware(request: NextRequest) {

@@ -7,23 +7,6 @@ import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 // job en background, no un límite para el usuario.
 export const BATCH_SIZE = 50
 
-function defaultPlainMessage(lead: { contact_name: string | null; company_name: string | null }) {
-  const name = lead.contact_name?.trim() || 'hola'
-  const companyName = lead.company_name ?? 'tu marca'
-
-  return `Hola ${name},
-
-Soy Pri de SCENCE. Estamos conectando marcas chilenas con creadoras de contenido para campañas, eventos, canjes y UGC.
-
-Vi ${companyName} y creo que podría calzar muy bien para probar una primera campaña con creadoras.
-
-¿Te gustaría que te enviemos más información?
-
-Saludos,
-Priscilla
-SCENCE`
-}
-
 // Manda una tanda de leads (ya resueltos, con datos de contacto) por Resend.
 // Reusa exactamente la misma lógica que tenía el bulk-send original de una
 // sola tanda — solo se movió a un helper compartido para que lo use el
@@ -58,8 +41,8 @@ export async function sendLeadBatch(
       contact_name: lead.contact_name?.trim() || `equipo de ${companyName}`,
       company_name: companyName,
     }
-    const message = applyEmailVariables(customMessage || template?.defaultMessage || defaultPlainMessage(lead), variables)
-    const resolvedSubject = applyEmailVariables(subject || template?.defaultSubject || 'Conoce SCENCE', variables)
+    const message = applyEmailVariables(customMessage || template?.defaultMessage || '', variables)
+    const resolvedSubject = applyEmailVariables(subject || template?.defaultSubject || 'Hola, ¿cómo estás?', variables)
     const html = crmCatalogEmail({
       message,
       buttonLabel: template?.defaultButtonLabel,
@@ -104,10 +87,14 @@ export async function sendLeadBatch(
       },
     })
 
+    // Solo avanza a "Contactada" si el lead todavía no entró al pipeline. Un
+    // lead en interested/building/converted no retrocede por recibir otro email.
+    const entersPipeline = lead.qualification_status === 'unqualified' || lead.qualification_status === 'qualified'
+
     await admin.from('crm_leads').update({
       contacted_at: now,
       updated_at: now,
-      qualification_status: lead.qualification_status === 'converted' ? 'converted' : 'contacted',
+      ...(entersPipeline ? { qualification_status: 'contacted' } : {}),
     }).eq('id', lead.id)
 
     await admin.from('crm_lead_activities').insert({

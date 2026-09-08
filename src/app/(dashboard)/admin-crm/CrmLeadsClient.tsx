@@ -7,6 +7,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { CRM_NICHE_SOURCES } from '@/lib/crm-niches'
 
 type Lead = {
   id: string
@@ -20,7 +21,7 @@ type Lead = {
   industry: string | null
   company_size: string | null
   employee_count: string | null
-  qualification_status: 'unqualified' | 'qualified' | 'rejected' | 'contacted' | 'converted'
+  qualification_status: LeadStatus
   contacted_at: string | null
   created_at: string
   source: string | null
@@ -55,12 +56,24 @@ const EMPTY_FORM: LeadForm = {
   source: 'manual',
 }
 
-const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: string }> = {
-  unqualified: { label: 'Sin calificar', cls: 'bg-gray-100 text-gray-500' },
-  qualified:   { label: 'Califica',      cls: 'bg-green-100 text-green-700' },
-  rejected:    { label: 'No califica',   cls: 'bg-red-100 text-red-600' },
-  contacted:   { label: 'Contactado',    cls: 'bg-blue-100 text-blue-700' },
-  converted:   { label: 'Convertido',    cls: 'bg-violet-100 text-violet-700' },
+type LeadStatus = 'unqualified' | 'qualified' | 'rejected' | 'contacted' | 'interested' | 'building' | 'converted'
+
+const STATUS_CONFIG: Record<LeadStatus, { label: string; cls: string }> = {
+  unqualified: { label: 'Sin calificar',    cls: 'bg-gray-100 text-gray-500' },
+  contacted:   { label: 'Contactada',       cls: 'bg-blue-100 text-blue-700' },
+  interested:  { label: 'Interesada',       cls: 'bg-amber-100 text-amber-700' },
+  building:    { label: 'Armando campaña',  cls: 'bg-indigo-100 text-indigo-700' },
+  converted:   { label: 'Cerrada',          cls: 'bg-violet-100 text-violet-700' },
+  rejected:    { label: 'Descartada',       cls: 'bg-red-100 text-red-600' },
+  qualified:   { label: 'Califica (legado)', cls: 'bg-green-100 text-green-700' },
+}
+
+// Orden del pipeline comercial. `qualified` queda fuera: es un estado legado que
+// se sigue mostrando si un lead lo tiene, pero ya no se ofrece para elegir.
+const PIPELINE_STATUSES: LeadStatus[] = ['unqualified', 'contacted', 'interested', 'building', 'converted', 'rejected']
+
+function statusOptions(current: LeadStatus): LeadStatus[] {
+  return PIPELINE_STATUSES.includes(current) ? PIPELINE_STATUSES : [...PIPELINE_STATUSES, current]
 }
 
 type ColumnKey = 'contact' | 'instagram' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
@@ -589,16 +602,16 @@ export function CrmLeadsClient() {
 
           <button
             type="button"
-            aria-pressed={qualification === 'qualified'}
-            onClick={() => { setPage(1); setQualification(qualification === 'qualified' ? '' : 'qualified') }}
+            aria-pressed={qualification === 'interested'}
+            onClick={() => { setPage(1); setQualification(qualification === 'interested' ? '' : 'interested') }}
             className={cn(
               'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
-              qualification === 'qualified'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              qualification === 'interested'
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
                 : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
             )}
           >
-            Calificados
+            Interesadas
           </button>
 
           <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por disponibilidad de email">
@@ -774,8 +787,8 @@ export function CrmLeadsClient() {
                       onChange={e => updateStatus(lead.id, e.target.value as Lead['qualification_status'])}
                       className={cn('text-xs font-semibold rounded-full px-2.5 py-1 border-0 outline-none cursor-pointer', cfg.cls)}
                     >
-                      {Object.entries(STATUS_CONFIG).map(([k, c]) => (
-                        <option key={k} value={k}>{c.label}</option>
+                      {statusOptions(lead.qualification_status).map(k => (
+                        <option key={k} value={k}>{STATUS_CONFIG[k]?.label ?? k}</option>
                       ))}
                     </select>
                   </td>
@@ -1063,7 +1076,10 @@ export function CrmLeadsClient() {
               <input value={form.commune} onChange={e => updateForm('commune', e.target.value)} placeholder="Comuna / ciudad" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.region} onChange={e => updateForm('region', e.target.value)} placeholder="Región" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.industry} onChange={e => updateForm('industry', e.target.value)} placeholder="Rubro / categoría" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
-              <input value={form.source} onChange={e => updateForm('source', e.target.value)} placeholder="Origen" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <input value={form.source} onChange={e => updateForm('source', e.target.value)} list="crm-niche-sources" placeholder="Origen / nicho" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+              <datalist id="crm-niche-sources">
+                {CRM_NICHE_SOURCES.map(niche => <option key={niche} value={niche} />)}
+              </datalist>
             </div>
 
             <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">

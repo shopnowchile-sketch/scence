@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 
 type Activity = {
   id: string
@@ -41,7 +42,7 @@ type Lead = {
   company_size: string | null
   employee_count: string | null
   website: string | null
-  qualification_status: 'unqualified' | 'qualified' | 'rejected' | 'contacted' | 'converted'
+  qualification_status: LeadStatus
   qualification_notes: string | null
   converted_brand_id: string | null
   contacted_at: string | null
@@ -54,13 +55,27 @@ type Lead = {
   email_events?: EmailEvent[]
 }
 
-const STATUS_CONFIG: Record<Lead['qualification_status'], { label: string; cls: string }> = {
-  unqualified: { label: 'Sin calificar', cls: 'bg-gray-100 text-gray-500' },
-  qualified:   { label: 'Califica',      cls: 'bg-green-100 text-green-700' },
-  rejected:    { label: 'No califica',   cls: 'bg-red-100 text-red-600' },
-  contacted:   { label: 'Contactado',    cls: 'bg-blue-100 text-blue-700' },
-  converted:   { label: 'Convertido',    cls: 'bg-violet-100 text-violet-700' },
+type LeadStatus = 'unqualified' | 'qualified' | 'rejected' | 'contacted' | 'interested' | 'building' | 'converted'
+
+const STATUS_CONFIG: Record<LeadStatus, { label: string; cls: string }> = {
+  unqualified: { label: 'Sin calificar',    cls: 'bg-gray-100 text-gray-500' },
+  contacted:   { label: 'Contactada',       cls: 'bg-blue-100 text-blue-700' },
+  interested:  { label: 'Interesada',       cls: 'bg-amber-100 text-amber-700' },
+  building:    { label: 'Armando campaña',  cls: 'bg-indigo-100 text-indigo-700' },
+  converted:   { label: 'Cerrada',          cls: 'bg-violet-100 text-violet-700' },
+  rejected:    { label: 'Descartada',       cls: 'bg-red-100 text-red-600' },
+  qualified:   { label: 'Califica (legado)', cls: 'bg-green-100 text-green-700' },
 }
+
+// Mismo orden y mismo criterio que la lista: `qualified` es legado, se muestra
+// si el lead lo tiene pero no se ofrece para elegir.
+const PIPELINE_STATUSES: LeadStatus[] = ['unqualified', 'contacted', 'interested', 'building', 'converted', 'rejected']
+
+function statusOptions(current: LeadStatus): LeadStatus[] {
+  return PIPELINE_STATUSES.includes(current) ? PIPELINE_STATUSES : [...PIPELINE_STATUSES, current]
+}
+
+const DEFAULT_CRM_TEMPLATE = CRM_EMAIL_CATALOG.find(template => template.key === 'crm_intro') ?? CRM_EMAIL_CATALOG[0]
 
 const ACTION_LABEL: Record<string, string> = {
   email_sent: 'Email enviado',
@@ -76,8 +91,10 @@ const ACTION_LABEL: Record<string, string> = {
   qualified: 'Calificado',
   rejected: 'Rechazado',
   note: 'Nota',
-  contacted: 'Contactado',
-  converted: 'Convertido',
+  contacted: 'Contactada',
+  interested: 'Interesada',
+  building: 'Armando campaña',
+  converted: 'Cerrada',
   status_changed: 'Estado actualizado',
 }
 
@@ -105,27 +122,12 @@ const EMAIL_EVENT_CLASS: Record<string, string> = {
   'email.suppressed': 'bg-gray-50 text-gray-700 border-gray-100',
 }
 
-function buildDefaultSubject(lead: Lead) {
-  return `${lead.company_name ?? 'Hola'} — conoce Scence (primera campaña gratis)`
-}
-
-function buildDefaultMessage(lead: Lead) {
-  const contactName = lead.contact_name ?? 'equipo'
-  const companyName = lead.company_name ?? 'tu marca'
-
-  return `Hola ${contactName},
-
-Soy Priscilla de SCENCE, una plataforma chilena que conecta marcas con creadoras de contenido para campañas, eventos, canjes y contenido UGC.
-
-Vi ${companyName} y creo que podría calzar muy bien con nuestra comunidad.
-
-Estamos invitando a algunas marcas a probar SCENCE con una primera campaña gratuita, para que puedan conocer cómo funciona la plataforma y recibir propuestas de creadoras.
-
-Si te interesa, puedes responder este correo y te cuento los siguientes pasos.
-
-Saludos,
-Priscilla
-SCENCE`
+function leadVariables(lead: Lead) {
+  const companyName = lead.company_name?.trim() || 'tu marca'
+  return {
+    contact_name: lead.contact_name?.trim() || `equipo de ${companyName}`,
+    company_name: companyName,
+  }
 }
 
 export function CrmLeadDetailClient({ id }: { id: string }) {
@@ -137,6 +139,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   const [savingNote, setSavingNote] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showEmailEditor, setShowEmailEditor] = useState(false)
+  const [emailTemplateKey, setEmailTemplateKey] = useState(DEFAULT_CRM_TEMPLATE.key)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
 
@@ -158,9 +161,18 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
       return
     }
 
-    setEmailSubject(buildDefaultSubject(lead))
-    setEmailMessage(buildDefaultMessage(lead))
+    applyTemplate(DEFAULT_CRM_TEMPLATE.key, lead)
     setShowEmailEditor(true)
+  }
+
+  // Mismo catálogo que usa el envío masivo — no hay copy propio en esta pantalla.
+  function applyTemplate(templateKey: string, target: Lead) {
+    const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey)
+    if (!template) return
+    const variables = leadVariables(target)
+    setEmailTemplateKey(template.key)
+    setEmailSubject(applyEmailVariables(template.defaultSubject, variables))
+    setEmailMessage(applyEmailVariables(template.defaultMessage ?? '', variables))
   }
 
   async function updateStatus(status: Lead['qualification_status']) {
@@ -197,7 +209,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
       const r = await fetch(`/api/crm-leads/${id}/send-intro`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: emailSubject, message: emailMessage }),
+        body: JSON.stringify({ subject: emailSubject, message: emailMessage, template_key: emailTemplateKey }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'Error al enviar')
@@ -305,8 +317,8 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
                 onChange={e => updateStatus(e.target.value as Lead['qualification_status'])}
                 className={cn('text-xs font-semibold rounded-full px-3 py-1.5 border-0 outline-none cursor-pointer', cfg.cls)}
               >
-                {Object.entries(STATUS_CONFIG).map(([k, c]) => (
-                  <option key={k} value={k}>{c.label}</option>
+                {statusOptions(lead.qualification_status).map(k => (
+                  <option key={k} value={k}>{STATUS_CONFIG[k]?.label ?? k}</option>
                 ))}
               </select>
             </div>
@@ -393,6 +405,19 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
                 <div>
                   <h2 className="text-sm font-bold text-gray-900">Revisar email antes de enviar</h2>
                   <p className="text-xs text-gray-400 mt-0.5">Puedes editar el asunto y mensaje antes de enviarlo.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Template</label>
+                  <select
+                    value={emailTemplateKey}
+                    onChange={e => applyTemplate(e.target.value, lead)}
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-400"
+                  >
+                    {CRM_EMAIL_CATALOG.map(template => (
+                      <option key={template.key} value={template.key}>{template.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

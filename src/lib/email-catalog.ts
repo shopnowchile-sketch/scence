@@ -26,30 +26,18 @@ export const EMAIL_CATALOG: EmailTemplateDefinition[] = [
   {
     key: 'crm_intro',
     name: 'Introducción comercial CRM',
-    description: 'Presentación inicial de SCENCE para prospectos y PYMES.',
+    description: 'Mensaje inicial del flujo comercial: propone una colaboración y pide permiso para mandar una idea.',
     category: 'crm',
     audience: 'brand',
     usage: 'manual_and_automatic',
     contexts: ['crm', 'system'],
-    requiredVariables: ['contact_name', 'company_name'],
+    requiredVariables: ['contact_name'],
     defaultSubject: 'Hola, ¿cómo estás?',
-    defaultMessage: `Hola {{contact_name}},
-
-Soy Pri, fundadora de SCENCE.
-
-Hoy las marcas ya no crecen solo con publicidad tradicional. Las personas quieren contenido real, recomendaciones auténticas y marcas que les generen confianza.
-
-Por eso creamos SCENCE: una plataforma chilena que conecta marcas con creadoras de contenido e influencers para crear campañas, eventos, canjes y contenido UGC que ayude a aumentar visibilidad, seguidores, confianza y ventas.
-
-Queremos invitar a {{company_name}} a probar SCENCE y crear su primera campaña con creadoras.
-
-Si quieres más información, también me puedes escribir directo a pri@scence.cl.
+    defaultMessage: `Hola {{contact_name}}! Soy Priscilla de SCENCE. Trabajamos con una comunidad de creadoras de contenido y nos encantaría hacer una colaboración con ustedes. Podemos armar una campaña especialmente para la marca, seleccionar perfiles que calcen con ustedes y encargarnos de toda la gestión. ¿Les gustaría que les mande una idea?
 
 Saludos,
-Pri
+Priscilla
 SCENCE`,
-    defaultButtonLabel: 'Crear mi primera campaña gratis →',
-    defaultButtonUrl: 'https://scence-app.vercel.app/register',
   },
   {
     key: 'crm_follow_up',
@@ -63,15 +51,13 @@ SCENCE`,
     defaultSubject: '¿Conversamos sobre una campaña para {{company_name}}?',
     defaultMessage: `Hola {{contact_name}},
 
-Quería retomar mi mensaje sobre SCENCE. Ayudamos a marcas como {{company_name}} a crear campañas con creadoras de contenido de forma simple y acompañada.
+Quería retomar mi mensaje anterior. En SCENCE trabajamos con una comunidad de creadoras de contenido y podemos armar una campaña especialmente para {{company_name}}, seleccionar los perfiles que calcen y encargarnos de toda la gestión.
 
-Si te interesa, podemos revisar una primera idea de campaña sin compromiso.
+¿Les gustaría que les mande una idea?
 
 Saludos,
-Pri
+Priscilla
 SCENCE`,
-    defaultButtonLabel: 'Conocer SCENCE →',
-    defaultButtonUrl: 'https://scence-app.vercel.app/register',
   },
   {
     key: 'crm_clicked_follow_up',
@@ -85,17 +71,57 @@ SCENCE`,
     defaultSubject: '{{company_name}}, ¿vemos una primera campaña?',
     defaultMessage: `Hola {{contact_name}},
 
-Vi que revisaste la información de SCENCE y quería ayudarte con el siguiente paso.
+Vi que revisaste la información que les mandé y quería ayudarles con el siguiente paso.
 
-Podemos preparar para {{company_name}} una primera propuesta de campaña con creadoras de contenido, alineada a su público y objetivos.
+Podemos armar una campaña especialmente para {{company_name}}, seleccionar perfiles que calcen con ustedes y encargarnos de toda la gestión.
 
-Si te hace sentido, responde este email y la armamos contigo.
+¿Les gustaría que les mande una idea?
 
 Saludos,
-Pri
+Priscilla
 SCENCE`,
-    defaultButtonLabel: 'Crear mi campaña →',
-    defaultButtonUrl: 'https://scence-app.vercel.app/register',
+  },
+  {
+    key: 'crm_qualification_questions',
+    name: 'Preguntas para armar la campaña',
+    description: 'Se manda cuando la marca responde interesada, para levantar los datos de la campaña.',
+    category: 'crm',
+    audience: 'brand',
+    usage: 'manual',
+    contexts: ['crm'],
+    requiredVariables: ['contact_name', 'company_name'],
+    defaultSubject: 'Algunas preguntas para armar la campaña de {{company_name}}',
+    defaultMessage: `Hola {{contact_name}},
+
+¡Qué bueno que les interese! Para armarles algo que calce, cuéntenme:
+
+1. ¿Qué producto o servicio quieren potenciar?
+2. ¿Qué les gustaría conseguir: awareness, ventas, contenido o evento?
+3. ¿Tienen alguna fecha en mente?
+4. ¿Prefieren canje, presupuesto o ambos?
+5. ¿Cuántas creadoras imaginan?
+
+Saludos,
+Priscilla
+SCENCE`,
+  },
+  {
+    key: 'crm_campaign_confirmation',
+    name: 'Confirmación: armamos la campaña',
+    description: 'Cierre del flujo comercial, una vez que la marca entregó los datos de la campaña.',
+    category: 'crm',
+    audience: 'brand',
+    usage: 'manual',
+    contexts: ['crm'],
+    requiredVariables: ['contact_name'],
+    defaultSubject: 'Vamos con la campaña 🎬',
+    defaultMessage: `Hola {{contact_name}},
+
+Perfecto. Con eso les preparo la campaña, seleccionamos perfiles y la levantamos en SCENCE para gestionar postulaciones, entregables y resultados.
+
+Saludos,
+Priscilla
+SCENCE`,
   },
   { key: 'booking_confirmed', name: 'Booking confirmado', description: 'Confirma fecha, lugar y participación en un booking.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['recipient_name', 'campaign_name', 'event_date', 'event_location'], defaultSubject: 'Booking confirmado: {{campaign_name}}' },
   { key: 'application_approved', name: 'Postulación aprobada', description: 'Informa a la influencer que fue seleccionada.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['influencer_name', 'campaign_name', 'brand_name', 'portal_url'], defaultSubject: '¡Tu postulación a {{campaign_name}} fue aprobada!' },

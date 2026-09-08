@@ -5,7 +5,10 @@ import { isCrmAdmin } from '@/lib/crm-auth'
 
 type Params = { params: { id: string } }
 
-const VALID_STATUS = ['unqualified', 'qualified', 'rejected', 'contacted', 'converted']
+// Pipeline comercial: unqualified → contacted → interested → building → converted
+// (rejected = descartada). `qualified` se conserva por compatibilidad con filas
+// históricas y con el filtro existente, pero ya no se ofrece en la UI.
+const VALID_STATUS = ['unqualified', 'qualified', 'rejected', 'contacted', 'interested', 'building', 'converted']
 
 // ── GET /api/crm-leads/[id] — detalle + historial de actividad ────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -142,6 +145,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       qualified: 'qualified',
       rejected: 'rejected',
       contacted: 'contacted',
+      interested: 'interested',
+      building: 'building',
       converted: 'converted',
     }
     await admin.from('crm_lead_activities').insert({

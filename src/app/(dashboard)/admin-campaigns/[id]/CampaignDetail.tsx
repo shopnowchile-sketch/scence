@@ -2746,7 +2746,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               aprobar y ver quién postuló" — ahora el panel completo (no solo los botones) se
               oculta en Marca si _brand_permissions.canEdit es false, y los botones pegan al
               endpoint correcto según el portal. */}
-          {!isBrandPortal && pendingApplications.length > 0
+          {pendingApplications.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card border-amber-200 bg-white shadow-sm">
               <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 border-l-4 border-amber-400 bg-amber-50 px-4 py-3.5 text-left hover:bg-amber-100/80">

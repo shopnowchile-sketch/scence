@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@/lib/supabase/server'
 import { startApifyInstagramSync } from '@/lib/influencers/apify'
+import { fetchInstagramProfileFollowersViaPlaywright } from '@/lib/connectors/instagram-playwright-metrics'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 export const maxDuration = 300
@@ -221,15 +222,88 @@ async function saveCompletedRun(runId: string) {
   return { status: 'SUCCEEDED', ...report }
 }
 
+
+async function syncProfilesViaPlaywright(profiles: DBProfile[]) {
+  const byHandle = new Map<string, DBProfile[]>()
+
+  for (const profile of profiles) {
+    byHandle.set(
+      profile.clean_handle,
+      [...(byHandle.get(profile.clean_handle) ?? []), profile]
+    )
+  }
+
+  const handles = Array.from(byHandle.keys()).slice(0, 30)
+  const report = {
+    status: 'SUCCEEDED',
+    provider: 'playwright',
+    synced: 0,
+    failed: 0,
+    errors: [] as string[],
+  }
+
+  // Uno por vez: launchContext limpia perfiles temporales antes de abrir
+  // Chromium; correr dos simultáneos podría borrar el userDataDir del otro.
+  for (const handle of handles) {
+      const result = await fetchInstagramProfileFollowersViaPlaywright(handle)
+
+      if ('error' in result || result.followers <= 0) {
+        report.failed++
+        report.errors.push(`@${handle}: ${'error' in result ? result.error : 'followers inválidos'}`)
+        return
+      }
+
+      const rows = byHandle.get(handle) ?? []
+      const now = new Date().toISOString()
+
+      const { error } = await admin
+        .from('influencer_social_profiles')
+        .update({
+          followers: result.followers,
+          synced_at: now,
+          last_synced_at: now,
+          updated_at: now,
+        })
+        .in('id', rows.map(row => row.id))
+
+      if (error) {
+        report.failed++
+        report.errors.push(`@${handle}: ${error.message}`)
+        return
+      }
+
+      report.synced += rows.length
+  }
+
+  return report
+}
+
 // ── POST — inicia run ─────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const auth = await authorizeSync(req)
   if (!auth.ok) return NextResponse.json({ error: auth.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: auth.status })
-  if (!APIFY_TOKEN) return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
-
-  let body: { influencer_ids?: string[] } = {}
+  let body: { influencer_ids?: string[]; campaign_id?: string; force_playwright?: boolean } = {}
   try { body = await req.json() } catch { /* empty = sync all */ }
+
+  // Sync dirigido por campaña: solo postulantes pendientes reales.
+  // Admin-only por authorizeSync(); no abre acceso a marcas ni influencers.
+  if (body.campaign_id && !body.influencer_ids?.length) {
+    const { data: rows, error } = await admin
+      .from('campaign_influencers')
+      .select('influencer_id')
+      .eq('campaign_id', body.campaign_id)
+      .eq('application_status', 'pending')
+      .eq('origin', 'application')
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    body.influencer_ids = Array.from(new Set(
+      (rows ?? [])
+        .map(row => row.influencer_id)
+        .filter((id): id is string => Boolean(id))
+    ))
+  }
 
   let profiles: DBProfile[]
   try { profiles = await fetchDBProfiles(body.influencer_ids) }
@@ -249,8 +323,35 @@ export async function POST(req: NextRequest) {
   const seen = new Set<string>()
   const uniqueHandles = profiles.map(p => p.clean_handle).filter(h => { if (seen.has(h)) return false; seen.add(h); return true })
 
+  // Fallback Playwright solo para syncs dirigidos.
+  // Nunca intentar abrir Chromium para los ~1.600 perfiles de una sola vez.
+  const targeted = Boolean(body.influencer_ids?.length || body.campaign_id)
+
+  if (body.force_playwright) {
+    if (!targeted) {
+      return NextResponse.json(
+        { error: 'force_playwright requiere influencer_ids o campaign_id' },
+        { status: 422 }
+      )
+    }
+    return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+  }
+
+  if (!APIFY_TOKEN) {
+    if (targeted) {
+      return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+    }
+    return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
+  }
+
   const started = await startApifyInstagramSync(uniqueHandles)
-  if ('error' in started) return NextResponse.json({ error: started.error }, { status: 502 })
+
+  if ('error' in started) {
+    if (targeted) {
+      return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+    }
+    return NextResponse.json({ error: started.error }, { status: 502 })
+  }
 
   return NextResponse.json({ runId: started.runId, total: uniqueHandles.length })
 }

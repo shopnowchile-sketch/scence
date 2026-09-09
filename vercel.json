@@ -6,6 +6,7 @@
       "maxDuration": 60
     },
     "app/api/influencers/sync-instagram/route.ts": {
+      "memory": 1769,
       "maxDuration": 300
     }
   },

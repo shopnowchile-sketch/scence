@@ -104,6 +104,102 @@ async function launchContext(): Promise<{ context: BrowserContext; userDataDir: 
   return { context, userDataDir }
 }
 
+
+export type InstagramProfileFollowersResult =
+  | { followers: number }
+  | { error: string }
+
+function extractFollowers(raw: string | null): number | null {
+  if (!raw) return null
+  const match = raw.match(/([\d.,]+(?:\s*[KM])?)\s+followers?/i)
+  if (!match) return null
+  const value = parseCompactNumber(match[1].replace(/\s+/g, ''))
+  return value && value > 0 ? value : null
+}
+
+/**
+ * Fallback de followers para perfiles públicos de Instagram.
+ * Nunca devuelve 0 como dato válido y nunca inventa valores.
+ */
+export async function fetchInstagramProfileFollowersViaPlaywright(
+  username: string
+): Promise<InstagramProfileFollowersResult> {
+  const handle = username.replace(/^@+/, '').trim().toLowerCase()
+
+  if (!/^[a-z0-9._]{1,30}$/.test(handle)) {
+    return { error: 'Username de Instagram inválido' }
+  }
+
+  let context: BrowserContext | null = null
+  let userDataDir: string | null = null
+
+  try {
+    const launched = await launchContext()
+    context = launched.context
+    userDataDir = launched.userDataDir
+    const activeContext = context
+
+    const result = await Promise.race([
+      (async (): Promise<InstagramProfileFollowersResult> => {
+        await activeContext.route('**/*', (route: Route) => {
+          const type = route.request().resourceType()
+          if (type === 'image' || type === 'media' || type === 'font') return route.abort()
+          return route.continue()
+        })
+
+        const page = await activeContext.newPage()
+        page.setDefaultTimeout(10_000)
+
+        const response = await page.goto(
+          `https://www.instagram.com/${encodeURIComponent(handle)}/`,
+          { waitUntil: 'domcontentloaded', timeout: 10_000 }
+        )
+
+        if (
+          /\/accounts\/login/i.test(page.url()) ||
+          (response && response.status() === 429)
+        ) {
+          return { error: 'Instagram bloqueó la consulta' }
+        }
+
+        const description = await page
+          .locator('meta[property="og:description"]')
+          .first()
+          .getAttribute('content')
+          .catch(() => null)
+
+        let followers = extractFollowers(description)
+
+        if (!followers) {
+          const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')
+          followers = extractFollowers(body)
+        }
+
+        if (!followers || followers <= 0) {
+          return { error: 'Instagram no devolvió followers válidos' }
+        }
+
+        return { followers }
+      })(),
+      new Promise<InstagramProfileFollowersResult>(resolve =>
+        setTimeout(() => resolve({ error: 'Timeout consultando perfil (>10s)' }), 10_000)
+      ),
+    ])
+
+    return result
+  } catch (error) {
+    return { error: `Error consultando Instagram: ${(error as Error).message}` }
+  } finally {
+    if (context) {
+      try { await context.close() } catch {}
+    }
+    if (userDataDir) {
+      try { rmSync(userDataDir, { recursive: true, force: true }) } catch {}
+    }
+  }
+}
+
+
 export async function fetchInstagramMetricsViaPlaywright(url: string): Promise<DeliverableMetricsResult> {
   const shortcode = extractShortcode(url)
   if (!shortcode) {

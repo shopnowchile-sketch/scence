@@ -22,6 +22,9 @@ const admin = createClient(
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN
 const AUTOMATIC_BATCH_SIZE = 2500
+// Margen bajo el maxDuration de la función: se corta el barrido antes de que
+// Vercel mate la request, para poder devolver el reporte de lo ya guardado.
+const PLAYWRIGHT_TIME_BUDGET_MS = 45_000
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -233,24 +236,46 @@ async function syncProfilesViaPlaywright(profiles: DBProfile[]) {
     )
   }
 
-  const handles = Array.from(byHandle.keys()).slice(0, 30)
+  // fetchDBProfiles ordena por synced_at nullsFirst, así que los perfiles que
+  // nunca se sincronizaron se intentan primero.
+  const handles = Array.from(byHandle.keys())
   const report = {
     status: 'SUCCEEDED',
     provider: 'playwright',
+    attempted: 0,
     synced: 0,
     failed: 0,
+    remaining: 0,
     errors: [] as string[],
   }
+
+  // Presupuesto de tiempo: cada perfil abre Chromium y puede tardar decenas de
+  // segundos. Sin este corte la función se queda sin tiempo a mitad de camino y
+  // se pierde TODO el reporte (no se sabe qué alcanzó a guardarse). Al agotarse,
+  // devuelve lo hecho y cuántos quedan; volver a llamar continúa por los
+  // pendientes, que quedan primeros en el orden.
+  const deadline = Date.now() + PLAYWRIGHT_TIME_BUDGET_MS
 
   // Uno por vez: launchContext limpia perfiles temporales antes de abrir
   // Chromium; correr dos simultáneos podría borrar el userDataDir del otro.
   for (const handle of handles) {
+      if (Date.now() > deadline) {
+        report.remaining = handles.length - report.attempted
+        break
+      }
+      report.attempted++
+
       const result = await fetchInstagramProfileFollowersViaPlaywright(handle)
 
+      // FIX: acá había `return` en vez de `continue`. Un solo perfil que
+      // fallara (Instagram bloquea, handle inexistente, timeout) abortaba el
+      // barrido completo y la función salía devolviendo `undefined`, que el
+      // POST serializaba como respuesta vacía: ni synced, ni failed, ni el
+      // error que explicaba nada. Por eso "Playwright no hacía nada".
       if ('error' in result || result.followers <= 0) {
         report.failed++
         report.errors.push(`@${handle}: ${'error' in result ? result.error : 'followers inválidos'}`)
-        return
+        continue
       }
 
       const rows = byHandle.get(handle) ?? []
@@ -269,7 +294,7 @@ async function syncProfilesViaPlaywright(profiles: DBProfile[]) {
       if (error) {
         report.failed++
         report.errors.push(`@${handle}: ${error.message}`)
-        return
+        continue
       }
 
       report.synced += rows.length

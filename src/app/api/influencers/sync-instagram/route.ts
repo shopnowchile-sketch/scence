@@ -156,7 +156,7 @@ async function saveCompletedRun(runId: string) {
 
   const report = { synced: 0, failed: 0, errors: [] as string[], notFound: [] as string[] }
   const syncedAt = new Date().toISOString()
-  const updates: Array<{ item: ApifyProfile; row: DBProfile; handle: string; followers: number; engagementRate: number | null; avatarUrl: string | null }> = []
+  const updates: Array<{ item: ApifyProfile; row: DBProfile; handle: string; followers: number; engagementRate: number | null }> = []
   for (const item of items) {
     if (!item.username) continue
     const handle = item.username.toLowerCase().trim()
@@ -168,7 +168,6 @@ async function saveCompletedRun(runId: string) {
 
     const followers = item.followersCount
     const engagementRate = computeEngagement(item)
-    const avatarUrl = item.profilePicUrlHD ?? item.profilePicUrl ?? null
     // Un perfil parcial/bloqueado de Apify no puede borrar ni poner en cero el
     // último dato válido. Se deja pendiente para que el próximo cron reintente.
     if (typeof followers !== 'number' || !Number.isFinite(followers) || followers <= 0) {
@@ -176,14 +175,14 @@ async function saveCompletedRun(runId: string) {
       report.failed++
       continue
     }
-    for (const row of rows) updates.push({ item, row, handle, followers, engagementRate, avatarUrl })
+    for (const row of rows) updates.push({ item, row, handle, followers, engagementRate })
     byHandle.delete(handle)
   }
 
   // Procesar con concurrencia acotada: el roster completo no queda serializado
   // en miles de round-trips, pero tampoco sobrecarga Postgres.
   for (let offset = 0; offset < updates.length; offset += 25) {
-    await Promise.all(updates.slice(offset, offset + 25).map(async ({ item, row, handle, followers, engagementRate, avatarUrl }) => {
+    await Promise.all(updates.slice(offset, offset + 25).map(async ({ item, row, handle, followers, engagementRate }) => {
       const spUpdate: Record<string, unknown> = {
         followers,
         username: handle,
@@ -215,10 +214,11 @@ async function saveCompletedRun(runId: string) {
       if (item.postsCount != null) metadata.instagram_posts_count = item.postsCount
       if (item.verified != null) metadata.instagram_verified = item.verified
       if (engagementRate !== null) metadata.instagram_engagement = engagementRate
-      await admin.from('influencers').update({
-        metadata,
-        ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
-      }).eq('id', row.influencer_id)
+      // El sync ya no escribe avatar_url: las URLs de foto que devuelve
+      // Instagram/su CDN son temporales y quedaban 403 a los pocos dias,
+      // dejando avatares rotos en el panel. La foto subida por la creadora
+      // (POST /api/influencer/avatar) es la unica fuente de avatar_url.
+      await admin.from('influencers').update({ metadata }).eq('id', row.influencer_id)
       report.synced++
     }))
   }

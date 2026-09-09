@@ -2918,11 +2918,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   aria-label={`Seleccionar a ${inf.display_name}`}
                                   className="h-4 w-4 flex-shrink-0 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
                                 />
-                                {inf.avatar_url ? (
-                                  <img src={inf.avatar_url} alt={inf.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
-                                ) : (
-                                  <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>{initials}</div>
-                                )}
+                                <div className={cn('relative w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>
+                                  {initials}
+                                  {inf.avatar_url && (
+                                    <img
+                                      src={inf.avatar_url}
+                                      alt={inf.display_name}
+                                      className="absolute inset-0 h-full w-full rounded-full object-cover"
+                                      onError={event => { event.currentTarget.style.display = 'none' }}
+                                    />
+                                  )}
+                                </div>
                                 <div className="min-w-0">
                                   <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{inf.display_name}</span>
                                   {primarySP?.username && (

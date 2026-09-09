@@ -1203,6 +1203,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingApplicationsOpen, setPendingApplicationsOpen] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<Set<string>>(new Set())
   const [bulkRejectingPending, setBulkRejectingPending] = useState(false)
+  const [syncingFollowers, setSyncingFollowers] = useState(false)
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
 
@@ -1449,6 +1450,46 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       void refetch()
     } finally {
       setBulkRejectingPending(false)
+    }
+  }
+
+  // Actualiza followers SOLO de los postulantes pendientes de esta campaña.
+  // Reusa POST /api/influencers/sync-instagram, que ya resuelve por
+  // campaign_id + application_status='pending' + origin='application'; acá no
+  // se manda ninguna lista de influencers, así que no hay forma de que toque
+  // el resto del roster. El endpoint nunca escribe followers <= 0, así que un
+  // perfil que Instagram no devuelva conserva su último valor válido.
+  async function syncPendingFollowers() {
+    setSyncingFollowers(true)
+    try {
+      const response = await fetch('/api/influencers/sync-instagram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: id, force_playwright: true }),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudieron actualizar los followers')
+
+      const synced = Number(json.synced ?? 0)
+      const failed = Number(json.failed ?? 0)
+      const remaining = Number(json.remaining ?? 0)
+      const errors: string[] = Array.isArray(json.errors) ? json.errors : []
+
+      // Un handle mal guardado no corta el proceso: el endpoint sigue con el
+      // resto y devuelve el detalle acá, para poder corregirlo después en la
+      // ficha de esa influencer.
+      if (errors.length > 0) console.warn('[followers] perfiles que fallaron:', errors)
+
+      const summary = `${synced} actualizados · ${failed} fallaron · ${remaining} pendientes`
+      if (synced > 0) toast.success(summary)
+      else if (failed > 0) toast.warning(summary)
+      else toast.info(json.message ?? summary)
+
+      await refetch()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudieron actualizar los followers')
+    } finally {
+      setSyncingFollowers(false)
     }
   }
 
@@ -2866,15 +2907,31 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       />
                       Seleccionar todos
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => void rejectSelectedPendingApplications()}
-                      disabled={selectedVisiblePendingIds.length === 0 || bulkRejectingPending}
-                      className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {bulkRejectingPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      Rechazar seleccionados{selectedVisiblePendingIds.length > 0 ? ` (${selectedVisiblePendingIds.length})` : ''}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {!isBrandPortal && (
+                        <button
+                          type="button"
+                          onClick={() => void syncPendingFollowers()}
+                          disabled={syncingFollowers}
+                          title="Actualiza los followers solo de los postulantes pendientes de esta campaña"
+                          className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {syncingFollowers
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <RefreshCw className="h-3.5 w-3.5" />}
+                          {syncingFollowers ? 'Actualizando…' : 'Actualizar followers'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void rejectSelectedPendingApplications()}
+                        disabled={selectedVisiblePendingIds.length === 0 || bulkRejectingPending}
+                        className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {bulkRejectingPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Rechazar seleccionados{selectedVisiblePendingIds.length > 0 ? ` (${selectedVisiblePendingIds.length})` : ''}
+                      </button>
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px]">

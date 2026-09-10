@@ -1,12 +1,9 @@
 /**
  * POST /api/influencers/sync-instagram
  *   Inicia Apify run. Retorna { runId, total } sin esperar.
- *   Si Apify no está disponible, usa el perfil web público de Instagram como
- *   fallback y Playwright como último recurso para syncs dirigidos.
  *
  * GET /api/influencers/sync-instagram?runId=xxx
  *   Polling. Cuando SUCCEEDED guarda resultados y retorna reporte.
- *   El cron también conserva una vía gratuita de rescate si Apify falla.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -24,10 +21,7 @@ const admin = createClient(
 )
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN
-const AUTOMATIC_BATCH_SIZE = 2500
-const FREE_FALLBACK_BATCH_SIZE = 20
-const INSTAGRAM_WEB_TIMEOUT_MS = 8_000
-const INSTAGRAM_WEB_APP_ID = '936619743392459'
+const AUTOMATIC_BATCH_SIZE = 60
 // Margen bajo el maxDuration de la función: se corta el barrido antes de que
 // Vercel mate la request, para poder devolver el reporte de lo ya guardado.
 const PLAYWRIGHT_TIME_BUDGET_MS = 45_000
@@ -50,10 +44,8 @@ interface DBProfile {
   id: string
   influencer_id: string
   raw_username: string   // what's stored in DB (may be URL or handle)
-  clean_handle: string   // extracted clean handle for Apify / Instagram web
+  clean_handle: string   // extracted clean handle for Apify
 }
-
-type FollowersResult = { followers: number } | { error: string }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -86,54 +78,6 @@ function computeEngagement(profile: ApifyProfile): number | null {
   const posts = profile.latestPosts.slice(0, 12)
   const total = posts.reduce((s, p) => s + (p.likesCount ?? 0) + (p.commentsCount ?? 0), 0)
   return parseFloat(((total / posts.length / followers) * 100).toFixed(2))
-}
-
-/**
- * Vía gratuita y liviana para leer el contador público de followers.
- * No usa credenciales de la influencer ni terceros pagados. Instagram puede
- * rate-limitarla, por eso nunca reemplaza un valor existente por 0 y se usa
- * con lotes pequeños cuando Apify no está disponible.
- */
-async function fetchInstagramProfileFollowersViaWeb(handle: string): Promise<FollowersResult> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), INSTAGRAM_WEB_TIMEOUT_MS)
-
-  try {
-    const res = await fetch(
-      `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(handle)}`,
-      {
-        headers: {
-          Accept: '*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-          Referer: 'https://www.instagram.com/',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'X-IG-App-ID': INSTAGRAM_WEB_APP_ID,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        cache: 'no-store',
-        signal: controller.signal,
-      }
-    )
-
-    if (!res.ok) return { error: `Instagram web respondió ${res.status}` }
-
-    const json = await res.json() as {
-      data?: { user?: { edge_followed_by?: { count?: unknown } } }
-    }
-    const raw = json?.data?.user?.edge_followed_by?.count
-    const followers = typeof raw === 'number' ? raw : Number(raw)
-
-    if (!Number.isFinite(followers) || followers <= 0) {
-      return { error: 'Instagram web no devolvió followers válidos' }
-    }
-
-    return { followers: Math.round(followers) }
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') return { error: 'Timeout consultando Instagram web' }
-    return { error: `Error consultando Instagram web: ${(error as Error).message}` }
-  } finally {
-    clearTimeout(timeout)
-  }
 }
 
 /** Fetch all instagram social profiles, building clean handles */
@@ -281,80 +225,6 @@ async function saveCompletedRun(runId: string) {
   return { status: 'SUCCEEDED', ...report }
 }
 
-async function saveFollowers(rows: DBProfile[], followers: number) {
-  const now = new Date().toISOString()
-  return admin
-    .from('influencer_social_profiles')
-    .update({
-      followers,
-      synced_at: now,
-      last_synced_at: now,
-      updated_at: now,
-    })
-    .in('id', rows.map(row => row.id))
-}
-
-async function syncProfilesViaFreeFallback(
-  profiles: DBProfile[],
-  options: { playwright?: boolean } = {}
-) {
-  const byHandle = new Map<string, DBProfile[]>()
-
-  for (const profile of profiles) {
-    byHandle.set(
-      profile.clean_handle,
-      [...(byHandle.get(profile.clean_handle) ?? []), profile]
-    )
-  }
-
-  const handles = Array.from(byHandle.keys())
-  const report = {
-    status: 'SUCCEEDED',
-    provider: options.playwright === false ? 'instagram_web' : 'instagram_web+playwright',
-    attempted: 0,
-    synced: 0,
-    failed: 0,
-    remaining: 0,
-    errors: [] as string[],
-  }
-
-  const deadline = Date.now() + PLAYWRIGHT_TIME_BUDGET_MS
-
-  for (const handle of handles) {
-    if (Date.now() > deadline) {
-      report.remaining = handles.length - report.attempted
-      break
-    }
-    report.attempted++
-
-    let result: FollowersResult = await fetchInstagramProfileFollowersViaWeb(handle)
-
-    // Para syncs dirigidos hacemos un segundo intento con Chromium. En el cron
-    // de rescate no se usa Chromium: es demasiado caro para un roster grande.
-    if ('error' in result && options.playwright !== false) {
-      result = await fetchInstagramProfileFollowersViaPlaywright(handle)
-    }
-
-    if ('error' in result || result.followers <= 0) {
-      report.failed++
-      report.errors.push(`@${handle}: ${'error' in result ? result.error : 'followers inválidos'}`)
-      continue
-    }
-
-    const rows = byHandle.get(handle) ?? []
-    const { error } = await saveFollowers(rows, result.followers)
-
-    if (error) {
-      report.failed++
-      report.errors.push(`@${handle}: ${error.message}`)
-      continue
-    }
-
-    report.synced += rows.length
-  }
-
-  return report
-}
 
 async function syncProfilesViaPlaywright(profiles: DBProfile[]) {
   const byHandle = new Map<string, DBProfile[]>()
@@ -389,30 +259,45 @@ async function syncProfilesViaPlaywright(profiles: DBProfile[]) {
   // Uno por vez: launchContext limpia perfiles temporales antes de abrir
   // Chromium; correr dos simultáneos podría borrar el userDataDir del otro.
   for (const handle of handles) {
-    if (Date.now() > deadline) {
-      report.remaining = handles.length - report.attempted
-      break
-    }
-    report.attempted++
+      if (Date.now() > deadline) {
+        report.remaining = handles.length - report.attempted
+        break
+      }
+      report.attempted++
 
-    const result = await fetchInstagramProfileFollowersViaPlaywright(handle)
+      const result = await fetchInstagramProfileFollowersViaPlaywright(handle)
 
-    if ('error' in result || result.followers <= 0) {
-      report.failed++
-      report.errors.push(`@${handle}: ${'error' in result ? result.error : 'followers inválidos'}`)
-      continue
-    }
+      // FIX: acá había `return` en vez de `continue`. Un solo perfil que
+      // fallara (Instagram bloquea, handle inexistente, timeout) abortaba el
+      // barrido completo y la función salía devolviendo `undefined`, que el
+      // POST serializaba como respuesta vacía: ni synced, ni failed, ni el
+      // error que explicaba nada. Por eso "Playwright no hacía nada".
+      if ('error' in result || result.followers <= 0) {
+        report.failed++
+        report.errors.push(`@${handle}: ${'error' in result ? result.error : 'followers inválidos'}`)
+        continue
+      }
 
-    const rows = byHandle.get(handle) ?? []
-    const { error } = await saveFollowers(rows, result.followers)
+      const rows = byHandle.get(handle) ?? []
+      const now = new Date().toISOString()
 
-    if (error) {
-      report.failed++
-      report.errors.push(`@${handle}: ${error.message}`)
-      continue
-    }
+      const { error } = await admin
+        .from('influencer_social_profiles')
+        .update({
+          followers: result.followers,
+          synced_at: now,
+          last_synced_at: now,
+          updated_at: now,
+        })
+        .in('id', rows.map(row => row.id))
 
-    report.synced += rows.length
+      if (error) {
+        report.failed++
+        report.errors.push(`@${handle}: ${error.message}`)
+        continue
+      }
+
+      report.synced += rows.length
   }
 
   return report
@@ -463,9 +348,8 @@ export async function POST(req: NextRequest) {
   const seen = new Set<string>()
   const uniqueHandles = profiles.map(p => p.clean_handle).filter(h => { if (seen.has(h)) return false; seen.add(h); return true })
 
-  // Fallback gratuito completo para syncs dirigidos. Para el roster general se
-  // limita el lote por rate-limit de Instagram; los perfiles más antiguos salen
-  // primero gracias al orden de fetchDBProfiles.
+  // Fallback Playwright solo para syncs dirigidos.
+  // Nunca intentar abrir Chromium para los ~1.600 perfiles de una sola vez.
   const targeted = Boolean(body.influencer_ids?.length || body.campaign_id)
 
   if (body.force_playwright) {
@@ -479,16 +363,19 @@ export async function POST(req: NextRequest) {
   }
 
   if (!APIFY_TOKEN) {
-    const fallbackProfiles = targeted ? profiles : profiles.slice(0, FREE_FALLBACK_BATCH_SIZE)
-    return NextResponse.json(await syncProfilesViaFreeFallback(fallbackProfiles, { playwright: targeted }))
+    if (targeted) {
+      return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+    }
+    return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
   }
 
   const started = await startApifyInstagramSync(uniqueHandles)
 
   if ('error' in started) {
-    const fallbackProfiles = targeted ? profiles : profiles.slice(0, FREE_FALLBACK_BATCH_SIZE)
-    const fallback = await syncProfilesViaFreeFallback(fallbackProfiles, { playwright: targeted })
-    return NextResponse.json({ ...fallback, apifyError: started.error })
+    if (targeted) {
+      return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+    }
+    return NextResponse.json({ error: started.error }, { status: 502 })
   }
 
   return NextResponse.json({ runId: started.runId, total: uniqueHandles.length })
@@ -499,45 +386,28 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const auth = await authorizeSync(req)
   if (!auth.ok) return NextResponse.json({ error: auth.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: auth.status })
+  if (!APIFY_TOKEN) return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
 
   const runId = new URL(req.url).searchParams.get('runId')
-
   if (auth.cron && !runId) {
-    const profiles = await fetchDBProfiles(undefined, APIFY_TOKEN ? AUTOMATIC_BATCH_SIZE : FREE_FALLBACK_BATCH_SIZE)
-    if (!profiles.length) return NextResponse.json({ status: 'SUCCEEDED', synced: 0, failed: 0 })
-
-    if (!APIFY_TOKEN) {
-      return NextResponse.json(await syncProfilesViaFreeFallback(profiles, { playwright: false }))
-    }
-
+    const profiles = await fetchDBProfiles(undefined, AUTOMATIC_BATCH_SIZE)
     const handles = Array.from(new Set(profiles.map(profile => profile.clean_handle)))
+    if (!handles.length) return NextResponse.json({ status: 'SUCCEEDED', synced: 0, failed: 0 })
     const started = await startApifyInstagramSync(handles)
-    if ('error' in started) {
-      const fallback = await syncProfilesViaFreeFallback(
-        profiles.slice(0, FREE_FALLBACK_BATCH_SIZE),
-        { playwright: false }
-      )
-      return NextResponse.json({ ...fallback, apifyError: started.error })
-    }
+    if ('error' in started) return NextResponse.json({ error: started.error }, { status: 502 })
 
     for (let attempt = 0; attempt < 52; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 5000))
       const status = await getRunStatus(started.runId)
       if (['RUNNING', 'READY', 'INITIALIZING'].includes(status)) continue
       if (status !== 'SUCCEEDED') {
-        const fallback = await syncProfilesViaFreeFallback(
-          profiles.slice(0, FREE_FALLBACK_BATCH_SIZE),
-          { playwright: false }
-        )
-        return NextResponse.json({ ...fallback, apifyStatus: status })
+        return NextResponse.json({ status, error: `Run terminó con estado: ${status}` }, { status: 502 })
       }
       return NextResponse.json(await saveCompletedRun(started.runId))
     }
     return NextResponse.json({ status: 'RUNNING', runId: started.runId }, { status: 202 })
   }
-
   if (!runId) return NextResponse.json({ error: 'runId requerido' }, { status: 400 })
-  if (!APIFY_TOKEN) return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
 
   // Check run status
   let status: string

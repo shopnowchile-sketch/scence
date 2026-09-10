@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
             id,
             name,
             logo_url,
+            instagram,
             industry,
             status,
             created_at,
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
 
   const { data: createdBrands, error: createdError } = await admin
     .from('brands')
-    .select('id, name, logo_url, industry, status, created_at, created_by')
+    .select('id, name, logo_url, instagram, industry, status, created_at, created_by')
     .eq('created_by', user.id)
 
   if (createdError) {

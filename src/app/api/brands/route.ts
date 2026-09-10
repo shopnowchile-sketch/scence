@@ -20,12 +20,14 @@ export async function GET(req: NextRequest) {
   const search = sp.get('search')
   const limit  = Number(sp.get('limit') ?? '100')
 
-  // Selectores solo necesitan id y nombre. Evita joins, consultas de sesión,
-  // usuarios de Auth y planes por cada marca.
+  // Selectores solo necesitan identificar la marca. Evita joins, consultas de
+  // sesión, usuarios de Auth y planes por cada marca. `instagram` y `logo_url`
+  // salen de la misma fila (sin joins ni consultas extra) para que los
+  // selectores puedan mostrar la marca como se ve en el módulo Marcas.
   if (sp.get('options') === '1') {
     let optionsQuery = admin
       .from('brands')
-      .select('id, name')
+      .select('id, name, instagram, logo_url')
       .order('name', { ascending: true })
       .limit(Math.min(Math.max(limit, 1), 5000))
     if (search) optionsQuery = optionsQuery.ilike('name', `%${search}%`)

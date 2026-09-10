@@ -31,6 +31,7 @@ import { BrandSelector } from '@/components/campaigns/BrandSelector'
 import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceConfirmationPanel'
 import { CampaignEmailModal } from '@/components/campaigns/CampaignEmailModal'
 import { createClient } from '@/lib/supabase/client'
+import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -751,12 +752,16 @@ function CampaignBrandsPanel({
   canManage,
   canChangePrimary,
   linkToBrandProfile,
+  isBrandPortal,
   onChanged,
 }: {
   campaignId: string
   brands: Array<{ id?: string; name?: string; logo_url?: string | null; instagram?: string | null; _role?: string }>
   canManage: boolean
   canChangePrimary: boolean
+  // Solo decide de qué catálogo se leen las sugerencias del selector: el
+  // portal de marca ve únicamente sus propias marcas (/api/brand/brands).
+  isBrandPortal: boolean
   // Solo Admin tiene acceso a /admin-brands — en el portal de marca (mismo
   // componente, ver brand-campaigns/[id]) el chip no debe linkear ahí, el
   // middleware redirigiría a la marca fuera de la campaña.
@@ -820,7 +825,7 @@ function CampaignBrandsPanel({
         </div>
       )}
       <PrimaryBrandManager campaignId={campaignId} brands={brands} canManage={canChangePrimary} onChanged={onChanged} />
-      <CoBrandManager campaignId={campaignId} canManage={canManage} onChanged={onChanged} />
+      <CoBrandManager campaignId={campaignId} canManage={canManage} isBrandPortal={isBrandPortal} onChanged={onChanged} />
     </div>
   )
 }
@@ -894,20 +899,68 @@ function PrimaryBrandManager({
 // Una colaboradora queda vinculada a la campaña de inmediato. Si se registra
 // un email, la aprobación posterior controla únicamente el acceso a su portal;
 // nunca bloquea el brief ni los tags de las influencers.
+type CoBrandOption = { id: string; name: string; instagram: string | null; logo_url: string | null }
+
 function CoBrandManager({
   campaignId,
   canManage,
+  isBrandPortal,
   onChanged,
 }: {
   campaignId: string
   canManage: boolean
+  isBrandPortal: boolean
   onChanged: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [instagram, setInstagram] = useState('')
   const [saving, setSaving] = useState(false)
+  // Solo presentación: catálogo de marcas ya registradas para no tener que
+  // salir a Marcas a confirmar el @handle antes de escribirlo. Cada portal lee
+  // el mismo endpoint que ya alimenta SU módulo Marcas — Admin ve el catálogo
+  // completo (/api/brands, el del BrandSelector) y una marca ve solo las suyas
+  // (/api/brand/brands, el de /brand-brands). Si la respuesta falla se ignora
+  // en silencio y el campo sigue funcionando escribiendo el @ a mano.
+  const [options, setOptions] = useState<CoBrandOption[]>([])
+  const [loadingOptions, setLoadingOptions] = useState(false)
+  const [brokenLogos, setBrokenLogos] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!open || options.length > 0) return
+    let cancelled = false
+    setLoadingOptions(true)
+    fetch(isBrandPortal ? '/api/brand/brands' : '/api/brands?options=1&limit=5000')
+      .then(res => (res.ok ? res.json() : { data: [] }))
+      .then(json => {
+        if (cancelled) return
+        setOptions((json.data ?? []).map((brand: CoBrandOption) => ({
+          id: String(brand.id),
+          name: String(brand.name ?? ''),
+          instagram: brand.instagram ?? null,
+          logo_url: brand.logo_url ?? null,
+        })))
+      })
+      .catch(() => { /* sin catálogo el campo sigue funcionando a mano */ })
+      .finally(() => { if (!cancelled) setLoadingOptions(false) })
+    return () => { cancelled = true }
+  }, [open, options.length, isBrandPortal])
 
   const instagramValid = /^(?:@?[a-z0-9._]{1,30}|https?:\/\/(?:www\.)?instagram\.com\/[a-z0-9._]{1,30}\/?)/i.test(instagram.trim())
+
+  // Mismo normalizador que usa el endpoint para buscar la marca existente, así
+  // lo que muestra el campo y lo que hará el POST no se pueden contradecir.
+  const typedHandle = normalizeInstagramHandle(instagram)
+  const registered = options.filter(brand => normalizeInstagramHandle(brand.instagram))
+  const matchedBrand = typedHandle
+    ? registered.find(brand => normalizeInstagramHandle(brand.instagram) === typedHandle)
+    : undefined
+  const query = instagram.trim().replace(/^@/, '').toLowerCase()
+  const suggestions = (query
+    ? registered.filter(brand =>
+        brand.name.toLowerCase().includes(query) ||
+        (normalizeInstagramHandle(brand.instagram) ?? '').includes(query))
+    : registered
+  ).slice(0, 6)
 
   async function submit() {
     if (!instagramValid) return
@@ -932,6 +985,22 @@ function CoBrandManager({
 
   if (!canManage) return null
 
+  function brandAvatar(brand: CoBrandOption) {
+    const showLogo = brand.logo_url && !brokenLogos.includes(brand.id)
+    return showLogo ? (
+      <img
+        src={brand.logo_url as string}
+        alt=""
+        className="h-6 w-6 flex-shrink-0 rounded object-contain bg-white"
+        onError={() => setBrokenLogos(prev => (prev.includes(brand.id) ? prev : [...prev, brand.id]))}
+      />
+    ) : (
+      <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-violet-50 text-[10px] font-bold text-violet-600">
+        {(brand.name || '?').slice(0, 1).toUpperCase()}
+      </span>
+    )
+  }
+
   return (
     <div className="mt-3 pt-3 border-t border-gray-100">
       {!open ? (
@@ -940,20 +1009,78 @@ function CoBrandManager({
           <Plus className="h-3.5 w-3.5" /> Agregar marca colaboradora
         </button>
       ) : (
-        <div className="flex items-center gap-2 rounded-xl bg-gray-50 p-3">
-          <input value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="@instagram de la marca" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 bg-white" />
-          <button type="button" onClick={submit} disabled={saving || !instagramValid}
-            className="px-3 py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            {saving ? 'Guardando…' : 'Agregar'}
-          </button>
-          <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar"><X className="h-4 w-4" /></button>
+        <div className="space-y-2 rounded-xl bg-gray-50 p-3">
+          <div className="flex items-center gap-2">
+            <input value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="@instagram de la marca" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 bg-white" />
+            <button type="button" onClick={submit} disabled={saving || !instagramValid}
+              className="px-3 py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              {saving ? 'Guardando…' : 'Agregar'}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar"><X className="h-4 w-4" /></button>
+          </div>
+
+          {loadingOptions && (
+            <p className="flex items-center gap-1.5 px-1 text-[11px] text-gray-400">
+              <Loader2 className="h-3 w-3 animate-spin" /> Cargando marcas registradas…
+            </p>
+          )}
+
+          {!loadingOptions && registered.length > 0 && (
+            <>
+              {typedHandle && (
+                matchedBrand ? (
+                  <p className="flex items-center gap-1.5 px-1 text-[11px] font-medium text-emerald-700">
+                    <Check className="h-3 w-3 flex-shrink-0" />
+                    Ya está en Marcas: {matchedBrand.name} — se vinculará esta marca.
+                  </p>
+                ) : !isBrandPortal ? (
+                  <p className="flex items-center gap-1.5 px-1 text-[11px] text-amber-700">
+                    <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                    Este @ no está en Marcas — se creará una marca nueva.
+                  </p>
+                ) : null
+              )}
+
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <p className="flex items-center gap-1.5 border-b border-gray-100 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  <Search className="h-3 w-3" /> {isBrandPortal ? 'Tus marcas' : 'Marcas registradas'}
+                </p>
+                <div className="max-h-44 overflow-y-auto py-1">
+                  {suggestions.map(brand => {
+                    const handle = normalizeInstagramHandle(brand.instagram) as string
+                    const isMatch = handle === typedHandle
+                    return (
+                      <button
+                        key={brand.id}
+                        type="button"
+                        onClick={() => setInstagram(`@${handle}`)}
+                        className={cn('flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-violet-50', isMatch && 'bg-violet-50')}
+                        title={`Usar @${handle}`}
+                      >
+                        {brandAvatar(brand)}
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-800">{brand.name || 'Marca sin nombre'}</span>
+                        <span className="max-w-[45%] truncate text-[11px] text-gray-500">@{handle}</span>
+                        {isMatch && <Check className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" />}
+                      </button>
+                    )
+                  })}
+                  {suggestions.length === 0 && (
+                    <p className="px-2.5 py-2 text-[11px] text-gray-400">
+                      {isBrandPortal ? 'Ninguna de tus marcas coincide con lo escrito.' : 'Ninguna marca registrada coincide con lo escrito.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
     </div>
   )
 }
+
 
 type OverviewEditSection = 'content' | 'deliverables'
 
@@ -2587,6 +2714,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
             canChangePrimary={!isBrandPortal}
             linkToBrandProfile={!isBrandPortal}
+            isBrandPortal={isBrandPortal}
             onChanged={() => void refetch()}
           />
         )}

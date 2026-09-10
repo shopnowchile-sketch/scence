@@ -10,6 +10,9 @@
     "type-check": "tsc --noEmit",
     "supabase:types": "supabase gen types typescript --local > src/types/database.types.ts",
     "paypal:create-plans": "node scripts/create-paypal-plans.mjs",
+    "paypal:webhook-diagnostics": "node scripts/paypal-webhook-diagnostics.mjs",
+    "paypal:add-payment-events": "node scripts/paypal-add-payment-events.mjs",
+    "backfill:subscription-payments": "node scripts/backfill-subscription-payments.mjs",
     "test": "node --test \"tests/*.test.ts\""
   },
   "dependencies": {

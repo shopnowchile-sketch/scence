@@ -49,6 +49,14 @@ export async function GET(request: NextRequest) {
 
   if (paymentsError) return NextResponse.json({ error: 'No se pudo consultar el historial de pagos Pro.' }, { status: 500 })
 
+  const { data: termsAcceptances, error: termsError } = await auth.admin
+    .from('influencer_terms_acceptances')
+    .select('id, document_key, document_title, document_version, content_snapshot, status, accepted_at, created_at')
+    .eq('influencer_id', influencerId)
+    .order('accepted_at', { ascending: false })
+
+  if (termsError) return NextResponse.json({ error: 'No se pudieron consultar los T&C aceptados.' }, { status: 500 })
+
   const completedPayments = (payments ?? []).filter(payment => payment.status === 'completed')
   const totalPaid = completedPayments.reduce((sum, payment) => sum + Number(payment.amount), 0)
   const latestPayment = completedPayments[0] ?? null
@@ -65,5 +73,6 @@ export async function GET(request: NextRequest) {
       total_paid_currency: latestPayment?.currency ?? null,
     },
     payments: payments ?? [],
+    terms_acceptances: termsAcceptances ?? [],
   })
 }

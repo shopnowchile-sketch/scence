@@ -73,6 +73,6 @@ export async function GET(request: NextRequest) {
       total_paid_currency: latestPayment?.currency ?? null,
     },
     payments: payments ?? [],
-    terms_acceptances: termsAcceptances ?? [],
+    terms_acceptances: (termsAcceptances ?? []).map(acceptance => ({ ...acceptance, influencer_name: influencer.display_name })),
   })
 }

@@ -38,6 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     .select('document_version, status, accepted_at')
     .eq('influencer_id', payment.influencer_id)
     .eq('document_key', 'influencer_pro_terms')
+    .eq('document_version', '2.0')
     .eq('status', 'accepted')
     .order('accepted_at', { ascending: false })
     .limit(1)

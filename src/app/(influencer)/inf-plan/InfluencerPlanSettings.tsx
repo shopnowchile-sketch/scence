@@ -6,12 +6,29 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 
+type Payment = {
+  id: string
+  gateway: string
+  gateway_payment_id: string | null
+  amount: number | string
+  currency: string
+  status: string
+  paid_at: string
+  period_start: string | null
+  period_end: string | null
+  receipt_url: string | null
+}
+
 type Billing = {
-  subscription: { status: string; current_period_end: string | null; plan: { name: string; tier: string } | null } | null
+  subscription: { status: string; current_period_end: string | null; started_paying_at: string | null; plan: { name: string; tier: string } | null } | null
   commitment: { campaignName: string; completedDeliverables: number; totalDeliverables: number } | null
   can_cancel: boolean
   is_pro: boolean
   account_active: boolean
+  started_paying_at: string | null
+  payments: Payment[]
+  total_paid: number
+  total_paid_currency: string | null
   blocked_reason?: 'campaign_active' | 'deliverables_pending' | null
 }
 
@@ -162,6 +179,72 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
               <div className="mt-3 text-sm text-amber-900"><p><strong>Campaña:</strong> {commitment.campaignName}</p><p><strong>Entregables:</strong> {commitment.completedDeliverables}/{commitment.totalDeliverables}</p></div>
             </div>
           </div>
+        </section>
+      )}
+
+      {active && (
+        <section className="rounded-2xl border border-gray-100 bg-white p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="font-semibold text-gray-900">Mis pagos</h3>
+              <p className="mt-1 text-sm text-gray-500">Historial de cobros reales de tu suscripción Pro.</p>
+            </div>
+            {billing?.total_paid_currency && (
+              <div className="text-right">
+                <div className="text-sm font-bold text-gray-900">
+                  {new Intl.NumberFormat('es-CL', { style: 'currency', currency: billing.total_paid_currency }).format(billing.total_paid)}
+                </div>
+                <div className="text-xs text-gray-400">Total pagado</div>
+              </div>
+            )}
+          </div>
+
+          {billing?.started_paying_at && (
+            <div className="mt-4 rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-800">
+              Paga desde <strong>{new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeZone: 'America/Santiago' }).format(new Date(billing.started_paying_at))}</strong>
+            </div>
+          )}
+
+          {billing?.payments?.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wider text-gray-400">
+                    <th className="py-3 pr-3">Fecha</th>
+                    <th className="py-3 pr-3">Monto</th>
+                    <th className="py-3 pr-3">Gateway</th>
+                    <th className="py-3 pr-3">Estado</th>
+                    <th className="py-3 text-right">Comprobante</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {billing.payments.map(payment => (
+                    <tr key={payment.id}>
+                      <td className="py-3 pr-3 text-gray-600 whitespace-nowrap">
+                        {new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeZone: 'America/Santiago' }).format(new Date(payment.paid_at))}
+                      </td>
+                      <td className="py-3 pr-3 font-semibold text-gray-900 whitespace-nowrap">
+                        {new Intl.NumberFormat('es-CL', { style: 'currency', currency: payment.currency }).format(Number(payment.amount))}
+                      </td>
+                      <td className="py-3 pr-3 text-gray-500 capitalize">{payment.gateway}</td>
+                      <td className="py-3 pr-3 text-gray-500 capitalize">{payment.status}</td>
+                      <td className="py-3 text-right">
+                        <a
+                          href={`/api/influencer/subscription-payments/${payment.id}/pdf`}
+                          className="font-semibold text-violet-600 hover:underline"
+                          download
+                        >
+                          Descargar PDF
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-gray-400">Todavía no hay pagos registrados.</p>
+          )}
         </section>
       )}
 

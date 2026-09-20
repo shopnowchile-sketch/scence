@@ -63,7 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="scence-pro-${params.id}.pdf"`,
+      'Content-Disposition': `${request.nextUrl.searchParams.get('download') === '1' ? 'attachment' : 'inline'}; filename="scence-pro-${params.id}.pdf"`,
       'Cache-Control': 'private, no-store',
     },
   })

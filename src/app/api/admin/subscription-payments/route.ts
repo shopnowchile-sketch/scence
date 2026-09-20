@@ -66,17 +66,4 @@ export async function GET(request: NextRequest) {
     },
     payments: payments ?? [],
   })
-  return NextResponse.json({
-    influencer,
-    subscription: latestSubscription,
-    summary: {
-      status: latestSubscription?.status ?? null,
-      started_paying_at: latestSubscription?.started_paying_at ?? latestPayment?.paid_at ?? null,
-      next_billing_at: latestSubscription?.current_period_end ?? null,
-      current_amount: latestPayment ? { amount: latestPayment.amount, currency: latestPayment.currency } : null,
-      total_paid: totalPaid,
-      total_paid_currency: latestPayment?.currency ?? null,
-    },
-    payments: payments ?? [],
-  })
 }

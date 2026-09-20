@@ -33,7 +33,7 @@ function date(value?: string | null) {
   }).format(new Date(value))
 }
 
-export function generateSubscriptionReceiptPdf(data: SubscriptionReceiptPdfData): Uint8Array {
+export function generateSubscriptionReceiptPdf(data: SubscriptionReceiptPdfData): ArrayBuffer {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const amount = Number(data.amount)
 
@@ -99,5 +99,5 @@ export function generateSubscriptionReceiptPdf(data: SubscriptionReceiptPdfData)
   doc.text('Este documento es un comprobante de pago de la suscripción SCENCE Pro.', 20, y)
   doc.text('No constituye una boleta o factura tributaria.', 20, y + 5)
 
-  return new Uint8Array(doc.output('arraybuffer'))
+  return doc.output('arraybuffer')
 }

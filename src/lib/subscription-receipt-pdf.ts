@@ -11,6 +11,7 @@ export type SubscriptionReceiptPdfData = {
   gateway: string
   gatewayPaymentId?: string | null
   status: string
+  concept?: string | null
   receiptUrl?: string | null
   termsAcceptedAt?: string | null
 }
@@ -68,6 +69,7 @@ export function generateSubscriptionReceiptPdf(data: SubscriptionReceiptPdfData)
   row('Gateway', data.gateway)
   row('ID de transacción', data.gatewayPaymentId ?? 'No informado')
   row('Estado', data.status)
+  if (data.concept) row('Concepto', data.concept)
 
   if (data.termsAcceptedAt) {
     doc.setFont('helvetica', 'normal')

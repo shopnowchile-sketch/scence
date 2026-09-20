@@ -190,21 +190,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
               <h3 className="font-semibold text-gray-900">Mis pagos</h3>
               <p className="mt-1 text-sm text-gray-500">Historial de cobros reales de tu suscripción Pro.</p>
             </div>
-            {billing?.total_paid_currency && (
-              <div className="text-right">
-                <div className="text-sm font-bold text-gray-900">
-                  {new Intl.NumberFormat('es-CL', { style: 'currency', currency: billing.total_paid_currency }).format(billing.total_paid)}
-                </div>
-                <div className="text-xs text-gray-400">Total pagado</div>
-              </div>
-            )}
           </div>
-
-          {billing?.started_paying_at && (
-            <div className="mt-4 rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-800">
-              Paga desde <strong>{new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeZone: 'America/Santiago' }).format(new Date(billing.started_paying_at))}</strong>
-            </div>
-          )}
 
           {billing?.payments?.length ? (
             <div className="mt-4 overflow-x-auto">
@@ -230,13 +216,9 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
                       <td className="py-3 pr-3 text-gray-500 capitalize">{payment.gateway}</td>
                       <td className="py-3 pr-3 text-gray-500 capitalize">{payment.status}</td>
                       <td className="py-3 text-right">
-                        <a
-                          href={`/api/influencer/subscription-payments/${payment.id}/pdf`}
-                          className="font-semibold text-violet-600 hover:underline"
-                          download
-                        >
-                          Descargar PDF
-                        </a>
+                        <button type="button" onClick={() => setReceiptPayment(payment)} className="font-semibold text-violet-600 hover:underline">
+                          Ver comprobante
+                        </button>
                       </td>
                     </tr>
                   ))}

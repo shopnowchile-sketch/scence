@@ -17,7 +17,7 @@ test('SCENCE Pro receipt preserves the recorded amount and currency', () => {
     receiptUrl: 'https://api.paypal.com/v1/payments/sale/6DB157598L534553F',
   })
 
-  assert.ok(pdf.length > 1000)
+  assert.ok(pdf.byteLength > 1000)
   const text = new TextDecoder().decode(pdf)
   assert.match(text, /8\.60/)
   assert.match(text, /USD/)

@@ -16,6 +16,7 @@ import { useInfluencer } from '@/hooks/useInfluencersList'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { ProSubscriptionSection } from '@/components/subscription/ProSubscriptionSection'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -685,6 +686,7 @@ export function InfluencerProfile({ id }: { id: string }) {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="col-span-2 space-y-4">
+            <ProSubscriptionSection influencerId={influencer.id} isPro={influencer.is_pro === true} />
             {influencer.bio && (
               <div className="card p-5">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Bio</h3>

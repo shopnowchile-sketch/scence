@@ -32,6 +32,16 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (paymentError) return NextResponse.json({ error: 'No se pudo consultar el comprobante.' }, { status: 500 })
   if (!payment) return NextResponse.json({ error: 'Comprobante no encontrado.' }, { status: 404 })
 
+  const { data: termsAcceptance } = await admin
+    .from('influencer_terms_acceptances')
+    .select('document_version, status, accepted_at')
+    .eq('influencer_id', payment.influencer_id)
+    .eq('document_key', 'influencer_pro_terms')
+    .eq('status', 'accepted')
+    .order('accepted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   const pdf = generateSubscriptionReceiptPdf({
     influencerName: influencer.display_name,
     influencerEmail: influencer.email,
@@ -44,6 +54,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     gatewayPaymentId: payment.gateway_payment_id,
     status: payment.status,
     receiptUrl: payment.receipt_url,
+    termsAcceptedAt: termsAcceptance?.accepted_at ?? null,
   })
 
   return new NextResponse(pdf, {

@@ -12,6 +12,7 @@ export type SubscriptionReceiptPdfData = {
   gatewayPaymentId?: string | null
   status: string
   receiptUrl?: string | null
+  termsAcceptedAt?: string | null
 }
 
 function money(amount: number, currency: string) {
@@ -67,6 +68,14 @@ export function generateSubscriptionReceiptPdf(data: SubscriptionReceiptPdfData)
   row('Gateway', data.gateway)
   row('ID de transacción', data.gatewayPaymentId ?? 'No informado')
   row('Estado', data.status)
+
+  if (data.termsAcceptedAt) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(55, 55, 55)
+    doc.text(`Términos y Condiciones aceptados por ${data.influencerName} el ${date(data.termsAcceptedAt)}.`, 20, y)
+    y += 10
+  }
 
   if (data.receiptUrl) {
     doc.setFont('helvetica', 'bold')

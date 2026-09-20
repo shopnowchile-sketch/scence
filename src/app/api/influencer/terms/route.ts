@@ -14,9 +14,10 @@ async function authenticatedInfluencer() {
 export async function GET() {
   const auth = await authenticatedInfluencer()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { data, error } = await auth.admin.from('influencer_terms_acceptances').select('id, document_key, document_title, document_version, content_snapshot, status, accepted_at, created_at, influencer:influencers(display_name)').eq('influencer_id', auth.influencer.id).order('accepted_at', { ascending: false })
+  const { data, error } = await auth.admin.from('influencer_terms_acceptances').select('id, document_key, document_title, document_version, content_snapshot, status, accepted_at, created_at').eq('influencer_id', auth.influencer.id).order('accepted_at', { ascending: false })
   if (error) return NextResponse.json({ error: 'No se pudo consultar tus documentos.' }, { status: 500 })
-  return NextResponse.json({ data: (data ?? []).map(row => ({ ...row, influencer_name: Array.isArray(row.influencer) ? row.influencer[0]?.display_name ?? null : row.influencer?.display_name ?? null })), current_version: INFLUENCER_PRO_TERMS.version })
+  const { data: influencer } = await auth.admin.from('influencers').select('display_name').eq('id', auth.influencer.id).maybeSingle()
+  return NextResponse.json({ data: (data ?? []).map(row => ({ ...row, influencer_name: influencer?.display_name ?? null })), current_version: INFLUENCER_PRO_TERMS.version })
 }
 
 export async function POST(request: NextRequest) {

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // the ownership boundary.
   const { data: payment, error: paymentError } = await admin
     .from('subscription_payments')
-    .select('id, influencer_id, payer_type, gateway, gateway_payment_id, amount, currency, status, paid_at, period_start, period_end, receipt_url')
+    .select('id, influencer_id, payer_type, gateway, gateway_payment_id, amount, currency, status, paid_at, period_start, period_end, receipt_url, concept')
     .eq('id', params.id)
     .eq('influencer_id', influencer.id)
     .eq('payer_type', 'influencer')
@@ -54,6 +54,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     gateway: payment.gateway,
     gatewayPaymentId: payment.gateway_payment_id,
     status: payment.status,
+    concept: payment.concept,
     receiptUrl: payment.receipt_url,
     termsAcceptedAt: termsAcceptance?.accepted_at ?? null,
   })

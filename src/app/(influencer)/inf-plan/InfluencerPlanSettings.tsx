@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, LockKeyhole, RefreshCw } from 'lucide-react'
+import { Check, LockKeyhole, RefreshCw, X, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
@@ -45,6 +45,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
   const [loading, setLoading] = useState(true)
   const [canceling, setCanceling] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
+  const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -246,6 +247,21 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
             <p className="mt-5 text-sm text-gray-400">Todavía no hay pagos registrados.</p>
           )}
         </section>
+      )}
+
+      {receiptPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Comprobante de pago" onMouseDown={event => { if (event.target === event.currentTarget) setReceiptPayment(null) }}>
+          <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <div><h3 className="font-semibold text-gray-900">Comprobante de pago</h3><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeZone: 'America/Santiago' }).format(new Date(receiptPayment.paid_at))}</p></div>
+              <div className="flex items-center gap-2">
+                <a href={`/api/influencer/subscription-payments/${receiptPayment.id}/pdf?download=1`} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"><Download className="h-4 w-4" /> Descargar PDF</a>
+                <button type="button" onClick={() => setReceiptPayment(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label="Cerrar"><X className="h-5 w-5" /></button>
+              </div>
+            </div>
+            <iframe title="Vista previa del comprobante" src={`/api/influencer/subscription-payments/${receiptPayment.id}/pdf`} className="min-h-0 flex-1 bg-gray-100" />
+          </div>
+        </div>
       )}
 
       {active && (

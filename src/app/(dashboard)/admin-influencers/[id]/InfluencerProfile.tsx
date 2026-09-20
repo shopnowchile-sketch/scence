@@ -852,11 +852,38 @@ export function InfluencerProfile({ id }: { id: string }) {
 
       {/* ── Plan ── */}
       {tab === 'plan' && (
-        influencer.is_pro === true ? <ProSubscriptionSection influencerId={influencer.id} isPro={true} /> : (
-          <div className="card p-10 text-center">
-            <p className="text-sm font-medium text-gray-500">Esta influencer no tiene Plan Pro activo.</p>
+        <div className="space-y-4">
+          <div className="card p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Plan Pro</h3>
+                <p className="mt-1 text-xs text-gray-400">
+                  Estado actual:{' '}
+                  <span className="font-semibold text-gray-700">
+                    {influencer.pro_source === 'paid' ? 'Pro por pago · paid' : influencer.pro_source === 'manual' ? 'Pro manual · manual' : 'Gratis · free'}
+                  </span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleManualPro(influencer.pro_source !== 'manual')}
+                disabled={changingPro}
+                className={cn(
+                  'rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50',
+                  influencer.pro_source === 'manual'
+                    ? 'border border-red-200 text-red-600 hover:bg-red-50'
+                    : 'bg-violet-600 text-white hover:bg-violet-700'
+                )}
+              >
+                {changingPro ? 'Actualizando…' : influencer.pro_source === 'manual' ? 'Desactivar Pro manual' : 'Activar Pro manual'}
+              </button>
+            </div>
           </div>
-        )
+
+          {influencer.is_pro === true && (
+            <ProSubscriptionSection influencerId={influencer.id} isPro={true} />
+          )}
+        </div>
       )}
 
       {/* ── Documents ── */}

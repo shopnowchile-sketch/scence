@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -34,6 +34,64 @@ function buildProfileUrl(platform: string, username: string | null): string | nu
 }
 
 // ── Notes Tab ─────────────────────────────────────────────────────────────────
+function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
+  const [documents, setDocuments] = useState<Array<{
+    id: string
+    document_title: string
+    document_version: string
+    content_snapshot: string
+    status: string
+    accepted_at: string
+    influencer_name?: string | null
+  }>>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch(`/api/admin/subscription-payments?influencer_id=${encodeURIComponent(influencerId)}`, { cache: 'no-store' })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error ?? 'No se pudieron cargar los documentos.')
+        setDocuments(result.terms_acceptances ?? [])
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'No se pudieron cargar los documentos.')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [influencerId])
+
+  if (loading) return <div className="card p-6 text-center text-sm text-gray-400">Cargando documentos…</div>
+
+  return (
+    <div className="space-y-4">
+      {documents.length === 0 ? (
+        <div className="card p-10 text-center">
+          <FileText className="mx-auto mb-3 h-10 w-10 text-gray-200" />
+          <p className="text-sm font-medium text-gray-500">No hay documentos aceptados registrados.</p>
+        </div>
+      ) : documents.map(document => (
+        <details key={document.id} className="card p-5">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-gray-800">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            {document.document_title} · v{document.document_version}
+            <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Aceptado</span>
+          </summary>
+          <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+            <div><div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Influencer</div><div className="mt-1 font-medium text-gray-900">{document.influencer_name ?? '—'}</div></div>
+            <div><div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Fecha y hora</div><div className="mt-1 font-medium text-gray-900">{new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Santiago' }).format(new Date(document.accepted_at))}</div></div>
+            <div><div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Versión</div><div className="mt-1 font-medium text-gray-900">{document.document_version}</div></div>
+          </div>
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">Contenido aceptado</div>
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-6 text-gray-600">{document.content_snapshot}</pre>
+          </div>
+        </details>
+      ))}
+    </div>
+  )
+}
+
 function NotesTab({ id, notes }: { id: string; notes: string | null }) {
   const [editing, setEditing]   = useState(false)
   const [saving,  setSaving]    = useState(false)
@@ -155,7 +213,7 @@ const TIER_COLORS: Record<string, string> = {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function InfluencerProfile({ id }: { id: string }) {
-  const [tab, setTab] = useState<'overview' | 'campaigns' | 'deliverables' | 'history' | 'notes'>('overview')
+  const [tab, setTab] = useState<'overview' | 'plan' | 'campaigns' | 'deliverables' | 'history' | 'documents' | 'notes'>('overview')
   const [removingCi, setRemovingCi] = useState<string | null>(null)
   const [deactivating, setDeactivating] = useState(false)
   const [deletingHard, setDeletingHard] = useState(false)
@@ -667,9 +725,11 @@ export function InfluencerProfile({ id }: { id: string }) {
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
         {([
           { id: 'overview',     label: 'Overview' },
+          { id: 'plan',         label: 'Plan' },
           { id: 'campaigns',    label: `Campañas (${campaignInfluencers.length})` },
           { id: 'deliverables', label: `Deliverables (${deliverables.length})` },
           { id: 'history',      label: `Historial (${history.length})` },
+          { id: 'documents',    label: 'Documentos' },
           { id: 'notes',        label: 'Notas' },
         ] as const).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -686,7 +746,6 @@ export function InfluencerProfile({ id }: { id: string }) {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="col-span-2 space-y-4">
-            <ProSubscriptionSection influencerId={influencer.id} isPro={influencer.is_pro === true} />
             {influencer.bio && (
               <div className="card p-5">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Bio</h3>
@@ -790,6 +849,18 @@ export function InfluencerProfile({ id }: { id: string }) {
           </div>
         </div>
       )}
+
+      {/* ── Plan ── */}
+      {tab === 'plan' && (
+        influencer.is_pro === true ? <ProSubscriptionSection influencerId={influencer.id} isPro={true} /> : (
+          <div className="card p-10 text-center">
+            <p className="text-sm font-medium text-gray-500">Esta influencer no tiene Plan Pro activo.</p>
+          </div>
+        )
+      )}
+
+      {/* ── Documents ── */}
+      {tab === 'documents' && <AdminInfluencerDocuments influencerId={influencer.id} />}
 
       {/* ── Campaigns ── */}
       {tab === 'campaigns' && (

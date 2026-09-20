@@ -2,10 +2,10 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Download, FileText, Trash2, Upload } from 'lucide-react'
+import { CheckCircle2, Download, FileText, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
-type Acceptance = { id: string; document_title: string; document_version: string; content_snapshot: string; status: string; accepted_at: string }
+type Acceptance = { id: string; document_title: string; document_version: string; content_snapshot: string; status: string; accepted_at: string; influencer_name?: string | null }
 type UploadedDocument = { id: string; document_type: string; title: string; original_filename: string; mime_type: string; file_size: number; created_at: string }
 
 export function InfluencerDocuments() {
@@ -80,6 +80,6 @@ export function InfluencerDocuments() {
       {uploads.length === 0 ? <p className="mt-4 text-sm text-gray-500">Todavía no has subido documentos.</p> : <div className="mt-3 divide-y divide-gray-100">{uploads.map(document => <div key={document.id} className="flex items-center gap-3 py-3"><FileText className="h-5 w-5 text-violet-500" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-gray-900">{document.title}</p><p className="truncate text-xs text-gray-400">{document.original_filename} · {(document.file_size / 1024 / 1024).toFixed(1)} MB</p></div><button onClick={() => void openDocument(document)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-violet-600" aria-label="Descargar"><Download className="h-4 w-4" /></button><button onClick={() => void deleteDocument(document)} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label="Eliminar"><Trash2 className="h-4 w-4" /></button></div>)}</div>}
     </section>
 
-    {acceptances.length > 0 && <section className="rounded-2xl border border-gray-100 bg-white p-5"><h2 className="font-bold text-gray-900">Términos aceptados</h2><div className="mt-3 space-y-2">{acceptances.map(document => <details key={document.id} className="rounded-lg bg-gray-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-gray-700">{document.document_title} · v{document.document_version}</summary><pre className="mt-3 whitespace-pre-wrap font-sans text-xs leading-5 text-gray-500">{document.content_snapshot}</pre></details>)}</div><Link href="/terms/influencer-pro" className="mt-3 inline-block text-xs text-violet-600 hover:underline">Ver términos vigentes</Link></section>}
+    {acceptances.length > 0 && <section className="rounded-2xl border border-gray-100 bg-white p-5"><h2 className="font-bold text-gray-900">Términos aceptados</h2><div className="mt-3 space-y-2">{acceptances.map(document => <details key={document.id} className="rounded-lg bg-gray-50 p-3"><summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-gray-700"><CheckCircle2 className="h-4 w-4 text-emerald-600" />{document.document_title} · v{document.document_version}<span className="ml-auto text-xs font-medium text-emerald-700">Aceptado</span></summary><div className="mt-3 grid gap-2 text-xs text-gray-500 sm:grid-cols-3"><div><span className="font-semibold text-gray-700">Aceptó</span><div>{document.influencer_name ?? 'Influencer'}</div></div><div><span className="font-semibold text-gray-700">Fecha y hora</span><div>{new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Santiago' }).format(new Date(document.accepted_at))}</div></div><div><span className="font-semibold text-gray-700">Estado</span><div className="text-emerald-700">Aceptado</div></div></div><pre className="mt-3 whitespace-pre-wrap font-sans text-xs leading-5 text-gray-500">{document.content_snapshot}</pre></details>)}</div><Link href="/terms/influencer-pro" className="mt-3 inline-block text-xs text-violet-600 hover:underline">Ver términos vigentes</Link></section>}
   </div>
 }

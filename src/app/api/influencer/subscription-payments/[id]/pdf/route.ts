@@ -9,26 +9,28 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Defense in depth: this query intentionally uses the authenticated client so
-  // subscription_payments RLS must prove the payment belongs to this influencer.
-  const { data: payment, error: paymentError } = await supabase
-    .from('subscription_payments')
-    .select('id, influencer_id, payer_type, gateway, gateway_payment_id, amount, currency, status, paid_at, period_start, period_end, receipt_url')
-    .eq('id', params.id)
-    .eq('payer_type', 'influencer')
-    .maybeSingle()
-
-  if (paymentError) return NextResponse.json({ error: 'No se pudo consultar el comprobante.' }, { status: 500 })
-  if (!payment?.influencer_id) return NextResponse.json({ error: 'Comprobante no encontrado.' }, { status: 404 })
-
   const admin = createAdminClient()
   const { data: influencer } = await admin
     .from('influencers')
     .select('id, display_name, email, user_id')
-    .eq('id', payment.influencer_id)
+    .eq('user_id', user.id)
     .maybeSingle()
 
-  if (!influencer || influencer.user_id !== user.id) return NextResponse.json({ error: 'Comprobante no encontrado.' }, { status: 404 })
+  if (!influencer) return NextResponse.json({ error: 'Cuenta de influencer inválida.' }, { status: 403 })
+
+  // Server-side ownership gate: the payment is queried only after resolving the
+  // authenticated user's influencer id, so changing the payment id cannot cross
+  // the ownership boundary.
+  const { data: payment, error: paymentError } = await admin
+    .from('subscription_payments')
+    .select('id, influencer_id, payer_type, gateway, gateway_payment_id, amount, currency, status, paid_at, period_start, period_end, receipt_url')
+    .eq('id', params.id)
+    .eq('influencer_id', influencer.id)
+    .eq('payer_type', 'influencer')
+    .maybeSingle()
+
+  if (paymentError) return NextResponse.json({ error: 'No se pudo consultar el comprobante.' }, { status: 500 })
+  if (!payment) return NextResponse.json({ error: 'Comprobante no encontrado.' }, { status: 404 })
 
   const pdf = generateSubscriptionReceiptPdf({
     influencerName: influencer.display_name,

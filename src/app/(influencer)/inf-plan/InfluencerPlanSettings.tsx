@@ -164,7 +164,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
 
       {active && (
         <section className="rounded-2xl border border-violet-200 bg-white p-5">
-          <div className="flex items-center justify-between"><h3 className="font-bold text-gray-900">PLAN PRO</h3><span className="font-bold text-violet-700">$7.990/mes</span></div>
+          <div className="flex items-center justify-between"><h3 className="font-bold text-gray-900">PLAN PRO</h3><span className="font-bold text-violet-700">{billing?.payments?.[0] ? `${new Intl.NumberFormat('es-CL', { style: 'currency', currency: billing.payments[0].currency }).format(Number(billing.payments[0].amount))}/mes` : 'Monto no informado'}</span></div>
           <div className="mt-4 space-y-3">{benefits.map(benefit => <div key={benefit} className="flex items-start gap-2 text-sm text-gray-700"><Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" /><span>{benefit}</span></div>)}</div>
         </section>
       )}

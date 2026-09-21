@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send } from 'lucide-react'
+import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
@@ -10,10 +10,10 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 
-type ColKey = 'display_name' | 'plan' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
+type ColKey = 'display_name' | 'plan' | 'proAttempt' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
-  display_name: 280, plan: 130, platforms: 120, categories: 160, followers: 130,
+  display_name: 280, plan: 130, proAttempt: 130, platforms: 120, categories: 160, followers: 130,
   engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 100, lastConnection: 170,
   registeredBy: 140, associatedBrands: 220,
 }
@@ -102,6 +102,7 @@ export function InfluencerTable({
   }
   const [visible, setVisible] = useLocalStorageState('scence:admin:influencer-table:columns', {
     plan: true,
+    proAttempt: true,
     platforms: true,
     categories: true,
     followers: true,
@@ -146,7 +147,7 @@ export function InfluencerTable({
           {showColumns && (
             <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-2 z-20">
               {([
-                ...(portal === 'admin' ? ([['plan', 'Plan']] as const) : []),
+                ...(portal === 'admin' ? ([['plan', 'Plan'], ['proAttempt', 'Intentó Pro']] as const) : []),
                 ['platforms', 'Plataformas'],
                 ['categories', 'Categorías'],
                 ['followers', 'Seguidores'],
@@ -183,6 +184,7 @@ export function InfluencerTable({
             {selectable && <col style={{ width: 40 }} />}
             <col style={{ width: widths.display_name }} />
             {portal === 'admin' && visible.plan && <col style={{ width: widths.plan }} />}
+            {portal === 'admin' && visible.proAttempt && <col style={{ width: widths.proAttempt }} />}
             {visible.platforms      && <col style={{ width: widths.platforms }} />}
             {visible.categories     && <col style={{ width: widths.categories }} />}
             {visible.followers      && <col style={{ width: widths.followers }} />}
@@ -209,6 +211,7 @@ export function InfluencerTable({
               {portal === 'admin' && visible.plan && (
                 <TH col="plan" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('plan', e)}>Plan</TH>
               )}
+              {portal === 'admin' && visible.proAttempt && <SortableTH<ColKey> onResizeStart={e => startResize('proAttempt', e)}>Intentó Pro</SortableTH>}
               {visible.platforms && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('platforms', e)}>Plataformas</SortableTH>
               )}
@@ -345,6 +348,19 @@ export function InfluencerTable({
                       )}>
                         {inf.pro_source === 'manual' ? 'PRO manual' : inf.is_pro ? 'PRO pagado' : 'Gratis'}
                       </span>
+                    </td>
+                  )}
+
+                  {portal === 'admin' && visible.proAttempt && (
+                    <td className="px-4 py-3">
+                      {Number((inf as Influencer & { pro_attempt_count?: number }).pro_attempt_count ?? 0) > 0 ? (
+                        <Link href="/admin-influencers?pro_attempt=1" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100" title="Ver todas las influencers que intentaron Pro">
+                          <ShoppingCart className="h-3.5 w-3.5" />
+                          Intentó · {(inf as Influencer & { pro_attempt_count?: number }).pro_attempt_count}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
                   )}
 

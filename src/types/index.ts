@@ -74,6 +74,7 @@ export interface Influencer {
   is_active: boolean
   is_pro?: boolean
   pro_source?: 'paid' | 'manual' | 'free'
+  pro_attempt_count?: number
   rating: number | null
   notes: string | null
   metadata: Record<string, unknown> | null

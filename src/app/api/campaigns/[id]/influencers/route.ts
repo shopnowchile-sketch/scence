@@ -315,13 +315,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       })
     }
 
-    if (relation.application_status === 'accepted' && hasConfirmedAttendance) {
-      return NextResponse.json({
-        error: 'No se puede quitar una influencer que ya confirmó su asistencia.',
-        code: 'CAMPAIGN_INFLUENCER_ATTENDANCE_CONFIRMED',
-      }, { status: 409 })
-    }
-
+    // Eliminar una relación aceptada es una acción administrativa explícita.
+    // Si no hay contenido enviado, también se elimina la confirmación de asistencia
+    // asociada para que la influencer pueda volver a postular a esta campaña.
     if (hasSubmittedContent) {
       return NextResponse.json({
         error: 'No se puede quitar esta influencer porque ya envió contenido. Su URL se conserva en la campaña.',

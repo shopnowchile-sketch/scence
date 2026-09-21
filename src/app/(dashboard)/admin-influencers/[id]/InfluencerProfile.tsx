@@ -9,7 +9,6 @@ import {
   DollarSign, Calendar, FileText, Clock, AlertCircle, Loader2, Trash2, UserX, RefreshCw, Download, Shield, LockKeyhole,
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatFollowers, getInitials, PLATFORM_ICONS, PLATFORM_LABELS, cn } from '@/lib/utils'
-import { getInfluencerTier } from '@/types'
 import type { SocialProfile, RateCard, CampaignInfluencerJoin, DeliverableJoin, InfluencerDetail } from '@/types'
 import { AddressWithMap } from '@/components/maps/GoogleMap'
 import { useInfluencer } from '@/hooks/useInfluencersList'
@@ -261,14 +260,6 @@ const CAMPAIGN_STATUS_COLORS: Record<string, string> = {
   canceled:  'badge-red',
 }
 
-const TIER_COLORS: Record<string, string> = {
-  nano:  'bg-gray-100 text-gray-600',
-  micro: 'bg-blue-100 text-blue-700',
-  mid:   'bg-violet-100 text-violet-700',
-  macro: 'bg-amber-100 text-amber-700',
-  mega:  'bg-pink-100 text-pink-700',
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function InfluencerProfile({ id }: { id: string }) {
   const [tab, setTab] = useState<'overview' | 'plan' | 'campaigns' | 'deliverables' | 'history' | 'documents' | 'notes'>('overview')
@@ -479,7 +470,6 @@ export function InfluencerProfile({ id }: { id: string }) {
   const settlements = influencer.commission_settlements ?? []
 
   const primaryProfile = socialProfiles.find(sp => sp.is_primary) ?? socialProfiles[0]
-  const tier = primaryProfile ? getInfluencerTier(primaryProfile.followers ?? 0) : 'nano'
   const avatarGrad = GRADIENTS[influencer.display_name.charCodeAt(0) % GRADIENTS.length]
   const initials = getInitials(influencer.display_name)
 
@@ -618,10 +608,6 @@ export function InfluencerProfile({ id }: { id: string }) {
                   <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-extrabold', influencer.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : influencer.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600')}>
                     {influencer.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}
                   </span>
-                  {isAdmin && influencer.pro_source !== 'paid' && <button type="button" disabled={changingPro} onClick={() => void handleManualPro(influencer.pro_source !== 'manual')} className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50">{changingPro ? 'Guardando…' : influencer.pro_source === 'manual' ? 'QUITAR PRO MANUAL' : 'ACTIVAR PRO MANUAL'}</button>}
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${TIER_COLORS[tier]}`}>
-                    {tier}
-                  </span>
                   {!influencer.is_active && (
                     <span className={`badge text-xs ${
                       (influencer.metadata as Record<string,unknown>)?.status === 'draft'
@@ -629,9 +615,6 @@ export function InfluencerProfile({ id }: { id: string }) {
                     }`}>
                       {(influencer.metadata as Record<string,unknown>)?.status === 'draft' ? 'Draft' : 'Inactiva'}
                     </span>
-                  )}
-                  {influencer.user_id && (
-                    <span className="badge badge-green text-xs">Portal activo</span>
                   )}
                 </div>
 

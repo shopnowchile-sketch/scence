@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState } from 'react'
 import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
@@ -265,7 +266,7 @@ export function InfluencerTable({
                         gradient
                       )}>
                         {inf.avatar_url
-                          ? <img src={inf.avatar_url} alt={inf.display_name} className="w-full h-full rounded-full object-cover" />
+                          ? <Image src={inf.avatar_url} alt={inf.display_name} className="w-full h-full rounded-full object-cover"  width={800} height={800} unoptimized />
                           : initials
                         }
                       </div>

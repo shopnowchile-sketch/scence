@@ -268,7 +268,7 @@ export async function GET() {
     const influencerId = (row.metadata as Record<string, unknown>).influencer_id as string
     if (!latestAttemptByInfluencer.has(influencerId)) latestAttemptByInfluencer.set(influencerId, row)
   }
-  const attemptInfluencerIds = Array.from(latestAttemptByInfluencer.keys())
+  const attemptInfluencerIds = Array.from(latestAttemptByInfluencer.keys()).filter(influencerId => proStatuses.get(influencerId) === 'free')
 
   // Past due = una suscripción que sí llegó a existir pero perdió el cobro.
   // No se mezcla con los intentos iniciales.

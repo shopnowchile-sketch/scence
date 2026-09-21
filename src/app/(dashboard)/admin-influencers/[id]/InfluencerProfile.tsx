@@ -930,19 +930,25 @@ export function InfluencerProfile({ id }: { id: string }) {
                 </div>
               </div>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleManualPro(influencer.pro_source !== 'manual')}
-                disabled={changingPro}
-                className={cn(
-                  'rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50',
-                  influencer.pro_source === 'manual'
-                    ? 'border border-red-200 text-red-600 hover:bg-red-50'
-                    : 'bg-violet-600 text-white hover:bg-violet-700'
-                )}
-              >
-                {changingPro ? 'Actualizando…' : influencer.pro_source === 'manual' ? 'Desactivar Pro manual' : 'Activar Pro manual'}
-              </button>
+              {influencer.pro_source === 'paid' ? (
+                <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> Suscripción activa
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleManualPro(influencer.pro_source !== 'manual')}
+                  disabled={changingPro}
+                  className={cn(
+                    'rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50',
+                    influencer.pro_source === 'manual'
+                      ? 'border border-red-200 text-red-600 hover:bg-red-50'
+                      : 'bg-violet-600 text-white hover:bg-violet-700'
+                  )}
+                >
+                  {changingPro ? 'Actualizando…' : influencer.pro_source === 'manual' ? 'Desactivar Pro manual' : 'Activar Pro manual'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -1005,11 +1011,6 @@ export function InfluencerProfile({ id }: { id: string }) {
                     </td>
                     <td className={cn('px-4 py-3 text-sm font-bold', ci.campaign?.status === 'completed' || ci.campaign?.status === 'canceled' ? 'text-gray-400' : 'text-gray-900')}>
                       {ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-gray-500 capitalize">
-                        {'—'}
-                      </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                       {ci.campaign?.start_date && <div>{formatDate(ci.campaign.start_date, 'd MMM yy')}</div>}

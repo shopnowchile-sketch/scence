@@ -351,7 +351,7 @@ export function InfluencerTable({
                     </td>
                   )}
 
-                  {portal === 'admin' && visible.proAttempt && (
+                  {portal === 'admin' && visible.proAttempt !== false && (
                     <td className="px-4 py-3">
                       {Number((inf as Influencer & { pro_attempt_count?: number }).pro_attempt_count ?? 0) > 0 ? (
                         <Link href="/admin-influencers?pro_attempt=1" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100" title="Ver todas las influencers que intentaron Pro">

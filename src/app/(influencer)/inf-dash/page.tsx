@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -262,7 +263,7 @@ export default function InfluencerDashboard() {
       <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
-            {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} className="w-full h-full object-cover" /> : profile?.display_name?.charAt(0).toUpperCase() ?? '?'}
+            {profile?.avatar_url ? <Image src={profile.avatar_url} alt={profile.display_name} className="w-full h-full object-cover"  width={800} height={800} unoptimized /> : profile?.display_name?.charAt(0).toUpperCase() ?? '?'}
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-500">Mi portal</p>
@@ -392,7 +393,7 @@ export default function InfluencerDashboard() {
               return (
                 <div key={c.id} className="flex items-start gap-3 bg-violet-50/50 rounded-xl border border-violet-100 p-3">
                   {c.brand?.logo_url ? (
-                    <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                    <Image src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0"  width={36} height={36} unoptimized />
                   ) : (
                     <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-600">
                       {c.brand?.name?.charAt(0) ?? '?'}

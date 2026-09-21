@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronLeft, Star, MapPin, Mail, Phone,
   CheckCircle2, ExternalLink, Edit2, Users, TrendingUp,
-  DollarSign, Calendar, FileText, Clock, AlertCircle, Loader2, Trash2, UserX, RefreshCw,
+  DollarSign, Calendar, FileText, Clock, AlertCircle, Loader2, Trash2, UserX, RefreshCw, Download, Shield, LockKeyhole,
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatFollowers, getInitials, PLATFORM_ICONS, PLATFORM_LABELS, cn } from '@/lib/utils'
 import { getInfluencerTier } from '@/types'
@@ -431,6 +431,14 @@ export function InfluencerProfile({ id }: { id: string }) {
     : 0
   const activeCampaigns = campaignInfluencers.filter(ci => ci.campaign?.status === 'active').length
   const totalEarnings = campaignInfluencers.reduce((s, ci) => s + (ci.fee ?? 0), 0)
+  const orderedCampaignInfluencers = [...campaignInfluencers].sort((a, b) => {
+    const statusRank = (status: string | null | undefined) => status === 'completed' || status === 'canceled' ? 1 : 0
+    const rankDiff = statusRank(a.campaign?.status) - statusRank(b.campaign?.status)
+    if (rankDiff !== 0) return rankDiff
+    const aDate = a.campaign?.start_date ? new Date(a.campaign.start_date).getTime() : Number.MAX_SAFE_INTEGER
+    const bDate = b.campaign?.start_date ? new Date(b.campaign.start_date).getTime() : Number.MAX_SAFE_INTEGER
+    return aDate - bDate
+  })
 
   const history = [
     ...campaignInfluencers.flatMap(ci => ci.created_at ? [{
@@ -701,11 +709,11 @@ export function InfluencerProfile({ id }: { id: string }) {
         </div>
 
         {/* Quick stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 pt-5 border-t border-gray-100">
+        <div className={cn('grid grid-cols-2 gap-4 mt-5 pt-5 border-t border-gray-100', totalEarnings > 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
           {[
             { icon: Users,      color: 'violet',  label: 'Seguidores totales', value: formatFollowers(totalFollowers) },
             { icon: TrendingUp, color: 'blue',    label: 'Engagement prom.',   value: `${avgEngagement.toFixed(1)}%` },
-            { icon: DollarSign, color: 'emerald', label: 'Total ganado',        value: totalEarnings > 0 ? formatCurrency(totalEarnings, 'CLP') : '—' },
+            ...(totalEarnings > 0 ? [{ icon: DollarSign, color: 'emerald', label: 'Total ganado', value: formatCurrency(totalEarnings, 'CLP') }] : []),
             { icon: Calendar,   color: 'amber',   label: 'Campañas activas',    value: String(activeCampaigns) },
           ].map(({ icon: Icon, color, label, value }) => (
             <div key={label} className="flex items-center gap-3">
@@ -856,13 +864,19 @@ export function InfluencerProfile({ id }: { id: string }) {
           <div className="card p-5">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-bold text-gray-900">Plan Pro</h3>
-                <p className="mt-1 text-xs text-gray-400">
-                  Estado actual:{' '}
-                  <span className="font-semibold text-gray-700">
-                    {influencer.pro_source === 'paid' ? 'Pro por pago · paid' : influencer.pro_source === 'manual' ? 'Pro manual · manual' : 'Gratis · free'}
-                  </span>
-                </p>
+                <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><Star className="h-4 w-4 fill-current" /></span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-gray-950">SCENCE PRO</h3>
+                    {influencer.pro_source === 'paid' && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700">PAGA</span>}
+                    {influencer.pro_source === 'manual' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-violet-700">MANUAL</span>}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {influencer.pro_source === 'paid' ? 'Suscripción activa por pago' : influencer.pro_source === 'manual' ? 'Acceso Pro otorgado manualmente' : 'Cuenta gratuita'}
+                  </p>
+                </div>
+              </div>
               </div>
               <button
                 type="button"
@@ -881,7 +895,7 @@ export function InfluencerProfile({ id }: { id: string }) {
           </div>
 
           {influencer.is_pro === true && (
-            <ProSubscriptionSection influencerId={influencer.id} isPro={true} />
+            <ProSubscriptionSection influencerId={influencer.id} isPro={true} proSource={influencer.pro_source} />
           )}
         </div>
       )}
@@ -907,11 +921,21 @@ export function InfluencerProfile({ id }: { id: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {campaignInfluencers.map(ci => (
-                  <tr key={ci.id} className="hover:bg-gray-50/70 transition-colors">
+                {orderedCampaignInfluencers.map(ci => (
+                  <tr key={ci.id} className={cn(
+  'transition-colors',
+  ci.campaign?.status === 'completed' || ci.campaign?.status === 'canceled'
+    ? 'bg-gray-50/70 text-gray-400 opacity-60 hover:opacity-80'
+    : 'hover:bg-gray-50/70'
+)}>
                     <td className="px-4 py-3">
                       <Link href={`/admin-campaigns/${ci.campaign?.id}`}
-                        className="text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors">
+                        className={cn(
+  'text-sm font-semibold transition-colors',
+  ci.campaign?.status === 'completed' || ci.campaign?.status === 'canceled'
+    ? 'text-gray-400 hover:text-gray-600'
+    : 'text-gray-900 hover:text-violet-700'
+)}>
                         {ci.campaign?.name ?? '—'}
                       </Link>
                     </td>
@@ -927,7 +951,7 @@ export function InfluencerProfile({ id }: { id: string }) {
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm font-bold text-gray-900">
+                    <td className={cn('px-4 py-3 text-sm font-bold', ci.campaign?.status === 'completed' || ci.campaign?.status === 'canceled' ? 'text-gray-400' : 'text-gray-900')}>
                       {ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}
                     </td>
                     <td className="px-4 py-3">

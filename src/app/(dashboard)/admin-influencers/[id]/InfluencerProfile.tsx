@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -137,7 +138,7 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
               {preview.mimeType === 'application/pdf' ? (
                 <iframe src={preview.url} title={preview.name} className="h-full w-full rounded-lg bg-white" />
               ) : preview.mimeType.startsWith('image/') ? (
-                <div className="flex h-full items-center justify-center overflow-auto"><img src={preview.url} alt={preview.name} className="max-h-full max-w-full object-contain" /></div>
+                <div className="flex h-full items-center justify-center overflow-auto"><Image src={preview.url} alt={preview.name} className="max-h-full max-w-full object-contain"  width={800} height={800} unoptimized /></div>
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-gray-500">Este formato no permite vista previa. Usa “Abrir”.</div>
               )}
@@ -582,8 +583,8 @@ export function InfluencerProfile({ id }: { id: string }) {
           {/* Avatar */}
           <div className="relative flex-shrink-0">
             {influencer.avatar_url ? (
-              <img src={influencer.avatar_url} alt={influencer.display_name}
-                className="w-20 h-20 rounded-2xl object-cover" />
+              <Image src={influencer.avatar_url} alt={influencer.display_name}
+                className="w-20 h-20 rounded-2xl object-cover"  width={80} height={80} unoptimized />
             ) : (
               <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center`}>
                 <span className="text-white text-2xl font-black">{initials}</span>

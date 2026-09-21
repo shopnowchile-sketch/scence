@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -265,7 +266,7 @@ function InfluencerBadge({
     <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
       <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 bg-gradient-to-br overflow-hidden', gradient)}>
         {influencer.avatar_url
-          ? <img src={influencer.avatar_url} alt={influencer.display_name} className="w-full h-full object-cover" />
+          ? <Image src={influencer.avatar_url} alt={influencer.display_name} className="w-full h-full object-cover"  width={800} height={800} unoptimized />
           : influencer.display_name.charAt(0).toUpperCase()}
       </div>
       <div className="min-w-0 leading-tight">
@@ -784,7 +785,7 @@ function CampaignBrandsPanel({
                 const identity = (
                   <div className="flex min-w-0 items-center gap-1.5">
                     {brand.logo_url ? (
-                      <img src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-5 w-5 flex-shrink-0 rounded object-contain" />
+                      <Image src={brand.logo_url} alt={brand.name ?? 'Marca'} className="h-5 w-5 flex-shrink-0 rounded object-contain"  width={20} height={20} unoptimized />
                     ) : (
                       <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-violet-50 text-[10px] font-bold text-violet-600">{(brand.name ?? '?').slice(0, 1).toUpperCase()}</span>
                     )}
@@ -986,12 +987,12 @@ function CoBrandManager({
   function brandAvatar(brand: CoBrandOption) {
     const showLogo = brand.logo_url && !brokenLogos.includes(brand.id)
     return showLogo ? (
-      <img
+      <Image
         src={brand.logo_url as string}
         alt=""
         className="h-6 w-6 flex-shrink-0 rounded object-contain bg-white"
         onError={() => setBrokenLogos(prev => (prev.includes(brand.id) ? prev : [...prev, brand.id]))}
-      />
+       width={24} height={24} unoptimized />
     ) : (
       <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-violet-50 text-[10px] font-bold text-violet-600">
         {(brand.name || '?').slice(0, 1).toUpperCase()}
@@ -2593,7 +2594,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="flex h-20 gap-2">
             {eventDateDay && <div className="flex w-14 flex-col items-center justify-center rounded-xl border border-gray-200 bg-white text-center"><span className="text-[10px] font-bold tracking-wide text-violet-700">{eventDateWeekday}</span><span className="text-2xl font-bold leading-none text-gray-950">{eventDateDay}</span><span className="text-[10px] font-semibold text-gray-500">{eventDateMonth}</span></div>}
             <div className="relative w-28 overflow-hidden rounded-xl border border-violet-100 bg-violet-50 shadow-sm">
-              {coverAsset?.signed_url ? <img src={String(coverAsset.signed_url)} alt="Banner de campaña" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Target className="h-7 w-7 text-violet-500" /></div>}
+              {coverAsset?.signed_url ? <Image src={String(coverAsset.signed_url)} alt="Banner de campaña" className="h-full w-full object-cover"  width={800} height={800} unoptimized /> : <div className="flex h-full w-full items-center justify-center"><Target className="h-7 w-7 text-violet-500" /></div>}
               {canEditCampaign && <><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void handleUploadCampaignCover(file) }} /><button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} title={coverAsset ? 'Cambiar banner' : 'Subir banner'} aria-label={coverAsset ? 'Cambiar banner' : 'Subir banner'} className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-violet-700 shadow-md transition hover:bg-violet-700 hover:text-white disabled:opacity-50"><ImagePlus className="h-3.5 w-3.5" /></button></>}
             </div>
             </div>
@@ -3124,12 +3125,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 <div className={cn('relative w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>
                                   {initials}
                                   {inf.avatar_url && (
-                                    <img
+                                    <Image
                                       src={inf.avatar_url}
                                       alt={inf.display_name}
                                       className="absolute inset-0 h-full w-full rounded-full object-cover"
                                       onError={event => { event.currentTarget.style.display = 'none' }}
-                                    />
+                                     width={800} height={800} unoptimized />
                                   )}
                                 </div>
                                 <div className="min-w-0">
@@ -3230,7 +3231,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   return (
                     <div key={ci.id} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-violet-100">
                       {inf.avatar_url ? (
-                        <img src={inf.avatar_url} alt={inf.display_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                        <Image src={inf.avatar_url} alt={inf.display_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0"  width={32} height={32} unoptimized />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                           {inf.display_name.charAt(0)}
@@ -3546,7 +3547,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {inf.avatar_url ? (
-                              <img src={inf.avatar_url} alt={inf.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                              <Image src={inf.avatar_url} alt={inf.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0"  width={36} height={36} unoptimized />
                             ) : (
                               <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>
                                 {initials}
@@ -3694,7 +3695,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         {selectedInfluencer.avatar_url ? (
-                          <img src={selectedInfluencer.avatar_url} alt={selectedInfluencer.display_name} className="w-14 h-14 rounded-2xl object-cover flex-shrink-0" />
+                          <Image src={selectedInfluencer.avatar_url} alt={selectedInfluencer.display_name} className="w-14 h-14 rounded-2xl object-cover flex-shrink-0"  width={56} height={56} unoptimized />
                         ) : (
                           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
                             {selectedInfluencer.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}

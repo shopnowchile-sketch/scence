@@ -230,15 +230,21 @@ export async function GET(request: NextRequest) {
         ? allRows.filter(inf => (inf.social_profiles as Array<{ platform: string }>).some(sp => sp.platform === platform))
         : allRows
 
-      const withProAttempts = proAttemptParam
+      let withProAttempts = proAttemptParam
         ? withPlatform.filter(inf => proAttemptByInfluencer.has(inf.id as string))
         : withPlatform
+
+      if (proAttemptParam) {
+        const proStatusesForAttempts = fullProStatuses ?? await getInfluencerProStatuses(admin, withProAttempts.map(inf => inf.id as string))
+        withProAttempts = withProAttempts.filter(inf => (proStatusesForAttempts.get(inf.id as string) ?? 'free') === 'free')
+        fullProStatuses = proStatusesForAttempts
+      }
 
       // Plan: se calcula sobre el dataset filtrado completo (antes de sort y
       // de paginar) porque hace falta tanto para el filtro Todos/PRO/Gratis
       // como para poder ordenar por esta columna.
       let withPlan = withProAttempts
-      if (isPlanSort || planParam) {
+      if (isPlanSort || planParam || proAttemptParam) {
         fullProStatuses = await getInfluencerProStatuses(admin, withProAttempts.map(inf => inf.id as string))
         if (planParam) {
           withPlan = withProAttempts.filter(inf => {

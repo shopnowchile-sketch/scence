@@ -3089,8 +3089,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <thead>
                       <tr className="border-b border-gray-200">
                         <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Influencer</th>
+                        {pendingVisibleColumns.status && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}
                         {pendingVisibleColumns.platform && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Plataforma</th>}
-                        {pendingVisibleColumns.categories && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>}
+                        {pendingVisibleColumns.categories && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>
                         {pendingVisibleColumns.followers && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Seguidores</th>}
                         {pendingVisibleColumns.engagement && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Engagement</th>}
                         {pendingVisibleColumns.rating && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Rating</th>}
@@ -3145,6 +3146,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 </div>
                               </div>
                             </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                                  {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
+                                </span>
+                              </div>
+                            </td>
                             {pendingVisibleColumns.platform && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>}
                             {pendingVisibleColumns.categories && <td className="px-4 py-3 text-sm text-gray-600">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>}
                             {pendingVisibleColumns.followers && <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>}
@@ -3154,7 +3162,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             {pendingVisibleColumns.fee && <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>}
                             {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-600">0/0</td>}
                             {pendingVisibleColumns.progress && <td className="px-4 py-3 text-sm text-gray-600">Sin deliverables</td>}
-                            {pendingVisibleColumns.status && <td className="px-4 py-3"><span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>{ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}</span></td>}
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2 whitespace-nowrap">
                                 {ci.application_status === 'rejected' ? <span className="text-xs font-semibold text-blue-700">No seleccionada</span> : <>

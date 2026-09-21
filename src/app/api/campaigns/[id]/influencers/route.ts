@@ -432,7 +432,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const admin = createAdminClient()
 
   if (attendance_action !== undefined) {
-    if (!['confirmed_client', 'attended', 'no_show'].includes(String(attendance_action))) {
+    if (!['confirmed_client', 'attended', 'no_show', 'revert_no_show'].includes(String(attendance_action))) {
       return NextResponse.json({ error: 'Acción de asistencia inválida.' }, { status: 422 })
     }
 

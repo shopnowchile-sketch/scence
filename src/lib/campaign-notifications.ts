@@ -150,9 +150,18 @@ export async function announceCampaignToInfluencers(
 
     for (let i = 0; i < targets.length; i += BATCH_SIZE) {
       const chunk = targets.slice(i, i + BATCH_SIZE)
+      // Un email malformado no debe bloquear el envío del resto del lote.
+      // Resend rechaza el batch completo si una sola dirección no es válida.
+      const validChunk = chunk.filter(inf => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inf.email ?? ''))
+      const invalidChunk = chunk.filter(inf => !validChunk.includes(inf))
+      if (invalidChunk.length > 0) {
+        console.warn('[announceCampaignToInfluencers] emails inválidos omitidos:', invalidChunk.map(inf => ({ id: inf.id, email: inf.email })))
+      }
+      if (validChunk.length === 0) continue
+
       try {
         const { error: batchErr } = await getResend().batch.send(
-          chunk.map(inf => ({
+          validChunk.map(inf => ({
             from: FROM_EMAIL,
             to: inf.email as string,
             subject: `Nueva campaña disponible: ${campaign.name} — cupos limitados`,
@@ -172,14 +181,14 @@ export async function announceCampaignToInfluencers(
         const { error: markErr } = await admin
           .from('campaign_influencer_notifications')
           .upsert(
-            chunk.map(inf => ({ campaign_id: campaignId, influencer_id: inf.id })),
+            validChunk.map(inf => ({ campaign_id: campaignId, influencer_id: inf.id })),
             { onConflict: 'campaign_id,influencer_id' }
           )
         if (markErr) console.error('[announceCampaignToInfluencers] error marcando notificadas', markErr)
-        sent += chunk.length
+        sent += validChunk.length
       } catch (e) {
         console.error('[announceCampaignToInfluencers] error en batch', e)
-        failed += chunk.length
+        failed += validChunk.length
       }
     }
 

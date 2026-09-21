@@ -48,9 +48,11 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
     title: string
     original_filename: string
     file_size: number
+    mime_type: string
     created_at: string
   }>>([])
   const [loading, setLoading] = useState(true)
+  const [preview, setPreview] = useState<{ url: string; name: string; mimeType: string } | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -76,7 +78,7 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
     const response = await fetch('/api/admin/influencer-documents?id=' + encodeURIComponent(documentId), { cache: 'no-store' })
     const result = await response.json()
     if (!response.ok) return toast.error(result.error ?? 'No se pudo abrir el documento.')
-    window.open(result.url, '_blank', 'noopener,noreferrer')
+    setPreview({ url: result.url, name: result.original_filename ?? 'Documento', mimeType: result.mime_type ?? 'application/octet-stream' })
   }
 
   if (loading) return <div className="card p-6 text-center text-sm text-gray-400">Cargando documentos…</div>
@@ -101,8 +103,8 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
                 <p className="truncate text-sm font-semibold text-gray-900">{document.title}</p>
                 <p className="truncate text-xs text-gray-400">{document.original_filename} · {(document.file_size / 1024 / 1024).toFixed(1)} MB</p>
               </div>
-              <button type="button" onClick={() => void openUpload(document.id)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-violet-600" title="Descargar">
-                <Download className="h-4 w-4" />
+              <button type="button" onClick={() => void openUpload(document.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50" title="Ver documento">
+                Ver
               </button>
             </div>
           ))}
@@ -119,6 +121,29 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
               </a>
             </div>
           ))}
+        </div>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onMouseDown={() => setPreview(null)}>
+          <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <p className="truncate pr-4 text-sm font-semibold text-gray-900">{preview.name}</p>
+              <div className="flex items-center gap-2">
+                <a href={preview.url} target="_blank" rel="noreferrer" className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">Abrir</a>
+                <button type="button" onClick={() => setPreview(null)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100">Cerrar</button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-gray-100 p-2">
+              {preview.mimeType === 'application/pdf' ? (
+                <iframe src={preview.url} title={preview.name} className="h-full w-full rounded-lg bg-white" />
+              ) : preview.mimeType.startsWith('image/') ? (
+                <div className="flex h-full items-center justify-center overflow-auto"><img src={preview.url} alt={preview.name} className="max-h-full max-w-full object-contain" /></div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-gray-500">Este formato no permite vista previa. Usa “Abrir”.</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -926,7 +926,7 @@ export function InfluencerProfile({ id }: { id: string }) {
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><Star className="h-4 w-4 fill-current" /></span>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black text-gray-950">SCENCE PRO</h3>
+                    <h3 className="text-base font-black text-gray-950">{influencer.is_pro ? 'SCENCE PRO' : 'PLAN GRATIS'}</h3>
                     {influencer.pro_source === 'paid' && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700">PAGA</span>}
                     {influencer.pro_source === 'manual' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-violet-700">MANUAL</span>}
                   </div>
@@ -949,7 +949,7 @@ export function InfluencerProfile({ id }: { id: string }) {
                     'rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50',
                     influencer.pro_source === 'manual'
                       ? 'border border-red-200 text-red-600 hover:bg-red-50'
-                      : 'bg-violet-600 text-white hover:bg-violet-700'
+                      : 'border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
                   )}
                 >
                   {changingPro ? 'Actualizando…' : influencer.pro_source === 'manual' ? 'Desactivar Pro manual' : 'Activar Pro manual'}

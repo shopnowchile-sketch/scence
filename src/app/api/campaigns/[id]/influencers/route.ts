@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { attendanceClosedEmail, attendanceConfirmationEmail, getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
+import { attendanceConfirmationEmail, getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { buildManualAttendanceUpdate, type ManualAttendanceAction } from '@/lib/manual-attendance'
@@ -255,69 +255,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       Boolean(deliverable.content_url?.trim() || deliverable.published_url?.trim())
     )
 
-    // Una aceptada que todavía no respondió la confirmación sí puede perder el
-    // cupo aunque exista una URL histórica. No borramos la relación ni sus
-    // entregables: sale de "Aceptadas" al quedar rejected y la influencer puede
-    // ver el motivo en su historial. La URL se conserva como evidencia.
-    const hasUnconfirmedAttendance = (deliverables ?? []).some(deliverable =>
-      deliverable.type === 'event_attendance'
-      && !deliverable.attendance_response
-      && deliverable.attendance_outcome !== 'no_show'
-    )
-    const hasConfirmedAttendance = (deliverables ?? []).some(deliverable =>
-      deliverable.type === 'event_attendance'
-      && deliverable.attendance_response === 'confirmed'
-    )
-
-    if (relation.application_status === 'accepted' && hasUnconfirmedAttendance) {
-      const removedAt = new Date().toISOString()
-      const metadata = {
-        ...((relation.metadata as Record<string, unknown> | null) ?? {}),
-        removal_reason: 'attendance_deadline_closed',
-        removal_message: 'Lo sentimos, no confirmaste tu asistencia antes de la fecha límite y los cupos se cerraron.',
-        removed_at: removedAt,
-      }
-      const { error: rejectError } = await admin
-        .from('campaign_influencers')
-        .update({
-          application_status: 'rejected',
-          status: 'canceled',
-          metadata,
-          updated_at: removedAt,
-        })
-        .eq('id', relation.id)
-
-      if (rejectError) {
-        console.error('[DELETE /api/campaigns/[id]/influencers] close unconfirmed slot', rejectError)
-        return NextResponse.json({ error: rejectError.message }, { status: 500 })
-      }
-
-      try {
-        const influencer = relation.influencer as { display_name?: string | null; email?: string | null } | null
-        if (influencer?.email) {
-          const { data: campaign } = await admin.from('campaigns').select('name').eq('id', params.id).single()
-          const { error: emailError } = await getResend().emails.send({
-            from: FROM_EMAIL,
-            to: influencer.email,
-            subject: `Cupos cerrados: ${campaign?.name ?? 'campaña'}`,
-            html: attendanceClosedEmail({ influencerName: influencer.display_name ?? 'Influencer' }),
-          })
-          if (emailError) console.error('[DELETE /api/campaigns/[id]/influencers] attendance deadline email', emailError)
-        }
-      } catch (emailError) {
-        console.error('[DELETE /api/campaigns/[id]/influencers] attendance deadline email', emailError)
-      }
-
-      return NextResponse.json({
-        success: true,
-        outcome: 'attendance_deadline_closed',
-        content_preserved: hasSubmittedContent,
-      })
-    }
-
-    // Eliminar una relación aceptada es una acción administrativa explícita.
-    // Si no hay contenido enviado, también se elimina la confirmación de asistencia
-    // asociada para que la influencer pueda volver a postular a esta campaña.
     if (hasSubmittedContent) {
       return NextResponse.json({
         error: 'No se puede quitar esta influencer porque ya envió contenido. Su URL se conserva en la campaña.',

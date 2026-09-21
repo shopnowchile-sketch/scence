@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import {
@@ -412,7 +413,7 @@ export default function BrandsPage() {
                         <td className="px-4 py-3 overflow-hidden">
                           <div className="flex items-center gap-3 min-w-0">
                             {b.logo_url
-                              ? <img src={b.logo_url} alt={b.name} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
+                              ? <Image src={b.logo_url} alt={b.name} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0"  width={32} height={32} unoptimized />
                               : <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600 font-bold text-sm flex-shrink-0">{b.name[0]}</div>
                             }
                             <div className="min-w-0">
@@ -501,7 +502,7 @@ export default function BrandsPage() {
                 >
                   <div className="flex items-start gap-3 mb-3">
                     {b.logo_url ? (
-                      <img src={b.logo_url} alt={b.name} className="w-12 h-12 rounded-xl object-contain border border-gray-100 p-1" />
+                      <Image src={b.logo_url} alt={b.name} className="w-12 h-12 rounded-xl object-contain border border-gray-100 p-1"  width={48} height={48} unoptimized />
                     ) : (
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                         {initials(b.name)}
@@ -565,7 +566,7 @@ export default function BrandsPage() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   {selected.logo_url ? (
-                    <img src={selected.logo_url} alt={selected.name} className="w-14 h-14 rounded-xl object-contain border border-gray-100 p-1" />
+                    <Image src={selected.logo_url} alt={selected.name} className="w-14 h-14 rounded-xl object-contain border border-gray-100 p-1"  width={56} height={56} unoptimized />
                   ) : (
                     <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold">
                       {initials(selected.name)}
@@ -644,7 +645,7 @@ export default function BrandsPage() {
                     <a key={inf.id} href={`/influencers/${inf.id}`}
                       className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 hover:bg-violet-50 transition-colors">
                       {inf.avatar_url ? (
-                        <img src={inf.avatar_url} alt={inf.display_name} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                        <Image src={inf.avatar_url} alt={inf.display_name} className="w-7 h-7 rounded-full object-cover flex-shrink-0"  width={28} height={28} unoptimized />
                       ) : (
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
                           {inf.display_name.charAt(0)}

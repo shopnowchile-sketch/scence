@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 
 function escapeHtml(value: string) {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -34,8 +35,22 @@ export async function POST(request: NextRequest) {
 
   if (influencersError) return NextResponse.json({ error: 'No se pudieron cargar las influencers.' }, { status: 500 })
 
-  const valid = (influencers ?? []).filter(item => item.organization_id === orgId && item.email)
-  if (!valid.length) return NextResponse.json({ error: 'Ninguna seleccionada tiene un email válido.' }, { status: 422 })
+  const orgInfluencers = (influencers ?? []).filter(item => item.organization_id === orgId && item.email)
+  if (!orgInfluencers.length) return NextResponse.json({ error: 'Ninguna seleccionada tiene un email válido.' }, { status: 422 })
+
+  const { data: incompleteRows } = await admin
+    .from('subscriptions')
+    .select('metadata')
+    .eq('organization_id', orgId)
+    .eq('status', 'incomplete')
+  const attemptedIds = new Set((incompleteRows ?? []).map(row => {
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
+    return typeof metadata.influencer_id === 'string' ? metadata.influencer_id : null
+  }).filter((id): id is string => Boolean(id)))
+
+  const proStatuses = await getInfluencerProStatuses(admin, orgInfluencers.map(item => item.id))
+  const valid = orgInfluencers.filter(item => attemptedIds.has(item.id) && (proStatuses.get(item.id) ?? 'free') === 'free')
+  if (!valid.length) return NextResponse.json({ error: 'Ninguna seleccionada tiene un intento Pro pendiente.' }, { status: 422 })
 
   const resend = getResend()
   const results = await Promise.allSettled(valid.map(influencer =>

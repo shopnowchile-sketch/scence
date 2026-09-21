@@ -25,6 +25,7 @@ const CHILD_TABLES: ReadonlyArray<{ table: string; column: string }> = [
   { table: 'events', column: 'influencer_id' },
   { table: 'contracts', column: 'influencer_id' },
   { table: 'influencer_payment_methods', column: 'influencer_id' },
+  { table: 'influencer_terms_acceptances', column: 'influencer_id' },
   { table: 'barters', column: 'influencer_id' },
   { table: 'brand_influencers', column: 'influencer_id' },
   { table: 'campaign_influencer_notifications', column: 'influencer_id' },

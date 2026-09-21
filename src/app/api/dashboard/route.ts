@@ -306,6 +306,7 @@ export async function GET() {
     attempt_subscriptions: attemptRows.length,
     past_due: pastDueInfluencerIds.length,
     paid_influencers: paidInfluencerIds.size,
+    payments_count: (completedProPayments ?? []).length,
     attempt_list: attemptInfluencerIds.map(influencerId => {
       const row = latestAttemptByInfluencer.get(influencerId)!
       const influencer = attemptInfluencerById.get(influencerId)

@@ -1,4 +1,4 @@
-export type ManualAttendanceAction = 'confirmed_client' | 'attended' | 'no_show' | 'no_show_unconfirmed'
+export type ManualAttendanceAction = 'confirmed_client' | 'attended' | 'no_show' | 'no_show_unconfirmed' | 'revert_no_show'
 
 export function buildManualAttendanceUpdate({
   action,
@@ -29,7 +29,11 @@ export function buildManualAttendanceUpdate({
     update.attendance_outcome = 'no_show'
     update.attendance_outcome_at = now
     update.attendance_note = 'Confirmó con el cliente · No asistió'
-  } else {
+  } else if (action === 'revert_no_show') {
+    update.attendance_outcome = null
+    update.attendance_outcome_at = null
+    update.attendance_note = null
+else {
     update.attendance_outcome = 'no_show'
     update.attendance_outcome_at = now
     update.attendance_note = 'No confirmó · No asistió'

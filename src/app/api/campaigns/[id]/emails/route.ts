@@ -171,11 +171,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   let sent = 0
+  let skipped = 0
   for (let index = 0; index < rendered.length; index += 100) {
     const chunk = rendered.slice(index, index + 100)
-    const result = await getResend().batch.send(chunk.map(email => ({ from: FROM_EMAIL, to: email.email!, subject: email.subject, html: email.html })))
+    // Un email malformado no debe bloquear el envío del resto del lote.
+    // Resend rechaza el batch completo si una sola dirección no es válida.
+    const validChunk = chunk.filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.email ?? ''))
+    skipped += chunk.length - validChunk.length
+    if (!validChunk.length) continue
+    const result = await getResend().batch.send(validChunk.map(email => ({ from: FROM_EMAIL, to: email.email!, subject: email.subject, html: email.html })))
     if (result.error) return NextResponse.json({ error: `No se pudo completar el envío. Se enviaron ${sent} de ${rendered.length}.` }, { status: 502 })
-    sent += chunk.length
+    sent += validChunk.length
   }
-  return NextResponse.json({ data: { sent } })
+  return NextResponse.json({ data: { sent, skipped } })
 }

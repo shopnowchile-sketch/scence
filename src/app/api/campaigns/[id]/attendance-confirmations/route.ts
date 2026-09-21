@@ -43,12 +43,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       message: row.description ?? undefined,
     })).filter(person => !!person.email && !!person.dueDate)
     if (!people.length) return NextResponse.json({ error: 'No hay confirmaciones pendientes con email disponible.' }, { status: 422 })
-    const result = await getResend().batch.send(people.map(person => {
+    // Un email malformado no debe bloquear el envío del resto del lote.
+    const validPeople = people.filter(person => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email ?? ''))
+    if (!validPeople.length) return NextResponse.json({ error: 'No hay confirmaciones pendientes con email válido.' }, { status: 422 })
+    const result = await getResend().batch.send(validPeople.map(person => {
       const dueLabel = new Date(`${person.dueDate}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
       return { from: FROM_EMAIL, to: person.email!, subject: `Recordatorio: confirma tu asistencia antes del ${dueLabel}`, html: attendanceReminderEmail({ influencerName: person.name, campaignName: campaign.name, campaignId: params.id, dueDate: dueLabel, message: person.message }) }
     }))
     if (result.error) return NextResponse.json({ error: 'No se pudo enviar el recordatorio.' }, { status: 500 })
-    return NextResponse.json({ data: { sent: people.length } })
+    return NextResponse.json({ data: { sent: validPeople.length, skipped: people.length - validPeople.length } })
   }
 
   if (!body.due_date || !/^\d{4}-\d{2}-\d{2}$/.test(body.due_date)) return NextResponse.json({ error: 'Define una fecha límite para confirmar.' }, { status: 422 })
@@ -92,9 +95,11 @@ export async function POST(request: NextRequest, { params }: Params) {
       email: (row.influencer as unknown as { email?: string | null })?.email,
     })).filter(person => !!person.email)
     const dueLabel = new Date(`${body.due_date}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
-    if (people.length) {
-      const result = await getResend().batch.send(people.map(person => ({ from: FROM_EMAIL, to: person.email!, subject: `Confirma tu asistencia antes del ${dueLabel}`, html: attendanceReminderEmail({ influencerName: person.name, campaignName: campaign.name, campaignId: params.id, dueDate: dueLabel, message: body.message?.trim() }) })))
-      if (!result.error) emailed = people.length
+    // Un email malformado no debe bloquear el envío del resto del lote.
+    const validPeople = people.filter(person => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email ?? ''))
+    if (validPeople.length) {
+      const result = await getResend().batch.send(validPeople.map(person => ({ from: FROM_EMAIL, to: person.email!, subject: `Confirma tu asistencia antes del ${dueLabel}`, html: attendanceReminderEmail({ influencerName: person.name, campaignName: campaign.name, campaignId: params.id, dueDate: dueLabel, message: body.message?.trim() }) })))
+      if (!result.error) emailed = validPeople.length
     }
   }
   return NextResponse.json({ data: { created: newRows.length, updated: pendingExistingIds.length, existing: existingIds.size, emailed } })

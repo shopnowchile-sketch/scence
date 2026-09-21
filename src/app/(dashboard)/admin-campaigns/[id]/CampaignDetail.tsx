@@ -1273,6 +1273,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [showDeliverableEmailModal, setShowDeliverableEmailModal] = useState(false)
   const [deliverableSort, setDeliverableSort] = useState<DeliverableSort>('followers_desc')
   const [attendanceUpdating, setAttendanceUpdating] = useState<string | null>(null)
+  const [attendanceConfirm, setAttendanceConfirm] = useState<{ influencerId: string; action: 'no_show' | 'revert_no_show' } | null>(null)
 
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [notifying, setNotifying] = useState(false)
@@ -1727,7 +1728,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           return next
         })
       }
-      const label = action === 'confirmed_client' ? 'Confirmación registrada' : action === 'attended' ? 'Asistencia registrada' : 'No asistencia registrada'
+      const label = action === 'confirmed_client' ? 'Confirmación registrada' : action === 'attended' ? 'Asistencia registrada' : action === 'revert_no_show' ? 'No asistencia revertida' : 'No asistencia registrada'
       toast.success(label)
       await refetch()
     } catch (error) {
@@ -3463,9 +3464,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         </td>
                         <td className="px-4 py-3">
                           {noShow ? (
-                            <div>
+                            <div className="flex flex-col items-start gap-1">
                               <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700">NO ASISTIÓ</span>
-                              <p className="mt-1 max-w-48 text-[10px] font-medium text-red-600">{attendance?.attendance_note || 'No asistió'}</p>
+                              <p className="max-w-48 text-[10px] font-medium text-red-600">{attendance?.attendance_note || 'No asistió'}</p>
+                              {attendance && (!isBrandPortal || c._brand_permissions?.canEdit) && (
+                                <button type="button" onClick={() => setAttendanceConfirm({ influencerId: inf.id, action: 'revert_no_show' })} disabled={attendanceUpdating === inf.id} className="text-[10px] font-semibold text-gray-500 underline underline-offset-2 hover:text-gray-700 disabled:opacity-50">Revertir</button>
+                              )}
                             </div>
                           ) : attendanceConfirmed ? (
                             <div><span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> {attendance?.attendance_outcome === 'attended' ? 'ASISTIÓ' : 'Confirmada'}</span>{attendance?.attendance_note && <p className="mt-1 max-w-48 text-[10px] text-gray-500">{attendance.attendance_note}</p>}</div>
@@ -3478,7 +3482,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 disabled={attendanceUpdating === inf.id}
                                 onChange={event => {
                                   const action = event.target.value as 'confirmed_client' | 'attended' | 'no_show'
-                                  if (action) void updateManualAttendance(inf.id, action)
+                                  if (action === 'no_show') setAttendanceConfirm({ influencerId: inf.id, action })
+                                  else if (action) void updateManualAttendance(inf.id, action)
                                 }}
                                 title="Actualizar asistencia"
                                 aria-label={`Actualizar asistencia de ${inf.display_name}`}
@@ -3497,7 +3502,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 disabled={attendanceUpdating === inf.id}
                                 onChange={event => {
                                   const action = event.target.value as 'confirmed_client' | 'attended' | 'no_show'
-                                  if (action) void updateManualAttendance(inf.id, action)
+                                  if (action === 'no_show') setAttendanceConfirm({ influencerId: inf.id, action })
+                                  else if (action) void updateManualAttendance(inf.id, action)
                                 }}
                                 title="Actualizar asistencia"
                                 aria-label={`Actualizar asistencia de ${inf.display_name}`}
@@ -4364,6 +4370,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
       )}
 
+      {attendanceConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="attendance-confirm-title">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <h3 id="attendance-confirm-title" className="text-base font-bold text-gray-900">{attendanceConfirm.action === 'no_show' ? '¿Marcar como no asistió?' : '¿Revertir “No asistió”?'}</h3>
+            <p className="mt-2 text-sm leading-5 text-gray-500">{attendanceConfirm.action === 'no_show' ? 'Esta acción cambia el resultado de asistencia. Solo se aplicará después de confirmar.' : 'La asistencia volverá al estado anterior: confirmada si había confirmación, o sin confirmar si no la había.'}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setAttendanceConfirm(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancelar</button>
+              <button type="button" disabled={attendanceUpdating === attendanceConfirm.influencerId} onClick={() => { const { influencerId, action } = attendanceConfirm; setAttendanceConfirm(null); void updateManualAttendance(influencerId, action) }} className={cn('rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50', attendanceConfirm.action === 'no_show' ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-700 hover:bg-gray-800')}>{attendanceUpdating === attendanceConfirm.influencerId ? 'Guardando…' : attendanceConfirm.action === 'no_show' ? 'Sí, marcar' : 'Sí, revertir'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showCampaignInvoiceModal && invoiceRecipientBrands.length > 0 && (
         <NewInvoiceModal
           onClose={() => setShowCampaignInvoiceModal(false)}

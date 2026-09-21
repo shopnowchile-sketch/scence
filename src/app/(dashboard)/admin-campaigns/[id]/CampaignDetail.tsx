@@ -1705,8 +1705,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     })
   }
 
-  async function updateManualAttendance(influencerId: string, action: 'confirmed_client' | 'attended' | 'no_show') {
-    if (action === 'no_show' && !confirm('¿Registrar que esta influencer no asistió?')) return
+  async function updateManualAttendance(influencerId: string, action: 'confirmed_client' | 'attended' | 'no_show' | 'revert_no_show') {
     setAttendanceUpdating(influencerId)
     try {
       const response = await fetch(`/api/campaigns/${id}/influencers`, {

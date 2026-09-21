@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -377,7 +378,7 @@ export function AnalyticsClient() {
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2.5">
                         {inf.avatar ? (
-                          <img src={inf.avatar} alt={inf.name} className="w-8 h-8 rounded-full object-cover" />
+                          <Image src={inf.avatar} alt={inf.name} className="w-8 h-8 rounded-full object-cover"  width={32} height={32} unoptimized />
                         ) : (
                           <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center text-white text-xs font-bold`}>
                             {inf.name.split(' ').map(w => w[0]).join('').slice(0, 2)}

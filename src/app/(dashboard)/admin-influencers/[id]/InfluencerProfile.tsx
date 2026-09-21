@@ -39,18 +39,15 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
     id: string
     document_title: string
     document_version: string
-    content_snapshot: string
     status: string
     accepted_at: string
     influencer_name?: string | null
   }>>([])
   const [uploads, setUploads] = useState<Array<{
     id: string
-    document_type: string
     title: string
     original_filename: string
     file_size: number
-    visibility: 'private' | 'approved_brands'
     created_at: string
   }>>([])
   const [loading, setLoading] = useState(true)
@@ -63,7 +60,7 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
           fetch('/api/admin/influencer-documents?influencer_id=' + encodeURIComponent(influencerId), { cache: 'no-store' }),
         ])
         const [termsResult, documentsResult] = await Promise.all([termsResponse.json(), documentsResponse.json()])
-        if (!termsResponse.ok) throw new Error(termsResult.error ?? 'No se pudieron cargar los términos.')
+        if (!termsResponse.ok) throw new Error(termsResult.error ?? 'No se pudieron cargar los T&C.')
         if (!documentsResponse.ok) throw new Error(documentsResult.error ?? 'No se pudieron cargar los documentos.')
         setDocuments(termsResult.terms_acceptances ?? [])
         setUploads(documentsResult.data ?? [])
@@ -84,62 +81,46 @@ function AdminInfluencerDocuments({ influencerId }: { influencerId: string }) {
 
   if (loading) return <div className="card p-6 text-center text-sm text-gray-400">Cargando documentos…</div>
 
-  return (
-    <div className="space-y-5">
-      <section className="card p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">Documentos de la influencer</h3>
-            <p className="mt-1 text-xs text-gray-400">Privados o compartidos con marcas aprobadas.</p>
-          </div>
-        </div>
-        {uploads.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-400">No hay documentos subidos.</p>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {uploads.map(document => (
-              <div key={document.id} className="flex items-center gap-3 py-3">
-                <FileText className="h-5 w-5 text-violet-500" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-gray-900">{document.title}</p>
-                  <p className="truncate text-xs text-gray-400">{document.original_filename} · {(document.file_size / 1024 / 1024).toFixed(1)} MB · {document.visibility === 'private' ? 'Privado' : 'Compartido'}</p>
-                </div>
-                <button type="button" onClick={() => void openUpload(document.id)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-violet-600" title="Descargar">
-                  <Download className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+  const total = uploads.length + documents.length
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">Términos y condiciones aceptados</h3>
-            <p className="mt-1 text-xs text-gray-400">Puedes descargar exactamente la versión que aceptó.</p>
-          </div>
-        </div>
-        {documents.length === 0 ? (
-          <div className="card p-8 text-center text-sm text-gray-400">No hay T&C aceptados registrados.</div>
-        ) : documents.map(document => (
-          <div key={document.id} className="card p-5">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span className="text-sm font-semibold text-gray-800">{document.document_title} · v{document.document_version}</span>
-              <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Aceptado</span>
-              <a href={'/api/admin/influencer-terms/' + document.id + '/pdf'} download className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50">
+  return (
+    <div className="card overflow-hidden">
+      <div className="border-b border-gray-100 px-5 py-4">
+        <h3 className="text-sm font-bold text-gray-900">Documentos</h3>
+        <p className="mt-1 text-xs text-gray-400">{total === 0 ? 'No hay documentos registrados.' : `${total} documento${total === 1 ? '' : 's'}`}</p>
+      </div>
+
+      {total === 0 ? (
+        <div className="px-5 py-10 text-center text-sm text-gray-400">La influencer todavía no ha subido documentos ni aceptado T&C.</div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {uploads.map(document => (
+            <div key={document.id} className="flex items-center gap-3 px-5 py-4">
+              <FileText className="h-5 w-5 shrink-0 text-violet-500" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-gray-900">{document.title}</p>
+                <p className="truncate text-xs text-gray-400">{document.original_filename} · {(document.file_size / 1024 / 1024).toFixed(1)} MB</p>
+              </div>
+              <button type="button" onClick={() => void openUpload(document.id)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-violet-600" title="Descargar">
+                <Download className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+
+          {documents.map(document => (
+            <div key={document.id} className="flex items-center gap-3 px-5 py-4">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-gray-900">{document.document_title}</p>
+                <p className="text-xs text-gray-400">Versión {document.document_version} · Aceptado {new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Santiago' }).format(new Date(document.accepted_at))}</p>
+              </div>
+              <a href={'/api/admin/influencer-terms/' + document.id + '/pdf'} download className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">
                 <Download className="h-3.5 w-3.5" /> PDF
               </a>
             </div>
-            <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
-              <div><div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Influencer</div><div className="mt-1 font-medium text-gray-900">{document.influencer_name ?? '—'}</div></div>
-              <div><div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Fecha y hora</div><div className="mt-1 font-medium text-gray-900">{new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Santiago' }).format(new Date(document.accepted_at))}</div></div>
-              <div><div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Versión</div><div className="mt-1 font-medium text-gray-900">{document.document_version}</div></div>
-            </div>
-          </div>
-        ))}
-      </section>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

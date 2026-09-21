@@ -431,6 +431,7 @@ export interface InfluencerFilters {
   // getInfluencerProStatuses (PayPal subscriptions + manual_pro), no una
   // columna de `influencers`. Solo Admin (ver InfluencersClient.tsx).
   plan: 'all' | 'pro' | 'free'
+  proAttempt: boolean
   // followers/engagement_rate quedan en el tipo por compatibilidad con la UI histórica,
   // pero /api/influencers no puede ordenar por ellos (viven en el join
   // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
@@ -455,6 +456,7 @@ export const DEFAULT_INFLUENCER_FILTERS: InfluencerFilters = {
   isActive: true,
   statusFilter: 'all',
   plan: 'all',
+  proAttempt: false,
   sortBy: 'created_at',
   sortOrder: 'desc',
 }

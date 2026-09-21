@@ -1513,13 +1513,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Hualpén, La Florida/LA FLORIDA/La florida, etc.) porque esta lista se
   // arma aparte, en memoria, y no pasaba por groupCommunes.
   const pendingCommuneGroups = groupCommunes(
-    pendingApplications.map(ci => ci.influencer?.commune).filter((v): v is string => Boolean(v))
+    applicationHistory.map(ci => ci.influencer?.commune).filter((v): v is string => Boolean(v))
   )
   const pendingCategoryOptions = Array.from(new Set(
-    pendingApplications.flatMap(ci => ci.influencer?.categories ?? [])
+    applicationHistory.flatMap(ci => ci.influencer?.categories ?? [])
   )).sort()
 
-  const filteredPendingApplications = pendingApplications.filter(ci => {
+  type PendingApplicationStatusFilter = 'all' | 'pending' | 'rejected'
+  const [pendingApplicationStatusFilter, setPendingApplicationStatusFilter] = useState<PendingApplicationStatusFilter>('all')
+  const filteredPendingApplications = applicationHistory.filter(ci => {
     const inf = ci.influencer
     if (!inf) return false
     const primarySP = inf.influencer_social_profiles?.[0]
@@ -1538,9 +1540,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
     return true
   })
-  const visiblePendingIds = filteredPendingApplications.map(application => application.id)
+  const visiblePendingIds = filteredPendingApplications.filter(application => application.application_status === 'pending').map(application => application.id)
   const selectedVisiblePendingIds = visiblePendingIds.filter(applicationId => pendingSelection.has(applicationId))
   const allVisiblePendingSelected = visiblePendingIds.length > 0 && selectedVisiblePendingIds.length === visiblePendingIds.length
+  const hasPendingApplicationFilters = Boolean(
+    pendingSearch.trim() || pendingTierFilter || pendingCommuneFilter || pendingCategoryFilter ||
+    pendingMinEngagement > 0 || pendingMinRating > 0 || pendingApplicationStatusFilter !== 'all'
+  )
   const applicationsEndpoint = isBrandPortal
     ? `/api/brand/campaigns/${id}/applications`
     : `/api/campaigns/${id}/applications`
@@ -2915,13 +2921,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               aprobar y ver quién postuló" — ahora el panel completo (no solo los botones) se
               oculta en Marca si _brand_permissions.canEdit es false, y los botones pegan al
               endpoint correcto según el portal. */}
-          {pendingApplications.length > 0
+          {applicationHistory.length > 0
             && (!isBrandPortal || c._brand_permissions?.canEdit) && (
             <div className="card border-amber-200 bg-white shadow-sm">
               <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 border-l-4 border-amber-400 bg-amber-50 px-4 py-3.5 text-left hover:bg-amber-100/80">
                 <p className="flex items-center gap-2 text-base font-bold text-gray-900">
                   <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  {pendingApplications.length} solicitud(es) pendiente(s)
+                  {pendingCount} solicitud(es) pendiente(s){rejectedApplications.length > 0 ? ` · ${rejectedApplications.length} no seleccionada(s)` : ''}
                 </p>
                 <ChevronDown className={cn('h-5 w-5 text-gray-600 transition-transform', pendingApplicationsOpen && 'rotate-180')} />
               </button>
@@ -2933,7 +2939,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   Solo aparecen si hay algo que filtrar (>3 postulantes). */}
               <div className="mb-3 flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible pb-1">
                 <div className="relative min-w-0 w-full sm:w-[300px] sm:shrink-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
-              {pendingApplications.length > 3 && (<>
+              {applicationHistory.length > 0 && (<>
                   <select
                     value={pendingTierFilter}
                     onChange={e => setPendingTierFilter(e.target.value as InfluencerTier | '')}
@@ -2993,8 +2999,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       {pendingCategoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                     </select>
                   )}
+                  <select
+                    value={pendingApplicationStatusFilter}
+                    onChange={e => setPendingApplicationStatusFilter(e.target.value as PendingApplicationStatusFilter)}
+                    className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                    aria-label="Filtrar estado de postulación"
+                  >
+                    <option value="all">Todos los estados</option>
+                    <option value="pending">Pendientes</option>
+                    <option value="rejected">No seleccionadas</option>
+                  </select>
 
-                  {(pendingTierFilter || pendingCommuneFilter || pendingCategoryFilter || pendingMinEngagement > 0 || pendingMinRating > 0) && (
+                  {hasPendingApplicationFilters && (
                     <button
                       type="button"
                       onClick={() => {
@@ -3011,7 +3027,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   )}
 
                   <span className="ml-auto shrink-0 text-sm font-medium text-gray-600">
-                    Mostrando {filteredPendingApplications.length} de {pendingApplications.length}
+                    Mostrando {filteredPendingApplications.length} de {applicationHistory.length}
                   </span>
               </>)}
                 <div className="relative z-50 shrink-0"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
@@ -3088,7 +3104,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         const gradient = GRADIENTS[i % GRADIENTS.length]
                         const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
                         return (
-                          <tr key={ci.id} className="transition-colors hover:bg-violet-50/40">
+                          <tr key={ci.id} className={cn('transition-colors', rejected ? 'bg-blue-50/45 opacity-70 hover:bg-blue-50/70' : 'hover:bg-violet-50/40')}>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
                                 <input
@@ -3131,7 +3147,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             {pendingVisibleColumns.fee && <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>}
                             {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-600">0/0</td>}
                             {pendingVisibleColumns.progress && <td className="px-4 py-3 text-sm text-gray-600">Sin deliverables</td>}
-                            {pendingVisibleColumns.status && <td className="px-4 py-3"><span className="text-[11px] font-semibold rounded-full px-2 py-1 bg-amber-100 text-amber-700">Pendiente</span></td>}
+                            {pendingVisibleColumns.status && <td className="px-4 py-3">
+                               <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', rejected ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                                 {rejected ? 'No seleccionada' : 'Pendiente'}
+                               </span>
+                             </td>}
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2 whitespace-nowrap">
                                 <button

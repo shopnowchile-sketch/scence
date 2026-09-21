@@ -1504,6 +1504,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const pendingApplications = campaignInfluencers.filter(
     ci => ci.application_status === 'pending' && ci.origin === 'application'
   )
+  // Historial de postulaciones: las rechazadas/no seleccionadas permanecen
+  // visibles para auditoría y futuros reportes.
+  const applicationHistory = historicalApplications.filter(
+    ci => ci.application_status === 'pending' || ci.application_status === 'rejected'
+  )
+  const rejectedApplications = applicationHistory.filter(ci => ci.application_status === 'rejected')
+  const pendingCount = pendingApplications.length
 
   // Opciones de filtro derivadas de los datos ya cargados (sin fetch aparte,
   // sin /api/influencers/communes — acá alcanzan las ~72 postulantes en memoria).
@@ -1524,6 +1531,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const filteredPendingApplications = applicationHistory.filter(ci => {
     const inf = ci.influencer
     if (!inf) return false
+    if (pendingApplicationStatusFilter !== 'all' && ci.application_status !== pendingApplicationStatusFilter) return false
     const primarySP = inf.influencer_social_profiles?.[0]
 
     if (pendingTierFilter && getInfluencerTier(primarySP?.followers ?? 0) !== pendingTierFilter) return false

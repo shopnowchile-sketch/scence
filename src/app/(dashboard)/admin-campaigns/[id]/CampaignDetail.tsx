@@ -1508,7 +1508,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const applicationHistory = historicalApplications.filter(
     ci => ci.application_status === 'pending' || ci.application_status === 'rejected'
   )
-  const rejectedApplications = applicationHistory.filter(ci => ci.application_status === 'rejected')
   const pendingCount = pendingApplications.length
 
   // Opciones de filtro derivadas de los datos ya cargados (sin fetch aparte,
@@ -3112,6 +3111,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 <input
                                   type="checkbox"
                                   checked={pendingSelection.has(ci.id)}
+                                  disabled={rejected}
                                   onChange={() => setPendingSelection(previous => {
                                     const next = new Set(previous)
                                     if (next.has(ci.id)) next.delete(ci.id)
@@ -3156,6 +3156,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                              </td>}
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2 whitespace-nowrap">
+                                {rejected ? (
+                                  <span className="text-xs font-semibold text-blue-700">No seleccionada</span>
+                                ) : <>
                                 <button
                                   onClick={async () => {
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'accept' }) })
@@ -3190,6 +3193,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   }}
                                   className="text-xs font-bold bg-white text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50"
                                 >Rechazar</button>
+                                </>}
                               </div>
                             </td>                          </tr>
                         )

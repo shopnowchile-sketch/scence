@@ -397,7 +397,8 @@ function InfluencerFiltersMenu({
         className={cn(
           'relative flex items-center rounded-xl border p-2 text-sm font-medium transition-colors',
           open || active
-            ? 'border-violet-300 bg-violet-50 text-violet-700'            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+            ? 'border-violet-300 bg-violet-50 text-violet-700'
+            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
         )}
       >
         <ListFilter className="h-4 w-4" />
@@ -796,7 +797,8 @@ function CampaignBrandsPanel({
                     {brand._role === 'Principal' && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-medium text-violet-700">Principal</span>}
                   </div>
                 )
-                // Link al perfil de la marca en /admin-brands/[id] (misma ruta que ya                // usa el módulo Marcas) — reutiliza brand.id, la relación real ya
+                // Link al perfil de la marca en /admin-brands/[id] (misma ruta que ya
+                // usa el módulo Marcas) — reutiliza brand.id, la relación real ya
                 // presente en campaign.brand / campaign_brands, sin buscar por nombre.
                 return brand.id && linkToBrandProfile ? (
                   <Link href={`/admin-brands/${brand.id}`} className="min-w-0 hover:underline" title={`Ver perfil de ${brand.name ?? 'esta marca'}`}>
@@ -1195,7 +1197,8 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
             <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', form.approval_required ? 'translate-x-4' : 'translate-x-0.5')} />
           </button>
           <div>
-            <div className="text-sm font-medium text-gray-800">Requerir aprobación de contenido</div>            <div className="text-xs text-gray-400">La influencer deberá subir su contenido al enlace compartido antes de publicarlo.</div>
+            <div className="text-sm font-medium text-gray-800">Requerir aprobación de contenido</div>
+            <div className="text-xs text-gray-400">La influencer deberá subir su contenido al enlace compartido antes de publicarlo.</div>
           </div>
         </div>
         {form.approval_required && (
@@ -1503,13 +1506,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const pendingApplications = campaignInfluencers.filter(
     ci => ci.application_status === 'pending' && ci.origin === 'application'
   )
-  // Historial de postulaciones: las rechazadas/no seleccionadas permanecen
-  // visibles para auditoría y futuros reportes.
-  const applicationHistory = historicalApplications.filter(
-    ci => ci.application_status === 'pending' || ci.application_status === 'rejected'
-  )
-  const rejectedApplications = applicationHistory.filter(ci => ci.application_status === 'rejected')
-  const pendingCount = pendingApplications.length
 
   // Opciones de filtro derivadas de los datos ya cargados (sin fetch aparte,
   // sin /api/influencers/communes — acá alcanzan las ~72 postulantes en memoria).
@@ -1518,6 +1514,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Pri 2026-07-13: acá también aparecía duplicada (Copiapó/COPIAPO, Hualpen/
   // Hualpén, La Florida/LA FLORIDA/La florida, etc.) porque esta lista se
   // arma aparte, en memoria, y no pasaba por groupCommunes.
+  const applicationHistory = historicalApplications.filter(
+    ci => ci.application_status === 'pending' || ci.application_status === 'rejected'
+  )
+  const pendingCount = pendingApplications.length
   const pendingCommuneGroups = groupCommunes(
     applicationHistory.map(ci => ci.influencer?.commune).filter((v): v is string => Boolean(v))
   )
@@ -1526,9 +1526,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   )).sort()
 
   const filteredPendingApplications = applicationHistory.filter(ci => {
+    if (pendingApplicationStatusFilter !== 'all' && ci.application_status !== pendingApplicationStatusFilter) return false
     const inf = ci.influencer
     if (!inf) return false
-    if (pendingApplicationStatusFilter !== 'all' && ci.application_status !== pendingApplicationStatusFilter) return false
     const primarySP = inf.influencer_social_profiles?.[0]
 
     if (pendingTierFilter && getInfluencerTier(primarySP?.followers ?? 0) !== pendingTierFilter) return false
@@ -1546,12 +1546,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return true
   })
   const visiblePendingIds = filteredPendingApplications.filter(application => application.application_status === 'pending').map(application => application.id)
-  const selectedVisiblePendingIds = visiblePendingIds.filter(applicationId => pendingSelection.has(applicationId))
-  const allVisiblePendingSelected = visiblePendingIds.length > 0 && selectedVisiblePendingIds.length === visiblePendingIds.length
   const hasPendingApplicationFilters = Boolean(
     pendingSearch.trim() || pendingTierFilter || pendingCommuneFilter || pendingCategoryFilter ||
     pendingMinEngagement > 0 || pendingMinRating > 0 || pendingApplicationStatusFilter !== 'all'
   )
+  const selectedVisiblePendingIds = visiblePendingIds.filter(applicationId => pendingSelection.has(applicationId))
+  const allVisiblePendingSelected = visiblePendingIds.length > 0 && selectedVisiblePendingIds.length === visiblePendingIds.length
   const applicationsEndpoint = isBrandPortal
     ? `/api/brand/campaigns/${id}/applications`
     : `/api/campaigns/${id}/applications`
@@ -1594,7 +1594,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   // Actualiza followers SOLO de los postulantes pendientes de esta campaña.
   // Reusa POST /api/influencers/sync-instagram, que ya resuelve por
-  // campaign_id + application_status='pending' + origin='application'; acá no  // se manda ninguna lista de influencers, así que no hay forma de que toque
+  // campaign_id + application_status='pending' + origin='application'; acá no
+  // se manda ninguna lista de influencers, así que no hay forma de que toque
   // el resto del roster. El endpoint nunca escribe followers <= 0, así que un
   // perfil que Instagram no devuelva conserva su último valor válido.
   async function syncPendingFollowers() {
@@ -1993,7 +1994,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             ...(eventBooking?.location_details ?? {}),
             venue_name: summaryEditForm.venue_name.trim() || null,
             instructions: summaryEditForm.location_instructions.trim() || null,
-          },          starts_at: new Date(day.starts_at).toISOString(),
+          },
+          starts_at: new Date(day.starts_at).toISOString(),
           ends_at: new Date(day.ends_at).toISOString(),
           timezone: 'America/Santiago',
         }
@@ -2393,6 +2395,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     if (newStatus === c.status || patchCampaign.isPending) return
     const action = STATUS_TO_ACTION[newStatus]
     const payload = action ? { action } : { status: newStatus }
+
     try {
       await patchCampaign.mutateAsync(payload)
       toast.success(`Estado cambiado a "${campaignStatusLabel(newStatus)}"`)
@@ -2791,7 +2794,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const canonicalDue = canonicalDeliverableDueDates.get(dt.type) ?? dt.due_date ?? null
                     const isAttendance = dt.type === 'event_attendance'
                     const isFinalContent = dt.type === 'reel' || dt.type === 'story'
-                    const dateLabel = isAttendance ? 'Plazo de confirmación' : isFinalContent ? 'Fecha final de publicación' : 'Fecha límite'                    const attendanceTracked = attendanceConfirmedInfluencers.length + noConfirmedInfluencers.length + attendanceDeclinedInfluencers.length + noShowInfluencers.length
+                    const dateLabel = isAttendance ? 'Plazo de confirmación' : isFinalContent ? 'Fecha final de publicación' : 'Fecha límite'
+                    const attendanceTracked = attendanceConfirmedInfluencers.length + noConfirmedInfluencers.length + attendanceDeclinedInfluencers.length + noShowInfluencers.length
                     return (
                       <div key={dt.type} className="flex items-start gap-3 rounded-xl bg-gray-50 p-3">
                         <div className="flex-1">
@@ -2928,7 +2932,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <button type="button" onClick={() => setPendingApplicationsOpen(open => !open)} className="flex w-full items-center justify-between gap-3 border-l-4 border-amber-400 bg-amber-50 px-4 py-3.5 text-left hover:bg-amber-100/80">
                 <p className="flex items-center gap-2 text-base font-bold text-gray-900">
                   <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  {pendingCount} solicitud(es) pendiente(s){rejectedApplications.length > 0 ? ` · ${rejectedApplications.length} no seleccionada(s)` : ''}
+                  {pendingCount} solicitud(es) pendiente(s){applicationHistory.length - pendingCount > 0 ? ` · ${applicationHistory.length - pendingCount} no seleccionada(s)` : ''}
                 </p>
                 <ChevronDown className={cn('h-5 w-5 text-gray-600 transition-transform', pendingApplicationsOpen && 'rotate-180')} />
               </button>
@@ -2941,6 +2945,16 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <div className="mb-3 flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible pb-1">
                 <div className="relative min-w-0 w-full sm:w-[300px] sm:shrink-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
               {applicationHistory.length > 0 && (<>
+                  <select
+                    value={pendingApplicationStatusFilter}
+                    onChange={e => setPendingApplicationStatusFilter(e.target.value as PendingApplicationStatusFilter)}
+                    className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                    aria-label="Filtrar estado de postulación"
+                  >
+                    <option value="all">Todos los estados</option>
+                    <option value="pending">Pendientes</option>
+                    <option value="rejected">No seleccionadas</option>
+                  </select>
                   <select
                     value={pendingTierFilter}
                     onChange={e => setPendingTierFilter(e.target.value as InfluencerTier | '')}
@@ -3000,16 +3014,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       {pendingCategoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                     </select>
                   )}
-                  <select
-                    value={pendingApplicationStatusFilter}
-                    onChange={e => setPendingApplicationStatusFilter(e.target.value as PendingApplicationStatusFilter)}
-                    className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
-                    aria-label="Filtrar estado de postulación"
-                  >
-                    <option value="all">Todos los estados</option>
-                    <option value="pending">Pendientes</option>
-                    <option value="rejected">No seleccionadas</option>
-                  </select>
 
                   {hasPendingApplicationFilters && (
                     <button
@@ -3020,6 +3024,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         setPendingCategoryFilter('')
                         setPendingMinEngagement(0)
                         setPendingMinRating(0)
+                        setPendingSearch('')
+                        setPendingApplicationStatusFilter('all')
                       }}
                       className="text-sm font-semibold text-violet-700 hover:underline"
                     >
@@ -3083,6 +3089,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <thead>
                       <tr className="border-b border-gray-200">
                         <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Influencer</th>
+                        {pendingVisibleColumns.status && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}
                         {pendingVisibleColumns.platform && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Plataforma</th>}
                         {pendingVisibleColumns.categories && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>}
                         {pendingVisibleColumns.followers && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Seguidores</th>}
@@ -3104,12 +3111,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         const profileUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
                         const gradient = GRADIENTS[i % GRADIENTS.length]
                         const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-                        const rejected = ci.application_status === 'rejected'
                         return (
-                          <tr key={ci.id} className={cn('transition-colors', rejected ? 'bg-blue-50/45 opacity-70 hover:bg-blue-50/70' : 'hover:bg-violet-50/40')}>
+                          <tr key={ci.id} className={cn('transition-colors', ci.application_status === 'rejected' ? 'bg-blue-50/45 opacity-70 hover:bg-blue-50/70' : 'hover:bg-violet-50/40')}>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
-                                <input
+                                {ci.application_status !== 'rejected' && <input
                                   type="checkbox"
                                   checked={pendingSelection.has(ci.id)}
                                   onChange={() => setPendingSelection(previous => {
@@ -3120,7 +3126,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   })}
                                   aria-label={`Seleccionar a ${inf.display_name}`}
                                   className="h-4 w-4 flex-shrink-0 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-                                />
+                                />}
                                 <div className={cn('relative w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>
                                   {initials}
                                   {inf.avatar_url && (
@@ -3140,6 +3146,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 </div>
                               </div>
                             </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                                  {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
+                                </span>
+                              </div>
+                            </td>
                             {pendingVisibleColumns.platform && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>}
                             {pendingVisibleColumns.categories && <td className="px-4 py-3 text-sm text-gray-600">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>}
                             {pendingVisibleColumns.followers && <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>}
@@ -3149,13 +3162,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             {pendingVisibleColumns.fee && <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>}
                             {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-600">0/0</td>}
                             {pendingVisibleColumns.progress && <td className="px-4 py-3 text-sm text-gray-600">Sin deliverables</td>}
-                            {pendingVisibleColumns.status && <td className="px-4 py-3">
-                               <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', rejected ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                                 {rejected ? 'No seleccionada' : 'Pendiente'}
-                               </span>
-                             </td>}
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2 whitespace-nowrap">
+                                {ci.application_status === 'rejected' ? <span className="text-xs font-semibold text-blue-700">No seleccionada</span> : <>
                                 <button
                                   onClick={async () => {
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'accept' }) })
@@ -3190,8 +3199,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   }}
                                   className="text-xs font-bold bg-white text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50"
                                 >Rechazar</button>
+                                </>}
                               </div>
-                            </td>                          </tr>
+                            </td>
+                          </tr>
                         )
                       })}
                     </tbody>
@@ -3590,7 +3601,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           <td className="px-4 py-3">
                             <span className="text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</span>
                           </td>
-                        )}                        {ciVisibleColumns.deliverables && (
+                        )}
+                        {ciVisibleColumns.deliverables && (
                           <td className="px-4 py-3 text-sm text-gray-500">
                             <span className={cn('font-semibold', delivsDone === delivsTotal && delivsTotal > 0 ? 'text-emerald-600' : 'text-gray-900')}>
                               {delivsDone}
@@ -3989,7 +4001,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       // saves/shares (no existen). Engagement = promedio calculado.
                       const ownWithMetrics = own.filter(d =>
                         d.performance != null && isEligibleCampaignResult(d) && (d.status === 'approved' || d.status === 'published')
-                      )                      const views = ownWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
+                      )
+                      const views = ownWithMetrics.reduce((s, d) => s + (d.performance?.views ?? 0), 0)
                       const likes = ownWithMetrics.reduce((s, d) => s + (d.performance?.likes ?? 0), 0)
                       const comments = ownWithMetrics.reduce((s, d) => s + (d.performance?.comments ?? 0), 0)
                       const ownRates = ownWithMetrics.map(d => d.engagement_rate).filter((v): v is number => v != null)
@@ -4388,7 +4401,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
       )}
 
-      {attendanceConfirm && (        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="attendance-confirm-title">
+      {attendanceConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="attendance-confirm-title">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
             <h3 id="attendance-confirm-title" className="text-base font-bold text-gray-900">{attendanceConfirm.action === 'no_show' ? '¿Marcar como no asistió?' : '¿Revertir “No asistió”?'}</h3>
             <p className="mt-2 text-sm leading-5 text-gray-500">{attendanceConfirm.action === 'no_show' ? 'Esta acción cambia el resultado de asistencia. Solo se aplicará después de confirmar.' : 'La asistencia volverá al estado anterior: confirmada si había confirmación, o sin confirmar si no la había.'}</p>

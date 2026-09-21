@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   if (documentId) {
     const { data: document, error } = await auth.admin
       .from('influencer_documents')
-      .select('id, influencer_id, storage_path, original_filename')
+      .select('id, influencer_id, storage_path, original_filename, mime_type')
       .eq('id', documentId)
       .maybeSingle()
     if (error || !document) return NextResponse.json({ error: 'Documento no encontrado.' }, { status: 404 })
@@ -37,9 +37,9 @@ export async function GET(request: NextRequest) {
 
     const { data, error: signedError } = await auth.admin.storage
       .from(BUCKET)
-      .createSignedUrl(document.storage_path, 60 * 5, { download: document.original_filename })
+      .createSignedUrl(document.storage_path, 60 * 5)
     if (signedError || !data?.signedUrl) return NextResponse.json({ error: 'No se pudo abrir el documento.' }, { status: 500 })
-    return NextResponse.json({ url: data.signedUrl })
+    return NextResponse.json({ url: data.signedUrl, original_filename: document.original_filename, mime_type: document.mime_type })
   }
 
   const influencerId = request.nextUrl.searchParams.get('influencer_id')

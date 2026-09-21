@@ -28,7 +28,8 @@ const brandSchema = z.object({
 
 const influencerSchema = z.object({
   display_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
-  instagram_username: z.string().trim().min(2, 'Instagram es obligatorio').max(100),
+  instagram_username: z.string().trim().min(2, 'Instagram es obligatorio').max(100)
+    .refine(isValidInstagramHandle, 'Ingresa un usuario de Instagram válido (ej. @sofiacontreras)'),
   commune:      z.string().trim().min(2, 'Comuna es obligatoria').max(100),
   address:      z.string().trim().min(5, 'Dirección es obligatoria').max(200),
   birth_date:   z.string().min(1, 'Fecha de nacimiento es obligatoria'),
@@ -45,6 +46,25 @@ const influencerSchema = z.object({
 type BrandValues      = z.infer<typeof brandSchema>
 type InfluencerValues = z.infer<typeof influencerSchema>
 type AccountType      = 'brand' | 'influencer' | null
+
+function normalizeInstagramHandle(value: string): string {
+  let s = value.trim()
+  if (/^https?:\/\/|^www\.instagram\.com\//i.test(s)) {
+    try {
+      const url = new URL(s.startsWith('http') ? s : 'https://' + s)
+      if (!/^(www\.)?instagram\.com$/i.test(url.hostname)) return ''
+      s = url.pathname.split('/').filter(Boolean)[0] ?? ''
+    } catch { return '' }
+  } else if (/^(www\.)?instagram\.com\//i.test(s)) {
+    s = s.replace(/^(www\.)?instagram\.com\//i, '').split('/')[0]
+  }
+  return s.replace(/^@+/, '').split('?')[0].trim().toLowerCase()
+}
+
+function isValidInstagramHandle(value: string): boolean {
+  const handle = normalizeInstagramHandle(value)
+  return /^[a-z0-9._]{1,30}$/.test(handle)
+}
 
 const PWD_RULES = [
   { label: 'Mínimo 8 caracteres',    test: (p: string) => p.length >= 8 },
@@ -277,6 +297,7 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
   const pwd = watch('password') ?? ''
 
   async function onSubmit({ display_name, instagram_username, commune, address, birth_date, email, password }: InfluencerValues) {
+    const instagramHandle = normalizeInstagramHandle(instagram_username)
     setLoading(true); setError(null)
     const { error: e } = await supabase.auth.signUp({
       email, password,
@@ -288,7 +309,7 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
           full_name: display_name,
           display_name,
           is_influencer: true,
-          instagram_username,
+          instagram_username: instagramHandle,
           commune,
           address,
           birth_date,

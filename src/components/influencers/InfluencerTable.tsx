@@ -166,7 +166,7 @@ export function InfluencerTable({
                 <label key={key} className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-600 rounded-lg hover:bg-gray-50">
                   <input
                     type="checkbox"
-                    checked={visible[key]}
+                    checked={visible[key] !== false}
                     onChange={() => setVisible(prev => ({ ...prev, [key]: !prev[key] }))}
                     className="rounded border-gray-300 text-violet-600"
                   />
@@ -184,7 +184,7 @@ export function InfluencerTable({
             {selectable && <col style={{ width: 40 }} />}
             <col style={{ width: widths.display_name }} />
             {portal === 'admin' && visible.plan && <col style={{ width: widths.plan }} />}
-            {portal === 'admin' && visible.proAttempt && <col style={{ width: widths.proAttempt }} />}
+            {portal === 'admin' && visible.proAttempt !== false && <col style={{ width: widths.proAttempt }} />}
             {visible.platforms      && <col style={{ width: widths.platforms }} />}
             {visible.categories     && <col style={{ width: widths.categories }} />}
             {visible.followers      && <col style={{ width: widths.followers }} />}

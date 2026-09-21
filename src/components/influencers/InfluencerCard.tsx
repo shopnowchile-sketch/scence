@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { Star, MapPin, CheckCircle2, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { cn, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
@@ -69,7 +70,7 @@ export function InfluencerCard({ influencer, compact = false }: Props) {
             influencer.cover_url && !compact ? '-mt-6 ring-2 ring-white' : ''
           )}>
             {influencer.avatar_url
-              ? <img src={influencer.avatar_url} alt={influencer.display_name} className="w-full h-full rounded-full object-cover" />
+              ? <Image src={influencer.avatar_url} alt={influencer.display_name} className="w-full h-full rounded-full object-cover"  width={800} height={800} unoptimized />
               : initials
             }
           </div>

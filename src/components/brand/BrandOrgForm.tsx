@@ -6,6 +6,7 @@
  * Fetch propio de /api/brand/me, guarda solo campos de empresa/contacto.
  */
 
+import Image from 'next/image'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle, ImagePlus, Link2 } from 'lucide-react'
@@ -174,7 +175,7 @@ export function BrandOrgForm() {
         <SectionTitle icon={Building2} label="Empresa" />
         <div className="flex items-center gap-4 pb-1">
           <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 text-white flex items-center justify-center text-xl font-bold">
-            {form.logo_url ? <img src={form.logo_url} alt="Logo de la marca" className="h-full w-full object-cover" /> : (form.name?.trim().charAt(0).toUpperCase() || 'M')}
+            {form.logo_url ? <Image src={form.logo_url} alt="Logo de la marca" className="h-full w-full object-cover"  width={800} height={800} unoptimized /> : (form.name?.trim().charAt(0).toUpperCase() || 'M')}
           </div>
           <div><input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadLogo(file); event.currentTarget.value = '' }} />
             <button type="button" disabled={uploadingLogo} onClick={() => logoInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 disabled:opacity-60"><ImagePlus className="h-4 w-4" />{uploadingLogo ? 'Subiendo logo…' : form.logo_url ? 'Cambiar logo' : 'Subir logo'}</button>

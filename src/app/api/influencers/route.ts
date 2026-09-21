@@ -387,6 +387,19 @@ export async function GET(request: NextRequest) {
   // filtro/sort de plan), se resuelve acá solo para la página actual, igual
   // que antes.
   const proStatuses = fullProStatuses ?? await getInfluencerProStatuses(admin, withLastSeen.map(inf => inf.id as string))
+  const { data: incompleteProSubscriptions } = await admin
+    .from('subscriptions')
+    .select('metadata')
+    .eq('organization_id', scenceOrgId)
+    .eq('status', 'incomplete')
+
+  const proAttemptByInfluencer = new Map<string, number>()
+  for (const row of incompleteProSubscriptions ?? []) {
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
+    if (metadata.account_type !== 'influencer' || typeof metadata.influencer_id !== 'string') continue
+    proAttemptByInfluencer.set(metadata.influencer_id, (proAttemptByInfluencer.get(metadata.influencer_id) ?? 0) + 1)
+  }
+
   const enriched = withLastSeen.map(inf => {
     const orgId = inf.organization_id as string | null
     const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []
@@ -402,7 +415,8 @@ export async function GET(request: NextRequest) {
     }
 
     const pro_source = proStatuses.get(inf.id as string) ?? 'free'
-    return { ...inf, is_pro: pro_source !== 'free', pro_source, registered_by, associated_brands }
+    const pro_attempt_count = proAttemptByInfluencer.get(inf.id as string) ?? 0
+    return { ...inf, is_pro: pro_source !== 'free', pro_source, pro_attempt_count, registered_by, associated_brands }
   })
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit })

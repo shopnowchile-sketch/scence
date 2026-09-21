@@ -533,13 +533,25 @@ export function DashboardClient() {
     const proPlanRaw = (state.dashboard as Record<string, unknown> | null)?.pro_plan as {
       active?: number
       roster?: number
+      paid?: number
+      manual?: number
       attempts?: number
+      attempt_subscriptions?: number
+      past_due?: number
+      paid_influencers?: number
+      payments_count?: number
       attempt_list?: { influencer_id: string; name: string; email: string | null; status: string; created_at: string }[]
     } | undefined
     const proPlan = {
       active: proPlanRaw?.active ?? 0,
+      paid: proPlanRaw?.paid ?? 0,
+      manual: proPlanRaw?.manual ?? 0,
       roster: proPlanRaw?.roster ?? influencersTotal,
       attempts: proPlanRaw?.attempts ?? 0,
+      attemptSubscriptions: proPlanRaw?.attempt_subscriptions ?? 0,
+      pastDue: proPlanRaw?.past_due ?? 0,
+      paidInfluencers: proPlanRaw?.paid_influencers ?? 0,
+      paymentsCount: proPlanRaw?.payments_count ?? 0,
       attemptList: proPlanRaw?.attempt_list ?? [],
     }
 
@@ -705,33 +717,35 @@ export function DashboardClient() {
           </div>
         </section>
 
-        {/* Plan Pro: conversión del roster. Los INTENTOS son suscripciones que se
-            crearon en PayPal y nunca se activaron — sin este número no había
-            forma de ver que alguien quiso pagar y no pudo. */}
+        {/* Plan Pro: funnel real. El KPI cuenta influencers únicas, no filas de
+            suscripción; abajo se separan pagadas, manuales, intentos y cobros. */}
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Plan Pro</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               icon={<Star className="h-5 w-5" />}
               value={String(computed.proPlan.active)}
               title="Influencers Pro"
-              subtitle={computed.proPlan.roster > 0 ? `${Math.round((computed.proPlan.active / computed.proPlan.roster) * 100)}% del roster` : 'suscripción activa'}
+              subtitle={computed.proPlan.roster > 0 ? `${computed.proPlan.paid} pagadas · ${computed.proPlan.manual} manual · ${Math.round((computed.proPlan.active / computed.proPlan.roster) * 100)}% del roster` : 'sin roster'}
               tone="green"
               href="/admin-influencers?plan=pro"
             />
-            <button
-              type="button"
-              onClick={() => setShowProAttempts(v => !v)}
-              className="text-left"
-            >
+            <button type="button" onClick={() => setShowProAttempts(v => !v)} className="text-left">
               <KpiCard
                 icon={<AlertTriangle className="h-5 w-5" />}
                 value={String(computed.proPlan.attempts)}
                 title="Intentaron suscribirse"
-                subtitle={computed.proPlan.attempts > 0 ? 'no completaron el pago — ver quiénes' : 'sin intentos pendientes'}
+                subtitle={computed.proPlan.attempts > 0 ? `${computed.proPlan.attemptSubscriptions} intentos · ${computed.proPlan.pastDue} con pago vencido` : 'sin intentos pendientes'}
                 tone={computed.proPlan.attempts > 0 ? 'yellow' : 'gray'}
               />
             </button>
+            <KpiCard
+              icon={<UserCheck className="h-5 w-5" />}
+              value={String(computed.proPlan.paymentsCount)}
+              title="Cobros Pro registrados"
+              subtitle={`${computed.proPlan.paidInfluencers} influencers han pagado`}
+              tone="purple"
+            />
             <KpiCard
               icon={<Users className="h-5 w-5" />}
               value={String(computed.proPlan.roster)}
@@ -744,7 +758,17 @@ export function DashboardClient() {
 
           {showProAttempts && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4">
-              <h3 className="mb-3 text-sm font-bold text-gray-900">Suscripciones iniciadas y no completadas</h3>
+              <div className="mb-3 flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Intentos de Pro no completados</h3>
+                  <p className="text-xs text-gray-500">{computed.proPlan.attempts} influencers · {computed.proPlan.attemptSubscriptions} suscripciones iniciadas</p>
+                </div>
+                {computed.proPlan.pastDue > 0 && (
+                  <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                    {computed.proPlan.pastDue} con pago vencido
+                  </span>
+                )}
+              </div>
               {computed.proPlan.attemptList.length === 0 ? (
                 <p className="text-sm text-gray-500">No hay intentos pendientes.</p>
               ) : (
@@ -760,7 +784,7 @@ export function DashboardClient() {
                         {attempt.email && <p className="truncate text-xs text-gray-500">{attempt.email}</p>}
                       </div>
                       <div className="flex shrink-0 items-center gap-3 text-xs text-gray-500">
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">{attempt.status}</span>
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">No completó</span>
                         <span>{new Date(attempt.created_at).toLocaleDateString('es-CL')}</span>
                         <ExternalLink className="h-3.5 w-3.5" />
                       </div>

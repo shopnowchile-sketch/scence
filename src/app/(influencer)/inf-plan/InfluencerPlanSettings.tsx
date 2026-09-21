@@ -1,17 +1,34 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, LockKeyhole, RefreshCw } from 'lucide-react'
+import { Check, LockKeyhole, RefreshCw, X, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 
+type Payment = {
+  id: string
+  gateway: string
+  gateway_payment_id: string | null
+  amount: number | string
+  currency: string
+  status: string
+  paid_at: string
+  period_start: string | null
+  period_end: string | null
+  receipt_url: string | null
+}
+
 type Billing = {
-  subscription: { status: string; current_period_end: string | null; plan: { name: string; tier: string } | null } | null
+  subscription: { status: string; current_period_end: string | null; started_paying_at: string | null; plan: { name: string; tier: string } | null } | null
   commitment: { campaignName: string; completedDeliverables: number; totalDeliverables: number } | null
   can_cancel: boolean
   is_pro: boolean
   account_active: boolean
+  started_paying_at: string | null
+  payments: Payment[]
+  total_paid: number
+  total_paid_currency: string | null
   blocked_reason?: 'campaign_active' | 'deliverables_pending' | null
 }
 
@@ -28,6 +45,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
   const [loading, setLoading] = useState(true)
   const [canceling, setCanceling] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
+  const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -147,7 +165,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
 
       {active && (
         <section className="rounded-2xl border border-violet-200 bg-white p-5">
-          <div className="flex items-center justify-between"><h3 className="font-bold text-gray-900">PLAN PRO</h3><span className="font-bold text-violet-700">$7.990/mes</span></div>
+          <div className="flex items-center justify-between"><h3 className="font-bold text-gray-900">PLAN PRO</h3><span className="font-bold text-violet-700">{billing?.payments?.[0] ? `${new Intl.NumberFormat('es-CL', { style: 'currency', currency: billing.payments[0].currency }).format(Number(billing.payments[0].amount))}/mes` : 'Monto no informado'}</span></div>
           <div className="mt-4 space-y-3">{benefits.map(benefit => <div key={benefit} className="flex items-start gap-2 text-sm text-gray-700"><Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" /><span>{benefit}</span></div>)}</div>
         </section>
       )}
@@ -163,6 +181,69 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
             </div>
           </div>
         </section>
+      )}
+
+      {active && (
+        <section className="rounded-2xl border border-gray-100 bg-white p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="font-semibold text-gray-900">Mis pagos</h3>
+              <p className="mt-1 text-sm text-gray-500">Historial de cobros reales de tu suscripción Pro.</p>
+            </div>
+          </div>
+
+          {billing?.payments?.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wider text-gray-400">
+                    <th className="py-3 pr-3">Fecha</th>
+                    <th className="py-3 pr-3">Monto</th>
+                    <th className="py-3 pr-3">Gateway</th>
+                    <th className="py-3 pr-3">Estado</th>
+                    <th className="py-3 text-right">Comprobante</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {billing.payments.map(payment => (
+                    <tr key={payment.id}>
+                      <td className="py-3 pr-3 text-gray-600 whitespace-nowrap">
+                        {new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeZone: 'America/Santiago' }).format(new Date(payment.paid_at))}
+                      </td>
+                      <td className="py-3 pr-3 font-semibold text-gray-900 whitespace-nowrap">
+                        {new Intl.NumberFormat('es-CL', { style: 'currency', currency: payment.currency }).format(Number(payment.amount))}
+                      </td>
+                      <td className="py-3 pr-3 text-gray-500 capitalize">{payment.gateway}</td>
+                      <td className="py-3 pr-3 text-gray-500 capitalize">{payment.status}</td>
+                      <td className="py-3 text-right">
+                        <button type="button" onClick={() => setReceiptPayment(payment)} className="font-semibold text-violet-600 hover:underline">
+                          Ver comprobante
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-gray-400">Todavía no hay pagos registrados.</p>
+          )}
+        </section>
+      )}
+
+      {receiptPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Comprobante de pago" onMouseDown={event => { if (event.target === event.currentTarget) setReceiptPayment(null) }}>
+          <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <div><h3 className="font-semibold text-gray-900">Comprobante de pago</h3><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeZone: 'America/Santiago' }).format(new Date(receiptPayment.paid_at))}</p></div>
+              <div className="flex items-center gap-2">
+                <a href={`/api/influencer/subscription-payments/${receiptPayment.id}/pdf?download=1`} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"><Download className="h-4 w-4" /> Descargar PDF</a>
+                <button type="button" onClick={() => setReceiptPayment(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label="Cerrar"><X className="h-5 w-5" /></button>
+              </div>
+            </div>
+            <iframe title="Vista previa del comprobante" src={`/api/influencer/subscription-payments/${receiptPayment.id}/pdf`} className="min-h-0 flex-1 bg-gray-100" />
+          </div>
+        </div>
       )}
 
       {active && (

@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   AlertCircle, RefreshCw, Edit2, Save, X, Plus, Trash2,
@@ -364,7 +365,7 @@ export default function ProfilePage() {
             <div className="flex items-center gap-5">
               <div className="flex-shrink-0">
                 {profile.avatar_url ? (
-                  <img src={profile.avatar_url} alt={profile.display_name} onError={() => setProfile(prev => prev ? { ...prev, avatar_url: null } : prev)} className="w-20 h-20 rounded-2xl object-cover" />
+                  <Image src={profile.avatar_url} alt={profile.display_name} onError={() => setProfile(prev => prev ? { ...prev, avatar_url: null } : prev)} className="w-20 h-20 rounded-2xl object-cover"  width={80} height={80} unoptimized />
                 ) : (
                   <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-3xl">
                     {profile.display_name.charAt(0).toUpperCase()}
@@ -500,7 +501,7 @@ export default function ProfilePage() {
             <div className="mt-4 flex items-center gap-4">
               <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 text-white flex items-center justify-center text-2xl font-bold">
                 {(avatarPreview || profile.avatar_url) ? (
-                  <img src={avatarPreview ?? profile.avatar_url ?? ''} alt="Vista previa" className="h-full w-full object-cover" onError={() => setAvatarPreview(null)} />
+                  <Image src={avatarPreview ?? profile.avatar_url ?? ''} alt="Vista previa" className="h-full w-full object-cover" onError={() => setAvatarPreview(null)}  width={800} height={800} unoptimized />
                 ) : profile.display_name.charAt(0).toUpperCase()}
               </div>
               <div>

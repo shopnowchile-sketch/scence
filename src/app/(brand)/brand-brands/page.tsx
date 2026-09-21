@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useCallback, useEffect, useState } from 'react'
 import { Building2, Plus, Search } from 'lucide-react'
 import { BrandModal } from '@/components/brands/BrandModal'
@@ -151,11 +152,11 @@ export default function BrandBrandsPage() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         {brand.logo_url ? (
-                          <img
+                          <Image
                             src={brand.logo_url}
                             alt={brand.name}
                             className="h-9 w-9 rounded-lg object-cover border border-gray-100"
-                          />
+                           width={36} height={36} unoptimized />
                         ) : (
                           <div className="h-9 w-9 rounded-lg bg-violet-50 text-violet-700 flex items-center justify-center text-xs font-bold">
                             {initials(brand.name)}

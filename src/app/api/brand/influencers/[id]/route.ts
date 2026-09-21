@@ -98,8 +98,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: documents } = await admin
     .from('influencer_documents')
-    .select('id, document_type, title, original_filename, storage_path, mime_type, file_size, created_at')
+    .select('id, document_type, title, original_filename, storage_path, mime_type, file_size, visibility, created_at')
     .eq('influencer_id', params.id)
+    .eq('visibility', 'approved_brands')
     .order('created_at', { ascending: false })
 
   const documentsWithUrls = await Promise.all((documents ?? []).map(async document => {

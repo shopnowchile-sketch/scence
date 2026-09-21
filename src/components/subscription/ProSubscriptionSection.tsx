@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { CreditCard, Download, RefreshCw } from 'lucide-react'
+import { CreditCard, Download, RefreshCw, CheckCircle2, CalendarDays } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Payment = {
@@ -38,7 +38,7 @@ function date(value: string | null) {
   return new Intl.DateTimeFormat('es-CL', { dateStyle: 'medium', timeZone: 'America/Santiago' }).format(new Date(value))
 }
 
-export function ProSubscriptionSection({ influencerId, isPro }: { influencerId: string; isPro: boolean }) {
+export function ProSubscriptionSection({ influencerId, isPro, proSource }: { influencerId: string; isPro: boolean; proSource?: 'paid' | 'manual' | 'free' }) {
   const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -80,6 +80,38 @@ export function ProSubscriptionSection({ influencerId, isPro }: { influencerId: 
         <div className="py-8 text-center text-sm text-gray-400">Cargando pagos…</div>
       ) : data ? (
         <>
+          {proSource === 'paid' && (
+            <div className="mb-4 overflow-hidden rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 via-white to-emerald-50">
+              <div className="flex flex-wrap items-center justify-between gap-4 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-sm">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-violet-700">SCENCE PRO</span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700">PAGA</span>
+                    </div>
+                    <p className="mt-0.5 text-sm font-semibold text-gray-900">Suscripción activa con cobros reales</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-5">
+                  {data.summary.current_amount && (
+                    <div className="text-right">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Cobro mensual</div>
+                      <div className="text-lg font-black text-gray-950">{money(data.summary.current_amount.amount, data.summary.current_amount.currency)}</div>
+                    </div>
+                  )}
+                  {data.summary.next_billing_at && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <CalendarDays className="h-4 w-4 text-violet-500" />
+                      Próximo cobro {date(data.summary.next_billing_at)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <div className="rounded-xl bg-gray-50 p-3"><div className="text-[11px] text-gray-400">Estado</div><div className="mt-1 text-sm font-bold text-gray-900 capitalize">{data.summary.status ?? '—'}</div></div>
             <div className="rounded-xl bg-gray-50 p-3"><div className="text-[11px] text-gray-400">Inicio de pago</div><div className="mt-1 text-sm font-bold text-gray-900">{date(data.summary.started_paying_at)}</div></div>

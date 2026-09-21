@@ -224,17 +224,19 @@ export async function GET() {
       )
   }
 
-  // ── Plan Pro: convertidas, intentos y roster ───────────────────────────────
-  // Toda la información sale de tablas que ya existen: `subscriptions` (una
-  // fila por suscripción PayPal, con el influencer en metadata.influencer_id) e
-  // `influencers.metadata.manual_pro`. Sin tabla ni columna nueva.
+  // ── Plan Pro: funnel real del roster ────────────────────────────────────────
+  // Fuente única:
+  //   - subscriptions = estado PayPal de cada suscripción
+  //   - subscription_payments = cobros realmente completados
+  //   - influencers.metadata.manual_pro = override manual
   //
-  // Un INTENTO es una suscripción que se creó en PayPal y nunca llegó a
-  // activarse ('incomplete' = APPROVAL_PENDING). Es el dato que faltaba: sin
-  // él no hay forma de ver que alguien quiso pagar y no pudo.
+  // Importante: todo queda limitado a la organización del admin. Antes esta
+  // consulta leía TODAS las suscripciones de la plataforma y además contaba
+  // filas de suscripción, no influencers únicas.
   const { data: proSubscriptions } = await db
     .from('subscriptions')
-    .select('id, status, paypal_subscription_id, created_at, updated_at, metadata')
+    .select('id, status, paypal_subscription_id, created_at, updated_at, current_period_end, metadata')
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
   const influencerSubscriptions = (proSubscriptions ?? []).filter(row => {
@@ -242,26 +244,71 @@ export async function GET() {
     return metadata.account_type === 'influencer' && typeof metadata.influencer_id === 'string'
   })
 
-  const attemptRows = influencerSubscriptions.filter(row => row.status !== 'active' && row.status !== 'trialing' && row.status !== 'canceled')
-  const attemptInfluencerIds = Array.from(new Set(attemptRows.map(row => (row.metadata as Record<string, unknown>).influencer_id as string)))
+  const influencerIdsForPro = Array.from(new Set(influencerSubscriptions.map(row => (
+    (row.metadata as Record<string, unknown>).influencer_id as string
+  ))))
+
+  // Pro reales: exactamente el mismo resolver que usa el resto del producto.
+  const { data: allInfluencerIds } = await db
+    .from('influencers')
+    .select('id')
+    .eq('organization_id', orgId)
+  const proStatuses = await getInfluencerProStatuses(db, (allInfluencerIds ?? []).map(row => row.id))
+
+  const proActiveCount = Array.from(proStatuses.values()).filter(status => status !== 'free').length
+  const proPaidCount = Array.from(proStatuses.values()).filter(status => status === 'paid').length
+  const proManualCount = Array.from(proStatuses.values()).filter(status => status === 'manual').length
+
+  // "Intentaron suscribirse" = influencers únicas con al menos una suscripción
+  // inicial que quedó APPROVAL_PENDING/incomplete. Las 40 filas actuales son
+  // 25 influencers: una misma persona puede haberlo intentado varias veces.
+  const attemptRows = influencerSubscriptions.filter(row => row.status === 'incomplete')
+  const latestAttemptByInfluencer = new Map<string, typeof attemptRows[number]>()
+  for (const row of attemptRows) {
+    const influencerId = (row.metadata as Record<string, unknown>).influencer_id as string
+    if (!latestAttemptByInfluencer.has(influencerId)) latestAttemptByInfluencer.set(influencerId, row)
+  }
+  const attemptInfluencerIds = Array.from(latestAttemptByInfluencer.keys()).filter(influencerId => proStatuses.get(influencerId) === 'free')
+
+  // Past due = una suscripción que sí llegó a existir pero perdió el cobro.
+  // No se mezcla con los intentos iniciales.
+  const pastDueRows = influencerSubscriptions.filter(row => row.status === 'past_due')
+  const pastDueInfluencerIds = Array.from(new Set(pastDueRows.map(row => (
+    (row.metadata as Record<string, unknown>).influencer_id as string
+  ))))
 
   const { data: attemptInfluencers } = attemptInfluencerIds.length
     ? await db.from('influencers').select('id, display_name, email').in('id', attemptInfluencerIds)
     : { data: [] }
   const attemptInfluencerById = new Map((attemptInfluencers ?? []).map(inf => [inf.id, inf]))
 
-  // Pro reales: misma fuente que usa el resto del sistema (pagadas + manuales),
-  // nunca un conteo propio que pueda contradecir a getInfluencerProStatuses.
-  const { data: allInfluencerIds } = await db.from('influencers').select('id')
-  const proStatuses = await getInfluencerProStatuses(db, (allInfluencerIds ?? []).map(row => row.id))
-  const proActiveCount = Array.from(proStatuses.values()).filter(status => status !== 'free').length
+  // Ledger: cuenta solo cobros realmente completados, nunca "suscripciones
+  // creadas". Esto permite separar conversión de caja.
+  const { data: completedProPayments } = await db
+    .from('subscription_payments')
+    .select('subscription_id, influencer_id')
+    .eq('organization_id', orgId)
+    .eq('payer_type', 'influencer')
+    .eq('status', 'completed')
+
+  const paidInfluencerIds = new Set(
+    (completedProPayments ?? [])
+      .map(row => row.influencer_id)
+      .filter((id): id is string => Boolean(id))
+  )
 
   const proPlan = {
     active: proActiveCount,
+    paid: proPaidCount,
+    manual: proManualCount,
     roster: totalInfluencers,
-    attempts: attemptRows.length,
-    attempt_list: attemptRows.map(row => {
-      const influencerId = (row.metadata as Record<string, unknown>).influencer_id as string
+    attempts: attemptInfluencerIds.length,
+    attempt_subscriptions: attemptRows.length,
+    past_due: pastDueInfluencerIds.length,
+    paid_influencers: paidInfluencerIds.size,
+    payments_count: (completedProPayments ?? []).length,
+    attempt_list: attemptInfluencerIds.map(influencerId => {
+      const row = latestAttemptByInfluencer.get(influencerId)!
       const influencer = attemptInfluencerById.get(influencerId)
       return {
         influencer_id: influencerId,

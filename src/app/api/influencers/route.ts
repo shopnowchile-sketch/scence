@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
   const isActive   = searchParams.get('is_active')
   const rawPlan    = searchParams.get('plan')
   const planParam  = rawPlan === 'pro' || rawPlan === 'free' ? rawPlan : null
+  const proAttemptParam = searchParams.get('pro_attempt') === '1'
   // Columnas ordenables directo en Postgres. 'followers'/'engagement_rate' se
   // manejan aparte (ver JOIN_SORT_COLS arriba) porque viven en la tabla join.
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune', 'birth_date'] as const
@@ -180,7 +181,7 @@ export async function GET(request: NextRequest) {
   // Filtrar por plan también exige el dataset completo antes de paginar,
   // aunque el sort activo sea uno normal (ej. filtrar Gratis pero seguir
   // ordenado por "Más recientes").
-  const needsFullDataset = isJoinSort || isPlanSort || Boolean(planParam)
+  const needsFullDataset = isJoinSort || isPlanSort || Boolean(planParam) || proAttemptParam
 
   let data: Record<string, unknown>[] = []
   let count = 0
@@ -189,6 +190,17 @@ export async function GET(request: NextRequest) {
   // filtrado (por sort o por filtro de plan) y se reutiliza más abajo al
   // enriquecer la página final — evita repetir la consulta de subscriptions.
   let fullProStatuses: Map<string, 'paid' | 'manual' | 'free'> | null = null
+  const { data: incompleteProSubscriptions } = await admin
+    .from('subscriptions')
+    .select('metadata')
+    .eq('organization_id', orgId)
+    .eq('status', 'incomplete')
+  const proAttemptByInfluencer = new Map<string, number>()
+  for (const row of incompleteProSubscriptions ?? []) {
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
+    if (metadata.account_type !== 'influencer' || typeof metadata.influencer_id !== 'string') continue
+    proAttemptByInfluencer.set(metadata.influencer_id, (proAttemptByInfluencer.get(metadata.influencer_id) ?? 0) + 1)
+  }
 
   if (needsFullDataset) {
     // Sort por followers/engagement_rate/plan, o filtro por plan: traer todo
@@ -218,14 +230,24 @@ export async function GET(request: NextRequest) {
         ? allRows.filter(inf => (inf.social_profiles as Array<{ platform: string }>).some(sp => sp.platform === platform))
         : allRows
 
+      let withProAttempts = proAttemptParam
+        ? withPlatform.filter(inf => proAttemptByInfluencer.has(inf.id as string))
+        : withPlatform
+
+      if (proAttemptParam) {
+        const proStatusesForAttempts = fullProStatuses ?? await getInfluencerProStatuses(admin, withProAttempts.map(inf => inf.id as string))
+        withProAttempts = withProAttempts.filter(inf => (proStatusesForAttempts.get(inf.id as string) ?? 'free') === 'free')
+        fullProStatuses = proStatusesForAttempts
+      }
+
       // Plan: se calcula sobre el dataset filtrado completo (antes de sort y
       // de paginar) porque hace falta tanto para el filtro Todos/PRO/Gratis
       // como para poder ordenar por esta columna.
-      let withPlan = withPlatform
-      if (isPlanSort || planParam) {
-        fullProStatuses = await getInfluencerProStatuses(admin, withPlatform.map(inf => inf.id as string))
+      let withPlan = withProAttempts
+      if (isPlanSort || planParam || proAttemptParam) {
+        fullProStatuses = await getInfluencerProStatuses(admin, withProAttempts.map(inf => inf.id as string))
         if (planParam) {
-          withPlan = withPlatform.filter(inf => {
+          withPlan = withProAttempts.filter(inf => {
             const source = fullProStatuses!.get(inf.id as string) ?? 'free'
             return planParam === 'pro' ? source !== 'free' : source === 'free'
           })
@@ -402,7 +424,8 @@ export async function GET(request: NextRequest) {
     }
 
     const pro_source = proStatuses.get(inf.id as string) ?? 'free'
-    return { ...inf, is_pro: pro_source !== 'free', pro_source, registered_by, associated_brands }
+    const pro_attempt_count = proAttemptByInfluencer.get(inf.id as string) ?? 0
+    return { ...inf, is_pro: pro_source !== 'free', pro_source, pro_attempt_count, registered_by, associated_brands }
   })
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit })

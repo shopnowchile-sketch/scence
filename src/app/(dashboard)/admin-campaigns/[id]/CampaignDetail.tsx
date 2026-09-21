@@ -1328,6 +1328,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingMinEngagement, setPendingMinEngagement] = useState(0)
   const [pendingMinRating, setPendingMinRating] = useState(0)
   const [pendingSearch, setPendingSearch] = useState('')
+  type PendingApplicationStatusFilter = 'all' | 'pending' | 'rejected'
+  const [pendingApplicationStatusFilter, setPendingApplicationStatusFilter] = useState<PendingApplicationStatusFilter>('all')
   const [pendingApplicationsOpen, setPendingApplicationsOpen] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<Set<string>>(new Set())
   const [bulkRejectingPending, setBulkRejectingPending] = useState(false)
@@ -1526,8 +1528,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     applicationHistory.flatMap(ci => ci.influencer?.categories ?? [])
   )).sort()
 
-  type PendingApplicationStatusFilter = 'all' | 'pending' | 'rejected'
-  const [pendingApplicationStatusFilter, setPendingApplicationStatusFilter] = useState<PendingApplicationStatusFilter>('all')
   const filteredPendingApplications = applicationHistory.filter(ci => {
     const inf = ci.influencer
     if (!inf) return false

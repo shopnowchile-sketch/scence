@@ -469,7 +469,6 @@ export function InfluencerProfile({ id }: { id: string }) {
   const conversions = influencer.affiliate_conversions ?? []
   const settlements = influencer.commission_settlements ?? []
 
-  const primaryProfile = socialProfiles.find(sp => sp.is_primary) ?? socialProfiles[0]
   const avatarGrad = GRADIENTS[influencer.display_name.charCodeAt(0) % GRADIENTS.length]
   const initials = getInitials(influencer.display_name)
 

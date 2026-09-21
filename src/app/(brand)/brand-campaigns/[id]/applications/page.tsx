@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
@@ -169,7 +170,7 @@ export default function ApplicationsPage() {
                     <div key={app.id} className="bg-white rounded-2xl border border-amber-100 p-5 space-y-4">
                       <div className="flex items-start gap-3">
                         {inf?.avatar_url
-                          ? <img src={inf.avatar_url} alt={inf.display_name} className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
+                          ? <Image src={inf.avatar_url} alt={inf.display_name} className="w-12 h-12 rounded-full object-cover flex-shrink-0"  width={48} height={48} unoptimized />
                           : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold flex-shrink-0">{inf?.display_name?.[0] ?? '?'}</div>
                         }
                         <div className="flex-1 min-w-0">
@@ -294,7 +295,7 @@ export default function ApplicationsPage() {
                     <div key={app.id} className="bg-white rounded-xl border border-gray-100 px-5 py-3 space-y-2">
                       <div className="flex items-center gap-3">
                         {inf?.avatar_url
-                          ? <img src={inf.avatar_url} alt={inf?.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                          ? <Image src={inf.avatar_url} alt={inf?.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0"  width={36} height={36} unoptimized />
                           : <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-bold flex-shrink-0">{inf?.display_name?.[0] ?? '?'}</div>
                         }
                         <div className="flex-1 min-w-0">

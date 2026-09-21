@@ -724,31 +724,31 @@ export function DashboardClient() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               icon={<Star className="h-5 w-5" />}
-              value=String(computed.proPlan.active)
+              value={String(computed.proPlan.active)}
               title="Influencers Pro"
-              subtitle={`${computed.proPlan.roster > 0 ? `${computed.proPlan.paid} pagadas · ${computed.proPlan.manual} manual · ${Math.round((computed.proPlan.active / computed.proPlan.roster) * 100)}% del roster` : 'sin roster'}`}
+              subtitle={computed.proPlan.roster > 0 ? `${computed.proPlan.paid} pagadas · ${computed.proPlan.manual} manual · ${Math.round((computed.proPlan.active / computed.proPlan.roster) * 100)}% del roster` : 'sin roster'}
               tone="green"
               href="/admin-influencers?plan=pro"
             />
             <button type="button" onClick={() => setShowProAttempts(v => !v)} className="text-left">
               <KpiCard
                 icon={<AlertTriangle className="h-5 w-5" />}
-                value=String(computed.proPlan.attempts)
+                value={String(computed.proPlan.attempts)}
                 title="Intentaron suscribirse"
-                subtitle={`${computed.proPlan.attempts > 0 ? `${computed.proPlan.attemptSubscriptions} intentos · ${computed.proPlan.pastDue} con pago vencido` : 'sin intentos pendientes'}`}
+                subtitle={computed.proPlan.attempts > 0 ? `${computed.proPlan.attemptSubscriptions} intentos · ${computed.proPlan.pastDue} con pago vencido` : 'sin intentos pendientes'}
                 tone={computed.proPlan.attempts > 0 ? 'yellow' : 'gray'}
               />
             </button>
             <KpiCard
               icon={<UserCheck className="h-5 w-5" />}
-              value=String(computed.proPlan.paymentsCount)
+              value={String(computed.proPlan.paymentsCount)}
               title="Cobros Pro registrados"
-              subtitle=`${computed.proPlan.paidInfluencers} influencers han pagado`
+              subtitle={`${computed.proPlan.paidInfluencers} influencers han pagado`}
               tone="purple"
             />
             <KpiCard
               icon={<Users className="h-5 w-5" />}
-              value=String(computed.proPlan.roster)
+              value={String(computed.proPlan.roster)}
               title="Roster total"
               subtitle="influencers registradas"
               tone="blue"
@@ -761,11 +761,11 @@ export function DashboardClient() {
               <div className="mb-3 flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900">Intentos de Pro no completados</h3>
-                  <p className="text-xs text-gray-500">__ATTEMPT_DETAILS__</p>
+                  <p className="text-xs text-gray-500">{computed.proPlan.attempts} influencers · {computed.proPlan.attemptSubscriptions} suscripciones iniciadas</p>
                 </div>
                 {computed.proPlan.pastDue > 0 && (
                   <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
-                    __PAST_DUE_BADGE__
+                    {computed.proPlan.pastDue} con pago vencido
                   </span>
                 )}
               </div>
@@ -775,8 +775,8 @@ export function DashboardClient() {
                 <div className="divide-y divide-amber-100">
                   {computed.proPlan.attemptList.map(attempt => (
                     <Link
-                      key=`${attempt.influencer_id}-${attempt.created_at}`
-                      href=`/admin-influencers/${attempt.influencer_id}`
+                      key={`${attempt.influencer_id}-${attempt.created_at}`}
+                      href={`/admin-influencers/${attempt.influencer_id}`}
                       className="flex items-center justify-between gap-4 py-2.5 hover:bg-amber-50 -mx-2 px-2 rounded-lg transition-colors"
                     >
                       <div className="min-w-0">

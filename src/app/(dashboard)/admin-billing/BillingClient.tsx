@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import {
   Plus, FileText, DollarSign, CheckCircle2,
@@ -66,7 +67,7 @@ function Avatar({ name, url, size = 8 }: { name: string; url?: string | null; si
   const idx = name.charCodeAt(0) % GRADIENTS.length
   const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
   return url ? (
-    <img src={url} alt={name} className={`w-${size} h-${size} rounded-full object-cover`} />
+    <Image src={url} alt={name} className={`w-${size} h-${size} rounded-full object-cover`}  width={800} height={800} unoptimized />
   ) : (
     <div className={`w-${size} h-${size} rounded-full bg-gradient-to-br ${GRADIENTS[idx]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
       {initials}

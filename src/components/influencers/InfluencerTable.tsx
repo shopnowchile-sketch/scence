@@ -211,7 +211,7 @@ export function InfluencerTable({
               {portal === 'admin' && visible.plan && (
                 <TH col="plan" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('plan', e)}>Plan</TH>
               )}
-              {portal === 'admin' && visible.proAttempt && <SortableTH<ColKey> onResizeStart={e => startResize('proAttempt', e)}>Intentó Pro</SortableTH>}
+              {portal === 'admin' && visible.proAttempt !== false && <SortableTH<ColKey> onResizeStart={e => startResize('proAttempt', e)}>Intentó Pro</SortableTH>}
               {visible.platforms && (
                 <SortableTH<ColKey> onResizeStart={e => startResize('platforms', e)}>Plataformas</SortableTH>
               )}

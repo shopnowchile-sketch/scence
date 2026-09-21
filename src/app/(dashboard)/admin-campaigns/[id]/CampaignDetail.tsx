@@ -3114,7 +3114,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           <tr key={ci.id} className={cn('transition-colors', ci.application_status === 'rejected' ? 'bg-blue-50/45 opacity-70 hover:bg-blue-50/70' : 'hover:bg-violet-50/40')}>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
-                                {!rejected && <input
+                                {ci.application_status !== 'rejected' && <input
                                   type="checkbox"
                                   checked={pendingSelection.has(ci.id)}
                                   onChange={() => setPendingSelection(previous => {

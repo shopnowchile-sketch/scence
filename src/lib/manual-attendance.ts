@@ -33,7 +33,7 @@ export function buildManualAttendanceUpdate({
     update.attendance_outcome = null
     update.attendance_outcome_at = null
     update.attendance_note = null
-else {
+  } else {
     update.attendance_outcome = 'no_show'
     update.attendance_outcome_at = now
     update.attendance_note = 'No confirmó · No asistió'

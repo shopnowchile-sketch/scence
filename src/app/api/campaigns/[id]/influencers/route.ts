@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { attendanceClosedEmail, attendanceConfirmationEmail, getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
+import { attendanceConfirmationEmail, getResend, FROM_EMAIL, campaignAssignedEmail, influencerInviteEmail } from '@/lib/resend'
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { buildManualAttendanceUpdate, type ManualAttendanceAction } from '@/lib/manual-attendance'

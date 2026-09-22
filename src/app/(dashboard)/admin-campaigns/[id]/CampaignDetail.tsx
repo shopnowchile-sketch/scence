@@ -32,6 +32,7 @@ import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceCo
 import { CampaignEmailModal } from '@/components/campaigns/CampaignEmailModal'
 import { createClient } from '@/lib/supabase/client'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
+import { GenerateContractModal } from '@/components/campaigns/GenerateContractModal'
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -63,8 +64,8 @@ const GRADIENTS = [
   'from-amber-400 to-orange-500', 'from-violet-400 to-indigo-500',
 ]
 
-type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'history'
-const VALID_TABS: Tab[] = ['overview', 'influencers', 'deliverables', 'barters', 'assets', 'locations', 'billing', 'history']
+type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'contracts' | 'history'
+const VALID_TABS: Tab[] = ['overview', 'influencers', 'deliverables', 'barters', 'assets', 'locations', 'billing', 'contracts', 'history']
 
 // ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
 // admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
@@ -1286,6 +1287,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
   const [showCampaignInvoiceModal, setShowCampaignInvoiceModal] = useState(false)
   const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
+  const [showGenerateContractModal, setShowGenerateContractModal] = useState(false)
   const [brandLocations, setBrandLocations] = useState<Array<Record<string, unknown>>>([])
   const [campaignAssets, setCampaignAssets] = useState<Array<Record<string, unknown>>>([])
   const [assetName, setAssetName] = useState('')
@@ -2472,6 +2474,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
     { id: 'locations',    label: `Lugares (${brandLocations.length + (eventLocation ? 1 : 0)})`, icon: <Target className="h-3.5 w-3.5" /> },
     { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-3.5 w-3.5" /> },
+    ...(!isBrandPortal ? [{ id: 'contracts' as Tab, label: 'Contratos', icon: <FileText className="h-3.5 w-3.5" /> }] : []),
     { id: 'history',      label: 'Historial',     icon: <Clock className="h-3.5 w-3.5" /> },
   ]
 
@@ -4424,28 +4427,48 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       )}
 
       {/* ── CONTRATOS ──────────────────────────────────────────────────────── */}
-      {false && (
+      {tab === 'contracts' && !isBrandPortal && (
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">Plantillas de contrato</h3>
+            <h3 className="text-sm font-semibold text-gray-700">Contrato de esta campaña</h3>
             <Link href="/admin-contracts" className="text-sm font-semibold text-violet-600 hover:underline">
-              Administrar contratos
+              Administrar plantillas
             </Link>
           </div>
 
-          {contractTemplates.length === 0 ? (
-            <p className="text-sm text-gray-400">Sin plantillas de contrato todavía.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {contractTemplates.map(tpl => (
-                <div key={String(tpl.id)} className="rounded-xl border border-gray-100 p-4">
-                  <p className="text-sm font-semibold text-gray-900">{String(tpl.name ?? 'Plantilla')}</p>
-                  <p className="text-xs text-gray-500 mt-1">{String(tpl.campaign_type ?? 'General')}</p>
-                </div>
-              ))}
-            </div>
+          <p className="text-sm text-gray-500">
+            Genera el contrato específico de <span className="font-semibold text-gray-700">{c.name}</span> a partir de
+            una plantilla reutilizable y los datos reales de la campaña (marca, marca colaboradora, evento, paquete y
+            condiciones de pago).
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setShowGenerateContractModal(true)}
+            className="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors"
+          >
+            <FileText className="h-4 w-4" />
+            Generar contrato
+          </button>
+
+          {contractTemplates.length === 0 && (
+            <p className="text-xs text-amber-600">
+              No hay plantillas todavía. Crea una en{' '}
+              <Link href="/admin-contracts" className="font-semibold hover:underline">Admin → Contratos</Link>.
+            </p>
           )}
         </div>
+      )}
+
+      {showGenerateContractModal && (
+        <GenerateContractModal
+          campaignId={id}
+          campaignName={c.name}
+          campaignType={(c as unknown as { type?: string }).type}
+          templates={contractTemplates as unknown as Array<{ id: string; name: string; campaign_type?: string | null; document_type?: string }>}
+          collaboratorBrands={invoiceRecipientBrands}
+          onClose={() => setShowGenerateContractModal(false)}
+        />
       )}
 
       {/* ── CANJES ─────────────────────────────────────────────────────────── */}

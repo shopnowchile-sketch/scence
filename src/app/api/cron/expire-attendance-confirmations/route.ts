@@ -4,7 +4,7 @@ import { getCampaignDateKey } from '@/lib/attendance-state'
 
 // Corre a diario. Una falta de respuesta no deja cupos bloqueados indefinidamente.
 export async function GET(request: NextRequest) {
-  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!process.env.CRON_SECRET || request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = createAdminClient()
   const now = new Date()
   const today = getCampaignDateKey(now)

@@ -99,7 +99,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         influencer_id,
         fee: fee ?? null,
         notes: notes ?? null,
-        status: invite ? 'pending' : 'active',
+        // `status` usa el enum campaign_status (no acepta 'pending'): la
+        // invitación fallaba siempre. Pendientes quedan con el default
+        // ('draft'), igual que las postulaciones. Fuente de verdad: application_status.
+        ...(invite ? {} : { status: 'active' }),
         application_status: invite ? 'pending' : 'accepted',
         origin: invite ? 'invitation' : 'invitation',
         ...(invite ? {} : { accepted_at: new Date().toISOString() }),

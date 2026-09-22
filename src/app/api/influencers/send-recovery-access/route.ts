@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
-import { isOrgAdmin } from '@/lib/influencers/authz'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -30,8 +29,11 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch { /* request body is optional */ }
 
   const admin = createAdminClient()
+  // Gestión masiva de influencers: exclusiva del admin de plataforma (antes
+  // bastaba ser owner/miembro de la org, lo que incluía a marcas de Scence SpA).
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  if (!orgId || !(await isOrgAdmin(admin, user.id, orgId))) {
+  if (!orgId || !(await isPlatformAdmin(user.id, admin))) {
     return NextResponse.json({ error: 'Solo administradores pueden enviar estos accesos' }, { status: 403 })
   }
 

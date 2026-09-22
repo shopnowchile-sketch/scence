@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -11,6 +11,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  // Plantillas de contrato/NDA: gestión exclusiva del admin de plataforma.
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
@@ -44,6 +46,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+  // Plantillas de contrato/NDA: gestión exclusiva del admin de plataforma.
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
@@ -76,6 +80,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  // Plantillas de contrato/NDA: gestión exclusiva del admin de plataforma.
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { getResend, FROM_EMAIL, deliverableReminderEmail } from '@/lib/resend'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 
@@ -24,7 +25,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { influencer_id } = body
   if (!influencer_id) return NextResponse.json({ error: 'influencer_id requerido' }, { status: 422 })
 
-  const admin = createAdminClient()
+  // Admin de plataforma o marca dueña de la campaña (antes: cualquier usuario logueado).
+  const auth = await authorizeCampaignBrandAction(user.id, params.id, 'campaign.manage')
+  if (!auth) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  const { admin } = auth
 
   const { data: campaign } = await admin
     .from('campaigns')

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { loadScan } from '@/lib/influencers/dataQuality'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
-import { isOrgAdmin } from '@/lib/influencers/authz'
 
 // POST /api/influencers/delete-no-instagram
 // body: { dryRun?: boolean }
@@ -15,6 +14,9 @@ export async function POST(req: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  // Gestión masiva de influencers: exclusiva del admin de plataforma (antes
+  // bastaba ser owner/miembro de la org, lo que incluía a marcas de Scence SpA).
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     if (!ids.length) return NextResponse.json({ success: true, deleted: 0 })
 
-    if (!(await isOrgAdmin(admin, user.id, orgId))) {
+    if (!(await isPlatformAdmin(user.id, admin))) {
       return NextResponse.json({ error: 'Solo administradores pueden eliminar permanentemente.' }, { status: 403 })
     }
     const result = await hardDeleteInfluencers(admin, orgId, ids)

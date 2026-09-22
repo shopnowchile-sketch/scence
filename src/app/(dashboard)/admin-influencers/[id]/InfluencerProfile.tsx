@@ -345,15 +345,8 @@ export function InfluencerProfile({ id }: { id: string }) {
 
       if (j.email_sent) {
         toast.success(`✅ Email enviado a ${influencer.email}`)
-      } else if (j.action_link) {
-        // Email falló (dominio no verificado) — mostrar link para copiar
-        await navigator.clipboard.writeText(j.action_link).catch(() => null)
-        toast.success(
-          `Link copiado al portapapeles. Envíalo por WhatsApp o email a ${influencer.email}`,
-          { duration: 10000 }
-        )
-        // También abrir modal con el link
-        prompt('Link de acceso (copia y envía al influencer):', j.action_link)
+      } else if (j.email_sent === false) {
+        toast.error(j.message ?? 'No se pudo enviar el email', { duration: 10000 })
       } else {
         toast.success(j.message ?? 'Listo')
       }

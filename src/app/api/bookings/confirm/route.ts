@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, bookingConfirmEmail } from '@/lib/resend'
+import { escapeHtml } from '@/lib/utils'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
 // ── GET /api/bookings/confirm?influencer_id=&action=confirm|decline&title= ────
-// One-click confirm/decline from email link — no auth required (token-less for MVP)
+// One-click confirm/decline desde el email. Sin sesión, pero exige el
+// confirmation_token del booking: sin token válido no se modifica nada.
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const influencer_id = searchParams.get('influencer_id')
   const action        = searchParams.get('action') // 'confirm' | 'decline'
-  const title         = searchParams.get('title') ?? 'el evento'
   const token         = searchParams.get('token') ?? null
 
-  if (!influencer_id || !['confirm', 'decline'].includes(action ?? '')) {
+  if (!influencer_id || !token || !['confirm', 'decline'].includes(action ?? '')) {
     return new NextResponse('Link inválido', { status: 400 })
   }
 
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(1)
 
+  let title = 'el evento'
   if (bookings?.length) {
     const booking = bookings[0] as unknown as {
       id: string; confirmation_token: string | null; title: string
@@ -40,19 +42,24 @@ export async function GET(req: NextRequest) {
       influencer: { display_name: string; email: string | null } | null
     }
 
-    // Token validation: if a token is provided in the URL, it must match
-    // If no token provided (legacy links), allow for backward compatibility
-    if (token !== null && booking.confirmation_token && token !== booking.confirmation_token) {
-      return new NextResponse('Token inválido', { status: 403 })
+    // El token es obligatorio y debe coincidir (antes era opcional y cualquiera
+    // podía confirmar/declinar el booking de otra persona).
+    if (!booking.confirmation_token || token !== booking.confirmation_token) {
+      return new NextResponse('Link inválido o expirado', { status: 403 })
     }
+    title = booking.title
 
-    await admin
+    const { error: updateError } = await admin
       .from('bookings')
       .update({
         confirmation_status: action === 'confirm' ? 'confirmed' : 'declined',
         updated_at: new Date().toISOString(),
       })
       .eq('id', booking.id)
+    if (updateError) {
+      console.error('[booking confirm] update failed:', updateError)
+      return new NextResponse('No pudimos registrar tu respuesta. Intenta nuevamente.', { status: 500 })
+    }
 
     // ── Email de confirmación (gap G-08, cerrado 2026-07-01) ───────────────────
     // No bloqueante: si falla, la confirmación en BD ya quedó registrada.
@@ -80,12 +87,14 @@ export async function GET(req: NextRequest) {
         console.error('[booking confirm email] non-fatal:', e)
       }
     }
+  } else {
+    return new NextResponse('Link inválido o expirado', { status: 404 })
   }
 
   // Redirect to a simple thank-you page
   const message = action === 'confirm'
-    ? `✅ ¡Genial! Tu participación en "${decodeURIComponent(title)}" ha sido confirmada. ¡Nos vemos!`
-    : `❌ Hemos registrado que no podrás asistir a "${decodeURIComponent(title)}". Gracias por avisarnos.`
+    ? `✅ ¡Genial! Tu participación en "${escapeHtml(title)}" ha sido confirmada. ¡Nos vemos!`
+    : `❌ Hemos registrado que no podrás asistir a "${escapeHtml(title)}". Gracias por avisarnos.`
 
   const html = `<!DOCTYPE html>
 <html>

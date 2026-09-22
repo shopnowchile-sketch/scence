@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { escapeHtml } from '@/lib/utils'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -35,16 +37,16 @@ function bookingConfirmationEmail({
       <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px">Confirmación de participación requerida</p>
     </div>
     <div style="padding:32px">
-      <h1 style="font-size:20px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${influencerName} 👋</h1>
+      <h1 style="font-size:20px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${escapeHtml(influencerName)} 👋</h1>
       <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
         Te invitamos a participar en el siguiente evento. <strong>Necesitamos que confirmes tu asistencia</strong> para asegurar tu lugar.
       </p>
 
       <div style="background:#f3f4f6;border-radius:12px;padding:20px;margin-bottom:24px">
-        <p style="font-size:17px;font-weight:700;color:#111827;margin:0 0 12px">📌 ${title}</p>
+        <p style="font-size:17px;font-weight:700;color:#111827;margin:0 0 12px">📌 ${escapeHtml(title)}</p>
         <p style="color:#374151;font-size:14px;margin:0 0 8px">📅 <strong>Fecha:</strong> ${dateStr}</p>
-        ${location ? `<p style="color:#374151;font-size:14px;margin:0 0 8px">${isVirtual ? '💻' : '📍'} <strong>${isVirtual ? 'Link:' : 'Lugar:'}</strong> ${location}</p>` : ''}
-        ${description ? `<p style="color:#6b7280;font-size:13px;margin:12px 0 0;line-height:1.5;border-top:1px solid #e5e7eb;padding-top:12px">${description}</p>` : ''}
+        ${location ? `<p style="color:#374151;font-size:14px;margin:0 0 8px">${isVirtual ? '💻' : '📍'} <strong>${isVirtual ? 'Link:' : 'Lugar:'}</strong> ${escapeHtml(location)}</p>` : ''}
+        ${description ? `<p style="color:#6b7280;font-size:13px;margin:12px 0 0;line-height:1.5;border-top:1px solid #e5e7eb;padding-top:12px">${escapeHtml(description)}</p>` : ''}
       </div>
 
       <p style="color:#374151;font-size:14px;font-weight:600;margin:0 0 12px">¿Puedes asistir?</p>
@@ -81,6 +83,11 @@ export async function POST(req: NextRequest) {
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Solo admin de plataforma: envía emails con marca SCENCE a influencers.
+  if (!(await isPlatformAdmin(user.id, createAdminClient()))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const body = await req.json() as {

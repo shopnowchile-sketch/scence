@@ -69,10 +69,13 @@ export const CAMPAIGN_DELIVERABLE_DEFAULTS: Record<string, DeliverableTemplate[]
     { type: 'reel',             quantity: 1, description: 'Reel del evento' },
     { type: 'story',            quantity: 1, description: 'Story del evento' },
   ],
+  // Estándar para campañas compensadas con canje (producto/beneficio en vez de
+  // fee) — definido por Pri 2026-09-22: 1 Reel + 2 Stories + envío previo para
+  // aprobación. Antes era post en vez de reel; se actualiza a pedido explícito.
   product_seeding: [
     { type: 'send_content', quantity: 1, description: 'Enviar unboxing / reseña para aprobación' },
+    { type: 'reel',         quantity: 1, description: 'Reel mostrando el producto recibido' },
     { type: 'story',        quantity: 2, description: 'Stories mostrando el producto recibido' },
-    { type: 'post',         quantity: 1, description: 'Post con reseña del producto' },
   ],
 }
 

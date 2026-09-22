@@ -3,7 +3,23 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, Download, Eye, Loader2, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { format, parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { downloadDocumentPdf } from '@/lib/document-pdf'
+
+// El backend (conditionLabel en contract-render.ts) mapea claves conocidas
+// (before_event, on_signing, etc.) a texto y, si la clave no la conoce, usa
+// el valor tal cual. Por eso "antes de una fecha especifica" no necesita
+// tocar el backend: se envia ya compuesto como texto libre.
+function resolvePaymentCondition(condition: string, date: string): string {
+  if (condition !== 'before_date') return condition
+  if (!date) return condition
+  try {
+    return `antes del ${format(parseISO(date), "d 'de' MMMM 'de' yyyy", { locale: es })}`
+  } catch {
+    return condition
+  }
+}
 
 // ── Paquetes de "SCENCE Launch Experience" ──────────────────────────────────
 // Tomados literalmente de la presentación comercial (scence_launch_marcas_.pdf).
@@ -112,8 +128,10 @@ export function GenerateContractModal({
   const [deliverables, setDeliverables] = useState('')
   const [firstPct, setFirstPct] = useState('50')
   const [firstCondition, setFirstCondition] = useState('before_event')
+  const [firstConditionDate, setFirstConditionDate] = useState('')
   const [secondPct, setSecondPct] = useState('50')
   const [secondCondition, setSecondCondition] = useState('after_event')
+  const [secondConditionDate, setSecondConditionDate] = useState('')
   const [usagePeriod, setUsagePeriod] = useState('12 meses')
   const [terminationDays, setTerminationDays] = useState('15')
   const [showExtraClauses, setShowExtraClauses] = useState(false)
@@ -225,6 +243,11 @@ export function GenerateContractModal({
     setInclusions(preset.inclusions.join('\n'))
   }
 
+  // Si eligen "antes de una fecha especifica" pero no seleccionan la fecha,
+  // el texto libre quedaria como el valor crudo "before_date" en el contrato
+  // (ver resolvePaymentCondition). Bloqueamos preview/generar hasta que elijan fecha.
+  const paymentDateMissing = (firstCondition === 'before_date' && !firstConditionDate) || (secondCondition === 'before_date' && !secondConditionDate)
+
   function buildPayload(dryRun: boolean) {
     const amountNum = packageAmount ? Number(packageAmount) : undefined
     return {
@@ -248,9 +271,9 @@ export function GenerateContractModal({
       },
       payment: (firstPct && secondPct) ? {
         first_percentage: Number(firstPct),
-        first_condition: firstCondition,
+        first_condition: resolvePaymentCondition(firstCondition, firstConditionDate),
         second_percentage: Number(secondPct),
-        second_condition: secondCondition,
+        second_condition: resolvePaymentCondition(secondCondition, secondConditionDate),
       } : undefined,
       usage_period: usagePeriod || undefined,
       termination_notice_days: terminationDays || undefined,
@@ -462,7 +485,7 @@ export function GenerateContractModal({
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-2">Condiciones de pago</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="flex gap-2 items-center">
+                  <div className="flex flex-wrap gap-2 items-center">
                     <input className="input-base w-20" type="number" value={firstPct} onChange={e => setFirstPct(e.target.value)} />
                     <span className="text-xs text-gray-400">%</span>
                     <select className="input-base flex-1" value={firstCondition} onChange={e => setFirstCondition(e.target.value)}>
@@ -470,9 +493,13 @@ export function GenerateContractModal({
                       <option value="on_signing">a la firma</option>
                       <option value="after_event">después del evento</option>
                       <option value="on_publish">al publicar</option>
+                      <option value="before_date">antes de una fecha específica</option>
                     </select>
+                    {firstCondition === 'before_date' && (
+                      <input className="input-base w-full sm:w-auto" type="date" value={firstConditionDate} onChange={e => setFirstConditionDate(e.target.value)} />
+                    )}
                   </div>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex flex-wrap gap-2 items-center">
                     <input className="input-base w-20" type="number" value={secondPct} onChange={e => setSecondPct(e.target.value)} />
                     <span className="text-xs text-gray-400">%</span>
                     <select className="input-base flex-1" value={secondCondition} onChange={e => setSecondCondition(e.target.value)}>
@@ -480,7 +507,11 @@ export function GenerateContractModal({
                       <option value="before_event">antes del evento</option>
                       <option value="on_signing">a la firma</option>
                       <option value="on_publish">al publicar</option>
+                      <option value="before_date">antes de una fecha específica</option>
                     </select>
+                    {secondCondition === 'before_date' && (
+                      <input className="input-base w-full sm:w-auto" type="date" value={secondConditionDate} onChange={e => setSecondConditionDate(e.target.value)} />
+                    )}
                   </div>
                 </div>
               </div>
@@ -533,12 +564,13 @@ export function GenerateContractModal({
               )}
 
               <div className="flex justify-end gap-3 pt-1">
-                <button type="button" onClick={handlePreview} disabled={previewing}
+                <button type="button" onClick={handlePreview} disabled={previewing || paymentDateMissing}
+                  title={paymentDateMissing ? 'Selecciona la fecha de pago específica' : undefined}
                   className="inline-flex items-center gap-2 border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
                   {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Vista previa real
                 </button>
-                <button type="button" onClick={handleGenerate} disabled={generating || !preview || preview.missingRequired.length > 0}
-                  title={!preview ? 'Corre "Vista previa real" primero' : preview.missingRequired.length > 0 ? 'Completa los campos obligatorios marcados en rojo' : undefined}
+                <button type="button" onClick={handleGenerate} disabled={generating || !preview || preview.missingRequired.length > 0 || paymentDateMissing}
+                  title={paymentDateMissing ? 'Selecciona la fecha de pago específica' : !preview ? 'Corre "Vista previa real" primero' : preview.missingRequired.length > 0 ? 'Completa los campos obligatorios marcados en rojo' : undefined}
                   className="inline-flex items-center gap-2 bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed">
                   {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Generar y guardar
                 </button>

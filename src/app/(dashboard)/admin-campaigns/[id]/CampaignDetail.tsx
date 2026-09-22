@@ -17,7 +17,7 @@ import { BartersTab } from '@/components/campaigns/BartersTab'
 import { StarRating } from '@/components/ui/StarRating'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
-import type { CampaignDetail, CampaignDeliverableDetail, DeliverableStatus, CampaignStatus, InfluencerTier } from '@/types'
+import type { CampaignDetail, CampaignDeliverableDetail, CampaignInfluencerDetail, DeliverableStatus, CampaignStatus, InfluencerTier } from '@/types'
 import { getInfluencerTier } from '@/types'
 import { useCampaignDetail, usePatchCampaign, useDeliverableAction, useRemoveCampaignInfluencer, useSyncDeliverableMetrics } from '@/hooks/useCampaignsList'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
@@ -33,6 +33,47 @@ import { CampaignEmailModal } from '@/components/campaigns/CampaignEmailModal'
 import { createClient } from '@/lib/supabase/client'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import { GenerateContractModal } from '@/components/campaigns/GenerateContractModal'
+
+// ── Orden de la tabla de postulaciones pendientes ──────────────────────────
+// Un solo header activo a la vez (como cualquier tabla ordenable). 'pro' es el
+// header "Influencer" — ordena PRO primero por defecto.
+type PendingSortKey = 'pro' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee'
+function pendingSortValue(ci: CampaignInfluencerDetail, key: PendingSortKey): number | string {
+  const inf = ci.influencer
+  const primarySP = inf?.influencer_social_profiles?.[0]
+  switch (key) {
+    case 'pro': return inf?.is_pro ? 1 : 0
+    case 'followers': return primarySP?.followers ?? 0
+    case 'engagement': return primarySP?.engagement_rate ?? 0
+    case 'rating': return inf?.rating ?? 0
+    case 'commune': return (inf?.commune ?? inf?.city ?? '').toLowerCase()
+    case 'fee': return ci.fee ?? 0
+  }
+}
+function PendingSortableHeader({ label, sortKey, activeKey, direction, onSort, title, align }: {
+  label: string
+  sortKey: PendingSortKey
+  activeKey: PendingSortKey | null
+  direction: 'asc' | 'desc'
+  onSort: (key: PendingSortKey) => void
+  title?: string
+  align?: 'left' | 'right'
+}) {
+  const active = activeKey === sortKey
+  return (
+    <th className={cn('bg-gray-50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600', align === 'right' ? 'text-right' : 'text-left')}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        title={title ?? `Ordenar por ${label}`}
+        className={cn('flex items-center gap-1 hover:text-violet-700', align === 'right' && 'ml-auto', active && 'text-violet-700')}
+      >
+        {label}
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', active && direction === 'asc' && 'rotate-180')} />
+      </button>
+    </th>
+  )
+}
 
 // ── Helpers (mismo patrón que InfluencerCard.tsx / InfluencerProfile.tsx) ─────
 function buildProfileUrl(platform: string, username: string | null): string | null {
@@ -1338,8 +1379,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingApplicationStatusFilter, setPendingApplicationStatusFilter] = useState<PendingApplicationStatusFilter>('all')
   const [pendingApplicationsOpen, setPendingApplicationsOpen] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<Set<string>>(new Set())
-  // Click en el header "Influencer" de postulaciones pendientes ordena PRO primero (toggle).
-  const [pendingSortProFirst, setPendingSortProFirst] = useState(false)
+  // Click en cualquier header ordenable de postulaciones pendientes (Influencer/PRO,
+  // Seguidores, Engagement, Rating, Comuna, Fee). Un solo estado de orden a la vez,
+  // como cualquier tabla — clickear de nuevo invierte la direccion.
+  const [pendingSortKey, setPendingSortKey] = useState<PendingSortKey | null>(null)
+  const [pendingSortDir, setPendingSortDir] = useState<'asc' | 'desc'>('desc')
+  function togglePendingSort(key: PendingSortKey) {
+    setPendingSortKey(previousKey => {
+      if (previousKey === key) {
+        setPendingSortDir(previousDir => (previousDir === 'desc' ? 'asc' : 'desc'))
+        return key
+      }
+      setPendingSortDir(key === 'commune' ? 'asc' : 'desc')
+      return key
+    })
+  }
   const [bulkRejectingPending, setBulkRejectingPending] = useState(false)
   const [syncingFollowers, setSyncingFollowers] = useState(false)
 
@@ -1553,10 +1607,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
     return true
   })
-  // Orden PRO primero (toggle desde el header "Influencer"), sin tocar
-  // filteredPendingApplications (usado para conteos/seleccion tal cual).
-  const sortedPendingApplications = pendingSortProFirst
-    ? [...filteredPendingApplications].sort((a, b) => Number(Boolean(b.influencer?.is_pro)) - Number(Boolean(a.influencer?.is_pro)))
+  // Orden por el header activo (toggle), sin tocar filteredPendingApplications
+  // (usado para conteos/seleccion tal cual).
+  const sortedPendingApplications = pendingSortKey
+    ? [...filteredPendingApplications].sort((a, b) => {
+        const dir = pendingSortDir === 'asc' ? 1 : -1
+        const av = pendingSortValue(a, pendingSortKey)
+        const bv = pendingSortValue(b, pendingSortKey)
+        if (av < bv) return -1 * dir
+        if (av > bv) return 1 * dir
+        return 0
+      })
     : filteredPendingApplications
   const visiblePendingIds = filteredPendingApplications.filter(application => application.application_status === 'pending').map(application => application.id)
   const hasPendingApplicationFilters = Boolean(
@@ -3118,25 +3179,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <table className="w-full min-w-[900px]">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">
-                          <button
-                            type="button"
-                            onClick={() => setPendingSortProFirst(previous => !previous)}
-                            title="Ordenar postulantes PRO primero"
-                            className={cn('flex items-center gap-1 hover:text-violet-700', pendingSortProFirst && 'text-violet-700')}
-                          >
-                            Influencer
-                            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', pendingSortProFirst && 'rotate-180')} />
-                          </button>
-                        </th>
+                        <PendingSortableHeader label="Influencer" sortKey="pro" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} title="Ordenar por Plan (PRO primero)" />
                         {pendingVisibleColumns.status && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}
                         {pendingVisibleColumns.platform && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Plataforma</th>}
                         {pendingVisibleColumns.categories && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>}
-                        {pendingVisibleColumns.followers && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Seguidores</th>}
-                        {pendingVisibleColumns.engagement && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Engagement</th>}
-                        {pendingVisibleColumns.rating && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Rating</th>}
-                        {pendingVisibleColumns.commune && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Comuna</th>}
-                        {pendingVisibleColumns.fee && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Fee</th>}
+                        {pendingVisibleColumns.followers && <PendingSortableHeader label="Seguidores" sortKey="followers" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
+                        {pendingVisibleColumns.engagement && <PendingSortableHeader label="Engagement" sortKey="engagement" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
+                        {pendingVisibleColumns.rating && <PendingSortableHeader label="Rating" sortKey="rating" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
+                        {pendingVisibleColumns.commune && <PendingSortableHeader label="Comuna" sortKey="commune" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
+                        {pendingVisibleColumns.fee && <PendingSortableHeader label="Fee" sortKey="fee" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
                         {pendingVisibleColumns.deliverables && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Deliverables</th>}
                         {pendingVisibleColumns.progress && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Progreso</th>}
                         {pendingVisibleColumns.status && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}

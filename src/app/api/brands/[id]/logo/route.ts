@@ -27,11 +27,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   const extension = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp'
   const path = `${brand.id}/logo-${crypto.randomUUID()}.${extension}`
 
-  let { error: uploadError } = await admin.storage.from(BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, cacheControl: '3600', upsert: false })
+  let { error: uploadError } = await admin.storage.from(BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, cacheControl: '31536000', upsert: false })
   if (uploadError?.message.toLowerCase().includes('bucket not found')) {
     const { error: bucketError } = await admin.storage.createBucket(BUCKET, { public: true, fileSizeLimit: MAX_BYTES, allowedMimeTypes: Array.from(ALLOWED) })
     if (bucketError && !bucketError.message.toLowerCase().includes('already exists')) return NextResponse.json({ error: bucketError.message }, { status: 500 })
-    ;({ error: uploadError } = await admin.storage.from(BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, cacheControl: '3600', upsert: false }))
+    ;({ error: uploadError } = await admin.storage.from(BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, cacheControl: '31536000', upsert: false }))
   }
   if (uploadError) return NextResponse.json({ error: `No se pudo subir el logo: ${uploadError.message}` }, { status: 500 })
 

@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada.' }, { status: 404 })
   const extension = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp'
   const path = `${brand.id}/logo-${crypto.randomUUID()}.${extension}`
-  const upload = async () => admin.storage.from(BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, cacheControl: '3600', upsert: false })
+  const upload = async () => admin.storage.from(BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, cacheControl: '31536000', upsert: false })
   let { error: uploadError } = await upload()
   if (uploadError?.message.toLowerCase().includes('bucket not found')) {
     const { error } = await admin.storage.createBucket(BUCKET, { public: true, fileSizeLimit: MAX_BYTES, allowedMimeTypes: Array.from(ALLOWED_TYPES) })

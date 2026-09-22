@@ -15,7 +15,8 @@ export async function uploadOwnedBrandLogo(admin: SupabaseClient, userId: string
   if (file.size > 5 * 1024 * 1024) throw new Error('El logo no puede superar 5 MB')
   const extension = file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'img'
   const path = `${userId}/${crypto.randomUUID()}.${extension}`
-  const { error } = await admin.storage.from(OWNED_BRAND_BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false })
+  // Ruta con UUID único por subida (inmutable): cache largo es seguro.
+  const { error } = await admin.storage.from(OWNED_BRAND_BUCKET).upload(path, await file.arrayBuffer(), { contentType: file.type, cacheControl: '31536000', upsert: false })
   if (error) throw new Error(error.message)
   return { path, url: admin.storage.from(OWNED_BRAND_BUCKET).getPublicUrl(path).data.publicUrl }
 }

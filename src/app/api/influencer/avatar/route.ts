@@ -31,7 +31,9 @@ export async function POST(request: Request) {
   const bytes = await file.arrayBuffer()
   const uploadOptions = {
     contentType: file.type,
-    cacheControl: '3600',
+    // Ruta con UUID único por subida (inmutable): cache largo es seguro y
+    // reduce egress de Storage en listados/tablas que repiten el avatar.
+    cacheControl: '31536000',
     upsert: false,
   }
   let { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, uploadOptions)

@@ -3,10 +3,7 @@ import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
-
-function escapeHtml(value: string) {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
-}
+import { escapeHtml } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   const supabase = createServerClient()

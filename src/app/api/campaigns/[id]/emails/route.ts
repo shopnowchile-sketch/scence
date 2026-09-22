@@ -12,6 +12,7 @@ import {
   getResend,
 } from '@/lib/resend'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { escapeHtml } from '@/lib/utils'
 
 type Params = { params: { id: string } }
 type RequestBody = {
@@ -26,14 +27,9 @@ type RequestBody = {
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
-    .replaceAll('\n', '<br>')
+// Igual al helper compartido, más saltos de línea como <br>.
+function escapeHtmlMultiline(value: string): string {
+  return escapeHtml(value).replaceAll('\n', '<br>')
 }
 
 function safeActionUrl(value: string | undefined, fallback: string): string | null {
@@ -126,8 +122,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const actionUrl = safeActionUrl(body.action_url, portalUrl)
   if (!actionUrl) return NextResponse.json({ error: 'El link debe comenzar con http:// o https://.' }, { status: 422 })
 
-  const cleanMessage = escapeHtml((body.message ?? template.defaultMessage ?? '').trim().slice(0, 5000))
-  const cleanButtonLabel = escapeHtml((body.button_label ?? template.defaultButtonLabel ?? 'Ver campaña →').trim().slice(0, 80))
+  const cleanMessage = escapeHtmlMultiline((body.message ?? template.defaultMessage ?? '').trim().slice(0, 5000))
+  const cleanButtonLabel = escapeHtmlMultiline((body.button_label ?? template.defaultButtonLabel ?? 'Ver campaña →').trim().slice(0, 80))
   const subjectTemplate = (body.subject?.trim() || template.defaultSubject).replace(/[\r\n]+/g, ' ').slice(0, 180)
   const brandName = (campaign.brand as unknown as { name?: string | null } | null)?.name ?? 'Scence'
 
@@ -139,7 +135,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       : 'la fecha indicada en tu portal'
     const pendingTitles = recipientDeliverables
       .filter(deliverable => deliverable.type !== 'event_attendance' && !isDeliverableComplete(deliverable))
-      .map(deliverable => escapeHtml(deliverable.title || deliverable.type || 'Entregable'))
+      .map(deliverable => escapeHtmlMultiline(deliverable.title || deliverable.type || 'Entregable'))
     const variables = {
       influencer_name: recipient.name,
       campaign_name: campaign.name,
@@ -149,8 +145,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       pending_deliverables: pendingTitles.join(', '),
     }
     const subject = applyEmailVariables(subjectTemplate, variables)
-    const safeRecipientName = escapeHtml(recipient.name)
-    const safeCampaignName = escapeHtml(campaign.name)
+    const safeRecipientName = escapeHtmlMultiline(recipient.name)
+    const safeCampaignName = escapeHtmlMultiline(campaign.name)
     let html: string
     if (template.key === 'attendance_confirmation') {
       html = attendanceConfirmationEmail({ influencerName: safeRecipientName, campaignName: safeCampaignName, campaignId: params.id, dueDate: attendance?.due_date, message: cleanMessage, actionUrl, buttonLabel: cleanButtonLabel })

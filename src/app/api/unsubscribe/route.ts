@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { recordOptOut, verifyUnsubscribeToken } from '@/lib/email-optouts'
+import { escapeHtml } from '@/lib/utils'
 
 // Ruta PÚBLICA: sin sesión, sin cookies. La autoriza el HMAC del token, no el
 // usuario. Solo da de baja de los emails COMERCIALES del CRM — los correos
@@ -19,15 +20,6 @@ const NO_STORE = {
 }
 
 const P = 'color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 12px'
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
-}
 
 function page(title: string, body: string, status: number) {
   const html = `<!DOCTYPE html>

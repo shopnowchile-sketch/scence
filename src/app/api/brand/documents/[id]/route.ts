@@ -3,12 +3,9 @@ import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { renderDocument } from '@/lib/document-templates'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
+import { escapeHtml } from '@/lib/utils'
 
 type Params = { params: { id: string } }
-
-function escapeHtml(value: string) {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
-}
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const supabase = createServerClient()

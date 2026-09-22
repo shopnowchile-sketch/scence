@@ -75,6 +75,7 @@ export function GenerateContractModal({
   campaignId,
   campaignName,
   campaignType,
+  brandId,
   templates,
   collaboratorBrands,
   onClose,
@@ -82,6 +83,7 @@ export function GenerateContractModal({
   campaignId: string
   campaignName: string
   campaignType?: string | null
+  brandId?: string | null
   templates: Template[]
   collaboratorBrands: CollaboratorBrand[]
   onClose: () => void
@@ -98,6 +100,11 @@ export function GenerateContractModal({
   const [eventEndTime, setEventEndTime] = useState('')
   const [eventLocation, setEventLocation] = useState('')
   const [eventFromBooking, setEventFromBooking] = useState(false)
+  // Lugares guardados de la marca (brand_locations) — mismo catalogo que el
+  // tab "Lugares" de la campana y el picker de "Editar ubicacion". Solo
+  // lectura: nunca se escribe aqui, solo se usa para componer eventLocation.
+  const [brandLocations, setBrandLocations] = useState<Array<{ id: string; name: string; address: string | null; city: string | null }>>([])
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([])
   const [packageName, setPackageName] = useState('')
   const [packageAmount, setPackageAmount] = useState('')
   const [inclusions, setInclusions] = useState('')
@@ -175,6 +182,42 @@ export function GenerateContractModal({
     })()
     return () => { cancelled = true }
   }, [campaignId])
+
+  useEffect(() => {
+    // Mismo endpoint que ya usa el tab "Lugares" de la campana
+    // (GET /api/brands/[id]/locations) — no hay endpoint nuevo.
+    if (!brandId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/brands/${brandId}/locations`)
+        const json = await res.json()
+        if (!cancelled && res.ok) setBrandLocations(Array.isArray(json.data) ? json.data : [])
+      } catch {
+        // Silencioso: sin catalogo el campo de texto sigue funcionando a mano.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [brandId])
+
+  // Recalcula el texto de "Lugar / direccion" a partir de los lugares
+  // marcados. El campo de texto sigue editable despues — esto solo compone
+  // un punto de partida, nunca sobreescribe una edicion manual en curso salvo
+  // que el propio checkbox cambie.
+  function toggleLocationSelection(locationId: string) {
+    setSelectedLocationIds(previous => {
+      const next = previous.includes(locationId)
+        ? previous.filter(id => id !== locationId)
+        : [...previous, locationId]
+      const composed = next
+        .map(id => brandLocations.find(loc => loc.id === id))
+        .filter((loc): loc is NonNullable<typeof loc> => Boolean(loc))
+        .map(loc => [loc.name, [loc.address, loc.city].filter(Boolean).join(', ')].filter(Boolean).join(' — '))
+        .join(' / ')
+      setEventLocation(composed)
+      return next
+    })
+  }
 
   function applyPreset(preset: typeof PACKAGE_PRESETS[number]) {
     setPackageName(preset.name)
@@ -356,6 +399,24 @@ export function GenerateContractModal({
                     </div>
                   </div>
                   <div className="col-span-2">
+                    {brandLocations.length > 0 && (
+                      <div className="mb-2">
+                        <label className="block text-[11px] font-medium text-gray-500 mb-1">Lugar(es) de la marca</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {brandLocations.map(loc => (
+                            <label key={loc.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50/60 px-2 py-1 text-xs font-medium text-violet-800">
+                              <input
+                                type="checkbox"
+                                className="h-3.5 w-3.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                                checked={selectedLocationIds.includes(loc.id)}
+                                onChange={() => toggleLocationSelection(loc.id)}
+                              />
+                              {loc.name}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <label className="block text-[11px] font-medium text-gray-500 mb-1">Lugar / dirección</label>
                     <input className="input-base" value={eventLocation} onChange={e => setEventLocation(e.target.value)} placeholder="Ej: Av. Presidente Kennedy 5741, Las Condes" />
                   </div>

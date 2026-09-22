@@ -4505,6 +4505,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           campaignId={id}
           campaignName={c.name}
           campaignType={(c as unknown as { type?: string }).type}
+          brandId={c.brand_id}
           templates={contractTemplates as unknown as Array<{ id: string; name: string; campaign_type?: string | null; document_type?: string }>}
           collaboratorBrands={invoiceRecipientBrands}
           onClose={() => setShowGenerateContractModal(false)}

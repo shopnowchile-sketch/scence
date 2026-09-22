@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
+import { getInfluencerProIds } from '@/lib/influencer-pro'
 import {
   DeliverableTemplateSyncError,
   normalizeDeliverableTemplates,
@@ -126,6 +127,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .order('starts_at', { ascending: true })
   const eventBooking = eventBookings?.[0] ?? null
 
+  // Plan (Free/Pro) del influencer que postulo/fue asignado — mismo helper que
+  // ya usan /api/campaigns/[id]/influencers y /api/brand/campaigns/[id]/applications,
+  // no se duplica logica de subscriptions aca.
+  const campaignInfluencerProIds = await getInfluencerProIds(
+    admin,
+    (data.campaign_influencers ?? []).map((ci: { influencer?: { id?: string } | null }) => ci.influencer?.id).filter((id: string | undefined): id is string => Boolean(id))
+  )
+  const campaignInfluencersWithPlan = (data.campaign_influencers ?? []).map((ci: { influencer?: Record<string, unknown> | null }) => ({
+    ...ci,
+    influencer: ci.influencer ? { ...ci.influencer, is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) } : null,
+  }))
+
   const campaignMetadata =
     data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
       ? data.metadata as Record<string, unknown>
@@ -133,6 +146,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // La dirección creada para la campaña es el fallback cuando todavía no hay booking.
   const campaignWithEvent = {
     ...data,
+    campaign_influencers: campaignInfluencersWithPlan,
     address: typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null,
     event_booking: eventBooking ?? null,
     // Una campaña de varios días usa varios bookings de campaña. Se mantiene

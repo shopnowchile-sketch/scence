@@ -13,6 +13,7 @@ import {
   normalizeDeliverableTemplates,
   syncCampaignDeliverablesFromTemplates,
 } from '@/lib/campaign-deliverables-sync'
+import { getInfluencerProIds } from '@/lib/influencer-pro'
 
 type Params = { params: { id: string } }
 
@@ -84,9 +85,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .eq('campaign_id', params.id)
     .order('starts_at', { ascending: true })
 
+  // Mismo helper que ya usan /api/campaigns/[id] y /api/brand/campaigns/[id]/applications
+  // — la marca ve el mismo plan (Free/Pro) que ve Admin, sin logica nueva.
+  const campaignInfluencerProIds = await getInfluencerProIds(
+    admin,
+    (data.campaign_influencers ?? []).map((ci: { influencer?: { id?: string } | null }) => ci.influencer?.id).filter((id: string | undefined): id is string => Boolean(id))
+  )
+  const campaignInfluencersWithPlan = (data.campaign_influencers ?? []).map((ci: { influencer?: Record<string, unknown> | null }) => ({
+    ...ci,
+    influencer: ci.influencer ? { ...ci.influencer, is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) } : null,
+  }))
+
   return NextResponse.json({
     data: {
       ...data,
+      campaign_influencers: campaignInfluencersWithPlan,
       address: typeof metadata.address === 'string' ? metadata.address : null,
       // Misma agenda que el detalle admin: una campaña de varios días tiene
       // múltiples bookings de campaña, no un rango sintético.

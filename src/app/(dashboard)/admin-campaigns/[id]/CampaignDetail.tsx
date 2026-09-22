@@ -1338,6 +1338,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingApplicationStatusFilter, setPendingApplicationStatusFilter] = useState<PendingApplicationStatusFilter>('all')
   const [pendingApplicationsOpen, setPendingApplicationsOpen] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<Set<string>>(new Set())
+  // Click en el header "Influencer" de postulaciones pendientes ordena PRO primero (toggle).
+  const [pendingSortProFirst, setPendingSortProFirst] = useState(false)
   const [bulkRejectingPending, setBulkRejectingPending] = useState(false)
   const [syncingFollowers, setSyncingFollowers] = useState(false)
 
@@ -1551,6 +1553,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
     return true
   })
+  // Orden PRO primero (toggle desde el header "Influencer"), sin tocar
+  // filteredPendingApplications (usado para conteos/seleccion tal cual).
+  const sortedPendingApplications = pendingSortProFirst
+    ? [...filteredPendingApplications].sort((a, b) => Number(Boolean(b.influencer?.is_pro)) - Number(Boolean(a.influencer?.is_pro)))
+    : filteredPendingApplications
   const visiblePendingIds = filteredPendingApplications.filter(application => application.application_status === 'pending').map(application => application.id)
   const hasPendingApplicationFilters = Boolean(
     pendingSearch.trim() || pendingTierFilter || pendingCommuneFilter || pendingCategoryFilter ||
@@ -3111,7 +3118,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   <table className="w-full min-w-[900px]">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Influencer</th>
+                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">
+                          <button
+                            type="button"
+                            onClick={() => setPendingSortProFirst(previous => !previous)}
+                            title="Ordenar postulantes PRO primero"
+                            className={cn('flex items-center gap-1 hover:text-violet-700', pendingSortProFirst && 'text-violet-700')}
+                          >
+                            Influencer
+                            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', pendingSortProFirst && 'rotate-180')} />
+                          </button>
+                        </th>
                         {pendingVisibleColumns.status && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}
                         {pendingVisibleColumns.platform && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Plataforma</th>}
                         {pendingVisibleColumns.categories && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>}
@@ -3127,7 +3144,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {filteredPendingApplications.map((ci, i) => {
+                      {sortedPendingApplications.map((ci, i) => {
                         const inf = ci.influencer
                         if (!inf) return null
                         const primarySP = inf.influencer_social_profiles?.[0]
@@ -3162,7 +3179,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{inf.display_name}</span>
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{inf.display_name}</span>
+                                    {inf.is_pro && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">PRO</span>}
+                                  </span>
                                   {primarySP?.username && (
                                     profileUrl ? <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="block text-xs text-violet-600 hover:underline">@{primarySP.username}</a> : <div className="text-xs text-gray-400">@{primarySP.username}</div>
                                   )}

@@ -186,6 +186,7 @@ export interface CampaignInfluencerDetail {
     country: string | null
     categories: string[] | null
     rating: number | null
+    is_pro?: boolean
     influencer_social_profiles: Array<{
       platform: string
       username: string | null

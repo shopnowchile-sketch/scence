@@ -30,12 +30,12 @@ export async function POST(request: NextRequest) {
 
   const { data: influencers, error: influencersError } = await admin
     .from('influencers')
-    .select('id, display_name, email, organization_id')
+    .select('id, display_name, email, organization_id, is_active')
     .in('id', ids)
 
   if (influencersError) return NextResponse.json({ error: 'No se pudieron cargar las influencers.' }, { status: 500 })
 
-  const orgInfluencers = (influencers ?? []).filter(item => item.organization_id === orgId && item.email)
+  const orgInfluencers = (influencers ?? []).filter(item => item.organization_id === orgId && item.is_active !== false && item.email)
   if (!orgInfluencers.length) return NextResponse.json({ error: 'Ninguna seleccionada tiene un email válido.' }, { status: 422 })
 
   const { data: incompleteRows } = await admin

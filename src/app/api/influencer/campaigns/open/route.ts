@@ -16,11 +16,14 @@ export async function GET() {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, organization_id')
+    .select('id, organization_id, is_active')
     .eq('user_id', user.id)
     .single()
 
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
+  if (!influencer.is_active) {
+    return NextResponse.json({ data: [], is_pro: false, inactive: true })
+  }
   const isPro = await isInfluencerPro(admin, influencer.id)
 
   // Campañas donde la influencer ya tiene alguna relación (invitada, postulando, aceptada, etc.)

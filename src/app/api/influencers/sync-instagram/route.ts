@@ -61,7 +61,10 @@ function cleanHandle(raw: string | null): string | null {
       const url = s.startsWith('http') ? new URL(s) : new URL('https://' + s)
       const parts = url.pathname.split('/').filter(Boolean)
       const handle = parts.find(p => p && p !== 'p' && p !== 'reel' && p !== 'stories')
-      return handle ? handle.replace(/^@/, '').toLowerCase() : null
+      const clean = handle ? handle.replace(/^@/, '').toLowerCase() : null
+      // Misma validación que un handle plano: evita mandar a Apify cosas como
+      // "instagram.com/correo@gmail.com" que la influencer escribió mal.
+      return clean && /^[a-z0-9._]{1,30}$/.test(clean) ? clean : null
     } catch { /* fall through */ }
   }
 
@@ -362,9 +365,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(await syncProfilesViaPlaywright(profiles))
   }
 
+  // En el fallback se devuelve también el motivo por el que Apify no corrió
+  // (p. ej. "Monthly usage hard limit exceeded"): sin eso, la UI solo veía
+  // "0 actualizados" y no había forma de saber que el problema era la cuota.
   if (!APIFY_TOKEN) {
     if (targeted) {
-      return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+      return NextResponse.json({ ...(await syncProfilesViaPlaywright(profiles)), apify_error: 'APIFY_API_TOKEN no configurado' })
     }
     return NextResponse.json({ error: 'APIFY_API_TOKEN no configurado' }, { status: 500 })
   }
@@ -372,8 +378,9 @@ export async function POST(req: NextRequest) {
   const started = await startApifyInstagramSync(uniqueHandles)
 
   if ('error' in started) {
+    console.error('[sync-ig] Apify no pudo iniciar:', started.error)
     if (targeted) {
-      return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+      return NextResponse.json({ ...(await syncProfilesViaPlaywright(profiles)), apify_error: started.error })
     }
     return NextResponse.json({ error: started.error }, { status: 502 })
   }

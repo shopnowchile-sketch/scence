@@ -1718,7 +1718,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       const summary = remaining > 0
         ? `${synced} actualizados · ${failed} fallaron · ${remaining} pendientes`
         : `${synced} actualizados · ${failed} fallaron`
-      if (synced > 0) toast.success(summary)
+      if (synced === 0 && json.apify_error) toast.error(`No se pudo actualizar Instagram. Apify: ${json.apify_error}`)
+      else if (synced > 0) toast.success(summary)
       else if (failed > 0) toast.warning(summary)
       else toast.info(json.message ?? summary)
 

@@ -389,8 +389,17 @@ export function InfluencerProfile({ id }: { id: string }) {
       const startJson = await startRes.json()
       if (!startRes.ok) throw new Error(startJson.error ?? 'Error al iniciar sync')
       if (!startJson.runId) {
-        toast.info(startJson.message ?? 'No hay perfiles de Instagram para sincronizar')
-        return
+        // Sin runId: o no hay handle válido (message), o Apify no pudo iniciar y
+        // el endpoint cayó a Playwright (reporte directo + apify_error).
+        if (startJson.message) { toast.info(startJson.message); return }
+        if (Number(startJson.synced ?? 0) > 0) {
+          toast.success(`Instagram actualizado · ${startJson.synced} perfil(es)`)
+          refetch()
+          return
+        }
+        throw new Error(startJson.apify_error
+          ? `No se pudo actualizar Instagram. Apify: ${startJson.apify_error}`
+          : 'No se pudo leer el perfil de Instagram')
       }
       toast.info('Sincronizando con Instagram… puede tardar ~30s')
 

@@ -5,17 +5,6 @@ import { scheduleInfluencerPayPalCancellation } from '@/lib/influencer-paypal'
 
 const BLOCKED_MESSAGE = 'Tu suscripción Pro está vinculada a una campaña. Podrás cancelarla cuando la campaña haya terminado y hayas completado todos tus entregables.'
 const PENDING_MESSAGE = 'Tu campaña ya terminó, pero aún tienes entregables pendientes. Completa todos tus entregables para poder cancelar tu suscripción.'
-const paypalBaseUrl = () => process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'
-
-async function getPayPalToken() {
-  const clientId = process.env.PAYPAL_CLIENT_ID, clientSecret = process.env.PAYPAL_CLIENT_SECRET
-  if (!clientId || !clientSecret) return null
-  const authorization = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
-  const response = await fetch(`${paypalBaseUrl()}/v1/oauth2/token`, { method: 'POST', headers: { Authorization: `Basic ${authorization}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials', cache: 'no-store' })
-  const result = await response.json().catch(() => null)
-  return response.ok ? result?.access_token as string | undefined : null
-}
-
 export async function POST() {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()

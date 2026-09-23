@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     .select(`
       title,
       campaign:campaigns (id, name, organization_id),
-      influencer:influencers (display_name, email)
+      influencer:influencers (display_name, email, is_active)
     `)
     .eq('id', deliverable_id)
     .single()
@@ -45,6 +45,10 @@ export async function POST(request: NextRequest) {
 
   if (!d || (orgId && d.campaign?.organization_id !== orgId)) {
     return NextResponse.json({ error: 'Deliverable not found' }, { status: 404 })
+  }
+
+  if (!d.influencer?.is_active) {
+    return NextResponse.json({ error: 'La influencer está inactiva y no puede recibir emails de campaña.', code: 'INFLUENCER_INACTIVE' }, { status: 403 })
   }
 
   if (!d.influencer?.email) {

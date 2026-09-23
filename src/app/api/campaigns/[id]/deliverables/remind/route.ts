@@ -35,10 +35,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, email')
+    .select('id, display_name, email, is_active')
     .eq('id', influencer_id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Influencer no encontrada' }, { status: 404 })
+  if (!influencer.is_active) return NextResponse.json({ error: 'La influencer está inactiva y no puede recibir emails de campaña.', code: 'INFLUENCER_INACTIVE' }, { status: 403 })
 
   // Pendientes = sin URL subida y sin status aprobado/completado/publicado
   // (mismo criterio de "completado" que el resumen visual de la campaña).

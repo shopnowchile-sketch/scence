@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasActiveCampaignCommitment } from '@/lib/influencer-pro-commitment'
+import { scheduleInfluencerPayPalCancellation } from '@/lib/influencer-paypal'
 
 const BLOCKED_MESSAGE = 'Tu suscripción Pro está vinculada a una campaña. Podrás cancelarla cuando la campaña haya terminado y hayas completado todos tus entregables.'
 const PENDING_MESSAGE = 'Tu campaña ya terminó, pero aún tienes entregables pendientes. Completa todos tus entregables para poder cancelar tu suscripción.'
@@ -39,13 +40,22 @@ export async function POST() {
     return NextResponse.json({ error: 'No se pudo validar el compromiso de campaña.' }, { status: 500 })
   }
 
-  const accessToken = await getPayPalToken()
-  if (!accessToken) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
-  const cancelResponse = await fetch(`${paypalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscription.paypal_subscription_id)}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Cancelación solicitada por influencer en SCENCE' }) })
-  if (!cancelResponse.ok && cancelResponse.status !== 204) return NextResponse.json({ error: 'PayPal no pudo cancelar la suscripción.' }, { status: 502 })
+  try {
+    await scheduleInfluencerPayPalCancellation(subscription.paypal_subscription_id)
+  } catch (error) {
+    console.error('[POST /api/influencer/paypal/cancel] schedule cancellation:', error)
+    return NextResponse.json({ error: 'No se pudo programar la cancelación al final del período.' }, { status: 502 })
+  }
 
-  const canceledAt = new Date().toISOString()
-  const { error: updateError } = await admin.from('subscriptions').update({ status: 'canceled', canceled_at: canceledAt, updated_at: canceledAt, metadata: { ...(subscription.metadata ?? {}), cancel_at_period_end: true } }).eq('id', subscription.id)
-  if (updateError) return NextResponse.json({ error: 'PayPal canceló la suscripción, pero no se pudo sincronizar SCENCE.' }, { status: 500 })
-  return NextResponse.json({ canceled: true, canceled_at: canceledAt })
+  const scheduledAt = new Date().toISOString()
+  const { error: updateError } = await admin.from('subscriptions').update({
+    updated_at: scheduledAt,
+    metadata: {
+      ...(subscription.metadata ?? {}),
+      cancel_at_period_end: true,
+      scheduled_cancel_reason: 'influencer_requested',
+    },
+  }).eq('id', subscription.id)
+  if (updateError) return NextResponse.json({ error: 'PayPal programó la cancelación, pero no se pudo sincronizar SCENCE.' }, { status: 500 })
+  return NextResponse.json({ canceled: true, cancel_at_period_end: true })
 }

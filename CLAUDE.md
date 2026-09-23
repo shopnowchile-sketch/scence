@@ -371,6 +371,14 @@ Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `
 
 `npx tsc --noEmit` y `npx next lint`. `next build` no completa en el sandbox de Cowork (sin salida a `fonts.googleapis.com`); el build real lo confirma Vercel al desplegar.
 
+### 16.9 Tenant: una marca = una organización
+
+`Scence SpA` (`d23d88ee-…`) es la **agencia**: solo admin de plataforma + roster de influencers + campañas que opera SCENCE. **Nunca** debe contener marcas ni usuarios de marca.
+
+- Toda marca vive en su propia organización `type='brand'` (crear con `provisionOrgForBrand()`), y su usuario tiene `organization_members` en esa org con `brand_id`.
+- Las campañas pueden seguir en la org de la agencia; la marca accede por `brand_id` (`resolveBrandAccess` / `authorizeCampaignBrandAction`), nunca por `organization_id`.
+- Migración 2026-09-23: 15 marcas separadas (mapeo en `ops.tenant_split_20260923`; 13 recibieron `subscription_plan_override='pro'` para preservar el plan que heredaban de suscripciones de influencers — decisión comercial pendiente).
+
 ## Regla final para Claude
 
 Antes de escribir código, piensa como:

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import { PLAN_TIERS } from '@/lib/plan-limits'
 
@@ -199,10 +199,16 @@ export async function POST(req: NextRequest) {
   // desde el frontend". La creación de marcas colaboradoras vive en
   // POST /api/campaigns/[id]/brands (con su propia organización y sin asignar
   // hasta que Admin apruebe), NO en este endpoint.
+  // Cada marca vive en su propia organización (type=brand), nunca en la de la
+  // agencia: si la marca queda en Scence SpA, sus usuarios verían los datos de
+  // todas las demás marcas (causa del incidente de tenant 2026-09-23).
+  const brandOrgId = await provisionOrgForBrand(String(name))
+  if (!brandOrgId) return NextResponse.json({ error: 'No se pudo crear la organización de la marca' }, { status: 500 })
+
   const { data, error } = await admin
     .from('brands')
     .insert({
-      organization_id: orgId,
+      organization_id: brandOrgId,
       name,
       logo_url:      logo_url ?? null,
       website:       website ?? null,

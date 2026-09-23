@@ -77,12 +77,20 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: influencer, error: infErr } = await admin
     .from('influencers')
-    .select('id, display_name, email, user_id')
+    .select('id, display_name, email, user_id, is_active')
     .eq('id', params.id)
     .single()
 
   if (infErr || !influencer) {
     return NextResponse.json({ error: 'Influencer no encontrado' }, { status: 404 })
+  }
+
+  // Regla: influencer inactiva = cero emails de SCENCE (tampoco invitación al portal).
+  if (influencer.is_active === false) {
+    return NextResponse.json(
+      { error: 'La influencer está inactiva: no se le envían emails ni invitaciones al portal.', code: 'INFLUENCER_INACTIVE' },
+      { status: 409 }
+    )
   }
 
   if (!influencer.email) {

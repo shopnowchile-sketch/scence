@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 import { buildUnsubscribeUrl, commercialEmailHeaders, getBlockedEmails, normalizeEmail } from '@/lib/email-optouts'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 // Tamaño de tanda por invocación — mismo límite que existía antes como tope
 // duro (era "máximo 50 por vez"), ahora es el tamaño de cada lote interno del
@@ -78,7 +79,7 @@ export async function sendLeadBatch(
 
     const { data: emailData, error: emailError } = await getResend().emails.send({
       from: FROM_EMAIL,
-      to: lead.email,
+      to: lead.email, tags: [emailAudience('crm')],
       subject: resolvedSubject,
       html,
       text: message,

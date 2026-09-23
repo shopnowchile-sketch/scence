@@ -39,14 +39,15 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await admin
     .from('influencers')
-    .select('id, user_id, email, display_name, metadata')
+    .select('id, user_id, email, display_name, metadata, is_active')
     .eq('organization_id', orgId)
     .eq('metadata->>recovery_reason', 'missing_influencer_profile')
     .is('metadata->>access_recovery_email_sent_at', null)
     .order('created_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const targets = (data ?? []).filter((item): item is RecoveryInfluencer => Boolean(item.user_id && item.email))
+  // Regla: influencer inactiva = cero emails de SCENCE (tampoco recuperación de acceso).
+  const targets = (data ?? []).filter((item): item is RecoveryInfluencer & { is_active: boolean | null } => item.is_active !== false && Boolean(item.user_id && item.email))
 
   if (body.dryRun) {
     return NextResponse.json({

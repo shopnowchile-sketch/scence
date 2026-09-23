@@ -3,6 +3,7 @@ import { getResend, FROM_EMAIL, invoiceEmail } from '@/lib/resend'
 import { formatDate } from '@/lib/utils'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess, type BrandPermission } from '@/lib/supabase/ensureOrg'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 
@@ -104,7 +105,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           const resend = getResend()
           const { error: sendErr } = await resend.emails.send({
             from: FROM_EMAIL,
-            to: String(send_to || invoice.client_email),
+            to: String(send_to || invoice.client_email), tags: [emailAudience('brand')],
             subject: `Factura ${invoice.invoice_number} de ${orgData?.name ?? 'Scence'}`,
             html: invoiceEmail({
               clientName: invoice.client_name,

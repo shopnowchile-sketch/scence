@@ -1,11 +1,84 @@
 import { escapeHtml } from '@/lib/utils'
 import { Resend } from 'resend'
+import { applyInactiveInfluencerRule, getInactiveInfluencers } from '@/lib/inactive-influencer-email-guard'
 
 // Lazy — only instantiated at request time, never at build time
 let _resend: Resend | null = null
+let _guarded: Resend | null = null
+
+/**
+ * Cliente Resend con la barrera final "INFLUENCER INACTIVA = CERO EMAILS"
+ * (ver lib/inactive-influencer-email-guard.ts). Todo `emails.send` y
+ * `batch.send` de SCENCE pasa por aquí: las direcciones de influencers con
+ * `is_active = false` se quitan antes de enviar, salvo que el envío declare otra
+ * audiencia (`emailAudience('brand')`, etc.) y la base confirme ese rol; si no
+ * queda destinatario, no se envía. Si la verificación falla, se devuelve `error` (falla cerrado).
+ */
 export function getResend(): Resend {
   if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY ?? 'placeholder')
-  return _resend
+  if (!_guarded) _guarded = guardInactiveInfluencers(_resend)
+  return _guarded
+}
+
+const GUARD_ERROR = { name: 'application_error', message: 'No se pudo verificar si el destinatario es una influencer inactiva; el email no se envió.' }
+
+function guardInactiveInfluencers(client: Resend): Resend {
+  const emails = client.emails
+  const batch = client.batch
+  const guardedEmails = new Proxy(emails, {
+    get(target, prop, receiver) {
+      if (prop !== 'send') return Reflect.get(target, prop, receiver)
+      return async (payload: Parameters<typeof emails.send>[0], options?: Parameters<typeof emails.send>[1]) => {
+        let inactive: Awaited<ReturnType<typeof getInactiveInfluencers>>
+        try { inactive = await getInactiveInfluencers() } catch (error) {
+          console.error(error)
+          return { data: null, error: GUARD_ERROR } as unknown as Awaited<ReturnType<typeof emails.send>>
+        }
+        let allowed: Record<string, unknown> | null, removed: number
+        try { ({ payload: allowed, removed } = await applyInactiveInfluencerRule(payload as unknown as Record<string, unknown>, inactive)) } catch (error) {
+          console.error(error)
+          return { data: null, error: GUARD_ERROR } as unknown as Awaited<ReturnType<typeof emails.send>>
+        }
+        if (removed) console.warn(`[email-guard] ${removed} destinatario(s) omitido(s): influencer inactiva`)
+        if (!allowed) return { data: null, error: null } as unknown as Awaited<ReturnType<typeof emails.send>>
+        return target.send(allowed as unknown as Parameters<typeof emails.send>[0], options)
+      }
+    },
+  })
+  const guardedBatch = new Proxy(batch, {
+    get(target, prop, receiver) {
+      if (prop !== 'send') return Reflect.get(target, prop, receiver)
+      return async (payloads: Parameters<typeof batch.send>[0], options?: Parameters<typeof batch.send>[1]) => {
+        let inactive: Awaited<ReturnType<typeof getInactiveInfluencers>>
+        try { inactive = await getInactiveInfluencers() } catch (error) {
+          console.error(error)
+          return { data: null, error: GUARD_ERROR } as unknown as Awaited<ReturnType<typeof batch.send>>
+        }
+        let removed = 0
+        const allowed: Array<Record<string, unknown>> = []
+        try {
+          for (const payload of payloads as unknown as Array<Record<string, unknown>>) {
+            const result = await applyInactiveInfluencerRule(payload, inactive)
+            removed += result.removed
+            if (result.payload) allowed.push(result.payload)
+          }
+        } catch (error) {
+          console.error(error)
+          return { data: null, error: GUARD_ERROR } as unknown as Awaited<ReturnType<typeof batch.send>>
+        }
+        if (removed) console.warn(`[email-guard] ${removed} destinatario(s) omitido(s) en lote: influencer inactiva`)
+        if (allowed.length === 0) return { data: { data: [] }, error: null } as unknown as Awaited<ReturnType<typeof batch.send>>
+        return target.send(allowed as unknown as Parameters<typeof batch.send>[0], options)
+      }
+    },
+  })
+  return new Proxy(client, {
+    get(target, prop, receiver) {
+      if (prop === 'emails') return guardedEmails
+      if (prop === 'batch') return guardedBatch
+      return Reflect.get(target, prop, receiver)
+    },
+  })
 }
 
 export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'Scence <noreply@scence.app>'

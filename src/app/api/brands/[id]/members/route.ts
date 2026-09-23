@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 
@@ -186,7 +187,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (!linkError && linkData?.properties?.hashed_token) {
         const actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
         const { error: emailError } = await getResend().emails.send({
-          from: FROM_EMAIL, to: email, subject: `Invitación al portal de ${brand.name} — Scence`,
+          from: FROM_EMAIL, to: email, tags: [emailAudience('brand')], subject: `Invitación al portal de ${brand.name} — Scence`,
           html: memberResendEmail({ brandName: brand.name, actionLink }),
         })
         emailSent = !emailError
@@ -265,7 +266,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to: member.email,
+    to: member.email, tags: [emailAudience('brand')],
     subject: `Tu link de acceso al portal de ${resendBrand.name} — Scence`,
     html: memberResendEmail({ brandName: resendBrand.name, actionLink }),
   })

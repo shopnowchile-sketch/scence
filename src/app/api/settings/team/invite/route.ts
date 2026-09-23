@@ -9,6 +9,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -149,7 +150,7 @@ export async function POST(req: NextRequest) {
 
   const { error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to: email,
+    to: email, tags: [emailAudience('account')],
     subject: 'Invitación a Scence',
     html: inviteEmail({ name, role, actionLink: linkData.properties.action_link }),
   })

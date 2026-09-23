@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest) {
       const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email: member.email, options: { redirectTo: `${APP_URL}/brand-dash` } })
       if (linkError || !linkData?.properties?.hashed_token) throw linkError ?? new Error('No se pudo generar el link')
       actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
-      const { error: emailError } = await getResend().emails.send({ from: FROM_EMAIL, to: member.email, subject: `Tu acceso al portal de ${brand.name} — Scence`, html: brandMemberInviteEmail({ brandName: brand.name, actionLink }) })
+      const { error: emailError } = await getResend().emails.send({ from: FROM_EMAIL, to: member.email, tags: [emailAudience('brand')], subject: `Tu acceso al portal de ${brand.name} — Scence`, html: brandMemberInviteEmail({ brandName: brand.name, actionLink }) })
       emailSent = !emailError
     } catch (error) { console.error('[POST /api/brand/members] resend failed:', error) }
     return NextResponse.json({ message: emailSent ? `Acceso enviado a ${member.email}` : 'Link generado; el email no pudo enviarse', email_sent: emailSent, action_link: actionLink })
@@ -246,7 +247,7 @@ export async function POST(request: NextRequest) {
       const actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
-        to: email,
+        to: email, tags: [emailAudience('brand')],
         subject: `Invitación al portal de ${brand.name} — Scence`,
         html: brandMemberInviteEmail({ brandName: brand.name, actionLink }),
       })

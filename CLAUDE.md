@@ -379,6 +379,16 @@ Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `
 - Las campañas pueden seguir en la org de la agencia; la marca accede por `brand_id` (`resolveBrandAccess` / `authorizeCampaignBrandAction`), nunca por `organization_id`.
 - Migración 2026-09-23: 15 marcas separadas (mapeo en `ops.tenant_split_20260923`; 13 recibieron `subscription_plan_override='pro'` para preservar el plan que heredaban de suscripciones de influencers — decisión comercial pendiente).
 
+### 16.10 Influencer inactiva = cero emails
+
+Una influencer con `is_active = false` no puede recibir ningún email enviado por SCENCE, independientemente del origen, campaña, reserva, términos, Pro, cron, webhook o acción administrativa que genere el envío.
+
+- La barrera final vive en `getResend()` (`lib/resend.ts` → `lib/inactive-influencer-email-guard.ts`) y se aplica a todo `emails.send` y `batch.send`. **Nunca crear otro cliente de Resend ni enviar emails por fuera de `getResend()`.**
+- Se evalúa al momento de enviar, no cuando ocurrió la acción: si la desactivan después de postular, aceptar términos o reservar, ningún email posterior sale.
+- Por defecto todo envío se trata como dirigido a influencer. Los envíos a marcas, admins, leads CRM o cuentas deben declarar `tags: [emailAudience('brand' | 'admin' | 'crm' | 'account')]`; así, si una marca comparte email con una influencer inactiva, se le sigue escribiendo **solo si la base confirma ese rol**.
+- Falla cerrado: si no se puede verificar, no se envía.
+- Los filtros `is_active` en las queries de cada ruta se mantienen (contadores exactos y mensajes claros al admin); no reemplazan la barrera.
+
 ## Regla final para Claude
 
 Antes de escribir código, piensa como:

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 
@@ -163,7 +164,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (actionLink) {
       const { error: emailErr } = await getResend().emails.send({
         from: FROM_EMAIL,
-        to: contactEmail,
+        to: contactEmail, tags: [emailAudience('brand')],
         subject: 'Tu link de acceso a Scence',
         html: brandInviteEmail({ name: brand.contact_name ?? brand.name, actionLink, isResend: true }),
       })
@@ -244,7 +245,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to: contactEmail,
+    to: contactEmail, tags: [emailAudience('brand')],
     subject: `Bienvenido al portal de marcas — ${brand.name}`,
     html: brandInviteEmail({
       name: brand.contact_name ?? brand.name,

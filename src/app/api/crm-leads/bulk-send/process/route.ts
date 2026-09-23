@@ -3,6 +3,7 @@ import { waitUntil } from '@vercel/functions'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendLeadBatch, BATCH_SIZE } from '@/lib/crm-bulk-send'
 import { getResend, FROM_EMAIL, bulkSendCompleteEmail } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
       try {
         await getResend().emails.send({
           from: FROM_EMAIL,
-          to: updated.notify_email,
+          to: updated.notify_email, tags: [emailAudience('admin')],
           subject: `Envío masivo CRM terminado — ${updated.sent} enviados`,
           html: bulkSendCompleteEmail({
             total: updated.total,

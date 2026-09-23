@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { ADMIN_NOTIFICATION_EMAIL, getResend, FROM_EMAIL } from '@/lib/resend'
 import { didContentUrlChange, normalizeContentUrl } from '@/lib/deliverables/metrics-state'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
         const { error: sendErr } = await getResend().emails.send({
           from: FROM_EMAIL,
-          to: ADMIN_NOTIFICATION_EMAIL,
+          to: ADMIN_NOTIFICATION_EMAIL, tags: [emailAudience('admin')],
           subject: `Nueva entrega de contenido — ${influencerName} · ${deliverableTitle}`,
           html: `<!DOCTYPE html>
 <html>

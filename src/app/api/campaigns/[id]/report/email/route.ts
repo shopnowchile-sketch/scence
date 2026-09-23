@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const { error: emailError } = await getResend().emails.send({
       from: FROM_EMAIL,
-      to: body.email,
+      to: body.email, tags: [emailAudience('brand')],
       subject: `Reporte final — ${campaign.name}`,
       html: `<div style="font-family:Arial,sans-serif;color:#111827"><h2>Reporte final de campaña</h2><p>Adjuntamos el reporte final de <strong>${campaign.name}</strong>, con sus KPI y resultados.</p><p style="color:#6b7280;font-size:12px">SCENCE</p></div>`,
       attachments: [{

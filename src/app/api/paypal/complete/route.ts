@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
 const ADMIN_PAYMENT_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
@@ -60,14 +61,14 @@ export async function POST(request: NextRequest) {
   if (user.email) {
     await getResend().emails.send({
       from: FROM_EMAIL,
-      to: user.email,
+      to: user.email, tags: [emailAudience('brand')],
       subject: `Confirmación de suscripción SCENCE · ${name}`,
       html: `<h2>Tu suscripción está activa</h2><p>Plan: <strong>${name}</strong></p><p>Precio de lanzamiento: <strong>US$${launch}/mes</strong> durante 3 meses.</p><p>Luego: <strong>US$${regular}/mes</strong>.</p><p>Tu acceso en SCENCE ya fue actualizado.</p>`,
     }).catch(() => null)
   }
   await getResend().emails.send({
     from: FROM_EMAIL,
-    to: ADMIN_PAYMENT_EMAIL,
+    to: ADMIN_PAYMENT_EMAIL, tags: [emailAudience('admin')],
     subject: `Nuevo pago PayPal · ${name}`,
     html: `<h2>Nuevo pago confirmado</h2><p>Plan: <strong>${name}</strong></p><p>Cliente: <strong>${user.email ?? 'Sin email'}</strong></p><p>Organización: <strong>${access.organizationId}</strong></p><p>Suscripción PayPal: <strong>${subscriptionId}</strong></p><p>Precio de lanzamiento: <strong>US$${launch}/mes</strong> durante 3 meses. Luego US$${regular}/mes.</p>`,
   }).catch(() => null)

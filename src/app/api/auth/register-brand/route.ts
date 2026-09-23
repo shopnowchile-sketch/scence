@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { ensureBrandRow } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL, brandSignupConfirmEmail } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -157,7 +158,7 @@ export async function POST(req: NextRequest) {
 
   const { error: emailError } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to: email,
+    to: email, tags: [emailAudience('brand')],
     subject: 'Confirma tu cuenta — SCENCE',
     html: brandSignupConfirmEmail({
       contactName,

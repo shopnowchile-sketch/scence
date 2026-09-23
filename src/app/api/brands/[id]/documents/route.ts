@@ -3,6 +3,7 @@ import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { renderDocument } from '@/lib/document-templates'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (brand.contact_email) {
     const deadline = dueAt.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     const { error: emailError } = await getResend().emails.send({
-      from: FROM_EMAIL, to: brand.contact_email,
+      from: FROM_EMAIL, to: brand.contact_email, tags: [emailAudience('brand')],
       subject: `Acción requerida: firma tu NDA SCENCE antes del ${deadline}`,
       html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><div style="background:#7c3aed;color:white;padding:24px;font-size:22px;font-weight:800">SCENCE</div><div style="padding:28px"><h1 style="font-size:22px;color:#111827">Tienes un documento pendiente de firma</h1><p style="color:#4b5563;line-height:1.6">Hola ${brand.contact_name ?? brand.name},</p><p style="color:#4b5563;line-height:1.6">Para resguardar la información y base de creadoras de SCENCE, <strong>${brand.name}</strong> debe firmar el <strong>${template.name}</strong>.</p><div style="background:#fff7ed;border-radius:10px;padding:16px;color:#9a3412"><strong>Plazo:</strong> tienes hasta el ${deadline} para completarlo.</div><a href="${appUrl}/brand-documents" style="display:block;margin-top:24px;background:#7c3aed;color:white;text-align:center;padding:14px;border-radius:10px;text-decoration:none;font-weight:bold">Revisar y firmar documento →</a><p style="color:#9ca3af;font-size:12px;line-height:1.5">La firma se realiza en el portal de SCENCE por el representante autorizado de la Marca.</p></div></div>`,
     })

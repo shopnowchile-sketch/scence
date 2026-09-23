@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail, sponsorOpportunityEmail } from '@/lib/resend'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const BATCH_SIZE = 100 // límite de resend.batch.send()
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -21,7 +22,7 @@ export async function notifyEligibleBrandsOfSponsorOpportunity(campaignId: strin
     let failed = 0
     for (const brand of targets) {
       try {
-        const { error: emailError } = await getResend().emails.send({ from: FROM_EMAIL, to: brand.contact_email as string, subject: `Nueva oportunidad sponsor: ${campaign.name}`, html: sponsorOpportunityEmail({ brandName: brand.name, campaignName: campaign.name, campaignType: campaign.type, benefits: typeof config.benefits === 'string' ? config.benefits : null, opportunityUrl: `${APP_URL}/brand-opportunities` }) })
+        const { error: emailError } = await getResend().emails.send({ from: FROM_EMAIL, to: brand.contact_email as string, tags: [emailAudience('brand')], subject: `Nueva oportunidad sponsor: ${campaign.name}`, html: sponsorOpportunityEmail({ brandName: brand.name, campaignName: campaign.name, campaignType: campaign.type, benefits: typeof config.benefits === 'string' ? config.benefits : null, opportunityUrl: `${APP_URL}/brand-opportunities` }) })
         if (emailError) throw new Error(emailError.message)
         successfulIds.push(brand.id)
       } catch (sendError) { console.error('[notifyEligibleBrandsOfSponsorOpportunity] email', sendError); failed += 1 }
@@ -223,7 +224,7 @@ export async function sendCampaignAnnouncementPreview(
 
   const { error } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to,
+    to, tags: [emailAudience('admin')],
     subject: `[PRUEBA] Nueva campaña disponible: ${campaign.name} — cupos limitados`,
     html: campaignOpenAvailableEmail({
       influencerName: 'Camila',

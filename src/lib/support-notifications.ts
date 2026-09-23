@@ -1,5 +1,6 @@
 import { ADMIN_NOTIFICATION_EMAIL, FROM_EMAIL, getResend } from '@/lib/resend'
 import { escapeHtml } from '@/lib/utils'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const SUPPORT_EMAIL = ADMIN_NOTIFICATION_EMAIL
@@ -30,7 +31,7 @@ export async function notifySupportOfNewTicket(input: {
 
   const { error } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to: SUPPORT_EMAIL,
+    to: SUPPORT_EMAIL, tags: [emailAudience('admin')],
     reply_to: input.submitterEmail || undefined,
     subject: `[Soporte Scence] Nuevo ticket: ${input.title}`,
     html: emailShell('Nuevo ticket de soporte', content, `${APP_URL}/admin-support`, 'Ver ticket'),

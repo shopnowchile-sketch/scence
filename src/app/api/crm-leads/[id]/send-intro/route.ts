@@ -4,6 +4,7 @@ import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { buildUnsubscribeUrl, commercialEmailHeaders, isOptedOut, OptOutLookupError } from '@/lib/email-optouts'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: emailData, error: emailErr } = await getResend().emails.send({
     from: FROM_EMAIL,
-    to: lead.email,
+    to: lead.email, tags: [emailAudience('crm')],
     subject,
     html,
     text: message,

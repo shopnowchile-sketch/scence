@@ -4,6 +4,7 @@ import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -363,7 +364,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       const actionLink = `${APP_URL}/auth/confirm?token_hash=${token}&type=magiclink&next=/brand-dash`
       const { error: emailError } = await getResend().emails.send({
         from: FROM_EMAIL,
-        to: ownerInvitation.email,
+        to: ownerInvitation.email, tags: [emailAudience('brand')],
         subject: `Acceso al portal de ${data.name} — Scence`,
         html: `<p>Hola ${ownerInvitation.name},</p><p>Ya tienes acceso al portal de marca de <strong>${data.name}</strong> en Scence.</p><p><a href="${actionLink}">Ingresar al portal</a></p>`,
       })

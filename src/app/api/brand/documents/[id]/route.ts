@@ -4,6 +4,7 @@ import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg
 import { renderDocument } from '@/lib/document-templates'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 import { escapeHtml } from '@/lib/utils'
+import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 
@@ -73,7 +74,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (recipients.length > 0) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
       const { error: emailError } = await getResend().emails.send({
-        from: FROM_EMAIL, to: recipients, subject: `[SCENCE] ${title}`,
+        from: FROM_EMAIL, to: recipients, tags: [emailAudience('brand')], subject: `[SCENCE] ${title}`,
         html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:auto"><div style="background:#7c3aed;color:#fff;padding:24px;font-size:21px;font-weight:800">SCENCE</div><div style="padding:28px"><h1 style="font-size:22px;color:#111827;margin:0 0 14px">${escapeHtml(title)}</h1><p style="color:#4b5563;line-height:1.6">${escapeHtml(bodyText)}</p><a href="${appUrl}/admin-brands/${brand.id}?tab=documents" style="display:block;margin-top:24px;background:#7c3aed;color:#fff;text-align:center;padding:14px;border-radius:10px;text-decoration:none;font-weight:700">Ver NDA firmado →</a></div></div>`,
       })
       if (emailError) console.error('[brand document signed] admin email failed:', emailError.message)

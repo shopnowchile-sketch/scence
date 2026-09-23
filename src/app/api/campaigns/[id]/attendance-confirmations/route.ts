@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!ids.length) return NextResponse.json({ error: 'Selecciona al menos una influencer pendiente.' }, { status: 422 })
     const { data: rows, error } = await admin
       .from('campaign_deliverables')
-      .select('influencer_id, due_date, description, influencer:influencers(display_name,email)')
+      .select('influencer_id, due_date, description, influencer:influencers(display_name,email,is_active)')
       .eq('campaign_id', params.id)
       .eq('type', 'event_attendance')
       .eq('status', 'pending')
@@ -39,9 +39,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     const people = (rows ?? []).map(row => ({
       name: (row.influencer as unknown as { display_name?: string | null })?.display_name ?? 'Hola',
       email: (row.influencer as unknown as { email?: string | null })?.email,
+      active: (row.influencer as unknown as { is_active?: boolean | null })?.is_active !== false,
       dueDate: row.due_date,
       message: row.description ?? undefined,
-    })).filter(person => !!person.email && !!person.dueDate)
+    })).filter(person => person.active && !!person.email && !!person.dueDate)
     if (!people.length) return NextResponse.json({ error: 'No hay confirmaciones pendientes con email disponible.' }, { status: 422 })
     // Un email malformado no debe bloquear el envío del resto del lote.
     const validPeople = people.filter(person => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email ?? ''))
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (!body.due_date || !/^\d{4}-\d{2}-\d{2}$/.test(body.due_date)) return NextResponse.json({ error: 'Define una fecha límite para confirmar.' }, { status: 422 })
 
-  const { data: accepted, error: acceptedError } = await admin.from('campaign_influencers').select('id, influencer_id, influencer:influencers(display_name,email)').eq('campaign_id', params.id).eq('application_status', 'accepted')
+  const { data: accepted, error: acceptedError } = await admin.from('campaign_influencers').select('id, influencer_id, influencer:influencers(display_name,email,is_active)').eq('campaign_id', params.id).eq('application_status', 'accepted')
   if (acceptedError) return NextResponse.json({ error: acceptedError.message }, { status: 500 })
   if (!accepted?.length) return NextResponse.json({ error: 'Aún no hay influencers aceptadas.' }, { status: 422 })
   const influencerIds = accepted.map(row => row.influencer_id)
@@ -93,7 +94,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     const people = accepted.filter(row => recipients.has(row.influencer_id)).map(row => ({
       name: (row.influencer as unknown as { display_name?: string | null })?.display_name ?? 'Hola',
       email: (row.influencer as unknown as { email?: string | null })?.email,
-    })).filter(person => !!person.email)
+      // Regla: influencer inactiva = cero emails de SCENCE.
+      active: (row.influencer as unknown as { is_active?: boolean | null })?.is_active !== false,
+    })).filter(person => person.active && !!person.email)
     const dueLabel = new Date(`${body.due_date}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     // Un email malformado no debe bloquear el envío del resto del lote.
     const validPeople = people.filter(person => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email ?? ''))

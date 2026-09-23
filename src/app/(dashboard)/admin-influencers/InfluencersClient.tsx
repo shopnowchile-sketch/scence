@@ -394,7 +394,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
         />
         {!isBrandPortal && (
           <div className="flex items-center gap-1.5">
-            {([['all', 'Todos'], ['pro', 'PRO'], ['free', 'Gratis']] as const).map(([value, label]) => (
+            {([['all', 'Todos'], ['active', 'Activas'], ['inactive', 'Inactivas'], ['pro', 'PRO'], ['free', 'Gratis']] as const).map(([value, label]) => (
               <button
                 key={value}
                 onClick={() => {

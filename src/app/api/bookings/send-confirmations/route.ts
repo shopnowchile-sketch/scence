@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
   // Fetch influencer emails
   const { data: influencers } = await admin
     .from('influencers')
-    .select('id, display_name, email')
+    .select('id, display_name, email, is_active')
     .in('id', influencer_ids)
 
   if (!influencers?.length) {
@@ -121,6 +121,10 @@ export async function POST(req: NextRequest) {
   const results: { influencer_id: string; email_sent: boolean; error?: string }[] = []
 
   for (const inf of influencers) {
+    if (!inf.is_active) {
+      results.push({ influencer_id: inf.id, email_sent: false, error: 'Influencer inactiva' })
+      continue
+    }
     if (!inf.email) {
       results.push({ influencer_id: inf.id, email_sent: false, error: 'No email' })
       continue

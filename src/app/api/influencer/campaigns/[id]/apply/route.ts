@@ -17,10 +17,20 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, organization_id, display_name, address, commune, metadata, influencer_social_profiles (platform, username)')
+    .select('id, organization_id, display_name, address, commune, metadata, is_active, influencer_social_profiles (platform, username)')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
+
+  if (!influencer.is_active) {
+    return NextResponse.json(
+      {
+        error: 'Tu cuenta está inactiva. Solicita la activación mediante Soporte SCENCE.',
+        code: 'INFLUENCER_INACTIVE',
+      },
+      { status: 403 },
+    )
+  }
 
   // Las creadoras registradas desde el flujo nuevo deben completar el perfil
   // antes de postular, incluso si intentan saltarse la pantalla llamando la API.
@@ -206,8 +216,18 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const admin = createAdminClient()
 
   const { data: influencer } = await admin
-    .from('influencers').select('id').eq('user_id', user.id).single()
+    .from('influencers').select('id, is_active').eq('user_id', user.id).single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
+
+  if (!influencer.is_active) {
+    return NextResponse.json(
+      {
+        error: 'Tu cuenta está inactiva. Solicita la activación mediante Soporte SCENCE.',
+        code: 'INFLUENCER_INACTIVE',
+      },
+      { status: 403 },
+    )
+  }
 
   await admin
     .from('campaign_influencers')
@@ -240,10 +260,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id')
+    .select('id, is_active')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
+
+  if (!influencer.is_active) {
+    return NextResponse.json(
+      {
+        error: 'Tu cuenta está inactiva. Solicita la activación mediante Soporte SCENCE.',
+        code: 'INFLUENCER_INACTIVE',
+      },
+      { status: 403 },
+    )
+  }
 
   let body: { action?: 'accept' | 'reject'; answers?: unknown[] }
   try { body = await req.json() } catch {

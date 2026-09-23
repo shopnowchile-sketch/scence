@@ -176,6 +176,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  if (access.influencer.user_id === user.id && Object.prototype.hasOwnProperty.call(body, 'is_active')) {
+    return NextResponse.json({ error: 'Una influencer no puede cambiar el estado de su propia cuenta.', code: 'INFLUENCER_STATUS_ADMIN_ONLY' }, { status: 403 })
+  }
+
   // Merge metadata with existing (don't overwrite)
   let mergedMeta = metaUpdate
   if (Object.keys(metaUpdate).length > 0) {
@@ -263,6 +267,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const access = await canManageInfluencer(admin, user.id, params.id)
   if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  if (access.influencer.user_id === user.id && Object.prototype.hasOwnProperty.call(body, 'is_active')) {
+    return NextResponse.json({ error: 'Una influencer no puede cambiar el estado de su propia cuenta.', code: 'INFLUENCER_STATUS_ADMIN_ONLY' }, { status: 403 })
+  }
 
   // Campos que no son columnas reales → van dentro de metadata JSONB
   const META_FIELDS = ['deactivation_reason', 'first_name', 'last_name', 'status']

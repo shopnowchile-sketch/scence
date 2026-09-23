@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   type DelRow = {
     title: string
     campaign: { id: string; name: string; organization_id: string } | null
-    influencer: { display_name: string; email: string | null } | null
+    influencer: { display_name: string; email: string | null; is_active: boolean | null } | null
   }
   const d = deliverable as DelRow | null
 

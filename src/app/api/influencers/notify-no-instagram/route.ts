@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     // Mismo patrón PAGE=1000 + loop que ya usa loadScan arriba.
     const PAGE = 1000
     let from = 0
-    const addrRows: Array<{ id: string; display_name: string | null; email: string | null; address: string | null; commune: string | null }> = []
+    const addrRows: Array<{ id: string; display_name: string | null; email: string | null; address: string | null; commune: string | null; is_active: boolean | null }> = []
     for (;;) {
       const { data, error } = await admin
         .from('influencers')

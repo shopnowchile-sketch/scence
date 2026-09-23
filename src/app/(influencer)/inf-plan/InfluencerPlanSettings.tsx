@@ -23,6 +23,8 @@ type Billing = {
   subscription: { status: string; current_period_end: string | null; started_paying_at: string | null; plan: { name: string; tier: string } | null } | null
   commitment: { campaignName: string; completedDeliverables: number; totalDeliverables: number } | null
   can_cancel: boolean
+  cancel_at_period_end?: boolean
+  paid_through?: string | null
   is_pro: boolean
   account_active: boolean
   started_paying_at: string | null
@@ -30,6 +32,11 @@ type Billing = {
   total_paid: number
   total_paid_currency: string | null
   blocked_reason?: 'campaign_active' | 'deliverables_pending' | null
+}
+
+function formatPaidThrough(iso: string | null | undefined) {
+  if (!iso) return null
+  return new Intl.DateTimeFormat('es-CL', { dateStyle: 'long', timeZone: 'America/Santiago' }).format(new Date(iso))
 }
 
 async function responseJson(response: Response) {
@@ -109,13 +116,16 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
   }
 
   async function cancelSubscription() {
-    if (!window.confirm('¿Quieres cancelar tu suscripción Pro?')) return
+    if (!window.confirm('¿Quieres cancelar tu suscripción Pro? Tu Plan Pro seguirá activo hasta el final del período ya pagado y no se renovará.')) return
     setCanceling(true)
     try {
       const response = await fetch('/api/influencer/paypal/cancel', { method: 'POST' })
       const result = await responseJson(response)
       if (!response.ok) throw new Error(result.error)
-      toast.success('Tu suscripción fue cancelada correctamente.')
+      const until = formatPaidThrough(result.paid_through)
+      toast.success(until
+        ? `Tu cancelación quedó programada. Tu Plan Pro seguirá activo hasta el ${until} y no se renovará después de esa fecha.`
+        : 'Tu cancelación quedó programada. Tu Plan Pro seguirá activo hasta el final del período pagado y no se renovará.')
       await load()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo cancelar tu suscripción.')
@@ -128,6 +138,8 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
 
   const active = billing?.is_pro === true
   const commitment = billing?.commitment
+  const cancelScheduled = billing?.cancel_at_period_end === true
+  const paidThroughLabel = formatPaidThrough(billing?.paid_through)
   const benefits = ['Postulaciones a eventos exclusivos', 'Primeros en ser considerados para invitaciones públicas', 'Invitaciones exclusivas VIP', 'Descuentos cuando la campaña sea pagada', 'Beneficios específicos adicionales según cada campaña']
 
   return (
@@ -166,11 +178,16 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       {active && (
         <section className="rounded-2xl border border-violet-200 bg-white p-5">
           <div className="flex items-center justify-between"><h3 className="font-bold text-gray-900">PLAN PRO</h3><span className="font-bold text-violet-700">{billing?.payments?.[0] ? `${new Intl.NumberFormat('es-CL', { style: 'currency', currency: billing.payments[0].currency }).format(Number(billing.payments[0].amount))}/mes` : 'Monto no informado'}</span></div>
+          {cancelScheduled && (
+            <p className="mt-3 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+              {paidThroughLabel ? `Pro activo hasta ${paidThroughLabel} · No se renovará.` : 'Pro activo hasta el fin del período pagado · No se renovará.'}
+            </p>
+          )}
           <div className="mt-4 space-y-3">{benefits.map(benefit => <div key={benefit} className="flex items-start gap-2 text-sm text-gray-700"><Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" /><span>{benefit}</span></div>)}</div>
         </section>
       )}
 
-      {active && commitment && (
+      {active && commitment && !cancelScheduled && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <div className="flex gap-3">
             <LockKeyhole className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
@@ -249,8 +266,14 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       {active && (
         <section className="rounded-2xl border border-gray-100 bg-white p-6">
           <h3 className="font-semibold text-gray-900">Cancelar suscripción</h3>
-          <p className="mt-1 text-sm text-gray-500">La cancelación se procesa directamente con PayPal.</p>
-          <button disabled={!billing?.can_cancel || canceling} onClick={cancelSubscription} className="mt-4 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">{canceling ? 'Cancelando…' : commitment ? 'Cancelación bloqueada' : 'Cancelar suscripción'}</button>
+          {cancelScheduled ? (
+            <p className="mt-1 text-sm text-gray-500">{paidThroughLabel ? `Tu cancelación ya está programada. Tu Plan Pro seguirá activo hasta el ${paidThroughLabel} y no se renovará después de esa fecha.` : 'Tu cancelación ya está programada. Tu Plan Pro no se renovará.'}</p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-gray-500">La cancelación se procesa con PayPal. Tu Plan Pro seguirá activo hasta el final del período ya pagado y no se renovará.</p>
+              <button disabled={!billing?.can_cancel || canceling} onClick={cancelSubscription} className="mt-4 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">{canceling ? 'Cancelando…' : commitment ? 'Cancelación bloqueada' : 'Cancelar suscripción'}</button>
+            </>
+          )}
         </section>
       )}
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasActiveCampaignCommitment } from '@/lib/influencer-pro-commitment'
 import { isInfluencerPro } from '@/lib/influencer-pro'
+import { isInfluencerProCancellationScheduled } from '@/lib/influencer-paypal'
 
 export async function GET() {
   const supabase = createServerClient()
@@ -20,7 +21,7 @@ export async function GET() {
   if (error) return NextResponse.json({ error: 'No se pudo consultar tu plan.' }, { status: 500 })
 
   const subscription = subscriptions?.[0] ?? null
-  if (!subscription) return NextResponse.json({ subscription: null, commitment: null, can_cancel: false, is_pro: false, account_active: influencer.is_active, started_paying_at: null, payments: [], total_paid: 0 })
+  if (!subscription) return NextResponse.json({ subscription: null, commitment: null, can_cancel: false, cancel_at_period_end: false, paid_through: null, is_pro: false, account_active: influencer.is_active, started_paying_at: null, payments: [], total_paid: 0 })
 
   const { data: payments, error: paymentsError } = await admin
     .from('subscription_payments')
@@ -38,10 +39,14 @@ export async function GET() {
   try {
     const commitment = await hasActiveCampaignCommitment(admin, influencer.id, subscription.metadata)
     const isPro = await isInfluencerPro(admin, influencer.id)
+    const cancelScheduled = isInfluencerProCancellationScheduled(subscription)
     return NextResponse.json({
       subscription,
       commitment: commitment.commitment,
-      can_cancel: ['active', 'trialing'].includes(subscription.status) && !commitment.blocked,
+      // Una cancelación ya programada no se puede repetir (evita doble cancelación).
+      can_cancel: ['active', 'trialing'].includes(subscription.status) && !cancelScheduled && !commitment.blocked,
+      cancel_at_period_end: cancelScheduled,
+      paid_through: cancelScheduled ? subscription.current_period_end : null,
       blocked_reason: commitment.reason,
       is_pro: isPro,
       account_active: influencer.is_active,

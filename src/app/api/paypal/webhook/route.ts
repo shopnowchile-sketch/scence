@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { parseInfluencerReference } from '@/lib/influencer-paypal'
+import { parseInfluencerReference, payPalPaidThrough } from '@/lib/influencer-paypal'
 
 const STATUS_MAP: Record<string, string> = { ACTIVE: 'active', APPROVAL_PENDING: 'incomplete', SUSPENDED: 'past_due', CANCELLED: 'canceled', EXPIRED: 'canceled' }
 function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
@@ -155,14 +155,28 @@ export async function POST(request: NextRequest) {
     const [{ data: influencer }, { data: plan }, { data: existing }] = await Promise.all([
       admin.from('influencers').select('id, organization_id').eq('id', influencerRef.influencerId).maybeSingle(),
       admin.from('subscription_plans').select('id').eq('tier', 'pro').eq('is_active', true).maybeSingle(),
-      admin.from('subscriptions').select('id, metadata').eq('paypal_subscription_id', id).maybeSingle(),
+      admin.from('subscriptions').select('id, metadata, current_period_end, canceled_at').eq('paypal_subscription_id', id).maybeSingle(),
     ])
     if (!influencer?.organization_id || !plan) return NextResponse.json({ received: true })
     const status = STATUS_MAP[subscription.status] ?? 'incomplete'
     const start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString()
-    const end = subscription.billing_info?.next_billing_time ?? start
-    const metadata = existing?.metadata ?? { account_type: 'influencer', influencer_id: influencer.id, campaign_commitments: influencerRef.campaignId ? [influencerRef.campaignId] : [] }
-    const row = { organization_id: influencer.organization_id, plan_id: plan.id, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: status === 'canceled' ? new Date().toISOString() : null, updated_at: new Date().toISOString() }
+    // Fin del período pagado. En CANCELLED/EXPIRED PayPal ya no informa
+    // next_billing_time: antes se caía a `start` (fecha pasada) y la influencer
+    // perdía Pro de inmediato aunque hubiera pagado el mes. Regla: una
+    // cancelación NUNCA retrocede `current_period_end`; se conserva la mayor
+    // entre la guardada y la que informa PayPal (último pago + 1 mes).
+    const reportedEnd = payPalPaidThrough(subscription) ?? start
+    const storedEnd = existing?.current_period_end ? Date.parse(existing.current_period_end) : NaN
+    const end = status === 'canceled' && Number.isFinite(storedEnd) && storedEnd > Date.parse(reportedEnd)
+      ? new Date(storedEnd).toISOString()
+      : reportedEnd
+    const baseMetadata = existing?.metadata ?? { account_type: 'influencer', influencer_id: influencer.id, campaign_commitments: influencerRef.campaignId ? [influencerRef.campaignId] : [] }
+    // Cancelación hecha directo en PayPal: se marca igual que la hecha en SCENCE.
+    const metadata = status === 'canceled'
+      ? { ...(baseMetadata as Record<string, unknown>), cancel_at_period_end: true, paid_through: end }
+      : baseMetadata
+    const canceledAt = status === 'canceled' ? (existing?.canceled_at ?? new Date().toISOString()) : null
+    const row = { organization_id: influencer.organization_id, plan_id: plan.id, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: canceledAt, updated_at: new Date().toISOString() }
     const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)
     if (error) return NextResponse.json({ error: 'Unable to sync influencer subscription' }, { status: 500 })
     return NextResponse.json({ received: true })

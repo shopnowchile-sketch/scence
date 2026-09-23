@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getInfluencerPayPalToken, influencerPayPalBaseUrl } from '@/lib/influencer-paypal'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
+import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 
 export async function POST(request: NextRequest) {
   const supabase = createServerClient()
@@ -11,6 +12,20 @@ export async function POST(request: NextRequest) {
   const { data: influencer } = await admin.from('influencers').select('id, organization_id, is_active').eq('user_id', user.id).maybeSingle()
   if (!influencer?.is_active) return NextResponse.json({ error: 'Tu cuenta de influencer no está activa.' }, { status: 403 })
   if (!influencer.organization_id) return NextResponse.json({ error: 'Tu cuenta no tiene una organización asociada.' }, { status: 409 })
+
+  // Bloquea doble checkout: una influencer con Pro pagado vigente (activo, o
+  // cancelado con período pagado aún en curso) no puede abrir otra suscripción
+  // PayPal, porque generaría dos cobros mensuales en paralelo.
+  let proSource
+  try {
+    proSource = (await getInfluencerProStatuses(admin, [influencer.id])).get(influencer.id)
+  } catch (error) {
+    console.error('[POST /api/influencer/paypal/checkout] pro status:', error)
+    return NextResponse.json({ error: 'No se pudo validar tu plan actual.' }, { status: 500 })
+  }
+  if (proSource === 'paid') {
+    return NextResponse.json({ error: 'Ya tienes el Plan Pro vigente. Podrás volver a contratarlo cuando termine tu período pagado.', code: 'PRO_ALREADY_ACTIVE' }, { status: 409 })
+  }
 
   const { data: termsAcceptance } = await admin.from('influencer_terms_acceptances').select('id').eq('influencer_id', influencer.id).eq('document_key', INFLUENCER_PRO_TERMS.key).eq('document_version', INFLUENCER_PRO_TERMS.version).eq('status', 'accepted').maybeSingle()
   if (!termsAcceptance) return NextResponse.json({ error: 'Debes aceptar los Términos y Condiciones vigentes antes de continuar.' }, { status: 409 })

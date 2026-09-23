@@ -4,7 +4,7 @@ import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
-import { scheduleInfluencerPayPalCancellation } from '@/lib/influencer-paypal'
+import { cancelInfluencerPayPalAtPeriodEnd, persistInfluencerProCancellation } from '@/lib/influencer-paypal'
 
 type Params = { params: { id: string } }
 
@@ -181,9 +181,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Una influencer no puede cambiar el estado de su propia cuenta.', code: 'INFLUENCER_STATUS_ADMIN_ONLY' }, { status: 403 })
   }
 
-  // Al desactivar desde Admin, una suscripción Pro pagada NO se cancela inmediatamente.
-  // PayPal la deja activa hasta el final del período mensual actual y recién ahí
-  // deja de cobrar. Así una influencer inactiva nunca pierde el período que ya pagó.
+  // Al desactivar desde Admin se cancela la renovación en PayPal (sin cobro
+  // adicional) y SCENCE conserva Pro hasta el final del período ya pagado
+  // (`current_period_end`). Así una influencer inactiva nunca pierde lo que pagó.
   const deactivating = body.is_active === false && access.influencer.is_active === true
   if (deactivating) {
     const { data: proSubscriptions, error: proSubscriptionError } = await admin
@@ -201,25 +201,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const subscription = proSubscriptions?.[0]
     if (subscription?.paypal_subscription_id) {
+      let paidThrough: string
       try {
-        await scheduleInfluencerPayPalCancellation(subscription.paypal_subscription_id)
+        ({ paidThrough } = await cancelInfluencerPayPalAtPeriodEnd(subscription.paypal_subscription_id))
       } catch (error) {
-        console.error('[PUT /api/influencers/[id]] schedule Pro cancellation:', error)
-        return NextResponse.json({ error: 'No se pudo programar la cancelación de Pro al final del período. La influencer no fue desactivada.' }, { status: 502 })
+        console.error('[PUT /api/influencers/[id]] cancel Pro renewal:', error)
+        return NextResponse.json({ error: 'No se pudo cancelar la renovación Pro en PayPal. La influencer no fue desactivada.' }, { status: 502 })
       }
-
-      const nextMetadata = {
-        ...((subscription.metadata ?? {}) as Record<string, unknown>),
-        cancel_at_period_end: true,
-        scheduled_cancel_at: subscription.current_period_end ?? null,
-        scheduled_cancel_reason: 'influencer_inactivated_by_admin',
-      }
-      const { error: metadataError } = await admin
-        .from('subscriptions')
-        .update({ metadata: nextMetadata, updated_at: new Date().toISOString() })
-        .eq('id', subscription.id)
+      const { error: metadataError } = await persistInfluencerProCancellation(admin, subscription, paidThrough, 'influencer_inactivated_by_admin')
       if (metadataError) {
-        return NextResponse.json({ error: 'La cancelación quedó programada en PayPal, pero no se pudo sincronizar SCENCE.' }, { status: 500 })
+        return NextResponse.json({ error: 'PayPal canceló la renovación, pero no se pudo sincronizar SCENCE.' }, { status: 500 })
       }
     }
   }

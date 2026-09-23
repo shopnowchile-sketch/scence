@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scan = await loadScan(admin, orgId)
-    const missingInstagram = scan.filter(i => !i.instagram_url && !i.instagram_username && i.email)
+    const missingInstagram = scan.filter(i => i.is_active !== false && !i.instagram_url && !i.instagram_username && i.email)
 
     // FIX (2026-07-05): esta query no tenía paginación — con 1741 influencers,
     // Supabase corta silenciosamente a ~1000 filas por defecto (mismo límite
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     for (;;) {
       const { data, error } = await admin
         .from('influencers')
-        .select('id, display_name, email, address, commune')
+        .select('id, display_name, email, address, commune, is_active')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: true })
         .range(from, from + PAGE - 1)
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       from += PAGE
     }
     const missingAddressOrCommune = addrRows.filter(
-      r => r.email && (!r.address || !String(r.address).trim() || !r.commune || !String(r.commune).trim())
+      r => r.is_active !== false && r.email && (!r.address || !String(r.address).trim() || !r.commune || !String(r.commune).trim())
     )
 
     const targetsById = new Map<string, { id: string; display_name: string | null; email: string | null }>()

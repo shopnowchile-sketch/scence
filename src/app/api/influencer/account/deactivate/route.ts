@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasActiveCampaignCommitment } from '@/lib/influencer-pro-commitment'
-import { getInfluencerPayPalToken, influencerPayPalBaseUrl } from '@/lib/influencer-paypal'
+import { scheduleInfluencerPayPalCancellation } from '@/lib/influencer-paypal'
 
 export async function POST() {
   const supabase = createServerClient()
@@ -16,12 +16,21 @@ export async function POST() {
     const commitment = await hasActiveCampaignCommitment(admin, influencer.id, subscription.metadata)
     if (commitment.blocked) return NextResponse.json({ error: 'Tu cuenta está comprometida con una campaña activa o con entregables pendientes y no puede desactivarse todavía.' }, { status: 409 })
     if (subscription.paypal_subscription_id) {
-      const token = await getInfluencerPayPalToken()
-      if (!token) return NextResponse.json({ error: 'No se pudo cancelar la renovación en PayPal.' }, { status: 503 })
-      const response = await fetch(`${influencerPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscription.paypal_subscription_id)}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Cuenta de influencer desactivada en SCENCE' }) })
-      if (!response.ok && response.status !== 204) return NextResponse.json({ error: 'No se pudo cancelar la renovación en PayPal.' }, { status: 502 })
+      try {
+        await scheduleInfluencerPayPalCancellation(subscription.paypal_subscription_id)
+      } catch (error) {
+        console.error('[POST /api/influencer/account/deactivate] schedule Pro cancellation:', error)
+        return NextResponse.json({ error: 'No se pudo programar la cancelación al final del período.' }, { status: 502 })
+      }
+      await admin.from('subscriptions').update({
+        updated_at: new Date().toISOString(),
+        metadata: {
+          ...(subscription.metadata ?? {}),
+          cancel_at_period_end: true,
+          scheduled_cancel_reason: 'influencer_deactivated',
+        },
+      }).eq('id', subscription.id)
     }
-    await admin.from('subscriptions').update({ status: 'canceled', canceled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', subscription.id)
   }
   const { error: profileError } = await admin.from('influencers').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', influencer.id)
   if (profileError) return NextResponse.json({ error: 'No se pudo desactivar la cuenta.' }, { status: 500 })

@@ -5,6 +5,7 @@ import { ensureInfluencerRow } from '@/lib/supabase/ensureOrg'
 import { InfluencerSidebar } from './_components/InfluencerSidebar'
 import { PresenceHeartbeat } from './_components/PresenceHeartbeat'
 import { ProfileCompletionGate } from './_components/ProfileCompletionGate'
+import { InactiveAccountGate } from './_components/InactiveAccountGate'
 
 export const metadata: Metadata = {
   title: { default: 'Mi Portal — Scence', template: '%s | Scence' },
@@ -21,10 +22,10 @@ async function isInfluencerProfileComplete(userId: string) {
   const admin = createAdminClient()
   const { data } = await admin
     .from('influencers')
-    .select('display_name, address, commune, metadata, influencer_social_profiles (platform, username)')
+    .select('display_name, address, commune, metadata, is_active, influencer_social_profiles (platform, username)')
     .eq('user_id', userId)
     .single()
-  if (!data) return { complete: true, required: false }
+  if (!data) return { complete: true, required: false, active: true }
 
   const hasName      = !!(data.display_name && String(data.display_name).trim())
   const hasAddress   = !!(data.address && String(data.address).trim())
@@ -35,6 +36,7 @@ async function isInfluencerProfileComplete(userId: string) {
   return {
     complete: hasName && hasAddress && hasCommune && hasInstagram,
     required: data.metadata?.self_registered === true,
+    active: data.is_active !== false,
   }
 }
 
@@ -64,9 +66,11 @@ export default async function InfluencerLayout({ children }: { children: React.R
       <InfluencerSidebar />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="w-full p-4 lg:p-8 max-w-[1440px] mx-auto">
-          <ProfileCompletionGate complete={profileState.complete} required={profileState.required}>
-            {children}
-          </ProfileCompletionGate>
+          <InactiveAccountGate active={profileState.active}>
+            <ProfileCompletionGate complete={profileState.complete} required={profileState.required}>
+              {children}
+            </ProfileCompletionGate>
+          </InactiveAccountGate>
         </div>
       </main>
     </div>

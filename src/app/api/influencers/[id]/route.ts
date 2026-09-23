@@ -4,13 +4,14 @@ import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { scheduleInfluencerPayPalCancellation } from '@/lib/influencer-paypal'
 
 type Params = { params: { id: string } }
 
 async function canManageInfluencer(admin: ReturnType<typeof createAdminClient>, userId: string, influencerId: string) {
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, user_id, organization_id')
+    .select('id, user_id, organization_id, is_active')
     .eq('id', influencerId)
     .maybeSingle()
 
@@ -178,6 +179,49 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   if (access.influencer.user_id === user.id && Object.prototype.hasOwnProperty.call(body, 'is_active')) {
     return NextResponse.json({ error: 'Una influencer no puede cambiar el estado de su propia cuenta.', code: 'INFLUENCER_STATUS_ADMIN_ONLY' }, { status: 403 })
+  }
+
+  // Al desactivar desde Admin, una suscripción Pro pagada NO se cancela inmediatamente.
+  // PayPal la deja activa hasta el final del período mensual actual y recién ahí
+  // deja de cobrar. Así una influencer inactiva nunca pierde el período que ya pagó.
+  const deactivating = body.is_active === false && access.influencer.is_active === true
+  if (deactivating) {
+    const { data: proSubscriptions, error: proSubscriptionError } = await admin
+      .from('subscriptions')
+      .select('id, paypal_subscription_id, current_period_end, metadata, subscription_plans!inner(tier)')
+      .in('status', ['active', 'trialing'])
+      .eq('metadata->>influencer_id', params.id)
+      .eq('subscription_plans.tier', 'pro')
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (proSubscriptionError) {
+      return NextResponse.json({ error: 'No se pudo validar la suscripción Pro antes de desactivar.' }, { status: 500 })
+    }
+
+    const subscription = proSubscriptions?.[0]
+    if (subscription?.paypal_subscription_id) {
+      try {
+        await scheduleInfluencerPayPalCancellation(subscription.paypal_subscription_id)
+      } catch (error) {
+        console.error('[PUT /api/influencers/[id]] schedule Pro cancellation:', error)
+        return NextResponse.json({ error: 'No se pudo programar la cancelación de Pro al final del período. La influencer no fue desactivada.' }, { status: 502 })
+      }
+
+      const nextMetadata = {
+        ...((subscription.metadata ?? {}) as Record<string, unknown>),
+        cancel_at_period_end: true,
+        scheduled_cancel_at: subscription.current_period_end ?? null,
+        scheduled_cancel_reason: 'influencer_inactivated_by_admin',
+      }
+      const { error: metadataError } = await admin
+        .from('subscriptions')
+        .update({ metadata: nextMetadata, updated_at: new Date().toISOString() })
+        .eq('id', subscription.id)
+      if (metadataError) {
+        return NextResponse.json({ error: 'La cancelación quedó programada en PayPal, pero no se pudo sincronizar SCENCE.' }, { status: 500 })
+      }
+    }
   }
 
   // Merge metadata with existing (don't overwrite)

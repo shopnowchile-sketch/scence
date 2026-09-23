@@ -397,9 +397,18 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
             {([['all', 'Todos'], ['pro', 'PRO'], ['free', 'Gratis']] as const).map(([value, label]) => (
               <button
                 key={value}
-                onClick={() => updateFilter({ plan: value })}
+                onClick={() => {
+                  if (value === 'active') updateFilter({ isActive: true, plan: 'all' })
+                  else if (value === 'inactive') updateFilter({ isActive: false, plan: 'all' })
+                  else if (value === 'all') updateFilter({ isActive: null, plan: 'all' })
+                  else updateFilter({ plan: value, isActive: null })
+                }}
                 className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
-                  filters.plan === value ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  ((value === 'active' && filters.isActive === true) ||
+                   (value === 'inactive' && filters.isActive === false) ||
+                   (value === 'all' && filters.isActive === null && filters.plan === 'all') ||
+                   ((value === 'pro' || value === 'free') && filters.plan === value))
+                    ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 )}
               >
                 {label}

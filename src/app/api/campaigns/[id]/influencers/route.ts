@@ -71,6 +71,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
+  const { data: targetInfluencer } = await admin.from('influencers').select('is_active').eq('id', influencer_id as string).maybeSingle()
+  if (!targetInfluencer) return NextResponse.json({ error: 'Influencer no encontrada' }, { status: 404 })
+  if (!targetInfluencer.is_active) return NextResponse.json({ error: 'La influencer está inactiva y no puede incorporarse a la campaña.', code: 'INFLUENCER_INACTIVE' }, { status: 403 })
+
   // Detectar si ya existía (para no reenviar el email de asignación en un re-add)
   const { data: existingCi } = await admin
     .from('campaign_influencers')
@@ -363,6 +367,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+
+  // No se permite incorporar una influencer inactiva a una campaña, incluso si el admin manipula directamente el endpoint.
+  if (typeof influencer_id === 'string') {
+    const { data: targetInfluencer } = await admin.from('influencers').select('is_active').eq('id', influencer_id).maybeSingle()
+    if (!targetInfluencer) return NextResponse.json({ error: 'Influencer no encontrada' }, { status: 404 })
+    if (!targetInfluencer.is_active) return NextResponse.json({ error: 'La influencer está inactiva y no puede incorporarse a la campaña.', code: 'INFLUENCER_INACTIVE' }, { status: 403 })
+  }
 
   if (attendance_action !== undefined) {
     if (!['confirmed_client', 'attended', 'no_show', 'revert_no_show'].includes(String(attendance_action))) {

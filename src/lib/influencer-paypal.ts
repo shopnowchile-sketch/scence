@@ -19,20 +19,49 @@ export async function scheduleInfluencerPayPalCancellation(paypalSubscriptionId:
   const accessToken = await getInfluencerPayPalToken()
   if (!accessToken) throw new Error('PayPal no está configurado.')
 
-  const response = await fetch(
-    `${influencerPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(paypalSubscriptionId)}/cancel`,
+  // PayPal's standard Subscriptions API cancels immediately through /cancel.
+  // To preserve the already-paid monthly period, we instead cap the current
+  // billing cycle count at the cycle that is already in progress.
+  const detailsResponse = await fetch(
+    `${influencerPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(paypalSubscriptionId)}`,
     {
-      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store',
+    },
+  )
+  const details = await detailsResponse.json().catch(() => null)
+  if (!detailsResponse.ok) {
+    throw new Error(details?.message ?? 'PayPal no pudo consultar la suscripción.')
+  }
+
+  const cycles = Array.isArray(details?.plan?.billing_cycles) ? details.plan.billing_cycles as Array<Record<string, unknown>> : []
+  const regularIndex = cycles.findIndex(cycle => cycle.tenure_type === 'REGULAR')
+  if (regularIndex < 0) throw new Error('PayPal no devolvió el ciclo mensual regular de la suscripción.')
+
+  const regularCycle = cycles[regularIndex]
+  const completed = Number(regularCycle.cycles_completed ?? 0)
+  if (!Number.isFinite(completed)) throw new Error('PayPal devolvió un ciclo de facturación inválido.')
+
+  const patchResponse = await fetch(
+    `${influencerPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(paypalSubscriptionId)}`,
+    {
+      method: 'PATCH',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ cancel_option: 'END_OF_PERIOD' }),
+      body: JSON.stringify([
+        {
+          op: 'replace',
+          path: `/plan/billing_cycles/${regularIndex}/total_cycles`,
+          value: completed + 1,
+        },
+      ]),
     },
   )
 
-  if (!response.ok && response.status !== 204) {
-    const detail = await response.json().catch(() => null)
-    throw new Error(detail?.message ?? 'PayPal no pudo programar la cancelación al final del período.')
+  if (!patchResponse.ok && patchResponse.status !== 204) {
+    const detail = await patchResponse.json().catch(() => null)
+    throw new Error(detail?.message ?? 'PayPal no pudo programar el fin del período actual.')
   }
 }

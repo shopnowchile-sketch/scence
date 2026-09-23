@@ -39,6 +39,13 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient()
 
+  const { data: account } = await admin
+    .from('influencers')
+    .select('is_active')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const isInactiveInfluencer = account?.is_active === false
+
   // Intentar obtener org_id — para influencers, buscar en influencers table como fallback
   let organizationId = await getOrgId(user.id, user.user_metadata, admin)
 
@@ -55,10 +62,12 @@ export async function POST(request: NextRequest) {
     .from('tickets')
     .insert({
       title:           title.trim(),
-      description:     description.trim(),
+      description:     isInactiveInfluencer
+        ? `account_reactivation\n\n${description.trim()}`
+        : description.trim(),
       status:          'open',
       priority,
-      category,
+      category:        isInactiveInfluencer ? 'auth' : category,
       created_by:      user.id,
       organization_id: organizationId,
       ai_review:       null,

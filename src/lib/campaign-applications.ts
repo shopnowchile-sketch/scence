@@ -30,7 +30,7 @@ export async function acceptCampaignApplication(
     .from('campaign_influencers')
     .select(`
       id, influencer_id, application_status, origin, fee, deliverables_spec,
-      influencer:influencers ( display_name, email )
+      influencer:influencers ( display_name, email, is_active )
     `)
     .eq('id', applicationId)
     .eq('campaign_id', campaignId)
@@ -39,7 +39,7 @@ export async function acceptCampaignApplication(
   const app = application as unknown as {
     id: string; influencer_id: string; application_status: string | null; origin: string | null; fee: number | null
     deliverables_spec: unknown
-    influencer: { display_name: string; email: string | null } | null
+    influencer: { display_name: string; email: string | null; is_active?: boolean } | null
   } | null
 
   if (!app) return { ok: false, error: 'Postulación no encontrada', status: 404 }
@@ -61,6 +61,10 @@ export async function acceptCampaignApplication(
   // elegibilidad en el punto de decisión, sin tocar la fila (no se rechaza
   // sola acá; ver cron close-expired-campaign-applications para el barrido
   // automático de postulaciones/aceptaciones que quedan sin Pro).
+  if (!app.influencer?.is_active) {
+    return { ok: false, error: 'La influencer está inactiva y no puede incorporarse a la campaña.', status: 403 }
+  }
+
   if (app.origin === 'application' && campaign.visibility === 'private') {
     if (!(await isInfluencerPro(admin, app.influencer_id))) {
       return { ok: false, error: 'La influencer ya no cuenta con Plan Pro activo — no se puede aceptar esta postulación.', status: 422 }
@@ -105,7 +109,7 @@ export async function acceptCampaignApplication(
 
   // Email de aprobación — se intenta inmediatamente después de confirmar la
   // transición. Ninguna ruta de rechazo llama a Resend.
-  if (app.influencer?.email) {
+  if (app.influencer?.is_active && app.influencer?.email) {
     try {
       let brandName: string | null = null
       if (campaign.brand_id) {

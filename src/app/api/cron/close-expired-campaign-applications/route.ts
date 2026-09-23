@@ -5,7 +5,7 @@ import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 // Cierra el ciclo sin borrar el historial: las pendientes pasan a rechazadas
 // cuando vence la fecha de postulación.
 export async function GET(request: NextRequest) {
-  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!process.env.CRON_SECRET || request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = createAdminClient()
   const now = new Date().toISOString()
   const { data: campaigns, error } = await admin.from('campaigns').select('id').eq('status', 'active').not('application_deadline', 'is', null).lt('application_deadline', now).is('applications_closed_at', null)

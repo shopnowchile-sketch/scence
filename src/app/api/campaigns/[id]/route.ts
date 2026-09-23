@@ -56,30 +56,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
-  // Reparación idempotente de datos legacy: antes algunas relaciones quedaban
-  // como "pending" aun cuando ya tenían entregables/contenido. Un entregable
-  // demuestra participación real, por lo que la relación debe aparecer como
-  // aceptada y activa. Solo cambia filas pendientes; no toca invitaciones sin
-  // trabajo ni estados que ya fueron resueltos.
-  const { data: legacyDeliverables } = await admin
-    .from('campaign_deliverables')
-    .select('campaign_influencer_id')
-    .eq('campaign_id', params.id)
-    .not('campaign_influencer_id', 'is', null)
-
-  const legacyRelationIds = Array.from(new Set(
-    (legacyDeliverables ?? [])
-      .map(row => row.campaign_influencer_id)
-      .filter((value): value is string => Boolean(value)),
-  ))
-
-  if (legacyRelationIds.length > 0) {
-    await admin
-      .from('campaign_influencers')
-      .update({ application_status: 'accepted', status: 'active', accepted_at: new Date().toISOString() })
-      .in('id', legacyRelationIds)
-      .eq('application_status', 'pending')
-  }
+  // GET es de solo lectura. Aquí existía una "reparación" que aceptaba
+  // postulaciones pendientes con entregables (ignorando cupo, Pro y la
+  // decisión de la marca). 0 filas la cumplían al 2026-09-22; se eliminó.
 
   const { data, error } = await admin
     .from('campaigns')

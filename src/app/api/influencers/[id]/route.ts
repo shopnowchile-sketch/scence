@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
-import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 import { cancelInfluencerPayPalAtPeriodEnd, persistInfluencerProCancellation } from '@/lib/influencer-paypal'
 
@@ -18,8 +17,9 @@ async function canManageInfluencer(admin: ReturnType<typeof createAdminClient>, 
   if (!influencer) return { allowed: false, influencer: null }
   if (influencer.user_id === userId) return { allowed: true, influencer }
 
-  const orgId = await getOrgId(userId, undefined, admin)
-  const allowed = !!orgId && influencer.organization_id === orgId && await isOrgAdmin(admin, userId, orgId)
+  // Solo la propia influencer o el admin de plataforma (antes: cualquier
+  // owner de la org Scence SpA, incluidas marcas).
+  const allowed = await isPlatformAdmin(userId, admin)
   return { allowed, influencer }
 }
 
@@ -363,7 +363,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (hard) {
     const orgId = await getOrgId(user.id, user.user_metadata, admin)
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
-    if (!(await isOrgAdmin(admin, user.id, orgId))) {
+    if (!(await isPlatformAdmin(user.id, admin))) {
       return NextResponse.json({ error: 'Solo administradores pueden eliminar permanentemente.' }, { status: 403 })
     }
     try {

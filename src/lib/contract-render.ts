@@ -241,11 +241,11 @@ export async function buildCampaignContractContext(
     campaign_description: campaign.description ?? undefined,
     campaign_objective: params.campaignObjective || campaign.description || undefined,
     campaign_type: CAMPAIGN_TYPE_LABELS_ES[campaign.type as string] ?? (campaign.type as string | undefined),
-    campaign_start_date: formatDateEs(campaign.start_date),
-    campaign_end_date: formatDateEs(campaign.end_date),
+    campaign_start_date: formatDateOnlyEs(campaign.start_date),
+    campaign_end_date: formatDateOnlyEs(campaign.end_date),
     // Nombres legacy usados por el template "CONTRATO MARCA" ya existente en producción.
-    start_date: formatDateEs(campaign.start_date),
-    end_date: formatDateEs(campaign.end_date),
+    start_date: formatDateOnlyEs(campaign.start_date),
+    end_date: formatDateOnlyEs(campaign.end_date),
 
     // EVENTO — prioridad: dato de evento ingresado por el Admin en este
     // contrato > booking real > campaign.metadata. Nunca se inventa: si
@@ -253,7 +253,7 @@ export async function buildCampaignContractContext(
     event_name: eventOverride?.name?.trim() || booking?.title,
     event_date: eventOverride?.date?.trim()
       ? formatDateOnlyEs(eventOverride.date.trim())
-      : formatDateEs(booking?.starts_at ?? (metadata.event_date as string | undefined)),
+      : formatDateOnlyEs(booking?.starts_at ?? (metadata.event_date as string | undefined)),
     event_start_time: eventOverride?.startTime?.trim() ? `${eventOverride.startTime.trim()} hrs` : formatTimeEs(booking?.starts_at),
     event_end_time: eventOverride?.endTime?.trim() ? `${eventOverride.endTime.trim()} hrs` : formatTimeEs(booking?.ends_at),
     // Prioridad: dato ingresado en este contrato > booking real > campaigns.address (la misma columna real que usa "Editar ubicación" en el header de la campaña — no metadata, que nunca se llena para esto).

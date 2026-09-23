@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation'
+import { createServerClient } from '@/lib/supabase/server'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -177,6 +179,11 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default async function CampaignReportPage({ params }: { params: { id: string } }) {
+  // Esta página lee con service role: autorizar antes (admin de plataforma o
+  // marca dueña con 'campaign.read'). La reutiliza el portal Marca.
+  const { data: { user } } = await createServerClient().auth.getUser()
+  if (!user || !(await authorizeCampaignBrandAction(user.id, params.id, 'campaign.read'))) notFound()
+
   const campaign = await fetchReport(params.id)
   if (!campaign) notFound()
 

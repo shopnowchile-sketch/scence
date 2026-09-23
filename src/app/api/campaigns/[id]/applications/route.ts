@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { createServerClient } from '@/lib/supabase/server'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { acceptCampaignApplication, rejectCampaignApplications } from '@/lib/campaign-applications'
 
 type Params = { params: { id: string } }
@@ -16,17 +16,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-
-  // Mismo criterio que /api/campaigns/[id]: admin/super_admin/owner de Scence
-  // puede gestionar aplicaciones de cualquier campaña, sin filtrar por
-  // organization_id (las marcas quedan con organization_id propia y aislada).
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  let query = admin.from('campaigns').select('id, organization_id').eq('id', params.id)
-  if (!isAdmin && orgId) query = query.eq('organization_id', orgId)
-  const { data: campaign } = await query.single()
-  if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  // Autorización central: admin de plataforma o marca dueña de la campaña con
+  // 'application.manage'. Antes, un usuario sin membresía (toda influencer)
+  // obtenía orgId=null, el filtro se omitía y podía aceptarse a sí misma.
+  const auth = await authorizeCampaignBrandAction(user.id, params.id, 'application.manage')
+  if (!auth) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  const { admin } = auth
 
   let body: { application_id?: string; application_ids?: string[]; action: 'accept' | 'reject'; agreed_fee?: number }
   try { body = await req.json() } catch {

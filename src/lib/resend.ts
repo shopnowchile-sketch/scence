@@ -1,3 +1,4 @@
+import { escapeHtml } from '@/lib/utils'
 import { Resend } from 'resend'
 
 // Lazy — only instantiated at request time, never at build time
@@ -483,13 +484,13 @@ export function deliverableStatusEmail({
     </div>
     <div style="padding:32px">
       <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">
-        Hola ${influencerName}, tu contenido fue ${isApproved ? 'aprobado' : 'rechazado'}
+        Hola ${escapeHtml(influencerName)}, tu contenido fue ${isApproved ? 'aprobado' : 'rechazado'}
       </h1>
       <p style="color:#6b7280;font-size:15px;margin:0 0 24px">
-        Tu entrega <strong style="color:#111827">${deliverableTitle}</strong> para la campaña
-        <strong style="color:#111827">${campaignName}</strong> fue revisada.
+        Tu entrega <strong style="color:#111827">${escapeHtml(deliverableTitle)}</strong> para la campaña
+        <strong style="color:#111827">${escapeHtml(campaignName)}</strong> fue revisada.
       </p>
-      ${reviewNotes ? `<div style="background:${isApproved ? '#f0fdf4' : '#fef2f2'};border-radius:10px;padding:16px;margin-bottom:24px;font-size:14px;color:${isApproved ? '#065f46' : '#991b1b'};line-height:1.6"><strong>Notas de revisión:</strong><br>${reviewNotes}</div>` : ''}
+      ${reviewNotes ? `<div style="background:${isApproved ? '#f0fdf4' : '#fef2f2'};border-radius:10px;padding:16px;margin-bottom:24px;font-size:14px;color:${isApproved ? '#065f46' : '#991b1b'};line-height:1.6"><strong>Notas de revisión:</strong><br>${escapeHtml(reviewNotes)}</div>` : ''}
       <a href="${deliverableUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px">
         Ver deliverable →
       </a>

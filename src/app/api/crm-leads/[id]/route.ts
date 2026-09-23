@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
 import { isCrmAdmin } from '@/lib/crm-auth'
 
 type Params = { params: { id: string } }
@@ -205,10 +205,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       `Convertido automáticamente desde el CRM (lead ${data.id}, fuente: ${data.source ?? 'desconocida'}).`,
     ].filter(Boolean)
 
+    // La marca convertida recibe su propia organización (nunca la del admin).
+    const brandOrgId = await provisionOrgForBrand(brandName)
+    if (!brandOrgId) {
+      return NextResponse.json({ data, error: 'Estado actualizado a "Convertido", pero no se pudo crear la organización de la marca.' }, { status: 500 })
+    }
+
     const { data: brand, error: brandError } = await admin
       .from('brands')
       .insert({
-        organization_id: orgId,
+        organization_id: brandOrgId,
         created_by: user.id,
         name: brandName,
         website: data.website ?? null,

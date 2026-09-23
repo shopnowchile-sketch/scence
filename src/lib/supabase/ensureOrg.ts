@@ -43,14 +43,35 @@ export async function getUserRole(
  * todos los callers en el mismo commit, pero nunca se usa para autorizar.
  */
 export async function getOrgId(userId: string, _userMeta: Record<string, unknown> | undefined, admin: SupabaseClient): Promise<string | null> {
+  // Determinista: un usuario puede tener más de una membresía activa (p. ej.
+  // super_admin de SCENCE + otra org). Antes `.limit(1)` sin orden devolvía
+  // cualquiera y el admin recibía 403 al azar. Prioriza la membresía de
+  // plataforma y, si no hay, la más antigua.
   const { data } = await admin
     .from('organization_members')
-    .select('organization_id')
+    .select('organization_id, role')
     .eq('user_id', userId)
     .eq('is_active', true)
+    .order('created_at', { ascending: true })
+  const memberships = data ?? []
+  const platform = memberships.find(m => ADMIN_ROLES.includes(m.role as OrgRole))
+  return ((platform ?? memberships[0])?.organization_id as string | undefined) ?? null
+}
+
+/**
+ * isPlatformAdmin — única definición de "admin de plataforma" (SCENCE).
+ * Lee `organization_members` (nunca profiles.role ni user_metadata) y no
+ * depende de qué organización devuelva getOrgId.
+ */
+export async function isPlatformAdmin(userId: string, admin: SupabaseClient): Promise<boolean> {
+  const { data } = await admin
+    .from('organization_members')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .in('role', ADMIN_ROLES)
     .limit(1)
-    .single()
-  return (data?.organization_id as string | null) ?? null
+  return (data?.length ?? 0) > 0
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -69,6 +70,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
+  // Solo admin de plataforma: esta ruta genera magic links de acceso.
+  if (!(await isPlatformAdmin(user.id, admin))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const { data: influencer, error: infErr } = await admin
     .from('influencers')
     .select('id, display_name, email, user_id')
@@ -121,10 +127,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
     return NextResponse.json({
       message: emailSent
         ? `Email reenviado a ${influencer.email}`
-        : `Link generado (email falló — usa el link de acceso directo)`,
+        : `No se pudo enviar el email a ${influencer.email}. Puede ingresar con "Olvidé mi contraseña".`,
       already_linked: true,
       email_sent: emailSent,
-      action_link: actionLink,  // siempre retornar para copiar manualmente
+      // Nunca devolver el magic link en la respuesta: es una credencial.
     })
   }
 
@@ -207,9 +213,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
   return NextResponse.json({
     message: emailSent
       ? `Invitación enviada a ${influencer.email}`
-      : `Usuario creado. El email falló — comparte el link manualmente.`,
+      : `Usuario creado, pero el email falló. Puede ingresar con "Olvidé mi contraseña" usando ${influencer.email}.`,
     user_id: authUserId,
     email_sent: emailSent,
-    action_link: actionLink, // siempre retornar
+    // Nunca devolver el magic link en la respuesta: es una credencial.
   })
 }

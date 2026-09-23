@@ -1,8 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import {
-  getOrgId,
-  getUserRole,
   hasBrandPermission,
+  isPlatformAdmin,
   resolveBrandAccess,
   type BrandAccess,
   type BrandPermission,
@@ -36,8 +35,6 @@ export async function authorizeCampaignBrandAction(
     return { admin, brandAccess, isPlatformAdmin: false, campaign }
   }
 
-  const orgId = await getOrgId(userId, undefined, admin)
-  const role = orgId ? await getUserRole(userId, orgId, admin) : null
-  if (!role?.isAdmin) return null
+  if (!(await isPlatformAdmin(userId, admin))) return null
   return { admin, brandAccess: null, isPlatformAdmin: true, campaign }
 }

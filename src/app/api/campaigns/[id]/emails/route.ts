@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const [{ data: campaign, error: campaignError }, { data: relations, error: relationsError }] = await Promise.all([
     admin.from('campaigns').select('id, name, type, brand:brands!brand_id(name)').eq('id', params.id).single(),
     admin.from('campaign_influencers')
-      .select('id, influencer_id, application_status, influencer:influencers(id, display_name, email)')
+      .select('id, influencer_id, application_status, influencer:influencers(id, display_name, email, is_active)')
       .eq('campaign_id', params.id)
       .eq('application_status', 'accepted')
       .in('influencer_id', influencerIds),
@@ -94,10 +94,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Una o más influencers no pertenecen a esta campaña o no están aceptadas.' }, { status: 422 })
   }
 
-  const recipients = (relations ?? []).map(relation => {
-    const influencer = relation.influencer as unknown as { id: string; display_name: string | null; email: string | null } | null
-    return { id: relation.influencer_id, name: influencer?.display_name || 'Influencer', email: influencer?.email || null }
-  })
+  const recipients = (relations ?? [])
+    .filter(relation => (relation.influencer as unknown as { is_active?: boolean } | null)?.is_active !== false)
+    .map(relation => {
+      const influencer = relation.influencer as unknown as { id: string; display_name: string | null; email: string | null; is_active?: boolean } | null
+      return { id: relation.influencer_id, name: influencer?.display_name || 'Influencer', email: influencer?.email || null }
+    })
   if (body.action === 'send' && recipients.some(recipient => !recipient.email)) {
     return NextResponse.json({ error: 'Una o más influencers seleccionadas no tienen email registrado.' }, { status: 422 })
   }

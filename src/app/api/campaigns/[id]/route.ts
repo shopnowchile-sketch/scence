@@ -219,7 +219,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
-  if ('address' in body) {
+  if ('address' in body || (rest.metadata && typeof rest.metadata === 'object' && !Array.isArray(rest.metadata))) {
     const { data: existingCampaign } = await admin
       .from('campaigns')
       .select('metadata')
@@ -243,12 +243,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     rest.metadata = {
       ...existingMetadata,
       ...incomingMetadata,
-      address:
-        address !== undefined &&
-        address !== null &&
-        String(address).trim() !== ''
-          ? String(address).trim()
-          : null,
+      ...(address !== undefined ? {
+        address: address !== null && String(address).trim() !== '' ? String(address).trim() : null,
+      } : {}),
     }
   }
 

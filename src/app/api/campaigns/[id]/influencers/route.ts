@@ -137,21 +137,6 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single()
 
     if (campaign) {
-      // Una campaña con evento real requiere confirmación de asistencia,
-      // incluso si no tenía un template event_attendance configurado.
-      if (data.application_status === 'accepted') {
-        try {
-          await ensureEventAttendanceDeliverable(admin, {
-            campaignId: params.id,
-            campaignInfluencerId: data.id,
-            influencerId: influencer_id as string,
-            templates: Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : [],
-          })
-        } catch (attendanceError) {
-          console.error('[POST /api/campaigns/[id]/influencers] attendance setup failed:', attendanceError)
-        }
-      }
-
       // Auto-deliverables from templates
       const templates = Array.isArray(campaign.deliverable_templates)
         ? (campaign.deliverable_templates as Array<{
@@ -189,6 +174,23 @@ export async function POST(request: NextRequest, { params }: Params) {
   } catch (e) {
     // Non-fatal
     console.error('[auto-deliverables] failed:', e)
+  }
+
+  // Una campaña con evento real requiere confirmación de asistencia, incluso
+  // si no tenía un template event_attendance configurado.
+  if (!invite && data.application_status === 'accepted') {
+    try {
+      await ensureEventAttendanceDeliverable(admin, {
+        campaignId: params.id,
+        campaignInfluencerId: data.id,
+        influencerId: influencer_id as string,
+        templates: Array.isArray((await admin.from('campaigns').select('deliverable_templates').eq('id', params.id).single()).data?.deliverable_templates)
+          ? ((await admin.from('campaigns').select('deliverable_templates').eq('id', params.id).single()).data?.deliverable_templates as Array<Record<string, unknown>>)
+          : [],
+      })
+    } catch (attendanceError) {
+      console.error('[POST /api/campaigns/[id]/influencers] attendance setup failed:', attendanceError)
+    }
   }
 
   // ── Notificar por email a la influencer de la asignación directa (no bloqueante) ──

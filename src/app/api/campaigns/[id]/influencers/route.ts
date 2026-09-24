@@ -128,6 +128,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Plantillas de la campaña, leídas una sola vez: se reutilizan abajo para
+  // la confirmación de asistencia (antes se referenciaba `campaign` fuera de
+  // su bloque y el build fallaba con "Cannot find name 'campaign'").
+  let campaignTemplates: Array<Record<string, unknown>> = []
+
   // ── Auto-create campaign_deliverables from campaign's deliverable_templates ──
   if (!invite) try {
     const { data: campaign } = await admin
@@ -137,6 +142,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single()
 
     if (campaign) {
+      campaignTemplates = Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : []
       // Auto-deliverables from templates
       const templates = Array.isArray(campaign.deliverable_templates)
         ? (campaign.deliverable_templates as Array<{
@@ -184,7 +190,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         campaignId: params.id,
         campaignInfluencerId: data.id,
         influencerId: influencer_id as string,
-        templates: Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : [],
+        templates: campaignTemplates,
       })
     } catch (attendanceError) {
       console.error('[POST /api/campaigns/[id]/influencers] attendance setup failed:', attendanceError)

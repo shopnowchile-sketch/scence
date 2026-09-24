@@ -184,9 +184,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         campaignId: params.id,
         campaignInfluencerId: data.id,
         influencerId: influencer_id as string,
-        templates: Array.isArray((await admin.from('campaigns').select('deliverable_templates').eq('id', params.id).single()).data?.deliverable_templates)
-          ? ((await admin.from('campaigns').select('deliverable_templates').eq('id', params.id).single()).data?.deliverable_templates as Array<Record<string, unknown>>)
-          : [],
+        templates: Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : [],
       })
     } catch (attendanceError) {
       console.error('[POST /api/campaigns/[id]/influencers] attendance setup failed:', attendanceError)

@@ -178,7 +178,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   // Una campaña con evento real requiere confirmación de asistencia, incluso
   // si no tenía un template event_attendance configurado.
-  if (!invite && data.application_status === 'accepted') {
+  if (data.application_status === 'accepted') {
     try {
       await ensureEventAttendanceDeliverable(admin, {
         campaignId: params.id,

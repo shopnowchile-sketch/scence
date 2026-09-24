@@ -265,14 +265,14 @@ export async function ensureEventAttendanceDeliverable(
 ): Promise<boolean> {
   const { campaignId, campaignInfluencerId, influencerId, templates = [] } = params
 
-  const { data: eventBooking, error: bookingError } = await admin
-    .from('bookings')
-    .select('id')
-    .eq('campaign_id', campaignId)
-    .limit(1)
-    .maybeSingle()
+  const [{ data: eventBooking, error: bookingError }, { data: campaign, error: campaignError }] = await Promise.all([
+    admin.from('bookings').select('id').eq('campaign_id', campaignId).limit(1).maybeSingle(),
+    admin.from('campaigns').select('type').eq('id', campaignId).maybeSingle(),
+  ])
   if (bookingError) throw bookingError
-  if (!eventBooking) return false
+  if (campaignError) throw campaignError
+  const hasEvent = !!eventBooking || campaign?.type === 'event_appearance'
+  if (!hasEvent) return false
 
   const { data: existing, error: existingError } = await admin
     .from('campaign_deliverables')

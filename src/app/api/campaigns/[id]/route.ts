@@ -394,6 +394,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     fields.applications_closed_at = null
   }
 
+  if (fields.metadata && typeof fields.metadata === 'object' && !Array.isArray(fields.metadata)) {
+    const { data: existingMetadataRow } = await admin.from('campaigns').select('metadata').eq('id', params.id).maybeSingle()
+    const existingMetadata = existingMetadataRow?.metadata && typeof existingMetadataRow.metadata === 'object' && !Array.isArray(existingMetadataRow.metadata)
+      ? existingMetadataRow.metadata as Record<string, unknown>
+      : {}
+    fields.metadata = { ...existingMetadata, ...(fields.metadata as Record<string, unknown>) }
+  }
+
   if ('address' in body) {
     const { data: existingCampaign } = await admin
       .from('campaigns')

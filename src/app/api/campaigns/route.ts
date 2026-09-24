@@ -279,6 +279,7 @@ export async function POST(request: NextRequest) {
     visibility = 'private',
     application_deadline,
     max_influencers,
+    metadata: incomingMetadata,
   } = body as Record<string, unknown>
 
   // Validate required fields
@@ -322,6 +323,7 @@ export async function POST(request: NextRequest) {
       brand_id: brand_id ?? null,
       commission_rate: commission_rate ?? null,
       metadata: {
+        ...(incomingMetadata && typeof incomingMetadata === 'object' && !Array.isArray(incomingMetadata) ? incomingMetadata as Record<string, unknown> : {}),
         address: (address !== undefined && address !== null && String(address).trim() !== '')
           ? String(address).trim()
           : null,

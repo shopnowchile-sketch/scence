@@ -179,24 +179,16 @@ export async function acceptCampaignApplication(
     console.error('[acceptCampaignApplication] auto-deliverables failed:', e)
   }
 
-  // La confirmación de asistencia puede haberse agregado después de que ya
-  // existían otros entregables. Se asegura de forma independiente para cada
-  // nueva influencer aceptada, sin duplicar la fila.
+  // Toda campaña que tenga un evento real (booking) requiere confirmación
+  // de asistencia. Se reutiliza campaign_deliverables/event_attendance y no se
+  // depende de que alguien haya creado manualmente el template.
   try {
-    const templates = Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : []
-    const attendanceTemplate = templates.find(template => template.type === 'event_attendance')
-    if (attendanceTemplate) {
-      const { data: alreadyAssigned } = await admin.from('campaign_deliverables').select('id')
-        .eq('campaign_id', campaignId).eq('influencer_id', app.influencer_id).eq('type', 'event_attendance').maybeSingle()
-      if (!alreadyAssigned) {
-        await admin.from('campaign_deliverables').insert({
-          campaign_id: campaignId, campaign_influencer_id: applicationId, influencer_id: app.influencer_id,
-          type: 'event_attendance', title: attendanceTemplate.title ?? 'Confirmar asistencia',
-          description: attendanceTemplate.description ?? null, due_date: attendanceTemplate.due_date ?? null,
-          quantity: 1, status: 'pending',
-        })
-      }
-    }
+    await ensureEventAttendanceDeliverable(admin, {
+      campaignId,
+      campaignInfluencerId: applicationId,
+      influencerId: app.influencer_id,
+      templates: Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : [],
+    })
   } catch (error) {
     console.error('[acceptCampaignApplication] attendance confirmation failed:', error)
   }
@@ -258,4 +250,52 @@ export async function rejectCampaignApplications(
   }
 
   return { ok: true, rejectedIds }
+}
+
+
+/** Asegura la confirmación de asistencia para campañas con evento real. */
+export async function ensureEventAttendanceDeliverable(
+  admin: SupabaseClient,
+  params: {
+    campaignId: string
+    campaignInfluencerId: string
+    influencerId: string
+    templates?: Array<Record<string, unknown>>
+  }
+): Promise<boolean> {
+  const { campaignId, campaignInfluencerId, influencerId, templates = [] } = params
+
+  const { data: eventBooking, error: bookingError } = await admin
+    .from('bookings')
+    .select('id')
+    .eq('campaign_id', campaignId)
+    .limit(1)
+    .maybeSingle()
+  if (bookingError) throw bookingError
+  if (!eventBooking) return false
+
+  const { data: existing, error: existingError } = await admin
+    .from('campaign_deliverables')
+    .select('id')
+    .eq('campaign_id', campaignId)
+    .eq('influencer_id', influencerId)
+    .eq('type', 'event_attendance')
+    .maybeSingle()
+  if (existingError) throw existingError
+  if (existing) return true
+
+  const attendanceTemplate = templates.find(template => template.type === 'event_attendance')
+  const { error: insertError } = await admin.from('campaign_deliverables').insert({
+    campaign_id: campaignId,
+    campaign_influencer_id: campaignInfluencerId,
+    influencer_id: influencerId,
+    type: 'event_attendance',
+    title: attendanceTemplate?.title ?? 'Confirmar asistencia',
+    description: attendanceTemplate?.description ?? null,
+    due_date: attendanceTemplate?.due_date ?? null,
+    quantity: 1,
+    status: 'pending',
+  })
+  if (insertError) throw insertError
+  return true
 }

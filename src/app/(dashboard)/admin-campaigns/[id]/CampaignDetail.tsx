@@ -1155,6 +1155,7 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
     tags: (campaign.tags ?? []).join(', '),
     reference_url: String((campaign as unknown as { metadata?: Record<string, unknown> | null }).metadata?.reference_url ?? ''),
     approval_submission_url: String((campaign as unknown as { metadata?: Record<string, unknown> | null }).metadata?.approval_submission_url ?? ''),
+    whatsapp_group_url: String((campaign as unknown as { metadata?: Record<string, unknown> | null }).metadata?.whatsapp_group_url ?? ''),
     goals: { ...(campaign.goals ?? {}) } as Record<string, number>,
     deliverable_templates: (
       campaign.deliverable_templates?.length
@@ -1187,6 +1188,7 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
       tags: form.tags.split(',').map(item => item.trim()).filter(Boolean),
       reference_url: form.reference_url.trim() || null,
       approval_submission_url: form.approval_submission_url.trim() || null,
+      metadata: { whatsapp_group_url: form.whatsapp_group_url.trim() || null },
       goals: form.goals,
       deliverable_templates: form.deliverable_templates,
     })
@@ -1230,6 +1232,7 @@ function OverviewEditPanel({ campaign, saving, isBrandPortal, section, onCancel,
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="text-xs font-semibold text-gray-600">Tags internos, separados por coma<input value={form.tags} onChange={e => field('tags', e.target.value)} className={`${inputClass} mt-1`} /></label>
+          <label className="text-xs font-semibold text-emerald-800">Grupo de WhatsApp de la campaña <span className="font-normal text-emerald-600">(opcional)</span><input type="url" value={form.whatsapp_group_url} onChange={e => field('whatsapp_group_url', e.target.value)} placeholder="https://chat.whatsapp.com/..." className={`${inputClass} mt-1`} /></label>
           <label className="text-xs font-semibold text-gray-600">Link de referencia o instrucciones<input type="url" value={form.reference_url} onChange={e => field('reference_url', e.target.value)} placeholder="https://drive.google.com/..." className={`${inputClass} mt-1`} /></label>
         </div>
         <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -2886,6 +2889,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </> : <p className="text-sm text-gray-400">Aún no hay descripción de la campaña.</p>}
               </div>
             )}
+
+            {(() => {
+              const whatsapp = String((c.metadata as Record<string, unknown> | null | undefined)?.whatsapp_group_url ?? '').trim()
+              return whatsapp ? (
+                <div className="card p-5 border-2 border-emerald-100 bg-emerald-50/30 mb-4">
+                  <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-emerald-700" /><h3 className="text-sm font-semibold text-emerald-800">Grupo de WhatsApp</h3></div>{(!isBrandPortal || c._brand_permissions?.canEdit) && <button type="button" onClick={() => setOverviewEditMode(true, 'content')} className="text-xs font-semibold text-emerald-700 hover:underline">Editar</button>}</div>
+                  <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="mt-2 block truncate text-sm font-semibold text-emerald-700 hover:underline">{whatsapp}</a>
+                  <p className="mt-1 text-xs text-emerald-700">Se entrega a la influencer después de confirmar asistencia.</p>
+                </div>
+              ) : null
+            })()}
 
             {/* Deliverable templates — misma regla: "Editar" entra en modo
                 edición solo en esta card. Fechas mostradas: canonicalDeliverableDueDates

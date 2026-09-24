@@ -38,6 +38,7 @@ export async function GET() {
       id, status, application_status, origin, message, fee, currency, application_answers, metadata,
       campaign:campaigns (
         id, name, status, description, hashtags, platforms,
+        metadata,
         start_date, end_date, currency, created_by, visibility, application_questions,
         campaign_benefits, social_tags,
         brand:brands!brand_id (id, name, logo_url, website, instagram, contact_name, contact_email),

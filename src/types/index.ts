@@ -286,6 +286,7 @@ export interface Campaign {
   start_date: string | null
   end_date: string | null
   address?: string | null          // dirección/ubicación donde se realizará la campaña
+  metadata?: Record<string, unknown> | null
   budget_total: number | null
   budget_spent: number
   currency: Currency

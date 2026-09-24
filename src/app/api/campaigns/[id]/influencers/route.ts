@@ -5,6 +5,7 @@ import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { buildManualAttendanceUpdate, type ManualAttendanceAction } from '@/lib/manual-attendance'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
+import { ensureEventAttendanceDeliverable } from '@/lib/campaign-applications'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -173,6 +174,21 @@ export async function POST(request: NextRequest, { params }: Params) {
   } catch (e) {
     // Non-fatal
     console.error('[auto-deliverables] failed:', e)
+  }
+
+  // Una campaña con evento real requiere confirmación de asistencia, incluso
+  // si no tenía un template event_attendance configurado.
+  if (!invite && data.application_status === 'accepted') {
+    try {
+      await ensureEventAttendanceDeliverable(admin, {
+        campaignId: params.id,
+        campaignInfluencerId: data.id,
+        influencerId: influencer_id as string,
+        templates: Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates as Array<Record<string, unknown>> : [],
+      })
+    } catch (attendanceError) {
+      console.error('[POST /api/campaigns/[id]/influencers] attendance setup failed:', attendanceError)
+    }
   }
 
   // ── Notificar por email a la influencer de la asignación directa (no bloqueante) ──

@@ -648,6 +648,21 @@ export function attendanceConfirmationEmail({
   return `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fb;margin:0;padding:32px 0;color:#1f2937"><div style="max-width:540px;margin:auto;background:#fff;border-radius:18px;overflow:hidden"><div style="padding:28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff"><b style="font-size:20px">Confirma tu asistencia</b></div><div style="padding:28px"><p>Hola ${influencerName},</p><p>${message || `Ya quedaste aceptada en <b>${campaignName}</b>. Para asegurar tu cupo, confirma tu asistencia desde tu perfil de SCENCE.`}</p>${dueLabel ? `<p><b>Fecha límite:</b> ${dueLabel}</p>` : ''}<a href="${actionUrl || `${appUrl}/inf-campaign/${campaignId}`}" style="display:block;padding:14px;border-radius:10px;background:#7c3aed;color:#fff;text-align:center;font-weight:700;text-decoration:none">${buttonLabel}</a></div></div></body></html>`
 }
 
+export function attendanceConfirmedEmail({
+  influencerName,
+  campaignName,
+  campaignId,
+  whatsappGroupUrl,
+}: {
+  influencerName: string
+  campaignName: string
+  campaignId: string
+  whatsappGroupUrl?: string | null
+}): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+  return `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fb;margin:0;padding:32px 0;color:#1f2937"><div style="max-width:540px;margin:auto;background:#fff;border-radius:18px;overflow:hidden"><div style="padding:28px;background:linear-gradient(135deg,#059669,#10b981);color:#fff"><div style="font-size:30px">🎉</div><b style="font-size:20px">¡Asistencia confirmada!</b></div><div style="padding:28px"><p>Hola ${influencerName},</p><p>Tu asistencia a <b>${campaignName}</b> quedó confirmada. ¡Te esperamos!</p>${whatsappGroupUrl ? `<div style="margin:24px 0;padding:18px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0"><p style="margin:0 0 12px;font-weight:700;color:#166534">💬 Grupo de WhatsApp de la campaña</p><p style="margin:0 0 16px;color:#4b5563;font-size:14px;line-height:1.5">Únete al grupo para recibir información, novedades y coordinación del evento.</p><a href="${whatsappGroupUrl}" style="display:block;padding:14px;border-radius:10px;background:#16a34a;color:#fff;text-align:center;font-weight:700;text-decoration:none">Unirme al grupo de WhatsApp →</a></div>` : ''}<a href="${appUrl}/inf-campaign/${campaignId}" style="display:block;padding:14px;border-radius:10px;background:#7c3aed;color:#fff;text-align:center;font-weight:700;text-decoration:none">Ver mi campaña en SCENCE →</a></div></div></body></html>`
+}
+
 export function attendanceReminderEmail({
   influencerName,
   campaignName,

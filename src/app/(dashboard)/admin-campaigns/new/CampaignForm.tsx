@@ -88,6 +88,7 @@ const schema = z.object({
   brand_id: z.string().optional(),
   visibility: z.enum(['private', 'open']).default('private'),
   address: z.string().max(300).optional(),
+  whatsapp_group_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
   application_questions: z.array(z.string().min(1)).optional(),
   application_deadline: z.string().optional(),
   max_influencers: z.preprocess(
@@ -360,6 +361,7 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
             <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label><input {...register('address')} className="input-base w-full" placeholder="Av., número, comuna" /></div>
           </div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Indicaciones para llegar <span className="text-gray-400 font-normal">(opcional)</span></label><input value={arrivalInstructions} onChange={e => setArrivalInstructions(e.target.value)} className="input-base w-full" placeholder="Ej. Entrada techada por atrás del hotel" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Grupo de WhatsApp <span className="text-gray-400 font-normal">(opcional)</span></label><input {...register('whatsapp_group_url')} type="url" className="input-base w-full" placeholder="https://chat.whatsapp.com/..." /><p className="text-xs text-gray-400 mt-1">Se mostrará a las influencers solo después de confirmar su asistencia.</p></div>
         </div>
       )}
 
@@ -752,6 +754,7 @@ export function CampaignForm({
       brand_id: '',
       visibility: 'private',
       address: '',
+      whatsapp_group_url: '',
       application_questions: [],
       application_deadline: '',
       max_influencers: undefined,
@@ -809,6 +812,7 @@ export function CampaignForm({
         event_date: eventDays.find(day => day.starts_at)?.starts_at.slice(0, 10) || event_date || null,
         reference_url: reference_url || null,
         approval_submission_url: approval_submission_url || null,
+        whatsapp_group_url: data.whatsapp_group_url?.trim() || null,
       },
       application_deadline: data.visibility === 'open' && data.application_deadline
         ? new Date(data.application_deadline).toISOString()

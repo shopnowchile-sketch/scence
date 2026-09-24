@@ -6,7 +6,7 @@ import {
   ArrowLeft, Building2, FileText, Circle, CheckCircle2,
   Clock, Download, RefreshCw, Gift,
   Plus, X, Loader2, AlertCircle, ChevronDown,
-  Instagram, CalendarClock, MapPin,
+  Instagram, CalendarClock, MapPin, MessageCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'

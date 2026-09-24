@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { guardCollaborationOpportunity } from '@/lib/brand-plans'
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 
@@ -202,10 +203,11 @@ export async function POST(req: NextRequest) {
       // las plantillas en ese primer POST mantiene Reel/Story/asistencia en la
       // misma fuente que usa Overview, las aprobaciones y las deliverables.
       deliverable_templates: Array.isArray(deliverable_templates) ? deliverable_templates : [],
-      metadata: {
+      // Una campaña nueva nunca trae planes: solo la ruta específica los escribe.
+      metadata: guardCollaborationOpportunity({}, {
         ...(metadata ?? {}),
         address: (address && String(address).trim()) ? String(address).trim() : null,
-      },
+      }),
       currency:             'CLP',
       campaign_benefits:    campaignBenefits,
     })

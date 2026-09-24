@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
+import { guardCollaborationOpportunity } from '@/lib/brand-plans'
 import {
   DeliverableTemplateSyncError,
   normalizeDeliverableTemplates,
@@ -287,6 +288,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
     previousDeliverableTemplates = normalizeDeliverableTemplates(currentCampaign?.deliverable_templates ?? [])
   }
 
+  // Fuente única: collaboration_opportunity (planes) solo se escribe por
+  // PUT /api/campaigns/[id]/collaboration-opportunity. La edición general
+  // nunca puede crear, modificar ni borrar esa clave.
+  if ('metadata' in rest) {
+    const { data: guardRow, error: guardError } = await admin.from('campaigns').select('metadata').eq('id', params.id).maybeSingle()
+    if (guardError) return NextResponse.json({ error: guardError.message }, { status: 500 })
+    rest.metadata = guardCollaborationOpportunity(guardRow?.metadata, rest.metadata)
+  }
+
   // Scope update to the user's own org — salvo admin/super_admin/owner de
   // Scence, que puede editar cualquier campaña (mismo criterio que GET).
   let query = admin
@@ -460,6 +470,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .maybeSingle()
     if (currentCampaignError) return NextResponse.json({ error: currentCampaignError.message }, { status: 500 })
     previousDeliverableTemplates = normalizeDeliverableTemplates(currentCampaign?.deliverable_templates ?? [])
+  }
+
+  // Fuente única: collaboration_opportunity (planes) solo se escribe por
+  // PUT /api/campaigns/[id]/collaboration-opportunity. La edición general
+  // nunca puede crear, modificar ni borrar esa clave.
+  if ('metadata' in fields) {
+    const { data: guardRow, error: guardError } = await admin.from('campaigns').select('metadata').eq('id', params.id).maybeSingle()
+    if (guardError) return NextResponse.json({ error: guardError.message }, { status: 500 })
+    fields.metadata = guardCollaborationOpportunity(guardRow?.metadata, fields.metadata)
   }
 
   // Scope update to the user's own org — salvo admin/super_admin/owner de

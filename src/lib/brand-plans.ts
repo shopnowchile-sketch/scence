@@ -353,6 +353,20 @@ export function formatPlanMoney(amount: number, currency: PlanCurrency): string 
   }
 }
 
+/**
+ * Condiciones de pago en texto, SIEMPRE desde plan.payment_terms (nunca
+ * hardcodeadas en UI). Con precio: incluye el monto de cada cuota.
+ */
+export function paymentTermLines(terms: BrandPlanPaymentTerms, price?: number, currency?: PlanCurrency): string[] {
+  const amounts = price !== undefined && currency ? splitPlanAmount(price, terms.first_percentage) : null
+  const line = (pct: number, amount: number | null, condition: PlanPaymentCondition) =>
+    `${pct}%${amount !== null && currency ? ` (${formatPlanMoney(amount, currency)})` : ''} ${PLAN_PAYMENT_CONDITIONS[condition] ?? condition}`
+  return [
+    line(terms.first_percentage, amounts ? amounts.first : null, terms.first_condition),
+    line(terms.second_percentage, amounts ? amounts.second : null, terms.second_condition),
+  ]
+}
+
 // ── Textos protectores (propuesta y contrato) ────────────────────────────────
 export const COMMERCIAL_MODEL = 'brand_activation_plan' as const
 
@@ -409,7 +423,6 @@ export const PLAN_ANNEX_TOKEN = '{{plan_annex}}'
 export function renderPlanAnnex(input: PlanAnnexInput): string {
   const { plan, collaborationAccount, brandName, campaignName, event } = input
   const scope = planScopeLines(plan, collaborationAccount)
-  const { first, second } = splitPlanAmount(plan.price, plan.payment_terms.first_percentage)
   const eventLine = event && (event.name || event.date || event.location)
     ? [event.name, event.date, event.startTime, event.location].filter(Boolean).join(' · ')
     : null
@@ -425,9 +438,7 @@ export function renderPlanAnnex(input: PlanAnnexInput): string {
     `5. Publicaciones y resultados\n${NO_GUARANTEED_PUBLICATIONS_CLAUSE}`,
     `6. No exclusividad\n${NON_EXCLUSIVITY_CLAUSE}`,
     `7. Colaboración (Collab)\n${collaborationClause(plan.collaboration_included, collaborationAccount)}`,
-    `8. Condiciones de pago\n` +
-      `- ${plan.payment_terms.first_percentage}% (${formatPlanMoney(first, plan.currency)}) ${PLAN_PAYMENT_CONDITIONS[plan.payment_terms.first_condition]}.\n` +
-      `- ${plan.payment_terms.second_percentage}% (${formatPlanMoney(second, plan.currency)}) ${PLAN_PAYMENT_CONDITIONS[plan.payment_terms.second_condition]}.`,
+    `8. Condiciones de pago\n${paymentTermLines(plan.payment_terms, plan.price, plan.currency).map(line => `- ${line}.`).join('\n')}`,
   ]
   if (plan.additional_terms) sections.push(`9. Condiciones adicionales\n${plan.additional_terms}`)
   return sections.join('\n\n')
@@ -529,4 +540,23 @@ export function withoutCollaborationOpportunity<T>(campaignMetadata: T): T {
   const rest = { ...(campaignMetadata as Record<string, unknown>) }
   delete rest.collaboration_opportunity
   return rest as T
+}
+
+// ── Fuente única de escritura ────────────────────────────────────────────────
+/**
+ * `collaboration_opportunity` (incluidos plans[]) SOLO se modifica por
+ * PUT /api/campaigns/[id]/collaboration-opportunity. Toda otra escritura de
+ * campaigns.metadata (edición general, creación, duplicado) debe pasar por
+ * aquí: se descarta lo que venga en `next` para esa clave y se conserva el
+ * valor guardado en `existing` (o se omite si no existía).
+ */
+export function guardCollaborationOpportunity<T>(existing: unknown, next: T): T {
+  if (!next || typeof next !== 'object' || Array.isArray(next)) return next
+  const result: Record<string, unknown> = { ...(next as Record<string, unknown>) }
+  delete result.collaboration_opportunity
+  const saved = existing && typeof existing === 'object' && !Array.isArray(existing)
+    ? (existing as Record<string, unknown>).collaboration_opportunity
+    : undefined
+  if (saved !== undefined) result.collaboration_opportunity = saved
+  return result as T
 }

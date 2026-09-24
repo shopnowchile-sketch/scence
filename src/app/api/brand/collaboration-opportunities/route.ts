@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { toBrandOpportunityDTO } from '@/lib/brand-plans'
+import { readApplicationDetails, toBrandProposalView } from '@/lib/brand-proposal'
 
 function opportunity(metadata: unknown) {
   const meta = metadata && typeof metadata === 'object' ? metadata as Record<string, unknown> : {}
@@ -21,8 +22,9 @@ export async function GET() {
     .select('id,name,type,start_date,end_date,application_deadline,brand_id,metadata,brand:brands!brand_id(id,name,logo_url,instagram)')
     .eq('status', 'active').neq('brand_id', access.brandId).order('start_date', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const { data: applications } = await admin.from('campaign_brand_applications').select('campaign_id,status').eq('brand_id', access.brandId)
+  const { data: applications } = await admin.from('campaign_brand_applications').select('id,campaign_id,status,details').eq('brand_id', access.brandId)
   const applicationByCampaign = new Map((applications ?? []).map(row => [row.campaign_id, row.status]))
+  const applicationRowByCampaign = new Map((applications ?? []).map(row => [row.campaign_id, row]))
   const campaignIds = (campaigns ?? []).map(c => c.id)
   const { data: sponsorBriefs } = campaignIds.length ? await admin.from('media_files')
     .select('campaign_id').in('campaign_id', campaignIds).contains('metadata', { asset_type: 'sponsor_brief' }) : { data: [] }
@@ -37,6 +39,9 @@ export async function GET() {
       application_deadline: c.application_deadline, brand_id: c.brand_id, brand: c.brand,
       collaboration_opportunity: dto,
       application_status: applicationByCampaign.get(c.id) ?? null,
+      application_id: applicationRowByCampaign.get(c.id)?.id ?? null,
+      // Solo la propuesta propia (la consulta ya filtra por brand_id).
+      proposal: toBrandProposalView(readApplicationDetails(applicationRowByCampaign.get(c.id)?.details).proposal),
       has_sponsor_brief: campaignsWithBrief.has(c.id),
     }]
   }) })
@@ -49,7 +54,7 @@ export async function POST(req: NextRequest) {
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   if (!hasBrandPermission(access, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const body = await req.json().catch(() => ({})) as { campaign_id?: string; sampling?: string; activation_details?: string; links?: string }
+  const body = await req.json().catch(() => ({})) as { campaign_id?: string; plan_id?: string; sampling?: string; activation_details?: string; links?: string }
   if (!body.campaign_id) return NextResponse.json({ error: 'campaign_id requerido' }, { status: 422 })
   const admin = createAdminClient()
   const { data: brand } = await admin.from('brands').select('id,name,instagram,contact_email,contact_name,metadata').eq('id', access.brandId).single()
@@ -62,18 +67,34 @@ export async function POST(req: NextRequest) {
   const config = opportunity(campaign?.metadata)
   if (!campaign || campaign.status !== 'active' || campaign.brand_id === brand.id || !config?.enabled) return NextResponse.json({ error: 'Esta campaña no está disponible para marcas colaboradoras.' }, { status: 409 })
   if (config.application_deadline && new Date(String(config.application_deadline)) < new Date()) return NextResponse.json({ error: 'La postulación ya cerró.' }, { status: 409 })
+  // Una postulación viva no se pisa: el upsert anterior reseteaba el estado a
+  // 'pending' y borraba details (incluida una propuesta emitida por SCENCE).
+  const { data: existing, error: existingError } = await admin.from('campaign_brand_applications')
+    .select('id,status,details').eq('campaign_id', campaign.id).eq('brand_id', brand.id).maybeSingle()
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 })
+  if (existing && existing.status !== 'rejected') return NextResponse.json({ error: 'Ya tienes una postulación o propuesta para esta campaña.' }, { status: 409 })
+  const dto = toBrandOpportunityDTO(campaign.metadata)
+  const requestedPlanId = typeof body.plan_id === 'string' && body.plan_id ? body.plan_id : null
+  if (requestedPlanId && !(dto?.mode === 'plans' && dto.plans.some(plan => plan.id === requestedPlanId))) {
+    return NextResponse.json({ error: 'El plan seleccionado no está disponible.' }, { status: 422 })
+  }
+  const previous = readApplicationDetails(existing?.details)
   const { data, error } = await admin.from('campaign_brand_applications')
     .upsert({
       campaign_id: campaign.id,
       brand_id: brand.id,
       status: 'pending',
       details: {
+        // Una postulación rechazada conserva su historial de propuestas.
+        ...(previous.proposal ? { proposal: previous.proposal } : {}),
+        ...(previous.proposal_history ? { proposal_history: previous.proposal_history } : {}),
         sampling: String(body.sampling ?? '').trim() || null,
         activation_details: String(body.activation_details ?? '').trim() || null,
         links: String(body.links ?? '').trim() || null,
+        requested_plan_id: requestedPlanId,
       },
     }, { onConflict: 'campaign_id,brand_id' })
-    .select().single()
+    .select('id,status').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ data }, { status: 201 })
 }

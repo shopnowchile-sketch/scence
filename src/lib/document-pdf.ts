@@ -8,6 +8,9 @@ export type PdfDocument = {
   signer_email: string | null
   signed_at: string | null
   due_at: string
+  // Opcional: reemplaza el bloque "EVIDENCIA DE FIRMA" en documentos que no
+  // se firman aquí (p. ej. propuestas comerciales). Sin esto, nada cambia.
+  evidence?: { title: string; text: string }
 }
 
 /** Generates the exact same legal PDF from both the brand and admin portals. */
@@ -54,9 +57,9 @@ export async function downloadDocumentPdf(document: PdfDocument) {
   add('SCENCE · DOCUMENTO ELECTRÓNICO', 7.5, true, 5)
   add(document.title.toUpperCase(), 12, true, 8)
   add(document.content_snapshot, 7.7, false, 7)
-  add('EVIDENCIA DE FIRMA', 8, true, 3)
+  add(document.evidence?.title ?? 'EVIDENCIA DE FIRMA', 8, true, 3)
 
-  const evidence = document.status === 'signed'
+  const evidence = document.evidence ? document.evidence.text : document.status === 'signed'
     ? [
         `Firmado por: ${document.signer_name ?? '—'}`,
         `RUT: ${document.signer_rut ?? '—'} · Cargo: ${document.signer_role ?? '—'}`,

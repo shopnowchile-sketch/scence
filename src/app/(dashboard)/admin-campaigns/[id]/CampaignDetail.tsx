@@ -34,6 +34,7 @@ import { createClient } from '@/lib/supabase/client'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import { GenerateContractModal } from '@/components/campaigns/GenerateContractModal'
 import { CollaborationOpportunitySettings } from '@/components/campaigns/CollaborationOpportunitySettings'
+import { BrandProposalsPanel } from '@/components/campaigns/BrandProposalsPanel'
 
 // ── Orden de la tabla de postulaciones pendientes ──────────────────────────
 // Un solo header activo a la vez (como cualquier tabla ordenable). 'pro' es el
@@ -4581,6 +4582,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           canEdit
         />
       )}
+
+      {tab === 'contracts' && !isBrandPortal && <BrandProposalsPanel campaignId={id} />}
 
       {tab === 'contracts' && !isBrandPortal && (
         <div className="card p-6 space-y-4">

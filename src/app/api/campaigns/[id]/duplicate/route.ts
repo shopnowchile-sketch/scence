@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { guardCollaborationOpportunity } from '@/lib/brand-plans'
 
 type Params = { params: { id: string } }
 
@@ -57,7 +58,8 @@ export async function POST(_request: NextRequest, { params }: Params) {
       platforms: source.platforms ?? [],
       approval_required: source.approval_required ?? true,
       tags: source.tags ?? [],
-      metadata: source.metadata ?? {},
+      // Los planes no se copian: cada campaña configura los suyos por la ruta específica.
+      metadata: guardCollaborationOpportunity({}, source.metadata ?? {}),
       deliverable_templates: source.deliverable_templates ?? [],
       campaign_benefits: source.campaign_benefits ?? [],
       application_questions: source.application_questions ?? [],

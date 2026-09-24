@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, Eye, EyeOff, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatPlanMoney, readOpportunity, type BrandPlan, type PlanFieldError } from '@/lib/brand-plans'
+import { DEFAULT_PLAN_PAYMENT_TERMS, formatPlanMoney, paymentTermLines, readOpportunity, type BrandPlan, type PlanFieldError } from '@/lib/brand-plans'
 
 // Configuración de "Planes para marcas" de una campaña.
 // Fuente de verdad: campaigns.metadata.collaboration_opportunity (vía
@@ -209,7 +209,7 @@ export function CollaborationOpportunitySettings({ campaignId, initial, canEdit 
               <textarea value={plan.internal_notes} onChange={e => update(plan.key, { internal_notes: e.target.value })} placeholder="Notas internas (solo SCENCE)" className="input-base min-h-14 border-amber-200 bg-amber-50/40 text-sm" />
               {(errorFor(index, 'additional_terms') || errorFor(index, 'payment_terms')) && <p className="text-xs text-red-600 md:col-span-2">{errorFor(index, 'additional_terms') ?? errorFor(index, 'payment_terms')}</p>}
             </div>
-            <p className="mt-2 text-[11px] text-gray-400">Pago: {plan.payment_terms ? `${plan.payment_terms.first_percentage}% / ${plan.payment_terms.second_percentage}%` : '50% / 50%'} · 3 días hábiles desde el envío del contrato y tras el evento.</p>
+            <p className="mt-2 text-[11px] text-gray-400">Pago: {paymentTermLines(plan.payment_terms ?? DEFAULT_PLAN_PAYMENT_TERMS).join(' · ')}</p>
           </article>
         ))}
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { guardCollaborationOpportunity } from '@/lib/brand-plans'
 import {
   campaignLimitMessage,
   getPlanLimits,
@@ -335,6 +336,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       { status: 422 },
     )
   }
+
+  // Fuente única: la edición general nunca escribe collaboration_opportunity
+  // (planes); solo PUT /api/campaigns/[id]/collaboration-opportunity.
+  if ('metadata' in updates) updates.metadata = guardCollaborationOpportunity(campaignBase.metadata, updates.metadata)
 
   const { data, error } = await admin
     .from('campaigns')

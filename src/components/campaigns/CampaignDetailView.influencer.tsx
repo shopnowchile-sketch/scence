@@ -61,6 +61,7 @@ type CampaignRow = {
     brief_url?: string | null
     hashtags: string[] | null; platforms: string[] | null
     start_date: string | null; end_date: string | null
+    metadata?: Record<string, unknown> | null
     cover_url?: string | null
     currency: string
     application_questions?: string[] | null
@@ -252,6 +253,29 @@ function EventBookingCard({ booking, showLocation, fallbackDate }: { booking: Ev
 // por influencer y sigue mostrándose aparte con BartersReadonly. Si la
 // campaña no tiene canje configurado, no se renderiza nada — sin bloque vacío
 // ni texto "Sin canje".
+function CampaignWhatsappCard({ campaign, confirmed }: { campaign: CampaignRow['campaign']; confirmed: boolean }) {
+  if (!confirmed) return null
+  const raw = campaign?.metadata?.whatsapp_group_url
+  const url = typeof raw === 'string' && raw.trim() ? raw.trim() : null
+  if (!url) return null
+  return (
+    <section className="mt-4 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+          <MessageCircle className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-extrabold text-emerald-950">Grupo de WhatsApp de la campaña</h3>
+          <p className="mt-0.5 text-xs leading-relaxed text-emerald-800">Únete al grupo para recibir información, novedades y coordinación del evento.</p>
+        </div>
+      </div>
+      <a href={url} target="_blank" rel="noopener noreferrer" className="mt-3 block rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-extrabold text-white shadow-sm transition-colors hover:bg-emerald-700">
+        Unirme al grupo de WhatsApp →
+      </a>
+    </section>
+  )
+}
+
 function CampaignBenefitsCard({ benefits }: { benefits: CampaignBenefitOffer[] | null | undefined }) {
   if (!benefits?.length) return null
   return (
@@ -1101,6 +1125,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             el backend ni siquiera enviaba el booking. Lugar e instrucciones
             exactas siguen apareciendo solo cuando la influencer fue aceptada. */}
         <EventBookingCard booking={data.event_booking ?? null} showLocation={isAccepted || isSelfCreated} fallbackDate={c.start_date} />
+        <CampaignWhatsappCard campaign={c} confirmed={isAccepted && (data.campaign_deliverables ?? []).some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')} />
         <CampaignBenefitsCard benefits={c.campaign_benefits} />
 
         {/* Descripción general de la campaña — mismo campaigns.description que

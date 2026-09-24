@@ -1,10 +1,51 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Building2, CheckCircle2, Download, Sparkles } from 'lucide-react'
+import { Building2, Check, CheckCircle2, Download, Minus, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import {
+  ACTIVATION_DYNAMICS_CLAUSE,
+  NO_GUARANTEED_PUBLICATIONS_CLAUSE,
+  NON_EXCLUSIVITY_CLAUSE,
+  formatPlanMoney,
+  planScopeLines,
+  type BrandOpportunityDTO,
+  type PublicBrandPlan,
+} from '@/lib/brand-plans'
 
-type Opportunity = { id: string; name: string; brand?: { name?: string | null } | null; collaboration_opportunity: { benefits?: string; participation_value?: number; currency?: string; application_deadline?: string }; application_status?: string | null; has_sponsor_brief?: boolean }
+// Oportunidades para marcas. Todo lo que se muestra sale del DTO público de
+// GET /api/brand/collaboration-opportunities (planes activos, sin notas
+// internas). El PDF comercial es material de apoyo; los planes son la fuente.
+
+type Opportunity = {
+  id: string
+  name: string
+  brand?: { name?: string | null } | null
+  application_deadline?: string | null
+  collaboration_opportunity: BrandOpportunityDTO
+  application_status?: string | null
+  has_sponsor_brief?: boolean
+}
+
+const STATUS_LABEL: Record<string, string> = { pending: 'En revisión', approved_for_payment: 'Aprobada para pago', active: 'Activa', rejected: 'No seleccionada' }
+
+function PlanCard({ plan }: { plan: PublicBrandPlan }) {
+  const scope = planScopeLines(plan, null)
+  const { first_percentage, second_percentage } = plan.payment_terms
+  return (
+    <div className="flex flex-col rounded-xl border border-gray-200 bg-white p-4">
+      <p className="text-sm font-bold uppercase tracking-wide text-violet-700">{plan.name}</p>
+      <p className="mt-1 text-2xl font-bold text-gray-900">{formatPlanMoney(plan.price, plan.currency)}</p>
+      {plan.description && <p className="mt-2 text-sm text-gray-600">{plan.description}</p>}
+      <ul className="mt-3 space-y-1.5 text-sm text-gray-700">
+        {scope.included.map(item => <li key={item} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />{item}</li>)}
+        {scope.excluded.map(item => <li key={item} className="flex gap-2 text-gray-400"><Minus className="mt-0.5 h-4 w-4 shrink-0" />{item}</li>)}
+      </ul>
+      {plan.additional_terms && <p className="mt-3 text-xs text-gray-500">{plan.additional_terms}</p>}
+      <p className="mt-auto pt-3 text-xs text-gray-400">Pago en dos cuotas: {first_percentage}% / {second_percentage}%</p>
+    </div>
+  )
+}
 
 export default function BrandOpportunitiesPage() {
   const [items, setItems] = useState<Opportunity[]>([])
@@ -15,15 +56,33 @@ export default function BrandOpportunitiesPage() {
   const load = () => fetch('/api/brand/collaboration-opportunities').then(r => r.json()).then(j => setItems(j.data ?? [])).catch(() => toast.error('No se pudieron cargar las oportunidades')).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
   async function apply(campaignId: string) { setSaving(true); try { const res = await fetch('/api/brand/collaboration-opportunities', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaign_id: campaignId, ...form }) }); const json = await res.json(); if (!res.ok) throw new Error(json.error); toast.success('Postulación enviada para revisión'); setOpenId(null); setForm({ sampling: '', activation_details: '', links: '' }); load() } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo postular') } finally { setSaving(false) } }
-  async function downloadBrief(campaignId: string) { try { const res = await fetch(`/api/campaigns/${campaignId}/assets`); const json = await res.json(); if (!res.ok) throw new Error(json.error); const brief = (json.data ?? []).find((asset: { metadata?: { asset_type?: string }; signed_url?: string | null }) => asset.metadata?.asset_type === 'sponsor_brief'); if (!brief?.signed_url) throw new Error('El brief para sponsors no está disponible'); window.open(brief.signed_url, '_blank', 'noopener,noreferrer') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo descargar el brief') } }
+  async function downloadProposal(campaignId: string) { try { const res = await fetch(`/api/campaigns/${campaignId}/assets`); const json = await res.json(); if (!res.ok) throw new Error(json.error); const doc = (json.data ?? []).find((asset: { metadata?: { asset_type?: string }; signed_url?: string | null }) => asset.metadata?.asset_type === 'sponsor_brief'); if (!doc?.signed_url) throw new Error('La propuesta comercial no está disponible'); window.open(doc.signed_url, '_blank', 'noopener,noreferrer') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo descargar la propuesta') } }
+
   return <main className="mx-auto max-w-5xl space-y-6 p-6 md:p-10">
-    <div><p className="text-sm font-semibold text-violet-600">Colaboraciones</p><h1 className="text-3xl font-bold text-gray-900">Oportunidades para tu marca</h1><p className="mt-1 text-gray-500">Postula con tu perfil comercial. Solo te agregamos a la campaña cuando el pago esté confirmado.</p></div>
-    {loading ? <p className="text-gray-400">Cargando oportunidades…</p> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500"><Building2 className="mx-auto mb-3 h-8 w-8 text-violet-400" />No hay oportunidades disponibles por ahora.</div> : <div className="grid gap-4 md:grid-cols-2">{items.map(item => { const config = item.collaboration_opportunity; const status = item.application_status; return <article key={item.id} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">{item.brand?.name ?? 'Marca'}</p><h2 className="mt-1 text-xl font-bold text-gray-900">{item.name}</h2></div><Sparkles className="h-5 w-5 text-violet-500" /></div>
-      <p className="mt-4 text-sm text-gray-600">{config.benefits || 'Colaboración de marca en campaña.'}</p>
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-gray-400">Participación</p><p className="font-semibold">{Number(config.participation_value ?? 0) ? formatCurrency(Number(config.participation_value), String(config.currency ?? 'CLP')) : 'Sin costo'}</p></div><div><p className="text-gray-400">Cierra</p><p className="font-semibold">{config.application_deadline ? formatDate(config.application_deadline) : 'Por confirmar'}</p></div></div>
-      {item.has_sponsor_brief && <button type="button" onClick={() => downloadBrief(item.id)} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-fuchsia-700 hover:underline"><Download className="h-4 w-4" />Descargar brief para sponsors</button>}
-      {status ? <p className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700"><CheckCircle2 className="h-4 w-4" />{status === 'pending' ? 'En revisión' : status === 'approved_for_payment' ? 'Aprobada para pago' : 'Activa'}</p> : <><button onClick={() => setOpenId(openId === item.id ? null : item.id)} className="mt-5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">Postular</button>{openId === item.id && <div className="mt-4 space-y-3 rounded-xl bg-gray-50 p-4"><p className="text-sm font-semibold text-gray-800">Tu aporte a la colaboración</p><input value={form.sampling} onChange={e => setForm({ ...form, sampling: e.target.value })} placeholder="Sampling o regalo que aportarás" className="input-base w-full text-sm" /><textarea value={form.activation_details} onChange={e => setForm({ ...form, activation_details: e.target.value })} placeholder="Qué harás en la activación" className="input-base min-h-20 w-full text-sm" /><input value={form.links} onChange={e => setForm({ ...form, links: e.target.value })} placeholder="Link a materiales (opcional)" className="input-base w-full text-sm" /><button disabled={saving} onClick={() => apply(item.id)} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar postulación'}</button></div>}</>}
-    </article> })}</div>}
+    <div><p className="text-sm font-semibold text-violet-600">Colaboraciones</p><h1 className="text-3xl font-bold text-gray-900">Oportunidades para tu marca</h1><p className="mt-1 text-gray-500">Activa tu marca en eventos y campañas de SCENCE.</p></div>
+    {loading ? <p className="text-gray-400">Cargando oportunidades…</p> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500"><Building2 className="mx-auto mb-3 h-8 w-8 text-violet-400" />No hay oportunidades disponibles por ahora.</div> : <div className="space-y-6">{items.map(item => {
+      const config = item.collaboration_opportunity
+      const status = item.application_status
+      const deadline = config.application_deadline
+      return <article key={item.id} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">{item.brand?.name ?? 'Marca'}</p><h2 className="mt-1 text-xl font-bold text-gray-900">{item.name}</h2>{deadline && <p className="mt-1 text-xs text-gray-500">Cierra el {formatDate(deadline)}</p>}</div><Sparkles className="h-5 w-5 text-violet-500" /></div>
+
+        {config.mode === 'plans' ? <>
+          <div className={`mt-5 grid gap-3 ${config.plans.length === 1 ? '' : config.plans.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+            {config.plans.map(plan => <PlanCard key={plan.id} plan={plan} />)}
+          </div>
+          <details className="mt-4 rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
+            <summary className="cursor-pointer font-semibold text-gray-800">Cómo funciona la activación</summary>
+            <div className="mt-2 space-y-2 text-xs leading-relaxed"><p>{ACTIVATION_DYNAMICS_CLAUSE}</p><p>{NO_GUARANTEED_PUBLICATIONS_CLAUSE}</p><p>{NON_EXCLUSIVITY_CLAUSE}</p><p>Cuando el plan incluye Collab, SCENCE gestiona la solicitud de colaboración con la cuenta que se acuerde; la marca puede aceptarla o no.</p></div>
+          </details>
+        </> : <>
+          <p className="mt-4 text-sm text-gray-600">{config.benefits || 'Colaboración de marca en campaña.'}</p>
+          <div className="mt-4 text-sm"><p className="text-gray-400">Participación</p><p className="font-semibold">{config.participation_value ? formatCurrency(config.participation_value, config.currency) : 'Sin costo'}</p></div>
+        </>}
+
+        {item.has_sponsor_brief && <button type="button" onClick={() => downloadProposal(item.id)} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-fuchsia-700 hover:underline"><Download className="h-4 w-4" />Descargar propuesta comercial (PDF)</button>}
+        {status ? <p className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700"><CheckCircle2 className="h-4 w-4" />{STATUS_LABEL[status] ?? 'En revisión'}</p> : <><button onClick={() => setOpenId(openId === item.id ? null : item.id)} className="mt-5 block rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">Me interesa</button>{openId === item.id && <div className="mt-4 space-y-3 rounded-xl bg-gray-50 p-4"><p className="text-sm font-semibold text-gray-800">Cuéntanos sobre tu marca</p><input value={form.sampling} onChange={e => setForm({ ...form, sampling: e.target.value })} placeholder="Sampling o regalo que aportarás" className="input-base w-full text-sm" /><textarea value={form.activation_details} onChange={e => setForm({ ...form, activation_details: e.target.value })} placeholder="Qué te gustaría activar" className="input-base min-h-20 w-full text-sm" /><input value={form.links} onChange={e => setForm({ ...form, links: e.target.value })} placeholder="Link a materiales (opcional)" className="input-base w-full text-sm" /><button disabled={saving} onClick={() => apply(item.id)} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar'}</button></div>}</>}
+      </article>
+    })}</div>}
   </main>
 }

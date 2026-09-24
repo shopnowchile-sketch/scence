@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { isInfluencerPro } from '@/lib/influencer-pro'
+import { withoutCollaborationOpportunity } from '@/lib/brand-plans'
 
 type Params = { params: { id: string } }
 
@@ -108,6 +109,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const isAccepted = existing?.application_status === 'accepted'
   const payload: Record<string, unknown> = { ...campaign }
   delete payload.created_by
+  // La oferta comercial para marcas (planes, precios, notas internas) nunca
+  // se expone a influencers. Es la única clave de metadata que se retira.
+  payload.metadata = withoutCollaborationOpportunity(campaign.metadata)
   const covers = await getCampaignCoverUrls(admin, [campaign.id])
   payload.cover_url = covers.get(campaign.id) ?? null
   if (!isAccepted) {

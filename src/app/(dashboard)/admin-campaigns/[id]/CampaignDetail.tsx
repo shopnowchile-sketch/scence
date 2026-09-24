@@ -33,6 +33,7 @@ import { CampaignEmailModal } from '@/components/campaigns/CampaignEmailModal'
 import { createClient } from '@/lib/supabase/client'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import { GenerateContractModal } from '@/components/campaigns/GenerateContractModal'
+import { CollaborationOpportunitySettings } from '@/components/campaigns/CollaborationOpportunitySettings'
 
 // ── Orden de la tabla de postulaciones pendientes ──────────────────────────
 // Un solo header activo a la vez (como cualquier tabla ordenable). 'pro' es el
@@ -1348,6 +1349,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Manual de marca: mismo flujo de carga y mismo bucket que el resto de los
   // assets, solo cambia el asset_type con el que se registra en media_files.
   const brandGuideUploadInputRef = useRef<HTMLInputElement>(null)
+  const sponsorBriefUploadInputRef = useRef<HTMLInputElement>(null)
   const [coverSaving, setCoverSaving] = useState(false)
   const coverInputRef = useRef<HTMLInputElement>(null)
   const [locationFormOpen, setLocationFormOpen] = useState(false)
@@ -2309,7 +2311,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     toast.success('Asset eliminado')
   }
 
-  async function handleUploadCampaignAssets(files: FileList | null, uploadAssetType: 'asset' | 'brand_guide' = 'asset') {
+  async function handleUploadCampaignAssets(files: FileList | null, uploadAssetType: 'asset' | 'brand_guide' | 'sponsor_brief' = 'asset') {
     const selectedFiles = Array.from(files ?? [])
     if (!selectedFiles.length) return
     setAssetSaving(true)
@@ -2331,6 +2333,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       setAssetSaving(false)
       if (assetUploadInputRef.current) assetUploadInputRef.current.value = ''
       if (brandGuideUploadInputRef.current) brandGuideUploadInputRef.current.value = ''
+      if (sponsorBriefUploadInputRef.current) sponsorBriefUploadInputRef.current.value = ''
     }
   }
 
@@ -4380,7 +4383,32 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   className="hidden"
                   onChange={event => void handleUploadCampaignAssets(event.target.files, 'brand_guide')}
                 />
+                {!isBrandPortal && (
+                  <input
+                    ref={sponsorBriefUploadInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    onChange={event => void handleUploadCampaignAssets(event.target.files, 'sponsor_brief')}
+                  />
+                )}
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Propuesta comercial para marcas (asset_type 'sponsor_brief'):
+                      material comercial en PDF. La ven Admin y marcas con acceso
+                      a la oportunidad (resolveCampaignAssetAccess); nunca las
+                      influencers. No se interpreta: los planes viven en datos. */}
+                  {!isBrandPortal && (
+                    <button
+                      type="button"
+                      onClick={() => sponsorBriefUploadInputRef.current?.click()}
+                      disabled={assetSaving}
+                      title="Subir la propuesta comercial en PDF (visible para marcas, no para influencers)"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-fuchsia-200 bg-white px-3 py-2 text-xs font-semibold text-fuchsia-700 transition-colors hover:bg-fuchsia-50 disabled:opacity-60"
+                    >
+                      {assetSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                      Propuesta para marcas
+                    </button>
+                  )}
                   {/* El manual de marca se sube igual que cualquier archivo,
                       solo se marca como brand_guide: es el único asset visible
                       para la influencer antes de que aprueben su postulación. */}
@@ -4447,6 +4475,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         <p className="truncate text-xs font-semibold text-gray-700" title={filename}>{filename}</p>
                         {((asset.metadata ?? {}) as Record<string, unknown>).asset_type === 'brand_guide' && (
                           <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-600">Manual de marca</p>
+                        )}
+                        {((asset.metadata ?? {}) as Record<string, unknown>).asset_type === 'sponsor_brief' && (
+                          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-600">Propuesta para marcas</p>
                         )}
                       </div>
                       <a
@@ -4543,6 +4574,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       )}
 
       {/* ── CONTRATOS ──────────────────────────────────────────────────────── */}
+      {tab === 'contracts' && !isBrandPortal && (
+        <CollaborationOpportunitySettings
+          campaignId={id}
+          initial={(((c as unknown as { metadata?: Record<string, unknown> | null }).metadata ?? {}).collaboration_opportunity as Record<string, unknown> | undefined) ?? null}
+          canEdit
+        />
+      )}
+
       {tab === 'contracts' && !isBrandPortal && (
         <div className="card p-6 space-y-4">
           <div className="flex items-center justify-between">

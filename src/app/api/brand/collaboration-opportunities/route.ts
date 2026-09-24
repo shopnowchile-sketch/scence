@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { toBrandOpportunityDTO } from '@/lib/brand-plans'
 
 function opportunity(metadata: unknown) {
   const meta = metadata && typeof metadata === 'object' ? metadata as Record<string, unknown> : {}
@@ -26,10 +27,18 @@ export async function GET() {
   const { data: sponsorBriefs } = campaignIds.length ? await admin.from('media_files')
     .select('campaign_id').in('campaign_id', campaignIds).contains('metadata', { asset_type: 'sponsor_brief' }) : { data: [] }
   const campaignsWithBrief = new Set((sponsorBriefs ?? []).map(row => row.campaign_id))
+  // DTO explícito: nunca se reenvía campaigns.metadata (dirección, notas
+  // internas, planes inactivos). Solo planes activos vía toBrandOpportunityDTO.
   return NextResponse.json({ data: (campaigns ?? []).flatMap(c => {
-    const config = opportunity(c.metadata)
-    if (!config?.enabled) return []
-    return [{ ...c, collaboration_opportunity: config, application_status: applicationByCampaign.get(c.id) ?? null, has_sponsor_brief: campaignsWithBrief.has(c.id) }]
+    const dto = toBrandOpportunityDTO(c.metadata)
+    if (!dto) return []
+    return [{
+      id: c.id, name: c.name, type: c.type, start_date: c.start_date, end_date: c.end_date,
+      application_deadline: c.application_deadline, brand_id: c.brand_id, brand: c.brand,
+      collaboration_opportunity: dto,
+      application_status: applicationByCampaign.get(c.id) ?? null,
+      has_sponsor_brief: campaignsWithBrief.has(c.id),
+    }]
   }) })
 }
 

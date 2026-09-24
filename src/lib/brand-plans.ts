@@ -385,7 +385,7 @@ export function planScopeLines(plan: PublicBrandPlan, collaborationAccount: stri
   }
   flag(plan.brand_brief_included, 'Brief de marca, comunicado a las influencers participantes de la activación', 'Brief de marca')
   flag(plan.influencer_content_included, 'Contenido realizado por las influencers participantes durante el evento, dentro de la dinámica de activación', 'Contenido de influencers durante el evento')
-  flag(plan.collaboration_included, `Gestión de la solicitud de colaboración (Collab) con la cuenta ${collaborationAccount ?? '[cuenta por confirmar]'}`, 'Gestión de solicitudes de colaboración (Collab)')
+  flag(plan.collaboration_included, collaborationAccount ? `Gestión de la solicitud de colaboración (Collab) con la cuenta ${collaborationAccount}` : 'Gestión de la solicitud de colaboración (Collab) con la cuenta que se acuerde con la marca', 'Gestión de solicitudes de colaboración (Collab)')
   for (const benefit of plan.benefits) if (!included.includes(benefit)) included.push(benefit)
   return { included, excluded }
 }
@@ -445,4 +445,88 @@ export function appendPlanAnnex(renderedContract: string, annex: string): string
     return `${head}${annex}${rest.join('')}`
   }
   return `${renderedContract.trimEnd()}\n\n${annex}\n`
+}
+
+// ── Guardado de la oportunidad (PUT /api/campaigns/[id]/collaboration-opportunity) ──
+export type OpportunityConfig = {
+  enabled: boolean
+  benefits: string
+  participation_value: number
+  currency: PlanCurrency
+  seats: number
+  application_deadline: string | null
+  schema_version?: 2
+  plans?: BrandPlan[]
+}
+
+export type OpportunityUpdateResult =
+  | { ok: true; config: OpportunityConfig }
+  | { ok: false; errors: PlanFieldError[] }
+
+/** Planes guardados (sin filtrar por activo). Vacío si la campaña está en modo legacy. */
+export function storedPlans(campaignMetadata: unknown): BrandPlan[] {
+  const view = readOpportunity(campaignMetadata)
+  return view?.mode === 'plans' ? view.plans : []
+}
+
+/**
+ * Construye la nueva configuración a partir de la guardada y del body.
+ * Campos legacy: mismo tratamiento que la ruta tenía antes.
+ * `plans`: si el body NO trae la clave, los planes guardados se conservan
+ * intactos (un cliente antiguo nunca borra planes); si la trae, pasa por
+ * normalizePlans() contra los guardados.
+ */
+export function buildOpportunityConfig(campaignMetadata: unknown, body: Record<string, unknown>, options: NormalizeOptions = {}): OpportunityUpdateResult {
+  const existing = storedPlans(campaignMetadata)
+  let plans = existing
+  if (Object.prototype.hasOwnProperty.call(body, 'plans')) {
+    const result = normalizePlans(body.plans, existing, options)
+    if (!result.ok) return result
+    plans = result.plans
+  }
+  const config: OpportunityConfig = {
+    enabled: Boolean(body.enabled),
+    benefits: String(body.benefits ?? '').trim(),
+    participation_value: Math.max(0, Number(body.participation_value) || 0),
+    currency: body.currency === 'USD' ? 'USD' : 'CLP',
+    seats: Math.max(0, Math.trunc(Number(body.seats) || 0)),
+    application_deadline: typeof body.application_deadline === 'string' && body.application_deadline ? body.application_deadline : null,
+  }
+  if (plans.length > 0) {
+    config.schema_version = 2
+    config.plans = plans
+  }
+  return { ok: true, config }
+}
+
+// ── Lectura por audiencia ────────────────────────────────────────────────────
+export type BrandOpportunityDTO =
+  | { mode: 'plans'; application_deadline: string | null; plans: PublicBrandPlan[] }
+  | { mode: 'legacy'; application_deadline: string | null; benefits: string; participation_value: number; currency: PlanCurrency }
+
+/**
+ * Lo único que una marca (no dueña) ve de la oportunidad de una campaña.
+ * null si no hay oportunidad, si está desactivada o si no quedan planes activos.
+ */
+export function toBrandOpportunityDTO(campaignMetadata: unknown): BrandOpportunityDTO | null {
+  const view = readOpportunity(campaignMetadata)
+  if (!view || !view.enabled) return null
+  if (view.mode === 'plans') {
+    const plans = listPublicPlans(view.plans)
+    return plans.length ? { mode: 'plans', application_deadline: view.application_deadline, plans } : null
+  }
+  return { mode: 'legacy', application_deadline: view.application_deadline, benefits: view.benefits, participation_value: view.participation_value, currency: view.currency }
+}
+
+/**
+ * Metadata de campaña sin la configuración comercial para marcas. Para
+ * cualquier respuesta dirigida a influencers: precios, planes inactivos y
+ * notas internas nunca deben salir por esa vía.
+ */
+export function withoutCollaborationOpportunity<T>(campaignMetadata: T): T {
+  if (!campaignMetadata || typeof campaignMetadata !== 'object' || Array.isArray(campaignMetadata)) return campaignMetadata
+  if (!('collaboration_opportunity' in (campaignMetadata as Record<string, unknown>))) return campaignMetadata
+  const rest = { ...(campaignMetadata as Record<string, unknown>) }
+  delete rest.collaboration_opportunity
+  return rest as T
 }

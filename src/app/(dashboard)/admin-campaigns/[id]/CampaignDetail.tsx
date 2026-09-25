@@ -1318,6 +1318,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
   const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set())
   const [showCampaignEmailModal, setShowCampaignEmailModal] = useState(false)
+  const [campaignEmailInitialTemplate, setCampaignEmailInitialTemplate] = useState<string | undefined>(undefined)
   const [deliverableEmailSelection, setDeliverableEmailSelection] = useState<Set<string>>(new Set())
   const [showDeliverableEmailModal, setShowDeliverableEmailModal] = useState(false)
   const [deliverableSort, setDeliverableSort] = useState<DeliverableSort>('followers_desc')
@@ -3505,16 +3506,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 <>
                   <button
                     type="button"
-                    onClick={() => void remindSelectedAttendance()}
-                    disabled={!emailSelection.size || attendanceReminding}
-                    title={emailSelection.size ? `Solicitar confirmación de asistencia a ${emailSelection.size} influencer${emailSelection.size === 1 ? '' : 's'}` : 'Selecciona influencers que no han confirmado asistencia'}
+                    onClick={() => {
+                      setCampaignEmailInitialTemplate('attendance_confirmation')
+                      setShowCampaignEmailModal(true)
+                    }}
+                    disabled={!emailSelection.size}
+                    title={emailSelection.size ? `Enviar confirmación de asistencia a ${emailSelection.size} influencer${emailSelection.size === 1 ? '' : 's'}` : 'Selecciona influencers que no han confirmado asistencia'}
                     className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
                   >
-                    {attendanceReminding ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Solicitar confirmación ({emailSelection.size})
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirmación de asistencia ({emailSelection.size})
                   </button>
                   <button
-                    onClick={() => setShowCampaignEmailModal(true)}
+                    onClick={() => {
+                      setCampaignEmailInitialTemplate(undefined)
+                      setShowCampaignEmailModal(true)
+                    }}
                     disabled={!emailSelection.size}
                     title={emailSelection.size ? `Enviar email a ${emailSelection.size} influencer${emailSelection.size === 1 ? '' : 's'}` : 'Selecciona influencers para enviar email'}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-50"
@@ -4703,8 +4710,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           campaignId={id}
           campaignName={c.name}
           influencerIds={Array.from(emailSelection)}
-          onClose={() => setShowCampaignEmailModal(false)}
-          onSent={() => setEmailSelection(new Set())}
+          initialTemplateKey={campaignEmailInitialTemplate}
+          onClose={() => {
+            setShowCampaignEmailModal(false)
+            setCampaignEmailInitialTemplate(undefined)
+          }}
+          onSent={() => {
+            setEmailSelection(new Set())
+            setCampaignEmailInitialTemplate(undefined)
+          }}
         />
       )}
       {showDeliverableEmailModal && deliverableEmailSelection.size > 0 && (

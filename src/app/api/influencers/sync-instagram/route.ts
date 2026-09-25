@@ -351,9 +351,18 @@ export async function POST(req: NextRequest) {
   const seen = new Set<string>()
   const uniqueHandles = profiles.map(p => p.clean_handle).filter(h => { if (seen.has(h)) return false; seen.add(h); return true })
 
-  // Fallback Playwright solo para syncs dirigidos.
-  // Nunca intentar abrir Chromium para los ~1.600 perfiles de una sola vez.
+  // Para actualizaciones dirigidas (por ejemplo, el botón "Actualizar Instagram"
+  // de una influencer) NO dependemos de Apify. Si Apify tiene la cuota mensual
+  // agotada, el botón no puede quedar bloqueado por un proveedor externo.
+  // Playwright consulta el perfil público directamente y conserva el último dato
+  // válido si Instagram no responde.
+  //
+  // El sync automático masivo sigue usando Apify por eficiencia.
   const targeted = Boolean(body.influencer_ids?.length || body.campaign_id)
+
+  if (targeted) {
+    return NextResponse.json(await syncProfilesViaPlaywright(profiles))
+  }
 
   if (body.force_playwright) {
     if (!targeted) {
@@ -401,7 +410,16 @@ export async function GET(req: NextRequest) {
     const handles = Array.from(new Set(profiles.map(profile => profile.clean_handle)))
     if (!handles.length) return NextResponse.json({ status: 'SUCCEEDED', synced: 0, failed: 0 })
     const started = await startApifyInstagramSync(handles)
-    if ('error' in started) return NextResponse.json({ error: started.error }, { status: 502 })
+    if ('error' in started) {
+      // Apify es solo el proveedor masivo preferido. Si está suspendido por
+      // límite mensual, el cron no puede quedar roto: usa el mismo fallback
+      // directo de Instagram y continúa con el lote.
+      console.warn('[sync-ig] cron: Apify no disponible, usando Playwright:', started.error)
+      return NextResponse.json({
+        ...(await syncProfilesViaPlaywright(profiles)),
+        apify_error: started.error,
+      })
+    }
 
     for (let attempt = 0; attempt < 52; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 5000))

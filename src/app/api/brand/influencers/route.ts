@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { startApifyInstagramSync } from '@/lib/influencers/apify'
+import { fetchInstagramProfileFollowersViaPlaywright } from '@/lib/connectors/instagram-playwright-metrics'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
@@ -430,19 +430,45 @@ export async function POST(req: NextRequest) {
     .eq('id', influencer.id)
     .single()
 
-  // Auto-traer seguidores reales desde Instagram (pedido por Pri). Usa el
-  // mismo handle que la marca acaba de ingresar — nunca un influencer_id
-  // arbitrario del cliente, a diferencia de POST /api/influencers/sync-
-  // instagram (admin), que si acepta influencer_ids del body. No bloquea la
-  // respuesta: si Apify falla o no está configurado, la influencer queda
-  // creada igual con followers en 0 (se puede sincronizar después).
-  let apify_run_id: string | null = null
-  const startedSync = await startApifyInstagramSync([igUsername])
-  if ('runId' in startedSync) {
-    apify_run_id = startedSync.runId
+  // Auto-traer seguidores reales desde Instagram (pedido por Pri).
+  // IMPORTANTE: este flujo NO depende de Apify. Apify puede quedar suspendido
+  // por límite mensual y eso no puede impedir actualizar followers al crear
+  // una influencer desde una marca.
+  let followers_synced = false
+  let followers_sync_error: string | null = null
+
+  const instagramResult = await fetchInstagramProfileFollowersViaPlaywright(igUsername)
+  if ('followers' in instagramResult && instagramResult.followers > 0) {
+    const { error: followersError } = await admin
+      .from('influencer_social_profiles')
+      .update({
+        followers: instagramResult.followers,
+        synced_at: new Date().toISOString(),
+        last_synced_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('influencer_id', influencer.id)
+      .eq('platform', 'instagram')
+
+    if (followersError) {
+      followers_sync_error = followersError.message
+    } else {
+      followers_synced = true
+    }
   } else {
-    console.error('[POST /api/brand/influencers] apify sync:', startedSync.error)
+    followers_sync_error = instagramResult.error
   }
 
-  return NextResponse.json({ data, apify_run_id }, { status: 201 })
+  const { data: finalData } = await admin
+    .from('influencers')
+    .select('*, influencer_social_profiles(*), influencer_rate_cards(*)')
+    .eq('id', influencer.id)
+    .single()
+
+  return NextResponse.json({
+    data: finalData ?? data,
+    followers_synced,
+    followers_sync_error,
+    apify_run_id: null,
+  }, { status: 201 })
 }

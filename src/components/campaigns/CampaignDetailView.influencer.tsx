@@ -1017,6 +1017,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   // Los handles de marcas colaboradoras son instrucciones de ejecución: solo
   // una influencer aceptada debe verlos, nunca una postulante o invitada.
   const isAccepted   = data.application_status === 'accepted'
+  const attendanceConfirmed = (data.campaign_deliverables ?? []).some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')
+  const operationalAccess = isSelfCreated || (isAccepted && attendanceConfirmed)
   // FIX (2026-07-04): mientras la postulación sigue pendiente, el badge del
   // header mostraba el estado de LA CAMPAÑA ("Activa") en vez de reflejar
   // que SU postulación todavía no fue aprobada — inconsistente con
@@ -1132,8 +1134,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             la descripción. Antes el evento iba después del texto y, en pending,
             el backend ni siquiera enviaba el booking. Lugar e instrucciones
             exactas siguen apareciendo solo cuando la influencer fue aceptada. */}
-        <EventBookingCard booking={data.event_booking ?? null} showLocation={isAccepted || isSelfCreated} fallbackDate={c.start_date} />
-        <CampaignWhatsappCard campaign={c} confirmed={isAccepted && (data.campaign_deliverables ?? []).some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')} />
+        <EventBookingCard booking={data.event_booking ?? null} showLocation={operationalAccess} fallbackDate={c.start_date} />
+        <CampaignWhatsappCard campaign={c} confirmed={operationalAccess} />
         <CampaignBenefitsCard benefits={c.campaign_benefits} />
 
         {/* Descripción general de la campaña — mismo campaigns.description que
@@ -1154,7 +1156,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             en CampaignDetail.tsx admin). description ya se muestra arriba sin
             gate; mostrarlo también acá duplicaría el mismo texto. El gate
             isAccepted NO cambió: solo protege briefUrl (PDF/link) como antes. */}
-        {isAccepted && (() => {
+        {operationalAccess && (() => {
           const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
           return uploadedBrief
             ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />
@@ -1187,10 +1189,10 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         )}
 
         {/* KPIs y marca participante, antes de cualquier detalle operativo. */}
-        {!isPending && (
+        {operationalAccess && (
           <div className="mt-4 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              {isAccepted && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
+              {operationalAccess && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
               <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
                 <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>
@@ -1201,17 +1203,24 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         </div>
       </div>
 
+      {!isPending && isAccepted && !attendanceConfirmed && !isSelfCreated && (
+        <section className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
+          <p className="text-sm font-extrabold text-violet-900">Primero confirma tu asistencia</p>
+          <p className="mt-1 text-xs leading-relaxed text-violet-700">La confirmación es obligatoria. Después de confirmar se habilitarán el brief, las instrucciones, los assets y el resto de los entregables de la campaña.</p>
+        </section>
+      )}
+
       {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}
       {/* Se muestra también a postulantes/rechazadas, pero solo como referencia:
           las acciones (Subir, Confirmar asistencia) exigen application_status
           'accepted', igual que el backend. */}
-      <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} canAct={isAccepted} />
+      <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} canAct={operationalAccess} />
 
       {/* El manual de marca se ve desde el primer momento: la influencer lo
           necesita para entender la identidad antes de decidir. El resto de los
           assets operativos siguen apareciendo solo cuando ya está vinculada. */}
       <CampaignAssetList title="Manual de marca" assets={brandGuideAssets} />
-      {!isPending && <CampaignAssetList title="Assets de campaña" assets={operationalAssets} />}
+      {operationalAccess && <CampaignAssetList title="Assets de campaña" assets={operationalAssets} />}
 
       {/* Tags obligatorios de la campaña (plataformas + hashtags) — mismo
           bloque que ya se mostraba en el preview antes de postular; acá

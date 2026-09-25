@@ -21,6 +21,8 @@ const TYPES: { value: CampaignType; label: string }[] = [
   { value: 'product_seeding',   label: 'Product Seeding' },
   { value: 'ugc',               label: 'UGC' },
   { value: 'live',              label: 'Live' },
+  { value: 'commission',        label: 'Por Comisión' },
+  { value: 'content_delivery',  label: 'Contenido para cliente (Drive)' },
 ]
 
 const PLATFORMS: { value: SocialPlatform; label: string }[] = [

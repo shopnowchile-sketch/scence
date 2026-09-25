@@ -16,10 +16,14 @@ export interface DeliverableStatusFields {
   content_url?: string | null
   published_url?: string | null
   attendance_response?: string | null
+  submitted_notes?: string | null
 }
 
 export function isDeliverableComplete(d: DeliverableStatusFields): boolean {
   if (d.type === 'event_attendance') return !!d.attendance_response
+  if (d.type === 'event_checkin') return !!d.submitted_notes || DELIVERABLE_COMPLETE_STATUSES.includes(
+    (d.status ?? '') as (typeof DELIVERABLE_COMPLETE_STATUSES)[number]
+  )
   // Un link rechazado sigue guardado para que la influencer y el equipo
   // puedan revisarlo, pero ya no cuenta como avance. Debe volver a pendiente
   // hasta que se suba una corrección y se apruebe.

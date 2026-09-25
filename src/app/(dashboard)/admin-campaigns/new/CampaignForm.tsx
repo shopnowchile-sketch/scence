@@ -60,7 +60,7 @@ const schema = z.object({
   // absorbe ese contenido también). Mismo límite que ya usa el panel de
   // edición del admin. Pedido de Pri 2026-09-04.
   description: z.string().max(3000).optional(),
-  type: z.enum(['sponsored_post', 'ambassador', 'ugc', 'event_appearance', 'product_seeding', 'live', 'commission']),
+  type: z.enum(['sponsored_post', 'ambassador', 'ugc', 'event_appearance', 'product_seeding', 'live', 'commission', 'content_delivery']),
   platforms: z.array(z.string()).min(1, 'Selecciona al menos una plataforma'),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
@@ -108,6 +108,7 @@ const CAMPAIGN_TYPES = [
   { value: 'product_seeding',  label: 'Product Seeding',   desc: 'Envío de producto para reseña' },
   { value: 'live',             label: 'Live / Streaming',  desc: 'Transmisión en vivo patrocinada' },
   { value: 'commission',       label: 'Por Comisión',      desc: 'Pago por % de ventas generadas' },
+  { value: 'content_delivery', label: 'Contenido para cliente (Drive)', desc: 'Grabas el contenido y entregas el video por Drive para que el cliente lo publique' },
 ] as const
 
 const PLATFORMS = ['instagram', 'tiktok', 'youtube', 'twitter', 'facebook', 'linkedin'] as const

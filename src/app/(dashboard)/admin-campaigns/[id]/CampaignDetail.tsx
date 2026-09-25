@@ -1322,6 +1322,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [showDeliverableEmailModal, setShowDeliverableEmailModal] = useState(false)
   const [deliverableSort, setDeliverableSort] = useState<DeliverableSort>('followers_desc')
   const [attendanceUpdating, setAttendanceUpdating] = useState<string | null>(null)
+  const [attendanceReminding, setAttendanceReminding] = useState(false)
   const [attendanceConfirm, setAttendanceConfirm] = useState<{ influencerId: string; action: 'no_show' | 'revert_no_show' } | null>(null)
 
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
@@ -1847,6 +1848,28 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la asistencia')
     } finally {
       setAttendanceUpdating(null)
+    }
+  }
+
+  async function remindSelectedAttendance() {
+    const influencerIds = Array.from(emailSelection)
+    if (!influencerIds.length) return
+    setAttendanceReminding(true)
+    try {
+      const response = await fetch(`/api/campaigns/${id}/attendance-confirmations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remind', influencer_ids: influencerIds }),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudieron enviar las solicitudes de confirmación')
+      setEmailSelection(new Set())
+      toast.success(`Solicitud de confirmación enviada a ${json.data?.sent ?? influencerIds.length} influencer${(json.data?.sent ?? influencerIds.length) === 1 ? '' : 's'}`)
+      await refetch()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudieron enviar las solicitudes de confirmación')
+    } finally {
+      setAttendanceReminding(false)
     }
   }
 
@@ -3479,15 +3502,27 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </a>
               )}
               {c.status !== 'completed' && confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-                <button
-                  onClick={() => setShowCampaignEmailModal(true)}
-                  disabled={!emailSelection.size}
-                  title={emailSelection.size ? `Enviar email a ${emailSelection.size} influencer${emailSelection.size === 1 ? '' : 's'}` : 'Selecciona influencers para enviar email'}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-50"
-                >
-                  <Mail className="h-4 w-4" />
-                  Enviar email ({emailSelection.size})
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void remindSelectedAttendance()}
+                    disabled={!emailSelection.size || attendanceReminding}
+                    title={emailSelection.size ? `Solicitar confirmación de asistencia a ${emailSelection.size} influencer${emailSelection.size === 1 ? '' : 's'}` : 'Selecciona influencers que no han confirmado asistencia'}
+                    className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    {attendanceReminding ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    Solicitar confirmación ({emailSelection.size})
+                  </button>
+                  <button
+                    onClick={() => setShowCampaignEmailModal(true)}
+                    disabled={!emailSelection.size}
+                    title={emailSelection.size ? `Enviar email a ${emailSelection.size} influencer${emailSelection.size === 1 ? '' : 's'}` : 'Selecciona influencers para enviar email'}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-50"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Enviar email ({emailSelection.size})
+                  </button>
+                </>
               )}
               {c.status === 'completed' && (!isBrandPortal || c._brand_permissions?.canEdit) && (
                 <button

@@ -48,7 +48,7 @@ export async function GET() {
         )
       ),
       campaign_deliverables (
-        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, description, hashtags, tag_brand_ids, tag_handles,
+        id, title, type, status, due_date, platform, content_url, published_url, submitted_at, submitted_notes, description, hashtags, tag_brand_ids, tag_handles,
         attendance_response, attendance_responded_at, attendance_note,
         attendance_outcome, attendance_outcome_at
       )

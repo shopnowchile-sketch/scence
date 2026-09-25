@@ -22,7 +22,7 @@ import { ApplyConfirmDialog } from '@/components/campaigns/ApplyConfirmDialog'
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
   id: string; title: string | null; type: string; platform: string | null
-  due_date: string | null; status: string; content_url: string | null; notes: string | null
+  due_date: string | null; status: string; content_url: string | null; notes: string | null; submitted_notes?: string | null; submitted_notes?: string | null
   // Campos reales de campaign_deliverables (ya existían en la tabla, no se inventan);
   // agregados al select de /api/influencer/my-campaigns para mostrar
   // descripción/requisitos en el acordeón mobile solo cuando existen.
@@ -360,12 +360,15 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
     : { label: `${pending} pendiente${pending === 1 ? '' : 's'}${expiredAttendance ? ` · ${expiredAttendance} plazo vencido` : ''}`, color: expiredAttendance ? 'text-amber-700' : 'text-violet-600', bar: expiredAttendance ? 'bg-amber-400' : 'bg-violet-500' }
 
   async function submit(d: Deliverable) {
-    if (!url.trim()) return toast.error('Agrega el link del contenido')
+    const isCheckin = d.type === 'event_checkin'
+    if (isCheckin ? !notes.trim() : !url.trim()) {
+      return toast.error(isCheckin ? 'Indica cuándo hiciste la reserva o cuándo irás' : 'Agrega el link del contenido')
+    }
     setSaving(true)
     try {
       const res = await fetch(`/api/influencer/deliverables/${d.id}/submit`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content_url: url.trim(), notes: notes.trim() || null }),
+        body: JSON.stringify({ content_url: isCheckin ? undefined : url.trim(), notes: notes.trim() || null }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? 'No se pudo enviar el entregable')
@@ -424,6 +427,7 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
           const complete = isDeliverableComplete(d) && !isReview
           const isRejected = d.status === 'rejected'
           const opened = openId === d.id
+          const isCheckin = d.type === 'event_checkin'
           const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
           const dueDays = d.due_date && !complete ? daysRemaining(d.due_date) : null
           const statusLabel = isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : contentOverdue ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'
@@ -501,14 +505,18 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
                 {canAct && d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
               </div>
               </div>
-              {canAct && (isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
-                {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
+              {canAct && (isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes(d.submitted_notes ?? d.notes ?? '') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
+                {isCheckin ? (isRejected ? 'Actualizar check-in' : d.submitted_notes ? 'Actualizar check-in' : 'Completar check-in') : (isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir')}
               </button>)}
             </div>
             {canAct && opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
-              <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
-              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
-              <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div>
+              {isCheckin ? (
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ej. Reservé para el sábado 14 a las 19:30 / Iré el sábado 14 a las 19:30" rows={3} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 resize-none" />
+              ) : (
+                <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder={d.type === 'send_content' ? 'https://drive.google.com/...' : 'https://www.instagram.com/reel/...'} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+              )}
+              {!isCheckin && <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />}
+              <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : isCheckin ? 'Guardar check-in' : 'Enviar para revisión'}</button></div>
             </div>}
           </div>
         })}
@@ -1009,6 +1017,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   // Los handles de marcas colaboradoras son instrucciones de ejecución: solo
   // una influencer aceptada debe verlos, nunca una postulante o invitada.
   const isAccepted   = data.application_status === 'accepted'
+  const attendanceConfirmed = (data.campaign_deliverables ?? []).some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')
+  const operationalAccess = isSelfCreated || (isAccepted && attendanceConfirmed)
   // FIX (2026-07-04): mientras la postulación sigue pendiente, el badge del
   // header mostraba el estado de LA CAMPAÑA ("Activa") en vez de reflejar
   // que SU postulación todavía no fue aprobada — inconsistente con
@@ -1124,8 +1134,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             la descripción. Antes el evento iba después del texto y, en pending,
             el backend ni siquiera enviaba el booking. Lugar e instrucciones
             exactas siguen apareciendo solo cuando la influencer fue aceptada. */}
-        <EventBookingCard booking={data.event_booking ?? null} showLocation={isAccepted || isSelfCreated} fallbackDate={c.start_date} />
-        <CampaignWhatsappCard campaign={c} confirmed={isAccepted && (data.campaign_deliverables ?? []).some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')} />
+        <EventBookingCard booking={data.event_booking ?? null} showLocation={operationalAccess} fallbackDate={c.start_date} />
+        <CampaignWhatsappCard campaign={c} confirmed={operationalAccess} />
         <CampaignBenefitsCard benefits={c.campaign_benefits} />
 
         {/* Descripción general de la campaña — mismo campaigns.description que
@@ -1146,7 +1156,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             en CampaignDetail.tsx admin). description ya se muestra arriba sin
             gate; mostrarlo también acá duplicaría el mismo texto. El gate
             isAccepted NO cambió: solo protege briefUrl (PDF/link) como antes. */}
-        {isAccepted && (() => {
+        {operationalAccess && (() => {
           const uploadedBrief = assets.find(asset => asset.metadata?.asset_type === 'brief')
           return uploadedBrief
             ? <CollapsibleBrief text={null} briefUrl={uploadedBrief.signed_url ?? uploadedBrief.storage_path} />
@@ -1179,10 +1189,10 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         )}
 
         {/* KPIs y marca participante, antes de cualquier detalle operativo. */}
-        {!isPending && (
+        {operationalAccess && (
           <div className="mt-4 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              {isAccepted && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
+              {operationalAccess && participantBrands.length > 0 && <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-700 mb-2">Marcas participantes</p><div className="flex flex-wrap gap-2">{participantBrands.map(brand => brand.instagram ? <a key={brand.id} href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-fuchsia-100 px-2.5 py-1.5 text-sm font-bold text-fuchsia-700 hover:bg-fuchsia-100"><Instagram className="h-3.5 w-3.5" />@{brand.instagram.replace(/^@/, '')}</a> : <span key={brand.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600">{brand.logo_url && <img src={brand.logo_url} alt="" className="w-4 h-4 object-contain" />}{brand.name}</span>)}</div></div>}
               <a href={`/api/influencer/campaigns/${c.id}/report`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-3 hover:bg-violet-100/70 transition-colors">
                 <span className="w-9 h-9 rounded-lg bg-white text-violet-600 flex items-center justify-center"><Download className="h-4 w-4" /></span><span><span className="block text-[10px] font-bold uppercase tracking-wide text-violet-500">Toda tu información</span><span className="block text-sm font-bold text-violet-800">Generar reporte</span></span>
               </a>
@@ -1193,17 +1203,24 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         </div>
       </div>
 
+      {!isPending && isAccepted && !attendanceConfirmed && !isSelfCreated && (
+        <section className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
+          <p className="text-sm font-extrabold text-violet-900">Primero confirma tu asistencia</p>
+          <p className="mt-1 text-xs leading-relaxed text-violet-700">La confirmación es obligatoria. Después de confirmar se habilitarán el brief, las instrucciones, los assets y el resto de los entregables de la campaña.</p>
+        </section>
+      )}
+
       {/* La carga y corrección de contenido queda abajo, igual que en Mis entregables. */}
       {/* Se muestra también a postulantes/rechazadas, pero solo como referencia:
           las acciones (Subir, Confirmar asistencia) exigen application_status
           'accepted', igual que el backend. */}
-      <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} canAct={isAccepted} />
+      <CampaignDeliverables items={data.campaign_deliverables ?? []} onUpdated={load} canAct={operationalAccess} />
 
       {/* El manual de marca se ve desde el primer momento: la influencer lo
           necesita para entender la identidad antes de decidir. El resto de los
           assets operativos siguen apareciendo solo cuando ya está vinculada. */}
       <CampaignAssetList title="Manual de marca" assets={brandGuideAssets} />
-      {!isPending && <CampaignAssetList title="Assets de campaña" assets={operationalAssets} />}
+      {operationalAccess && <CampaignAssetList title="Assets de campaña" assets={operationalAssets} />}
 
       {/* Tags obligatorios de la campaña (plataformas + hashtags) — mismo
           bloque que ya se mostraba en el preview antes de postular; acá

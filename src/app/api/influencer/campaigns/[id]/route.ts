@@ -106,12 +106,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // necesarios para decidir (nombre, marca, descripción pública, tipo, fechas,
   // presupuesto/remuneración, entregables generales, plazo) quedan visibles.
   const isAccepted = existing?.application_status === 'accepted'
+  let attendanceConfirmed = false
+  if (isAccepted) {
+    const { data: attendance } = await admin
+      .from('campaign_deliverables')
+      .select('attendance_response')
+      .eq('campaign_id', params.id)
+      .eq('influencer_id', influencer.id)
+      .eq('type', 'event_attendance')
+      .maybeSingle()
+    attendanceConfirmed = attendance?.attendance_response === 'confirmed'
+  }
+  const operationalAccess = isAccepted && attendanceConfirmed
   const payload: Record<string, unknown> = { ...campaign }
   delete payload.created_by
   const covers = await getCampaignCoverUrls(admin, [campaign.id])
   payload.cover_url = covers.get(campaign.id) ?? null
-  if (!isAccepted) {
-    // El brief y el lugar son privados hasta la aceptación; la descripción,
+  if (!operationalAccess) {
+    // El brief y el lugar exacto son privados hasta confirmar asistencia; la descripción,
     // requisitos y entregables siguen visibles para decidir si postular.
     delete payload.brief_url
   }
@@ -163,13 +175,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     : null
   const visibleEventBooking = eventBooking
     ? {
-        id: isAccepted ? eventBooking.id : null,
+        id: operationalAccess ? eventBooking.id : null,
         starts_at: eventBooking.starts_at,
         ends_at: eventBooking.ends_at,
-        location: isAccepted ? eventBooking.location : null,
-        location_details: isAccepted ? eventBooking.location_details : publicLocationDetails,
+        location: operationalAccess ? eventBooking.location : null,
+        location_details: operationalAccess ? eventBooking.location_details : publicLocationDetails,
       }
-    : (isAccepted && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
+    : (operationalAccess && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
 
   const isPro = await isInfluencerPro(admin, influencer.id)
 
@@ -178,6 +190,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ...payload,
       accepted_count: acceptedCount ?? 0,
       _applied: !!existing && !rejectedInvitation,
+      attendance_confirmed: operationalAccess,
       application_status: rejectedInvitation ? null : (existing?.application_status ?? null),
       event_booking: visibleEventBooking,
       can_apply: campaign.visibility === 'open' || isPro,

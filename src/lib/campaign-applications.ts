@@ -253,7 +253,7 @@ export async function rejectCampaignApplications(
 }
 
 
-/** Asegura la confirmación de asistencia para campañas con evento real. */
+/** Asegura la confirmación obligatoria de asistencia/participación para toda campaña. */
 export async function ensureEventAttendanceDeliverable(
   admin: SupabaseClient,
   params: {
@@ -265,14 +265,9 @@ export async function ensureEventAttendanceDeliverable(
 ): Promise<boolean> {
   const { campaignId, campaignInfluencerId, influencerId, templates = [] } = params
 
-  const [{ data: eventBooking, error: bookingError }, { data: campaign, error: campaignError }] = await Promise.all([
-    admin.from('bookings').select('id').eq('campaign_id', campaignId).limit(1).maybeSingle(),
-    admin.from('campaigns').select('type').eq('id', campaignId).maybeSingle(),
-  ])
-  if (bookingError) throw bookingError
-  if (campaignError) throw campaignError
-  const hasEvent = !!eventBooking || campaign?.type === 'event_appearance'
-  if (!hasEvent) return false
+  // Regla de producto: toda campaña aceptada requiere una confirmación de asistencia/participación,
+  // aunque no sea un evento presencial. Se conserva este helper y el type
+  // `event_attendance` para no crear otra tabla ni otro flujo de estado.
 
   const { data: existing, error: existingError } = await admin
     .from('campaign_deliverables')

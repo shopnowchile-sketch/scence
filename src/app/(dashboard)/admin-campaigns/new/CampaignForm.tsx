@@ -60,7 +60,7 @@ const schema = z.object({
   // absorbe ese contenido también). Mismo límite que ya usa el panel de
   // edición del admin. Pedido de Pri 2026-09-04.
   description: z.string().max(3000).optional(),
-  type: z.enum(['sponsored_post', 'ambassador', 'ugc', 'event_appearance', 'product_seeding', 'live', 'commission']),
+  type: z.enum(['sponsored_post', 'ambassador', 'ugc', 'event_appearance', 'product_seeding', 'live', 'commission', 'content_delivery']),
   platforms: z.array(z.string()).min(1, 'Selecciona al menos una plataforma'),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
@@ -108,6 +108,7 @@ const CAMPAIGN_TYPES = [
   { value: 'product_seeding',  label: 'Product Seeding',   desc: 'Envío de producto para reseña' },
   { value: 'live',             label: 'Live / Streaming',  desc: 'Transmisión en vivo patrocinada' },
   { value: 'commission',       label: 'Por Comisión',      desc: 'Pago por % de ventas generadas' },
+  { value: 'content_delivery', label: 'Contenido para cliente (Drive)', desc: 'Grabas el contenido y entregas el video por Drive para que el cliente lo publique' },
 ] as const
 
 const PLATFORMS = ['instagram', 'tiktok', 'youtube', 'twitter', 'facebook', 'linkedin'] as const
@@ -639,7 +640,8 @@ function Step3({ register, control, setValue, campaignType, campaignId }: StepPr
 
   // Auto-fill on first entry to this step (when templates still empty)
   useEffect(() => {
-    if (suggested.length > 0 && currentTemplates.length === 0 && setValue) {
+    const onlyRequiredAttendance = currentTemplates.length === 1 && currentTemplates[0]?.type === 'event_attendance'
+    if (suggested.length > 0 && (currentTemplates.length === 0 || onlyRequiredAttendance) && setValue) {
       setValue('deliverable_templates', suggested.map(s => ({ ...s, due_date: '' })))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -932,10 +934,14 @@ export function CampaignForm({
     // El autosave ocurre al avanzar. Cuando se entra a Contenido, deja los
     // entregables sugeridos dentro del mismo snapshot que se persiste, en vez
     // de cargarlos recién después de crear el borrador.
-    if (step === 2 && campaignType && (getValues('deliverable_templates') ?? []).length === 0) {
-      const suggested = CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []
-      if (suggested.length > 0) {
-        setValue('deliverable_templates', suggested.map(template => ({ ...template, due_date: '' })))
+    if (step === 2 && campaignType) {
+      const current = getValues('deliverable_templates') ?? []
+      const onlyRequiredAttendance = current.length === 1 && current[0]?.type === 'event_attendance'
+      if (current.length === 0 || onlyRequiredAttendance) {
+        const suggested = CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []
+        if (suggested.length > 0) {
+          setValue('deliverable_templates', suggested.map(template => ({ ...template, due_date: '' })))
+        }
       }
     }
     await saveDraft()

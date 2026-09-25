@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 /**
  * DeliverableTemplateBuilder — Componente compartido para definir deliverables
  * en un formulario de campaña.
@@ -33,14 +34,23 @@ export const DELIVERABLE_TYPES = [
   { value: 'post',             label: 'Post / Feed',           emoji: '🖼️' },
   { value: 'live',             label: 'Live',                  emoji: '🔴' },
   { value: 'event_attendance', label: 'Confirmar asistencia',  emoji: '📅' },
-  { value: 'event_checkin',    label: 'Check-in en evento',    emoji: '✅' },
-  { value: 'send_content',     label: 'Enviar contenido',      emoji: '📤' },
+  { value: 'event_checkin',    label: 'Check-in / reserva',     emoji: '✅' },
+  { value: 'send_content',     label: 'Subir contenido al Drive para cliente', emoji: '📤' },
   { value: 'ugc_video',        label: 'Video UGC',             emoji: '📹' },
   { value: 'blog_post',        label: 'Blog / Artículo',       emoji: '✍️' },
   { value: 'other',            label: 'Otro',                  emoji: '➕' },
 ] as const
 
 export type DeliverableTypeValue = typeof DELIVERABLE_TYPES[number]['value']
+
+const REQUIRED_ATTENDANCE_TEMPLATE: DeliverableTemplate = {
+  type: 'event_attendance',
+  quantity: 1,
+  description: 'Antes de realizar los demás entregables, debes confirmar tu asistencia en SCENCE. Esta confirmación es obligatoria para continuar con la campaña y ver el brief e instrucciones operativas.',
+}
+
+const DEFAULT_CONTENT_DELIVERY_DESCRIPTION = 'Debes pegar aquí el URL del video guardado en tu Google Drive. El cliente utilizará ese video para subirlo a sus redes y te hará tag/colaboración en tu cuenta de Instagram. Cuando recibas la invitación de colaboración, debes aceptarla.'
+const DEFAULT_EVENT_CHECKIN_DESCRIPTION = 'Indica cuándo hiciste la reserva o cuándo irás. Escribe la fecha y, si corresponde, la hora de tu reserva o visita.'
 
 function toLocalDateTimeInput(value?: string) {
   if (!value) return ''
@@ -54,18 +64,21 @@ function toLocalDateTimeInput(value?: string) {
 
 export const CAMPAIGN_DELIVERABLE_DEFAULTS: Record<string, DeliverableTemplate[]> = {
   sponsored_post: [
-    { type: 'send_content', quantity: 1, description: 'Enviar contenido para aprobación antes de publicar' },
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'send_content', quantity: 1, description: DEFAULT_CONTENT_DELIVERY_DESCRIPTION },
     { type: 'post',         quantity: 1, description: 'Post en feed mencionando la marca' },
     { type: 'story',        quantity: 3, description: 'Stories con swipe up / link en bio' },
   ],
   ambassador: [
-    { type: 'send_content', quantity: 1, description: 'Enviar contenido para aprobación' },
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'send_content', quantity: 1, description: DEFAULT_CONTENT_DELIVERY_DESCRIPTION },
     { type: 'reel',         quantity: 2, description: 'Reel mostrando el producto/servicio' },
     { type: 'story',        quantity: 5, description: 'Stories mensuales de la marca' },
     { type: 'post',         quantity: 2, description: 'Post en feed' },
   ],
   event_appearance: [
-    { type: 'event_attendance', quantity: 1, description: 'Confirmar asistencia al evento' },
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'event_checkin',    quantity: 1, description: DEFAULT_EVENT_CHECKIN_DESCRIPTION },
     { type: 'reel',             quantity: 1, description: 'Reel del evento' },
     { type: 'story',            quantity: 1, description: 'Story del evento' },
   ],
@@ -73,9 +86,18 @@ export const CAMPAIGN_DELIVERABLE_DEFAULTS: Record<string, DeliverableTemplate[]
   // fee) — definido por Pri 2026-09-22: 1 Reel + 2 Stories + envío previo para
   // aprobación. Antes era post en vez de reel; se actualiza a pedido explícito.
   product_seeding: [
-    { type: 'send_content', quantity: 1, description: 'Enviar unboxing / reseña para aprobación' },
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'send_content', quantity: 1, description: DEFAULT_CONTENT_DELIVERY_DESCRIPTION },
     { type: 'reel',         quantity: 1, description: 'Reel mostrando el producto recibido' },
     { type: 'story',        quantity: 2, description: 'Stories mostrando el producto recibido' },
+  ],
+  content_delivery: [
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'send_content', quantity: 1, description: DEFAULT_CONTENT_DELIVERY_DESCRIPTION },
+  ],
+  ugc: [
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'send_content', quantity: 1, description: DEFAULT_CONTENT_DELIVERY_DESCRIPTION },
   ],
 }
 
@@ -104,12 +126,20 @@ export function DeliverableTemplateBuilder({
 }: Props) {
   const suggested = campaignType ? (CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []) : []
 
+  useEffect(() => {
+    if (value.some(d => d.type === 'event_attendance')) return
+    onChange([{ ...REQUIRED_ATTENDANCE_TEMPLATE, tag_handles: defaultTagHandles }, ...value])
+    // Solo garantiza la regla estructural: toda campaña tiene confirmación.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
   function addType(type: string) {
     if (value.find(d => d.type === type)) return
     onChange([...value, { type, quantity: 1, description: '', tag_handles: defaultTagHandles }])
   }
 
   function remove(type: string) {
+    if (type === 'event_attendance') return
     onChange(value.filter(d => d.type !== type))
   }
 
@@ -209,9 +239,9 @@ export function DeliverableTemplateBuilder({
                       onChange={event => update(deliverable.type, 'quantity', event.target.value)}
                       className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-violet-400" />
                   </label>
-                  <button type="button" onClick={() => remove(deliverable.type)} className="text-xs font-semibold text-gray-400 transition-colors hover:text-red-500">
+                  {deliverable.type !== 'event_attendance' ? <button type="button" onClick={() => remove(deliverable.type)} className="text-xs font-semibold text-gray-400 transition-colors hover:text-red-500">
                     Quitar
-                  </button>
+                  </button> : <span className="text-[11px] font-semibold text-violet-500">Obligatorio</span>}
                 </div>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -247,10 +277,10 @@ export function DeliverableTemplateBuilder({
                   <span className="text-sm font-semibold text-violet-800">
                     {dt?.emoji} {dt?.label ?? d.type}
                   </span>
-                  <button type="button" onClick={() => remove(d.type)}
+                  {d.type !== 'event_attendance' ? <button type="button" onClick={() => remove(d.type)}
                     className="text-gray-400 hover:text-red-500 text-xs transition-colors">
                     ✕ Quitar
-                  </button>
+                  </button> : <span className="text-[11px] font-semibold text-violet-500">Obligatorio</span>}
                 </div>
                 <div className="max-w-32">
                   <label className="text-xs text-gray-500 mb-1 block">Cantidad</label>

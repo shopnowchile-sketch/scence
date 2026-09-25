@@ -181,7 +181,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         location: operationalAccess ? eventBooking.location : null,
         location_details: operationalAccess ? eventBooking.location_details : publicLocationDetails,
       }
-    : (isAccepted && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
+    : (operationalAccess && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
 
   const isPro = await isInfluencerPro(admin, influencer.id)
 

@@ -91,6 +91,14 @@ export const CAMPAIGN_DELIVERABLE_DEFAULTS: Record<string, DeliverableTemplate[]
     { type: 'reel',         quantity: 1, description: 'Reel mostrando el producto recibido' },
     { type: 'story',        quantity: 2, description: 'Stories mostrando el producto recibido' },
   ],
+  content_delivery: [
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'send_content', quantity: 1, description: DEFAULT_CONTENT_DELIVERY_DESCRIPTION },
+  ],
+  ugc: [
+    REQUIRED_ATTENDANCE_TEMPLATE,
+    { type: 'send_content', quantity: 1, description: DEFAULT_CONTENT_DELIVERY_DESCRIPTION },
+  ],
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────

@@ -239,9 +239,9 @@ export function DeliverableTemplateBuilder({
                       onChange={event => update(deliverable.type, 'quantity', event.target.value)}
                       className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-violet-400" />
                   </label>
-                  <button type="button" onClick={() => remove(deliverable.type)} className="text-xs font-semibold text-gray-400 transition-colors hover:text-red-500">
+                  {deliverable.type !== 'event_attendance' ? <button type="button" onClick={() => remove(deliverable.type)} className="text-xs font-semibold text-gray-400 transition-colors hover:text-red-500">
                     Quitar
-                  </button>
+                  </button> : <span className="text-[11px] font-semibold text-violet-500">Obligatorio</span>}
                 </div>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">

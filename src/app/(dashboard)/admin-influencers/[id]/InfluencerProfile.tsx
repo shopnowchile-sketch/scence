@@ -397,9 +397,14 @@ export function InfluencerProfile({ id }: { id: string }) {
           refetch()
           return
         }
+        const fallbackError = Array.isArray(startJson.errors) && startJson.errors.length > 0
+          ? String(startJson.errors[0])
+          : null
         throw new Error(startJson.apify_error
           ? `No se pudo actualizar Instagram. Apify: ${startJson.apify_error}`
-          : 'No se pudo leer el perfil de Instagram')
+          : fallbackError
+            ? `No se pudo actualizar Instagram: ${fallbackError}`
+            : 'No se pudo leer el perfil de Instagram')
       }
       toast.info('Sincronizando con Instagram… puede tardar ~30s')
 

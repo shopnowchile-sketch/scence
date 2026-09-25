@@ -1318,6 +1318,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   }
   const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set())
   const [showCampaignEmailModal, setShowCampaignEmailModal] = useState(false)
+  const [brokenInfluencerAvatars, setBrokenInfluencerAvatars] = useState<Set<string>>(new Set())
   const [campaignEmailInitialTemplate, setCampaignEmailInitialTemplate] = useState<string | undefined>(undefined)
   const [deliverableEmailSelection, setDeliverableEmailSelection] = useState<Set<string>>(new Set())
   const [showDeliverableEmailModal, setShowDeliverableEmailModal] = useState(false)
@@ -3393,8 +3394,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   const igUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
                   return (
                     <div key={ci.id} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-violet-100">
-                      {inf.avatar_url ? (
-                        <img src={inf.avatar_url} alt={inf.display_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                      {inf.avatar_url && !brokenInfluencerAvatars.has(inf.id) ? (
+                        <img
+                          src={inf.avatar_url}
+                          alt={inf.display_name}
+                          className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                          onError={() => setBrokenInfluencerAvatars(previous => {
+                            if (previous.has(inf.id)) return previous
+                            const next = new Set(previous)
+                            next.add(inf.id)
+                            return next
+                          })}
+                        />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                           {inf.display_name.charAt(0)}
@@ -3727,8 +3738,18 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            {inf.avatar_url ? (
-                              <img src={inf.avatar_url} alt={inf.display_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                            {inf.avatar_url && !brokenInfluencerAvatars.has(inf.id) ? (
+                              <img
+                                src={inf.avatar_url}
+                                alt={inf.display_name}
+                                className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                                onError={() => setBrokenInfluencerAvatars(previous => {
+                                  if (previous.has(inf.id)) return previous
+                                  const next = new Set(previous)
+                                  next.add(inf.id)
+                                  return next
+                                })}
+                              />
                             ) : (
                               <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>
                                 {initials}

@@ -956,6 +956,7 @@ function CoBrandManager({
 }) {
   const [open, setOpen] = useState(false)
   const [instagram, setInstagram] = useState('')
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   // Solo presentación: catálogo de marcas ya registradas para no tener que
   // salir a Marcas a confirmar el @handle antes de escribirlo. Cada portal lee
@@ -992,9 +993,14 @@ function CoBrandManager({
   // Mismo normalizador que usa el endpoint para buscar la marca existente, así
   // lo que muestra el campo y lo que hará el POST no se pueden contradecir.
   const typedHandle = normalizeInstagramHandle(instagram)
-  const registered = options.filter(brand => normalizeInstagramHandle(brand.instagram))
+  // Todas las marcas registradas deben poder seleccionarse, incluso si no
+  // tienen Instagram. Antes se filtraban aquí y desaparecían del selector.
+  const registered = options
   const matchedBrand = typedHandle
     ? registered.find(brand => normalizeInstagramHandle(brand.instagram) === typedHandle)
+    : undefined
+  const selectedBrand = selectedBrandId
+    ? registered.find(brand => brand.id === selectedBrandId)
     : undefined
   const query = instagram.trim().replace(/^@/, '').toLowerCase()
   const suggestions = (query
@@ -1005,6 +1011,29 @@ function CoBrandManager({
   ).slice(0, 6)
 
   async function submit() {
+    if (selectedBrandId) {
+      setSaving(true)
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/brands`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brand_id: selectedBrandId }),
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error)
+        toast.success('Marca agregada como colaboradora')
+        onChanged()
+        setOpen(false)
+        setInstagram('')
+        setSelectedBrandId(null)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Error agregando marca')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     if (!instagramValid) return
     setSaving(true)
     try {
@@ -1053,8 +1082,16 @@ function CoBrandManager({
       ) : (
         <div className="space-y-2 rounded-xl bg-gray-50 p-3">
           <div className="flex items-center gap-2">
-            <input value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="@instagram de la marca" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 bg-white" />
-            <button type="button" onClick={submit} disabled={saving || !instagramValid}
+            <input
+              value={instagram}
+              onChange={e => {
+                setInstagram(e.target.value)
+                setSelectedBrandId(null)
+              }}
+              placeholder="Buscar por nombre o @Instagram"
+              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 bg-white"
+            />
+            <button type="button" onClick={submit} disabled={saving || (!selectedBrandId && !instagramValid)}
               className="px-3 py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               {saving ? 'Guardando…' : 'Agregar'}
@@ -1070,19 +1107,22 @@ function CoBrandManager({
 
           {!loadingOptions && registered.length > 0 && (
             <>
-              {typedHandle && (
-                matchedBrand ? (
-                  <p className="flex items-center gap-1.5 px-1 text-[11px] font-medium text-emerald-700">
-                    <Check className="h-3 w-3 flex-shrink-0" />
-                    Ya está en Marcas: {matchedBrand.name} — se vinculará esta marca.
-                  </p>
-                ) : !isBrandPortal ? (
-                  <p className="flex items-center gap-1.5 px-1 text-[11px] text-amber-700">
-                    <AlertCircle className="h-3 w-3 flex-shrink-0" />
-                    Este @ no está en Marcas — se creará una marca nueva.
-                  </p>
-                ) : null
-              )}
+              {selectedBrand ? (
+                <p className="flex items-center gap-1.5 px-1 text-[11px] font-medium text-emerald-700">
+                  <Check className="h-3 w-3 flex-shrink-0" />
+                  Marca seleccionada: {selectedBrand.name} — se vinculará esta marca.
+                </p>
+              ) : typedHandle && matchedBrand ? (
+                <p className="flex items-center gap-1.5 px-1 text-[11px] font-medium text-emerald-700">
+                  <Check className="h-3 w-3 flex-shrink-0" />
+                  Ya está en Marcas: {matchedBrand.name} — se vinculará esta marca.
+                </p>
+              ) : typedHandle && !isBrandPortal ? (
+                <p className="flex items-center gap-1.5 px-1 text-[11px] text-amber-700">
+                  <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                  Este @ no está en Marcas — se creará una marca nueva.
+                </p>
+              ) : null}
 
               <div className="rounded-lg border border-gray-200 bg-white">
                 <p className="flex items-center gap-1.5 border-b border-gray-100 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
@@ -1090,19 +1130,26 @@ function CoBrandManager({
                 </p>
                 <div className="max-h-44 overflow-y-auto py-1">
                   {suggestions.map(brand => {
-                    const handle = normalizeInstagramHandle(brand.instagram) as string
-                    const isMatch = handle === typedHandle
+                    const handle = normalizeInstagramHandle(brand.instagram)
+                    const isMatch = brand.id === selectedBrandId || (!!handle && handle === typedHandle)
                     return (
                       <button
                         key={brand.id}
                         type="button"
-                        onClick={() => setInstagram(`@${handle}`)}
+                        onClick={() => {
+                          setSelectedBrandId(brand.id)
+                          setInstagram(brand.name)
+                        }}
                         className={cn('flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-violet-50', isMatch && 'bg-violet-50')}
-                        title={`Usar @${handle}`}
+                        title={handle ? "Usar @" + handle : "Seleccionar " + brand.name}
                       >
                         {brandAvatar(brand)}
                         <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-800">{brand.name || 'Marca sin nombre'}</span>
-                        <span className="max-w-[45%] truncate text-[11px] text-gray-500">@{handle}</span>
+                        {handle ? (
+                          <span className="max-w-[45%] truncate text-[11px] text-gray-500">@{handle}</span>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">Sin Instagram</span>
+                        )}
                         {isMatch && <Check className="h-3.5 w-3.5 flex-shrink-0 text-violet-600" />}
                       </button>
                     )

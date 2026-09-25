@@ -9,7 +9,7 @@ export async function resolveCampaignAssetAccess(
   const admin = createAdminClient()
   const { data: campaign, error } = await admin
     .from('campaigns')
-    .select('id, organization_id, brand_id, created_by_brand_id, visibility, status')
+    .select('id, organization_id, brand_id, created_by_brand_id, created_by, visibility, status')
     .eq('id', campaignId)
     .maybeSingle()
 
@@ -74,10 +74,22 @@ export async function resolveCampaignAssetAccess(
       .eq('influencer_id', influencer.id)
       .maybeSingle()
 
-    const canView = membership?.application_status === 'accepted'
-    // Briefs and operational files are private until the influencer is
-    // accepted. A pending application only receives the limited public DTO
-    // from /api/influencer/campaigns/[id].
+    const isSelfCreated = campaign.created_by === userId
+    let attendanceConfirmed = false
+    if (membership?.application_status === 'accepted' && !isSelfCreated) {
+      const { data: attendance } = await admin
+        .from('campaign_deliverables')
+        .select('attendance_response')
+        .eq('campaign_id', campaignId)
+        .eq('influencer_id', influencer.id)
+        .eq('type', 'event_attendance')
+        .maybeSingle()
+      attendanceConfirmed = attendance?.attendance_response === 'confirmed'
+    }
+    const canView = isSelfCreated || (membership?.application_status === 'accepted' && attendanceConfirmed)
+    // Briefs and operational files are private until the influencer confirms
+    // attendance. Acceptance alone is not enough: confirmation is the
+    // explicit gate into the operational campaign.
     const canViewBrief = canView
     // El MANUAL DE MARCA (asset_type 'brand_guide') es la excepción: la
     // influencer necesita entender la identidad y los lineamientos de la marca

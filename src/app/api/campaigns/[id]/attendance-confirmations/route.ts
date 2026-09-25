@@ -72,19 +72,18 @@ export async function POST(request: NextRequest, { params }: Params) {
       for (const row of inserted ?? []) existingByInfluencer.set(row.influencer_id, row)
     }
 
-    const rows = (acceptedRows ?? [])
-      .map(row => {
-        const attendance = existingByInfluencer.get(row.influencer_id)
-        if (!attendance || attendance.status !== 'pending' || attendance.attendance_response) return null
-        const dueDate = attendance.due_date ?? templateDueDate
-        return {
-          influencer_id: row.influencer_id,
-          due_date: dueDate,
-          description: attendance.description,
-          influencer: row.influencer,
-        }
-      })
-      .filter(row => Boolean(row) && !!row.due_date && row.due_date >= getCampaignDateKey() && ids.includes(row.influencer_id))
+    const rows = (acceptedRows ?? []).flatMap(row => {
+      const attendance = existingByInfluencer.get(row.influencer_id)
+      if (!attendance || attendance.status !== 'pending' || attendance.attendance_response) return []
+      const dueDate = attendance.due_date ?? templateDueDate
+      if (!dueDate || dueDate < getCampaignDateKey() || !ids.includes(row.influencer_id)) return []
+      return [{
+        influencer_id: row.influencer_id,
+        due_date: dueDate,
+        description: attendance.description,
+        influencer: row.influencer,
+      }]
+    })
     const people = (rows ?? []).map(row => ({
       name: (row.influencer as unknown as { display_name?: string | null })?.display_name ?? 'Hola',
       email: (row.influencer as unknown as { email?: string | null })?.email,

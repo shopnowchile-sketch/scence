@@ -410,7 +410,16 @@ export async function GET(req: NextRequest) {
     const handles = Array.from(new Set(profiles.map(profile => profile.clean_handle)))
     if (!handles.length) return NextResponse.json({ status: 'SUCCEEDED', synced: 0, failed: 0 })
     const started = await startApifyInstagramSync(handles)
-    if ('error' in started) return NextResponse.json({ error: started.error }, { status: 502 })
+    if ('error' in started) {
+      // Apify es solo el proveedor masivo preferido. Si está suspendido por
+      // límite mensual, el cron no puede quedar roto: usa el mismo fallback
+      // directo de Instagram y continúa con el lote.
+      console.warn('[sync-ig] cron: Apify no disponible, usando Playwright:', started.error)
+      return NextResponse.json({
+        ...(await syncProfilesViaPlaywright(profiles)),
+        apify_error: started.error,
+      })
+    }
 
     for (let attempt = 0; attempt < 52; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 5000))

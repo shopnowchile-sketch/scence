@@ -253,7 +253,7 @@ export async function rejectCampaignApplications(
 }
 
 
-/** Asegura la confirmación de asistencia para campañas con evento real. */
+/** Asegura la confirmación obligatoria de asistencia/participación para toda campaña. */
 export async function ensureEventAttendanceDeliverable(
   admin: SupabaseClient,
   params: {

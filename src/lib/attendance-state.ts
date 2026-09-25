@@ -27,3 +27,23 @@ export function getAttendanceState(
   if (response === 'declined') return 'declined'
   return isAttendanceDeadlineExpired(dueDate, now) ? 'no_confirmed' : 'unconfirmed'
 }
+
+// Una campaña cerrada (completed/canceled) tiene su historia definida por el
+// admin (p. ej. attendance_outcome). El cron de expiración de asistencia no la
+// reescribe: un cron que estuvo detenido y se reactiva actúa hacia adelante,
+// nunca reconstruye el pasado. Ver auditoría 2026-09-25 (08_CRONS_REACTIVACION).
+export const CLOSED_CAMPAIGN_STATUSES = ['completed', 'canceled'] as const
+
+export type AttendanceExpirationCandidate = {
+  id: string
+  status: string | null
+  due_date: string | null
+  attendance_response: string | null
+  campaign_status: string | null
+}
+
+export function isAttendanceExpirable(row: AttendanceExpirationCandidate, now = new Date()): boolean {
+  if (row.attendance_response) return false
+  if (!row.campaign_status || (CLOSED_CAMPAIGN_STATUSES as readonly string[]).includes(row.campaign_status)) return false
+  return isAttendanceDeadlineExpired(row.due_date, now)
+}

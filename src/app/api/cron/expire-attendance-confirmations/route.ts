@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { getCampaignDateKey } from '@/lib/attendance-state'
+import { getCampaignDateKey, isAttendanceExpirable } from '@/lib/attendance-state'
 
 // Corre a diario. Una falta de respuesta no deja cupos bloqueados indefinidamente.
 export async function GET(request: NextRequest) {
@@ -19,12 +19,18 @@ export async function GET(request: NextRequest) {
     .select('id')
   if (campaignsError) return NextResponse.json({ error: campaignsError.message }, { status: 500 })
 
-  const { data: overdue, error } = await admin.from('campaign_deliverables')
-    .select('id, status')
+  // Solo campañas abiertas: las completed/canceled (incluida la que se acaba de
+  // completar arriba) quedan fuera — su historia ya la definió el admin.
+  const { data: overdueRows, error } = await admin.from('campaign_deliverables')
+    .select('id, status, due_date, attendance_response, campaigns!inner(status)')
     .eq('type', 'event_attendance').is('attendance_response', null).lt('due_date', today)
+    .not('campaigns.status', 'in', '(completed,canceled)')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const ids = (overdue ?? []).map(row => row.id)
-  const pendingIds = (overdue ?? []).filter(row => row.status !== 'rejected').map(row => row.id)
+  // Segunda barrera en código (misma regla, testeada): no depender solo del filtro del embed.
+  const overdue = ((overdueRows ?? []) as unknown as Array<{ id: string; status: string | null; due_date: string | null; attendance_response: string | null; campaigns: { status: string | null } | null }>)
+    .filter(row => isAttendanceExpirable({ ...row, campaign_status: row.campaigns?.status ?? null }, now))
+  const ids = overdue.map(row => row.id)
+  const pendingIds = overdue.filter(row => row.status !== 'rejected').map(row => row.id)
   if (pendingIds.length) {
     const { error: deliverablesError } = await admin.from('campaign_deliverables').update({
       status: 'rejected',
@@ -59,8 +65,9 @@ export async function GET(request: NextRequest) {
         removed_at: now.toISOString(),
       }
       const { data: updated, error: updateError } = await admin.from('campaign_influencers').update({
+        // Invariante 16.1: application_status es la única fuente de verdad;
+        // campaign_influencers.status nunca se escribe.
         application_status: 'rejected',
-        status: 'canceled',
         metadata,
         updated_at: now.toISOString(),
       }).eq('id', assignment.id).eq('application_status', 'accepted').select('id').maybeSingle()

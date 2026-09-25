@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Columns3, Filter, Plus, Target, DollarSign, Clock, Sparkles } from 'lucide-react'
 import { useCampaignsList, useCampaignsSummary, type CampaignSummary } from '@/hooks/useCampaignsList'
+import { compareCampaignsByPriority } from '@/lib/campaign-list-order'
 import { AICampaignBuilder } from '@/components/campaigns/AICampaignBuilder'
 import { CampaignFilters } from '@/components/campaigns/CampaignFilters'
 import { CampaignStatusBadge } from '@/components/campaigns/CampaignStatusBadge'
@@ -125,7 +126,9 @@ type CampaignColumnKey =
   | 'createdAt'
   | 'status'
 
-type SortKey = CampaignColumnKey
+// 'priority' = orden por defecto: estado (activas arriba, completadas abajo) y
+// luego última modificación. Ver src/lib/campaign-list-order.ts.
+type SortKey = CampaignColumnKey | 'priority'
 type SortOrder = 'asc' | 'desc'
 
 const CAMPAIGN_COLUMNS: Array<{ key: CampaignColumnKey; label: string }> = [
@@ -228,8 +231,8 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
       status: true,
     }
   )
-  const [sortKey, setSortKey] = useLocalStorageState<SortKey>(`scence:${portal}:campaigns:sortKey`, 'dates')
-  const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>(`scence:${portal}:campaigns:sortOrder`, 'desc')
+  const [sortKey, setSortKey] = useLocalStorageState<SortKey>(`scence:${portal}:campaigns:sortKey:v2`, 'priority')
+  const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>(`scence:${portal}:campaigns:sortOrder:v2`, 'desc')
   const [columnOrder, setColumnOrder] = useLocalStorageState<CampaignColumnKey[]>(
     `scence:${portal}:campaigns:columnOrder`,
     CAMPAIGN_COLUMNS.map(column => column.key),
@@ -304,6 +307,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
 
   const campaigns = useMemo(() => {
     const sorted = [...rawCampaigns]
+    if (sortKey === 'priority') return sorted.sort(compareCampaignsByPriority)
     sorted.sort((a, b) => {
       const progressA = a.deliverable_count ? ((a.deliverable_done ?? 0) / a.deliverable_count) : 0
       const progressB = b.deliverable_count ? ((b.deliverable_done ?? 0) / b.deliverable_count) : 0
@@ -452,7 +456,18 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
 
           {/* Barra compacta: los controles completos se mantienen dentro de Filtros. */}
           <div className="relative flex items-center justify-between gap-3">
-            <span className="text-sm text-gray-500">{campaigns.length} campaña{campaigns.length !== 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">{campaigns.length} campaña{campaigns.length !== 1 ? 's' : ''}</span>
+              {sortKey !== 'priority' && (
+                <button
+                  type="button"
+                  onClick={() => { setSortKey('priority'); setSortOrder('desc') }}
+                  className="text-xs font-semibold text-violet-600 hover:text-violet-700"
+                >
+                  Restablecer orden
+                </button>
+              )}
+            </div>
             <div className="relative flex items-center gap-2">
               <button
                 type="button"

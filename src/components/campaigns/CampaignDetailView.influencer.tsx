@@ -22,7 +22,7 @@ import { ApplyConfirmDialog } from '@/components/campaigns/ApplyConfirmDialog'
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
   id: string; title: string | null; type: string; platform: string | null
-  due_date: string | null; status: string; content_url: string | null; notes: string | null; submitted_notes?: string | null
+  due_date: string | null; status: string; content_url: string | null; notes: string | null; submitted_notes?: string | null; submitted_notes?: string | null
   // Campos reales de campaign_deliverables (ya existían en la tabla, no se inventan);
   // agregados al select de /api/influencer/my-campaigns para mostrar
   // descripción/requisitos en el acordeón mobile solo cuando existen.

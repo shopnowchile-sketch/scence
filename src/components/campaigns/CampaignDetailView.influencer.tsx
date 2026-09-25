@@ -22,7 +22,7 @@ import { ApplyConfirmDialog } from '@/components/campaigns/ApplyConfirmDialog'
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
   id: string; title: string | null; type: string; platform: string | null
-  due_date: string | null; status: string; content_url: string | null; notes: string | null
+  due_date: string | null; status: string; content_url: string | null; notes: string | null; submitted_notes?: string | null
   // Campos reales de campaign_deliverables (ya existían en la tabla, no se inventan);
   // agregados al select de /api/influencer/my-campaigns para mostrar
   // descripción/requisitos en el acordeón mobile solo cuando existen.
@@ -360,12 +360,15 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
     : { label: `${pending} pendiente${pending === 1 ? '' : 's'}${expiredAttendance ? ` · ${expiredAttendance} plazo vencido` : ''}`, color: expiredAttendance ? 'text-amber-700' : 'text-violet-600', bar: expiredAttendance ? 'bg-amber-400' : 'bg-violet-500' }
 
   async function submit(d: Deliverable) {
-    if (!url.trim()) return toast.error('Agrega el link del contenido')
+    const isCheckin = d.type === 'event_checkin'
+    if (isCheckin ? !notes.trim() : !url.trim()) {
+      return toast.error(isCheckin ? 'Indica cuándo hiciste la reserva o cuándo irás' : 'Agrega el link del contenido')
+    }
     setSaving(true)
     try {
       const res = await fetch(`/api/influencer/deliverables/${d.id}/submit`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content_url: url.trim(), notes: notes.trim() || null }),
+        body: JSON.stringify({ content_url: isCheckin ? undefined : url.trim(), notes: notes.trim() || null }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? 'No se pudo enviar el entregable')
@@ -424,6 +427,7 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
           const complete = isDeliverableComplete(d) && !isReview
           const isRejected = d.status === 'rejected'
           const opened = openId === d.id
+          const isCheckin = d.type === 'event_checkin'
           const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
           const dueDays = d.due_date && !complete ? daysRemaining(d.due_date) : null
           const statusLabel = isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : contentOverdue ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'
@@ -501,14 +505,18 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
                 {canAct && d.content_url && !opened && <a href={d.content_url} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-violet-600 hover:underline mt-2">Ver contenido enviado</a>}
               </div>
               </div>
-              {canAct && (isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
-                {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
+              {canAct && (isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes(d.submitted_notes ?? d.notes ?? '') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
+                {isCheckin ? (isRejected ? 'Actualizar check-in' : d.submitted_notes ? 'Actualizar check-in' : 'Completar check-in') : (isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir')}
               </button>)}
             </div>
             {canAct && opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
-              <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
-              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
-              <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div>
+              {isCheckin ? (
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ej. Reservé para el sábado 14 a las 19:30 / Iré el sábado 14 a las 19:30" rows={3} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400 resize-none" />
+              ) : (
+                <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder={d.type === 'send_content' ? 'https://drive.google.com/...' : 'https://www.instagram.com/reel/...'} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+              )}
+              {!isCheckin && <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />}
+              <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : isCheckin ? 'Guardar check-in' : 'Enviar para revisión'}</button></div>
             </div>}
           </div>
         })}

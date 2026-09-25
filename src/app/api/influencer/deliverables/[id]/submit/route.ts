@@ -68,14 +68,18 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Este deliverable ya fue aprobado' }, { status: 422 })
   }
 
-  const nextContentUrl = normalizeContentUrl(body.content_url)
+  const isCheckin = deliverable.type === 'event_checkin'
+  if (isCheckin && !body.notes?.trim()) {
+    return NextResponse.json({ error: 'Indica cuándo hiciste la reserva o cuándo irás.' }, { status: 422 })
+  }
+  const nextContentUrl = isCheckin ? null : normalizeContentUrl(body.content_url)
   const contentUrlChanged = didContentUrlChange(deliverable.content_url, nextContentUrl)
 
   const updatePayload: Record<string, unknown> = {
     status:          'in_review',
     content_url:     nextContentUrl,
     submitted_at:    new Date().toISOString(),
-    submitted_notes: body.notes ?? null,
+    submitted_notes: body.notes?.trim() || null,
   }
 
   // Las métricas pertenecen al URL consultado, no al deliverable en abstracto.
@@ -127,7 +131,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         <p style="color:#374151;font-size:14px;margin:0 0 8px"><strong>Influencer:</strong> ${influencerName}</p>
         <p style="color:#374151;font-size:14px;margin:0 0 8px"><strong>Entregable:</strong> ${deliverableTitle}</p>
         <p style="color:#374151;font-size:14px;margin:0${contentUrl ? ' 0 8px' : ''}"><strong>Campaña:</strong> ${campaignName}</p>
-        ${contentUrl ? `<p style="color:#374151;font-size:14px;margin:0"><strong>Contenido:</strong> <a href="${contentUrl}" style="color:#7c3aed">${contentUrl}</a></p>` : ''}
+        ${contentUrl ? `<p style="color:#374151;font-size:14px;margin:0"><strong>${isCheckin ? 'Check-in:' : 'Contenido:'}</strong> ${isCheckin ? (body.notes ?? '') : `<a href="${contentUrl}" style="color:#7c3aed">${contentUrl}</a>`}</p>` : ''}
       </div>
       <p style="color:#6b7280;font-size:13px;margin:0">Entra a Scence para revisar y aprobar o rechazar la entrega.</p>
     </div>

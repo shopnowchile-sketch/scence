@@ -3785,10 +3785,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   {inf.display_name}
                                 </Link>
                                 {!isBrandPortal
-                                  && (ci.application_status === 'accepted')
+                                  && ci.application_status === 'accepted'
                                   && !noShow
-                                  && (attendancePending || attendanceNoConfirmed)
-                                  && attendance
                                   && (
                                     <button
                                       type="button"
@@ -3796,9 +3794,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                         event.stopPropagation()
                                         void remindSingleAttendance(inf.id)
                                       }}
-                                      disabled={attendanceReminderFor === inf.id || !attendance.due_date}
-                                      title={attendance.due_date ? 'Enviar confirmación de asistencia' : 'Define la fecha límite de confirmación primero'}
-                                      aria-label={attendance.due_date ? `Enviar confirmación de asistencia a ${inf.display_name}` : 'Define la fecha límite de confirmación'}
+                                      disabled={attendanceReminderFor === inf.id}
+                                      title="Enviar confirmación de asistencia"
+                                      aria-label={`Enviar confirmación de asistencia a ${inf.display_name}`}
                                       className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-600 transition-colors hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                       {attendanceReminderFor === inf.id

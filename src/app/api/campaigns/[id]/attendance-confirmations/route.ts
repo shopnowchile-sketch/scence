@@ -26,16 +26,65 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (body.action === 'remind') {
     const ids = Array.from(new Set((body.influencer_ids ?? []).filter(Boolean)))
     if (!ids.length) return NextResponse.json({ error: 'Selecciona al menos una influencer pendiente.' }, { status: 422 })
-    const { data: rows, error } = await admin
+    // La acción individual no puede depender de que el deliverable de
+    // asistencia haya quedado creado en el momento exacto de la aprobación.
+    // Reparamos aquí cualquier fila aceptada que todavía no lo tenga y usamos
+    // la fecha guardada en la plantilla de la campaña.
+    const { data: acceptedRows, error: acceptedError } = await admin
+      .from('campaign_influencers')
+      .select('id, influencer_id, influencer:influencers(display_name,email,is_active)')
+      .eq('campaign_id', params.id)
+      .eq('application_status', 'accepted')
+      .in('influencer_id', ids)
+    if (acceptedError) return NextResponse.json({ error: acceptedError.message }, { status: 500 })
+
+    const attendanceTemplate = (Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates : [])
+      .find((template: Record<string, unknown>) => template.type === 'event_attendance') as Record<string, unknown> | undefined
+    const templateDueDate = typeof attendanceTemplate?.due_date === 'string' ? attendanceTemplate.due_date : null
+
+    const { data: existingRows, error: existingError } = await admin
       .from('campaign_deliverables')
-      .select('influencer_id, due_date, description, influencer:influencers(display_name,email,is_active)')
+      .select('id, influencer_id, due_date, description, status, attendance_response')
       .eq('campaign_id', params.id)
       .eq('type', 'event_attendance')
-      .eq('status', 'pending')
-      .is('attendance_response', null)
-      .gte('due_date', getCampaignDateKey())
       .in('influencer_id', ids)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 })
+
+    const existingByInfluencer = new Map((existingRows ?? []).map(row => [row.influencer_id, row]))
+    const missing = (acceptedRows ?? []).filter(row => !existingByInfluencer.has(row.influencer_id))
+    if (missing.length) {
+      const inserts = missing.map(row => ({
+        campaign_id: params.id,
+        campaign_influencer_id: row.id,
+        influencer_id: row.influencer_id,
+        type: 'event_attendance',
+        title: typeof attendanceTemplate?.title === 'string' ? attendanceTemplate.title : 'Confirmar asistencia',
+        description: typeof attendanceTemplate?.description === 'string' ? attendanceTemplate.description : null,
+        due_date: templateDueDate,
+        quantity: 1,
+        status: 'pending',
+      }))
+      const { data: inserted, error: insertError } = await admin
+        .from('campaign_deliverables')
+        .insert(inserts)
+        .select('id, influencer_id, due_date, description, status, attendance_response')
+      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
+      for (const row of inserted ?? []) existingByInfluencer.set(row.influencer_id, row)
+    }
+
+    const rows = (acceptedRows ?? [])
+      .map(row => {
+        const attendance = existingByInfluencer.get(row.influencer_id)
+        if (!attendance || attendance.status !== 'pending' || attendance.attendance_response) return null
+        const dueDate = attendance.due_date ?? templateDueDate
+        return {
+          influencer_id: row.influencer_id,
+          due_date: dueDate,
+          description: attendance.description,
+          influencer: row.influencer,
+        }
+      })
+      .filter(row => Boolean(row) && !!row.due_date && row.due_date >= getCampaignDateKey() && ids.includes(row.influencer_id))
     const people = (rows ?? []).map(row => ({
       name: (row.influencer as unknown as { display_name?: string | null })?.display_name ?? 'Hola',
       email: (row.influencer as unknown as { email?: string | null })?.email,

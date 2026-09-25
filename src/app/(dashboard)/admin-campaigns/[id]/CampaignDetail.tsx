@@ -1325,6 +1325,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [deliverableSort, setDeliverableSort] = useState<DeliverableSort>('followers_desc')
   const [attendanceUpdating, setAttendanceUpdating] = useState<string | null>(null)
   const [attendanceReminding, setAttendanceReminding] = useState(false)
+  const [attendanceReminderFor, setAttendanceReminderFor] = useState<string | null>(null)
   const [attendanceConfirm, setAttendanceConfirm] = useState<{ influencerId: string; action: 'no_show' | 'revert_no_show' } | null>(null)
 
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
@@ -1850,6 +1851,25 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la asistencia')
     } finally {
       setAttendanceUpdating(null)
+    }
+  }
+
+  async function remindSingleAttendance(influencerId: string) {
+    setAttendanceReminderFor(influencerId)
+    try {
+      const response = await fetch(`/api/campaigns/${id}/attendance-confirmations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remind', influencer_ids: [influencerId] }),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(json.error ?? 'No se pudo enviar la solicitud de confirmación')
+      toast.success('Solicitud de confirmación enviada')
+      await refetch()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo enviar la solicitud de confirmación')
+    } finally {
+      setAttendanceReminderFor(null)
     }
   }
 
@@ -3756,13 +3776,37 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               </div>
                             )}
                             <div>
-                              <Link
-                                href={isBrandPortal ? `/brand-influencers/${inf.id}` : `/admin-influencers/${inf.id}?from=${encodeURIComponent(`/admin-campaigns/${id}?tab=influencers`)}`}
-                                className="text-left text-sm font-semibold text-gray-900 transition-colors hover:text-violet-700 hover:underline"
-                                title={`Ver ficha completa de ${inf.display_name}`}
-                              >
-                                {inf.display_name}
-                              </Link>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Link
+                                  href={isBrandPortal ? `/brand-influencers/${inf.id}` : `/admin-influencers/${inf.id}?from=${encodeURIComponent(`/admin-campaigns/${id}?tab=influencers`)}`}
+                                  className="text-left text-sm font-semibold text-gray-900 transition-colors hover:text-violet-700 hover:underline truncate"
+                                  title={`Ver ficha completa de ${inf.display_name}`}
+                                >
+                                  {inf.display_name}
+                                </Link>
+                                {!isBrandPortal
+                                  && (ci.application_status === 'accepted')
+                                  && !noShow
+                                  && (attendancePending || attendanceNoConfirmed)
+                                  && attendance
+                                  && (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        void remindSingleAttendance(inf.id)
+                                      }}
+                                      disabled={attendanceReminderFor === inf.id || !attendance.due_date}
+                                      title={attendance.due_date ? 'Enviar confirmación de asistencia' : 'Define la fecha límite de confirmación primero'}
+                                      aria-label={attendance.due_date ? `Enviar confirmación de asistencia a ${inf.display_name}` : 'Define la fecha límite de confirmación'}
+                                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-600 transition-colors hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {attendanceReminderFor === inf.id
+                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        : <Mail className="h-3.5 w-3.5" />}
+                                    </button>
+                                  )}
+                              </div>
                               {instagramSP?.username && instagramUrl && (
                                 <a href={instagramUrl} target="_blank" rel="noopener noreferrer" onClick={event => event.stopPropagation()} className="block text-xs text-violet-600 hover:underline">
                                   @{instagramSP.username.replace(/^@+/, '')}

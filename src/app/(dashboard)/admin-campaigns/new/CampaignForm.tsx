@@ -640,7 +640,8 @@ function Step3({ register, control, setValue, campaignType, campaignId }: StepPr
 
   // Auto-fill on first entry to this step (when templates still empty)
   useEffect(() => {
-    if (suggested.length > 0 && currentTemplates.length === 0 && setValue) {
+    const onlyRequiredAttendance = currentTemplates.length === 1 && currentTemplates[0]?.type === 'event_attendance'
+    if (suggested.length > 0 && (currentTemplates.length === 0 || onlyRequiredAttendance) && setValue) {
       setValue('deliverable_templates', suggested.map(s => ({ ...s, due_date: '' })))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -933,10 +934,14 @@ export function CampaignForm({
     // El autosave ocurre al avanzar. Cuando se entra a Contenido, deja los
     // entregables sugeridos dentro del mismo snapshot que se persiste, en vez
     // de cargarlos recién después de crear el borrador.
-    if (step === 2 && campaignType && (getValues('deliverable_templates') ?? []).length === 0) {
-      const suggested = CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []
-      if (suggested.length > 0) {
-        setValue('deliverable_templates', suggested.map(template => ({ ...template, due_date: '' })))
+    if (step === 2 && campaignType) {
+      const current = getValues('deliverable_templates') ?? []
+      const onlyRequiredAttendance = current.length === 1 && current[0]?.type === 'event_attendance'
+      if (current.length === 0 || onlyRequiredAttendance) {
+        const suggested = CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []
+        if (suggested.length > 0) {
+          setValue('deliverable_templates', suggested.map(template => ({ ...template, due_date: '' })))
+        }
       }
     }
     await saveDraft()

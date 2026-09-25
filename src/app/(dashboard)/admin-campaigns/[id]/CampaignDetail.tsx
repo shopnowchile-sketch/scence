@@ -4686,7 +4686,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               icon="🚀" color="violet"
               title="Campaña creada"
               date={c.created_at}
-              desc={`Tipo: ${{sponsored_post:'Sponsored Post',ambassador:'Embajador',ugc:'UGC',event_appearance:'Evento',product_seeding:'Product Seeding',live:'Live',commission:'Por Comisión'}[c.type as string] ?? c.type}`}
+              desc={`Tipo: ${{sponsored_post:'Sponsored Post',ambassador:'Embajador',ugc:'UGC',event_appearance:'Evento',product_seeding:'Product Seeding',live:'Live',commission:'Por Comisión',content_delivery:'Contenido para cliente (Drive)'}[c.type as string] ?? c.type}`}
             />
 
             {/* Status changes from deliverables */}

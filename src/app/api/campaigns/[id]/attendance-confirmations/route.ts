@@ -84,12 +84,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           influencer: row.influencer,
         }
       })
-      .filter((row): row is {
-        influencer_id: string
-        due_date: string | null
-        description: string | null
-        influencer: unknown
-      } => Boolean(row) && !!row.due_date && row.due_date >= getCampaignDateKey() && ids.includes(row.influencer_id))
+      .filter(row => Boolean(row) && !!row.due_date && row.due_date >= getCampaignDateKey() && ids.includes(row.influencer_id))
     const people = (rows ?? []).map(row => ({
       name: (row.influencer as unknown as { display_name?: string | null })?.display_name ?? 'Hola',
       email: (row.influencer as unknown as { email?: string | null })?.email,

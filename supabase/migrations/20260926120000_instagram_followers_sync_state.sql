@@ -17,9 +17,13 @@ alter table public.influencer_social_profiles
 
 -- Estado inicial honesto: lo que alguna vez se sincronizó queda 'ok' (con su
 -- synced_at real, que la UI usa para mostrar la antigüedad); el resto 'pending'.
+-- El trigger de updated_at se desactiva solo durante el backfill para no
+-- "tocar" 2.000+ filas que no cambiaron de verdad.
+alter table public.influencer_social_profiles disable trigger trg_updated_at;
 update public.influencer_social_profiles
-   set sync_status = case when synced_at is not null then 'ok' else 'pending' end
- where platform = 'instagram';
+   set sync_status = 'ok'
+ where platform = 'instagram' and synced_at is not null;
+alter table public.influencer_social_profiles enable trigger trg_updated_at;
 
 -- Cola del lote: nunca intentados primero, luego los más antiguos.
 create index if not exists influencer_social_profiles_ig_sync_queue_idx

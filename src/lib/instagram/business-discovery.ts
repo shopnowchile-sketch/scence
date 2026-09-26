@@ -94,12 +94,13 @@ export async function fetchBusinessDiscovery(
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as unknown as FetchLike)
   const source = opts.sourceAccountId ?? DEFAULT_IG_SOURCE_ACCOUNT_ID
   const fields = `business_discovery.username(${handle}){username,followers_count,id}`
-  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${source}?fields=${encodeURIComponent(fields)}`
+  // Método documentado por Meta: access_token como parámetro. Esta URL nunca
+  // se loguea (los logs solo llevan handle, ids y resultado).
+  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${source}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(opts.token)}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000)
   try {
-    // El token va en header, nunca en la URL (no queda en logs de acceso).
-    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${opts.token}` }, signal: controller.signal })
+    const res = await fetchImpl(url, { signal: controller.signal })
     const body = await res.json().catch(() => ({})) as {
       business_discovery?: { username?: string; followers_count?: unknown; id?: string }
       error?: { code?: number; error_subcode?: number; message?: string }

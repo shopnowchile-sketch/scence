@@ -64,10 +64,15 @@ describe('Business Discovery: cliente y clasificación', () => {
     })
     assert.deepEqual(r, { kind: 'ok', followers: 50229, igUserId: '17841402125366105', username: 'balmaqueroll', usagePct: 12 })
   })
-  test('el token viaja en header, nunca en la URL', async () => {
-    let seenUrl = ''; let seenAuth = ''
-    await BD.fetchBusinessDiscovery('a', { token: 'SECRET', fetchImpl: async (url, init) => { seenUrl = url; seenAuth = init?.headers?.Authorization ?? ''; return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ business_discovery: { followers_count: 1 } }) } } })
-    assert.ok(!seenUrl.includes('SECRET')); assert.equal(seenAuth, 'Bearer SECRET')
+  test('los logs nunca incluyen el token', async () => {
+    const lines: string[] = []
+    const orig = console.info
+    console.info = (...args: unknown[]) => { lines.push(args.join(' ')) }
+    try {
+      const { store } = memStore([row('a', 'uno', 100)])
+      await FS.syncInstagramFollowers(store, { token: 'SECRET-TOKEN', now: () => NOW, discover: async () => ok(120) })
+    } finally { console.info = orig }
+    assert.ok(lines.length > 0); assert.ok(lines.every(l => !l.includes('SECRET-TOKEN')))
   })
   test('cuenta personal o @ inexistente (110/2207013) → not_found', () => {
     assert.equal(BD.classifyGraphError(400, { code: 110, error_subcode: 2207013, message: 'Invalid user id' }).kind, 'not_found')

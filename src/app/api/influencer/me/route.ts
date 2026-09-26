@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 
 // GET /api/influencer/me
@@ -13,7 +14,7 @@ export async function GET() {
     .select(`
       id, display_name, avatar_url, bio, email, phone, city, country,
       address, commune, birth_date, categories, tags, is_verified, organization_id,
-      influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url)
+      influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('user_id', user.id)
     .single()
@@ -129,6 +130,7 @@ export async function PATCH(req: Request) {
 
   // Handle social profiles upsert/delete
   if (Array.isArray(body.social_profiles)) {
+    const resyncIds: string[] = []
     for (const sp of body.social_profiles) {
       if (!sp.platform) continue
       if (sp._delete && sp.id) {
@@ -153,19 +155,27 @@ export async function PATCH(req: Request) {
           ...(nextUsername !== previousUsername ? {
             synced_at: null,
             last_synced_at: null,
+            sync_status: 'pending',
+            sync_error: null,
+            sync_attempted_at: null,
           } : {}),
         }).eq('id', sp.id).eq('influencer_id', influencer.id)
+        if (nextUsername !== previousUsername && sp.platform === 'instagram') resyncIds.push(sp.id as string)
       } else {
-        await admin.from('influencer_social_profiles').insert({
+        const { data: insertedSp } = await admin.from('influencer_social_profiles').insert({
           influencer_id: influencer.id,
           platform: sp.platform,
           username: sp.username ?? null,
           profile_url: sp.profile_url ?? null,
           followers: 0,
           engagement_rate: null,
-        })
+        }).select('id').single()
+        if (insertedSp?.id && sp.platform === 'instagram') resyncIds.push(insertedSp.id as string)
       }
     }
+    // Cambio de @: se consulta Instagram de inmediato con la función central
+    // (el último valor válido se conserva si falla).
+    await syncProfilesNow(admin, resyncIds)
   }
 
   const { data: updated } = await admin
@@ -173,7 +183,7 @@ export async function PATCH(req: Request) {
     .select(`
       id, display_name, avatar_url, bio, email, phone, city, country,
       address, commune, birth_date, categories, tags, is_verified,
-      influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url)
+      influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('id', influencer.id)
     .single()

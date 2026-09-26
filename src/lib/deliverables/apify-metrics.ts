@@ -1,7 +1,7 @@
 /**
  * Métricas reales de una publicación (post/reel) a partir de su link,
  * usando los actores OFICIALES de Apify (mismo publisher que ya usamos en
- * src/lib/influencers/apify.ts, mismo APIFY_API_TOKEN — no es una integración
+ * (el helper de followers se eliminó: followers usa Meta), mismo APIFY_API_TOKEN — no es una integración
  * nueva de cero, es la extensión de la misma).
  *
  * Aprobado por Pri: "Partimos con métricas reales disponibles: views, likes

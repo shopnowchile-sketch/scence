@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { InstagramSyncHint } from '@/components/influencers/InstagramSyncHint'
 import {
   AlertCircle, RefreshCw, Edit2, Save, X, Plus, Trash2,
   Target, Zap, Banknote, MapPin, Tag, Share2, Mail, User,
@@ -21,6 +22,8 @@ type SocialProfile = {
   followers: number
   engagement_rate: number | null
   profile_url: string | null
+  synced_at?: string | null
+  sync_status?: string | null
   _delete?: boolean
 }
 
@@ -450,6 +453,10 @@ export default function ProfilePage() {
                     <div className="text-right flex-shrink-0">
                       {sp.followers > 0 && <p className="text-sm font-bold text-gray-900">{sp.followers.toLocaleString('es-CL')}</p>}
                       {sp.engagement_rate && <p className="text-xs text-gray-400">{sp.engagement_rate.toFixed(1)}% eng.</p>}
+                      <InstagramSyncHint profile={sp} />
+                      {sp.platform === 'instagram' && sp.sync_status === 'not_found' && (
+                        <p className="text-[11px] text-gray-500 max-w-[220px]">Revisa tu @ o cambia tu cuenta a Creador (gratis) para que las marcas vean tus seguidores reales.</p>
+                      )}
                     </div>
                   </div>
                 ))}

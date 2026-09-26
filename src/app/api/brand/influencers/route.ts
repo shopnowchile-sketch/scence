@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { startApifyInstagramSync } from '@/lib/influencers/apify'
+import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
@@ -430,19 +430,22 @@ export async function POST(req: NextRequest) {
     .eq('id', influencer.id)
     .single()
 
-  // Auto-traer seguidores reales desde Instagram (pedido por Pri). Usa el
-  // mismo handle que la marca acaba de ingresar — nunca un influencer_id
-  // arbitrario del cliente, a diferencia de POST /api/influencers/sync-
-  // instagram (admin), que si acepta influencer_ids del body. No bloquea la
-  // respuesta: si Apify falla o no está configurado, la influencer queda
-  // creada igual con followers en 0 (se puede sincronizar después).
-  let apify_run_id: string | null = null
-  const startedSync = await startApifyInstagramSync([igUsername])
-  if ('runId' in startedSync) {
-    apify_run_id = startedSync.runId
-  } else {
-    console.error('[POST /api/brand/influencers] apify sync:', startedSync.error)
+  // Seguidores reales desde Instagram (Meta Business Discovery) por la misma
+  // función central que usa el admin. Solo el perfil recién creado por esta
+  // marca, nunca ids arbitrarios del cliente. Mejor esfuerzo: si falla, el
+  // perfil queda 'pending' y lo toma el lote programado.
+  const createdIgIds = ((data?.influencer_social_profiles ?? []) as Array<{ id: string; platform: string }>)
+    .filter(sp => sp.platform === 'instagram')
+    .map(sp => sp.id)
+  const instagram_sync = await syncProfilesNow(admin, createdIgIds)
+  if (instagram_sync?.synced) {
+    const { data: refreshed } = await admin
+      .from('influencers')
+      .select('*, influencer_social_profiles(*), influencer_rate_cards(*)')
+      .eq('id', influencer.id)
+      .single()
+    return NextResponse.json({ data: refreshed ?? data, instagram_sync: { synced: instagram_sync.synced, not_found: instagram_sync.not_found } }, { status: 201 })
   }
 
-  return NextResponse.json({ data, apify_run_id }, { status: 201 })
+  return NextResponse.json({ data, instagram_sync: instagram_sync ? { synced: instagram_sync.synced, not_found: instagram_sync.not_found } : null }, { status: 201 })
 }

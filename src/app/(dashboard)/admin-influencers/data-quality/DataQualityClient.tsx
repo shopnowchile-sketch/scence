@@ -328,43 +328,21 @@ export function DataQualityClient() {
   async function handleSyncAllInstagram() {
     setSyncingAll(true)
     try {
-      // 1. Start Apify run
-      const startRes = await fetch('/api/influencers/sync-instagram', {
+      // Procesa un lote de la cola (nunca sincronizados y más antiguos primero)
+      // con Meta Business Discovery. El resto lo toma el lote programado.
+      toast.info('Sincronizando un lote con Instagram… puede tardar hasta 4 min', { id: 'sync-progress' })
+      const res = await fetch('/api/influencers/sync-instagram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       })
-      const startJson = await startRes.json()
-      if (!startRes.ok) throw new Error(startJson.error ?? 'Error al iniciar sync')
-      if (!startJson.runId) {
-        toast.info(startJson.message ?? 'No hay perfiles de Instagram para sincronizar')
-        return
-      }
-      toast.info(`Sincronizando ${startJson.total} perfiles con Instagram… puede tardar 1-2 min`)
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(result.error ?? 'Error al sincronizar')
 
-      // 2. Poll until done
-      const { runId } = startJson
-      const deadline = Date.now() + 300_000 // 5 min for bulk
-      let result = null
-      let polls = 0
-      while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 8000))
-        polls++
-        const pollRes = await fetch(`/api/influencers/sync-instagram?runId=${runId}`)
-        const pollJson = await pollRes.json()
-        if (!pollRes.ok) throw new Error(pollJson.error ?? 'Error consultando sync')
-        if (pollJson.status === 'SUCCEEDED') { result = pollJson; break }
-        if (['FAILED', 'ABORTED', 'TIMED-OUT'].includes(pollJson.status)) {
-          throw new Error(`Apify terminó con error: ${pollJson.status}`)
-        }
-        // Show progress every 3 polls (~24s)
-        if (polls % 3 === 0) toast.info(`Sincronizando… (${Math.round(polls * 8)}s)`, { id: 'sync-progress' })
-      }
-      if (!result) throw new Error('Timeout: sincronización tardó más de 5 minutos')
-
-      const msg = `✅ ${result.synced} actualizados${result.failed ? ` · ${result.failed} sin datos` : ''}${result.errors?.length ? ` · Ver consola` : ''}`
-      toast.success(msg, { duration: 8000 })
-      if (result.errors?.length) console.warn('[sync-ig] errors:', result.errors)
+      const msg = `✅ ${result.synced ?? 0} actualizados · ${result.not_found ?? 0} no sincronizables · ${result.failed ?? 0} con error · ${result.remaining ?? 0} en cola`
+      toast.success(msg, { id: 'sync-progress', duration: 8000 })
+      if (result.stopped) toast.warning(`Lote detenido: ${result.stopped}`)
+      if (result.errors?.length) console.warn('[instagram-followers] detalle:', result.errors)
       // Invalidar TODOS los caches de influencers (lista + detail)
       await qc.invalidateQueries({ queryKey: ['influencers'] })  // useInfluencersList
       await qc.invalidateQueries({ queryKey: ['influencer'] })   // useInfluencer (detail)

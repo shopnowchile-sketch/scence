@@ -28,6 +28,9 @@ export interface SocialProfile {
   is_primary: boolean
   verified: boolean | null
   last_synced_at: string | null
+  synced_at?: string | null
+  /** Solo instagram: ok | pending | not_found | rate_limited | auth_error | api_error */
+  sync_status?: string | null
 }
 
 export interface RateCard {

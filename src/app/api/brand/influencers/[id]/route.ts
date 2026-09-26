@@ -81,7 +81,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       id, display_name, bio, avatar_url, categories, country, city,
       influencer_social_profiles (
-        platform, username, followers, engagement_rate, is_primary
+        platform, username, followers, engagement_rate, is_primary, synced_at, sync_status
       ),
       influencer_rate_cards (
         deliverable_type, base_rate, currency

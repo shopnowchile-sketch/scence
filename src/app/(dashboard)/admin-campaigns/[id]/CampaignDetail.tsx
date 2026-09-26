@@ -1727,12 +1727,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // el resto del roster. El endpoint nunca escribe followers <= 0, así que un
   // perfil que Instagram no devuelva conserva su último valor válido.
   //
-  // Usa Apify (mismo flujo que la ficha de influencer: POST inicia el run,
-  // GET ?runId= lo consulta y guarda). Antes forzaba Playwright, que desde
-  // Vercel choca con el login de Instagram y además solo alcanzaba unos pocos
-  // perfiles en 45s: por eso los followers de pendientes no cambiaban.
-  // Si Apify no arranca, el endpoint cae solo a Playwright y devuelve el
-  // reporte directo (sin runId); ese caso se sigue mostrando igual.
+  // Fuente: Meta Business Discovery vía syncInstagramFollowers() (síncrono).
   async function syncPendingFollowers() {
     setSyncingFollowers(true)
     try {
@@ -1741,23 +1736,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campaign_id: id }),
       })
-      let json = await response.json().catch(() => ({}))
+      const json = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(json.error ?? 'No se pudieron actualizar los followers')
-
-      if (json.runId) {
-        toast.info(`Actualizando ${Number(json.total ?? 0)} perfil(es) en Instagram… puede tardar unos minutos`)
-        const deadline = Date.now() + 240_000
-        let result: Record<string, unknown> | null = null
-        while (Date.now() < deadline) {
-          await new Promise(resolve => setTimeout(resolve, 5000))
-          const pollRes = await fetch(`/api/influencers/sync-instagram?runId=${encodeURIComponent(json.runId)}`)
-          const pollJson = await pollRes.json().catch(() => ({}))
-          if (!pollRes.ok) throw new Error(pollJson.error ?? 'Error consultando la actualización')
-          if (pollJson.status === 'SUCCEEDED') { result = pollJson; break }
-        }
-        if (!result) throw new Error('La actualización sigue en curso en Instagram. Vuelve a intentar en unos minutos.')
-        json = result
-      }
 
       const synced = Number(json.synced ?? 0)
       const failed = Number(json.failed ?? 0)
@@ -1769,11 +1749,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       // ficha de esa influencer.
       if (errors.length > 0) console.warn('[followers] perfiles que fallaron:', errors)
 
-      const summary = remaining > 0
-        ? `${synced} actualizados · ${failed} fallaron · ${remaining} pendientes`
-        : `${synced} actualizados · ${failed} fallaron`
-      if (synced === 0 && json.apify_error) toast.error(`No se pudo actualizar Instagram. Apify: ${json.apify_error}`)
-      else if (synced > 0) toast.success(summary)
+      const notFound = Number(json.not_found ?? 0)
+      const summary = `${synced} actualizados · ${notFound} no sincronizables · ${failed} con error${remaining > 0 ? ` · ${remaining} pendientes` : ''}`
+      if (synced > 0) toast.success(summary)
       else if (failed > 0) toast.warning(summary)
       else toast.info(json.message ?? summary)
 

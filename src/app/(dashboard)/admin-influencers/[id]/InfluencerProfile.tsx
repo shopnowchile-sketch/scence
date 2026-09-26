@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { InstagramSyncHint, hideUnconfirmedZero } from '@/components/influencers/InstagramSyncHint'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -380,49 +381,22 @@ export function InfluencerProfile({ id }: { id: string }) {
   async function handleSyncInstagram() {
     setSyncingIg(true)
     try {
-      // 1. Start Apify run (returns immediately, no timeout)
-      const startRes = await fetch('/api/influencers/sync-instagram', {
+      // Meta Business Discovery vía la función central (síncrono, sin polling).
+      const res = await fetch('/api/influencers/sync-instagram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ influencer_ids: [id] }),
       })
-      const startJson = await startRes.json()
-      if (!startRes.ok) throw new Error(startJson.error ?? 'Error al iniciar sync')
-      if (!startJson.runId) {
-        // Sin runId: o no hay handle válido (message), o Apify no pudo iniciar y
-        // el endpoint cayó a Playwright (reporte directo + apify_error).
-        if (startJson.message) { toast.info(startJson.message); return }
-        if (Number(startJson.synced ?? 0) > 0) {
-          toast.success(`Instagram actualizado · ${startJson.synced} perfil(es)`)
-          refetch()
-          return
-        }
-        throw new Error(startJson.apify_error
-          ? `No se pudo actualizar Instagram. Apify: ${startJson.apify_error}`
-          : 'No se pudo leer el perfil de Instagram')
-      }
-      toast.info('Sincronizando con Instagram… puede tardar ~30s')
-
-      // 2. Poll until SUCCEEDED (from client, no server timeout issue)
-      const { runId } = startJson
-      const deadline = Date.now() + 120_000
-      let result = null
-      while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 5000))
-        const pollRes = await fetch(`/api/influencers/sync-instagram?runId=${runId}`)
-        const pollJson = await pollRes.json()
-        if (!pollRes.ok) throw new Error(pollJson.error ?? 'Error consultando sync')
-        if (pollJson.status === 'SUCCEEDED') { result = pollJson; break }
-        if (['FAILED', 'ABORTED', 'TIMED-OUT'].includes(pollJson.status)) {
-          throw new Error(`Apify terminó con error: ${pollJson.status}`)
-        }
-      }
-      if (!result) throw new Error('Timeout: sincronización tardó más de 2 minutos')
-
-      toast.success(`✅ Instagram actualizado · ${result.synced} perfil(es)${result.failed ? ` · ${result.failed} fallido(s)` : ''}`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo sincronizar Instagram')
+      if (json.message) toast.info(json.message)
+      else if (Number(json.synced ?? 0) > 0) toast.success('Instagram actualizado')
+      else if (Number(json.not_found ?? 0) > 0) toast.warning('No sincronizable: la cuenta es personal o el @ no existe. Revisa el @ o pide que la cambie a cuenta Creador.')
+      else throw new Error(json.errors?.[0] ?? 'Instagram no respondió; se reintentará automáticamente')
       refetch()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al sincronizar Instagram')
+      refetch()
     } finally {
       setSyncingIg(false)
     }
@@ -821,9 +795,10 @@ export function InfluencerProfile({ id }: { id: string }) {
                           <span className="text-xs text-gray-400">{PLATFORM_LABELS[sp.platform]}</span>
                           {sp.is_primary && <span className="badge badge-purple text-xs">Principal</span>}
                         </div>
+                        <InstagramSyncHint profile={sp} className="-mt-1 mb-2" />
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           {[
-                            { label: 'Seguidores',   value: formatFollowers(sp.followers ?? 0) },
+                            { label: 'Seguidores',   value: hideUnconfirmedZero(sp) ? '—' : formatFollowers(sp.followers ?? 0) },
                             { label: 'Engagement',   value: `${(sp.engagement_rate ?? 0).toFixed(1)}%` },
                             { label: 'Avg likes',    value: formatFollowers(sp.avg_likes ?? 0) },
                             { label: 'Avg comments', value: formatFollowers(sp.avg_comments ?? 0) },

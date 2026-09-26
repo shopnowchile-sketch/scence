@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { InstagramSyncHint, hideUnconfirmedZero } from '@/components/influencers/InstagramSyncHint'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -19,6 +20,8 @@ type SocialProfile = {
   followers: number | null
   engagement_rate: number | null
   is_primary: boolean | null
+  synced_at?: string | null
+  sync_status?: string | null
 }
 
 type RateCard = {
@@ -183,8 +186,9 @@ export default function BrandInfluencerProfilePage({
 
                     <div className="text-right">
                       <p className="text-sm font-bold text-gray-900">
-                        {formatFollowers(social.followers ?? 0)}
+                        {hideUnconfirmedZero(social) ? '—' : formatFollowers(social.followers ?? 0)}
                       </p>
+                      <InstagramSyncHint profile={social} />
                       <p className="text-xs text-gray-400">
                         {Number(social.engagement_rate ?? 0).toFixed(1)}% engagement
                       </p>

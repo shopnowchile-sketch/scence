@@ -5,6 +5,7 @@ import { getPrimarySocial } from '@/lib/influencers/ranking'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 
 // 'followers' / 'engagement_rate' viven en la tabla join (influencer_social_profiles),
 // no son columnas de `influencers` — Postgres/PostgREST no puede hacer .order() por
@@ -165,7 +166,9 @@ export async function GET(request: NextRequest) {
         followers,
         engagement_rate,
         is_primary,
-        verified
+        verified,
+        synced_at,
+        sync_status
       ),
       rate_cards:influencer_rate_cards (
         id,
@@ -573,6 +576,15 @@ export async function POST(request: NextRequest) {
     // Non-fatal — influencer is created even if affiliate link fails
     console.error('[auto-affiliate-link] failed:', e)
   }
+
+  // El número tipeado en el alta es solo inicial (sync_status='pending'):
+  // se reemplaza por el dato de Instagram con la función central.
+  const { data: createdIg } = await admin
+    .from('influencer_social_profiles')
+    .select('id')
+    .eq('influencer_id', influencer.id)
+    .eq('platform', 'instagram')
+  await syncProfilesNow(admin, (createdIg ?? []).map((row: { id: string }) => row.id))
 
   const { data } = await admin
     .from('influencers')

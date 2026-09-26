@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { planSocialProfileChanges } from '@/lib/instagram/social-profiles'
+import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
@@ -238,23 +240,35 @@ export async function PUT(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Replace social profiles if provided
-  // Normalize: form sends followers_count → DB column is followers
+  // Redes sociales: se actualiza por plataforma sin pisar followers/synced_at
+  // de Instagram (solo los escribe syncInstagramFollowers). Ver
+  // lib/instagram/social-profiles.ts. Antes era DELETE + INSERT.
   if (Array.isArray(social_profiles)) {
-    await admin.from('influencer_social_profiles').delete().eq('influencer_id', params.id)
-    if ((social_profiles as unknown[]).length > 0) {
-      const { error: spErr } = await admin.from('influencer_social_profiles').insert(
-        (social_profiles as Array<Record<string, unknown>>).map(({ followers_count, id: _sid, ...sp }) => ({
-          ...sp,
-          followers: Number(followers_count ?? sp.followers ?? 0),
-          influencer_id: params.id,
-        }))
-      )
-      if (spErr) {
-        console.error('[PUT /api/influencers/[id]] social_profiles:', spErr)
-        return NextResponse.json({ error: `Error guardando redes sociales: ${spErr.message}` }, { status: 500 })
-      }
+    const { data: existingProfiles, error: exErr } = await admin
+      .from('influencer_social_profiles')
+      .select('id, platform, username')
+      .eq('influencer_id', params.id)
+    if (exErr) return NextResponse.json({ error: `Error leyendo redes sociales: ${exErr.message}` }, { status: 500 })
+
+    const plan = planSocialProfileChanges(params.id, existingProfiles ?? [], social_profiles as Array<Record<string, unknown>>)
+    for (const { id: spId, values } of plan.updates) {
+      const { error: upErr } = await admin.from('influencer_social_profiles').update(values).eq('id', spId).eq('influencer_id', params.id)
+      if (upErr) return NextResponse.json({ error: `Error guardando redes sociales: ${upErr.message}` }, { status: 500 })
     }
+    if (plan.deletes.length) {
+      const { error: delErr } = await admin.from('influencer_social_profiles').delete().in('id', plan.deletes).eq('influencer_id', params.id)
+      if (delErr) return NextResponse.json({ error: `Error guardando redes sociales: ${delErr.message}` }, { status: 500 })
+    }
+    let insertedIgIds: string[] = []
+    if (plan.inserts.length) {
+      const { data: inserted, error: insErr } = await admin.from('influencer_social_profiles').insert(plan.inserts).select('id, platform')
+      if (insErr) {
+        console.error('[PUT /api/influencers/[id]] social_profiles:', insErr)
+        return NextResponse.json({ error: `Error guardando redes sociales: ${insErr.message}` }, { status: 500 })
+      }
+      insertedIgIds = (inserted ?? []).filter((row: { platform: string }) => row.platform === 'instagram').map((row: { id: string }) => row.id)
+    }
+    await syncProfilesNow(admin, [...plan.resyncExistingIds, ...insertedIgIds])
   }
 
   // Replace rate cards if provided

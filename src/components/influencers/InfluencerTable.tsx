@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { InstagramSyncHint, hideUnconfirmedZero } from './InstagramSyncHint'
 import { CheckCircle2, MapPin, Star, ExternalLink, Trash2, Columns3, Send, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -395,11 +396,12 @@ export function InfluencerTable({
                   {visible.followers && (
                     <td className="px-4 py-3">
                     <div className="text-sm font-semibold text-gray-900">
-                      {primaryProfile ? formatFollowers(primaryProfile.followers) : '—'}
+                      {primaryProfile && !hideUnconfirmedZero(primaryProfile) ? formatFollowers(primaryProfile.followers) : '—'}
                     </div>
                     {primaryProfile && (
                       <div className="text-xs text-gray-400 capitalize">{primaryProfile.platform}</div>
                     )}
+                    {primaryProfile && <InstagramSyncHint profile={primaryProfile} />}
                     </td>
                   )}
 

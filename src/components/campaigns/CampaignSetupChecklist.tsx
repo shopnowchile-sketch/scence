@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, Circle, ChevronRight } from 'lucide-react'
+import { Circle, ChevronRight } from 'lucide-react'
 
 type Props = { id: string }
 
@@ -49,31 +49,25 @@ export function CampaignSetupChecklist({ id }: Props) {
   const pending = items.filter(item => !item.done).length
   if (pending === 0) return null
 
+  const pendingItems = items.filter(item => !item.done)
+
   return (
-    <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <p className="text-sm font-semibold text-amber-950">Antes de publicar esta campaña</p>
-          <p className="text-xs text-amber-800 mt-1">La campaña ya está creada. Completa lo más importante antes de activarla.</p>
+    <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-gray-700 shrink-0">Falta completar:</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {pendingItems.map(item => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="inline-flex items-center gap-1 rounded-md bg-white border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:border-violet-300 hover:text-violet-700 transition-colors"
+            >
+              <Circle className="h-3 w-3 text-amber-500" />
+              {item.label.replace('Definir el ', '').replace('Definir los ', '')}
+              <ChevronRight className="h-3 w-3 text-gray-400" />
+            </Link>
+          ))}
         </div>
-        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-700">
-          {pending} pendiente{pending === 1 ? '' : 's'}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {items.map(item => (
-          <Link key={item.label} href={item.href}
-            className="flex items-center gap-3 rounded-xl bg-white px-3.5 py-3 hover:bg-amber-100/60 transition-colors">
-            {item.done
-              ? <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-              : <Circle className="h-5 w-5 text-amber-500 shrink-0" />}
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium text-gray-900">{item.label}</span>
-              <span className="block text-xs text-gray-500 mt-0.5">{item.description}</span>
-            </span>
-            {!item.done && <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />}
-          </Link>
-        ))}
       </div>
     </div>
   )

@@ -2806,7 +2806,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="flex items-center gap-2 flex-wrap">
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : summaryEditOpen ? <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} aria-label="Nombre de campaña" className="h-9 min-w-[220px] flex-1 rounded-lg border border-violet-300 bg-white px-2 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {summaryEditOpen && (
-                <div className="mt-3 w-full rounded-xl border border-violet-200 bg-violet-50/30 p-4">
+                <div className="mt-3 w-full space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="text-xs font-semibold text-gray-600">Marca principal
                       <BrandSelector value={summaryEditForm.brand_id} onChange={brand_id => setSummaryEditForm(previous => ({ ...previous, brand_id }))} />
@@ -2823,7 +2823,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <label className="text-xs font-semibold text-gray-600">Fecha término
                       <input type="date" value={summaryEditForm.end_date} onChange={e => setSummaryEditForm(previous => ({ ...previous, end_date: e.target.value }))} className="input-base mt-1 w-full" />
                     </label>
-                    <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+                    <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-white p-2.5">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-xs font-semibold text-gray-600">Días y horarios</span>
                         <button type="button" onClick={addEventDay} className="text-xs font-semibold text-violet-600 hover:text-violet-700">+ Agregar día</button>
@@ -2860,7 +2860,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       </select>
                     </label>
                   </div>
-                  <div className="mt-3 flex justify-end gap-2">
+                  <div className="mt-1 flex justify-end gap-2">
                     <button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100">Cancelar</button>
                     <button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar cambios'}</button>
                   </div>

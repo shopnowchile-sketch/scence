@@ -69,7 +69,9 @@ const schema = z.object({
   approval_submission_url: z.string().optional(), reference_url: z.string().optional(), brief_url: z.string().optional(),
   collaborator_ids: z.array(z.string()).optional(), tags: z.array(z.string()).optional(),
   deliverable_templates: z.array(deliverableSchema).optional(), campaign_benefits: z.array(campaignBenefitSchema).optional(),
-  brand_id: z.string().optional(), visibility: z.enum(['private', 'open']).default('private'),
+  brand_id: z.string().optional(),
+  visibility: z.enum(['private', 'open']).default('open'),
+  access_mode: z.enum(['public', 'private_pro', 'invitation']).default('public'),
   address: z.string().max(300).optional(), whatsapp_group_url: z.string().optional(), application_questions: z.array(z.string()).optional(),
   application_deadline: z.string().optional(), max_influencers: z.number().int().min(1).optional(),
 })
@@ -285,6 +287,26 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
         <textarea {...register('description')} rows={5} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" />
       </div>
 
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Cómo participarán las influencers <span className="text-red-500">*</span></label>
+        <Controller control={control} name="access_mode" render={({ field }) => (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { value: 'public', title: 'Pública', desc: 'Cualquier influencer puede postular.' },
+              { value: 'private_pro', title: 'Privada (Pro)', desc: 'Solo influencers Pro pueden postular.' },
+              { value: 'invitation', title: 'Por invitación', desc: 'Solo influencers que invites pueden participar.' },
+            ].map(option => (
+              <button key={option.value} type="button" onClick={() => field.onChange(option.value)}
+                className={cn('text-left rounded-xl border p-4 transition-all',
+                  field.value === option.value ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white hover:border-gray-300')}>
+                <p className="text-sm font-semibold text-gray-900">{option.title}</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{option.desc}</p>
+              </button>
+            ))}
+          </div>
+        )} />
+      </div>
+
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4">
         <div>
           <p className="text-sm font-semibold text-gray-800">Lugar y fecha</p>
@@ -361,7 +383,7 @@ export function CampaignForm({
       approval_required: true,
       platforms: [],
       hashtags: [], social_tags: ['@influencers.snc'], tags: [], deliverable_templates: [], campaign_benefits: [],
-      brand_id: '', visibility: 'private', address: '', whatsapp_group_url: '', application_questions: [],
+      brand_id: '', visibility: 'open', access_mode: 'public', address: '', whatsapp_group_url: '', application_questions: [],
       application_deadline: '', max_influencers: undefined, event_date: '', approval_submission_url: '', reference_url: '',
       brief_url: '', collaborator_ids: [],
     },
@@ -405,7 +427,8 @@ export function CampaignForm({
       campaign_benefits: data.campaign_benefits ?? [],
       commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
       brand_id: data.brand_id || null,
-      visibility: data.visibility || 'private',
+      visibility: data.access_mode === 'public' ? 'open' : 'private',
+      access_mode: data.access_mode,
       address: data.address?.trim() || null,
       application_questions: data.application_questions ?? [],
       brief_url: data.brief_url || null,

@@ -2084,13 +2084,25 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   function openSummaryEditor() {
     setEditingEvent(false)
+    // Todos los campos que guarda saveSummaryEditor deben partir del valor
+    // actual: si faltan, el guardado borraría marca, descripción o metadata.
+    const summaryMetadata = (c.metadata ?? {}) as Record<string, unknown>
+    const metadataText = (key: string) => typeof summaryMetadata[key] === 'string' ? summaryMetadata[key] as string : ''
     setSummaryEditForm({
       name: c.name ?? '',
+      description: c.description ?? '',
+      brand_id: c.brand_id ?? '',
+      type: c.type ?? 'event_appearance',
       start_date: c.start_date ?? '',
       end_date: c.end_date ?? '',
       visibility: c.visibility === 'open' ? 'open' : 'private',
+      // Misma derivación que /api/influencer/campaigns/[id]/apply.
+      access_mode: summaryMetadata.access_mode === 'invitation' ? 'invitation' : c.visibility === 'private' ? 'private_pro' : 'public',
       venue_name: eventVenueName ?? '',
       location: eventLocation ?? c.address ?? '',
+      commune: eventCommune ?? metadataText('commune'),
+      region: metadataText('region'),
+      country: metadataText('country') || 'Chile',
       location_instructions: eventBooking?.location_details?.instructions ?? '',
     })
     setEventScheduleForm(eventBookings.length > 0
@@ -3111,7 +3123,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const canonicalDue = canonicalDeliverableDueDates.get(dt.type) ?? dt.due_date ?? null
                     const isAttendance = dt.type === 'event_attendance'
                     const isFinalContent = dt.type === 'reel' || dt.type === 'story'
-                    const dateLabel = isAttendance ? 'Plazo de confirmación' : isFinalContent ? 'Fecha final de publicación' : 'Fecha límite'
+                    const dateLabel = isAttendance ? 'Fecha límite para confirmar tu asistencia' : isFinalContent ? 'Fecha final de publicación' : 'Fecha límite'
                     const attendanceTracked = attendanceConfirmedInfluencers.length + noConfirmedInfluencers.length + attendanceDeclinedInfluencers.length + noShowInfluencers.length
                     return (
                       <div key={dt.type} className="flex items-start gap-3 rounded-xl bg-gray-50 p-3">

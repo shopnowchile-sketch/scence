@@ -42,6 +42,13 @@ export const DELIVERABLE_TYPES = [
 
 export type DeliverableTypeValue = typeof DELIVERABLE_TYPES[number]['value']
 
+export const ATTENDANCE_DEFAULT_DESCRIPTION = 'Por favor confirma tu asistencia. Si no confirmas dentro del plazo, tu cupo será liberado.'
+
+/** Etiqueta de fecha: "Confirmar asistencia" tiene plazo de confirmación, el resto de publicación. */
+export function deliverableDueDateLabel(type: string) {
+  return type === 'event_attendance' ? 'Fecha límite para confirmar tu asistencia' : 'Fecha límite de publicación'
+}
+
 function toLocalDateTimeInput(value?: string) {
   if (!value) return ''
   const date = new Date(value)
@@ -65,7 +72,7 @@ export const CAMPAIGN_DELIVERABLE_DEFAULTS: Record<string, DeliverableTemplate[]
     { type: 'post',         quantity: 2, description: 'Post en feed' },
   ],
   event_appearance: [
-    { type: 'event_attendance', quantity: 1, description: 'Confirmar asistencia al evento' },
+    { type: 'event_attendance', quantity: 1, description: ATTENDANCE_DEFAULT_DESCRIPTION },
     { type: 'reel',             quantity: 1, description: 'Reel del evento' },
     { type: 'story',            quantity: 1, description: 'Story del evento' },
   ],
@@ -106,7 +113,7 @@ export function DeliverableTemplateBuilder({
 
   function addType(type: string) {
     if (value.find(d => d.type === type)) return
-    onChange([...value, { type, quantity: 1, description: '', tag_handles: defaultTagHandles }])
+    onChange([...value, { type, quantity: 1, description: type === 'event_attendance' ? ATTENDANCE_DEFAULT_DESCRIPTION : '', tag_handles: defaultTagHandles }])
   }
 
   function remove(type: string) {
@@ -218,7 +225,7 @@ export function DeliverableTemplateBuilder({
                 <label className="text-xs font-semibold text-gray-600">Descripción
                   <textarea value={deliverable.description ?? ''} onChange={event => update(deliverable.type, 'description', event.target.value)} rows={2} placeholder="Instrucciones para este contenido" className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-violet-400" />
                 </label>
-                <label className="text-xs font-semibold text-gray-600">Fecha límite de publicación
+                <label className="text-xs font-semibold text-gray-600">{deliverableDueDateLabel(deliverable.type)}
                   <input type="date" value={deliverable.due_date?.split('T')[0] ?? ''} onChange={event => update(deliverable.type, 'due_date', event.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-violet-400" />
                 </label>
               </div>
@@ -291,7 +298,7 @@ export function DeliverableTemplateBuilder({
                       </div>
                       <div className="grid sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-xs text-gray-500 mb-1 block">Fecha límite de entrega</label>
+                          <label className="text-xs text-gray-500 mb-1 block">{d.type === 'event_attendance' ? deliverableDueDateLabel(d.type) : 'Fecha límite de entrega'}</label>
                           <input type="date" value={item.due_date?.split('T')[0] ?? ''}
                             onChange={e => updateItem(d.type, index, 'due_date', e.target.value)}
                             className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-violet-400 bg-white" />

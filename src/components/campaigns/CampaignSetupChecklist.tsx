@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, Circle, ChevronRight, Loader2 } from 'lucide-react'
+import { CheckCircle2, Circle, ChevronRight } from 'lucide-react'
 
 type Props = { id: string }
 
@@ -31,10 +31,6 @@ export function CampaignSetupChecklist({ id }: Props) {
 
   const benefits = Array.isArray(campaign.campaign_benefits) ? campaign.campaign_benefits : []
   const deliverables = Array.isArray(campaign.deliverable_templates) ? campaign.deliverable_templates : []
-  const metadata = campaign.metadata && typeof campaign.metadata === 'object' && !Array.isArray(campaign.metadata)
-    ? campaign.metadata as Record<string, unknown>
-    : {}
-
   const items = [
     {
       label: 'Definir el canje',

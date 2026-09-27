@@ -640,8 +640,6 @@ export function CampaignForm({
           <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
             {saving ? <><div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Creando…</> : <><Sparkles className="h-4 w-4" />{portal === 'brand' ? 'Crear y enviar a revisión' : 'Crear campaña'}</>}
           </button>
-            </button>
-          )}
         </div>
       </form>
     </div>

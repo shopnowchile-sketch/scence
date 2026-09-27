@@ -2823,6 +2823,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <label className="text-xs font-semibold text-gray-600">Fecha término
                       <input type="date" value={summaryEditForm.end_date} onChange={e => setSummaryEditForm(previous => ({ ...previous, end_date: e.target.value }))} className="input-base mt-1 w-full" />
                     </label>
+                    <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-600">Días y horarios</span>
+                        <button type="button" onClick={addEventDay} className="text-xs font-semibold text-violet-600 hover:text-violet-700">+ Agregar día</button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {eventScheduleForm.map((day, index) => (
+                          <div key={day.id ?? index} className="grid grid-cols-[1.25fr_1fr_1fr_auto] gap-1.5">
+                            <input type="datetime-local" value={day.starts_at} onChange={e => setEventScheduleForm(previous => previous.map((item, i) => i === index ? { ...item, starts_at: e.target.value } : item))} className="input-base !py-1.5 text-xs" />
+                            <input type="time" value={day.starts_at ? day.starts_at.slice(11, 16) : ''} onChange={e => day.starts_at && setEventScheduleForm(previous => previous.map((item, i) => i === index ? { ...item, starts_at: `${item.starts_at.slice(0,10)}T${e.target.value}` } : item))} className="input-base !py-1.5 text-xs" />
+                            <input type="time" value={day.ends_at ? day.ends_at.slice(11, 16) : ''} onChange={e => day.ends_at && setEventScheduleForm(previous => previous.map((item, i) => i === index ? { ...item, ends_at: `${item.ends_at.slice(0,10)}T${e.target.value}` } : item))} className="input-base !py-1.5 text-xs" />
+                            <button type="button" onClick={() => setEventScheduleForm(previous => previous.filter((_, i) => i !== index))} disabled={eventScheduleForm.length <= 1} className="px-1 text-gray-400 hover:text-red-500 disabled:opacity-30"><X className="h-3.5 w-3.5" /></button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                     <label className="text-xs font-semibold text-gray-600">Nombre del lugar
                       <input value={summaryEditForm.venue_name} onChange={e => setSummaryEditForm(previous => ({ ...previous, venue_name: e.target.value }))} className="input-base mt-1 w-full" />
                     </label>

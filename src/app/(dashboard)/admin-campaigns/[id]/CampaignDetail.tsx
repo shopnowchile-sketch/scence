@@ -2143,10 +2143,22 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     try {
       await patchCampaign.mutateAsync({
         name: summaryEditForm.name.trim(),
-        start_date: summaryEditForm.start_date || null,
-        end_date: summaryEditForm.end_date || null,
+        description: summaryEditForm.description.trim() || null,
+        brand_id: summaryEditForm.brand_id || null,
+        type: summaryEditForm.type,
+        start_date: schedule[0]?.starts_at?.slice(0, 10) || summaryEditForm.start_date || null,
+        end_date: [...schedule].reverse().find(day => day.starts_at)?.starts_at.slice(0, 10) || summaryEditForm.end_date || null,
         visibility: summaryEditForm.visibility,
         address: summaryEditForm.location.trim() || null,
+        metadata: {
+          ...(c.metadata ?? {}),
+          access_mode: summaryEditForm.access_mode,
+          venue_name: summaryEditForm.venue_name.trim() || null,
+          commune: summaryEditForm.commune.trim() || null,
+          region: summaryEditForm.region.trim() || null,
+          country: summaryEditForm.country.trim() || 'Chile',
+          location_instructions: summaryEditForm.location_instructions.trim() || null,
+        },
       })
       const savedIds = new Set(schedule.flatMap(day => day.id ? [day.id] : []))
       const daysToRemove = eventBookings.filter(day => day.id && !savedIds.has(day.id))

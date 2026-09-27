@@ -72,7 +72,9 @@ const schema = z.object({
   brand_id: z.string().optional(),
   visibility: z.enum(['private', 'open']).default('open'),
   access_mode: z.enum(['public', 'private_pro', 'invitation']).default('public'),
-  address: z.string().max(300).optional(), whatsapp_group_url: z.string().optional(), application_questions: z.array(z.string()).optional(),
+  address: z.string().max(300).optional(),
+  commune: z.string().max(120).optional(), region: z.string().max(120).optional(), country: z.string().max(120).default('Chile'),
+  whatsapp_group_url: z.string().optional(), application_questions: z.array(z.string()).optional(),
   application_deadline: z.string().optional(), max_influencers: z.number().int().min(1).optional(),
 })
 
@@ -258,16 +260,25 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, arrivalInstructions, setArrivalInstructions, setRemovedEventBookingIds, portal = 'admin' }: StepProps & {
+function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin' }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
-  setEventDays: (updater: (days: Array<{ id?: string; starts_at: string; ends_at: string }>) => Array<{ id?: string; starts_at: string; ends_at: string }>) => void
+  setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>>
   venueName: string
   setVenueName: (value: string) => void
   arrivalInstructions: string
   setArrivalInstructions: (value: string) => void
-  setRemovedEventBookingIds: (updater: (ids: string[]) => string[]) => void
+  setRemovedEventBookingIds: React.Dispatch<React.SetStateAction<string[]>>
   portal?: 'admin' | 'brand'
 }) {
+  const addDay = () => setEventDays(days => [...days, { starts_at: '', ends_at: '' }])
+  const updateDay = (index: number, key: 'starts_at' | 'ends_at', value: string) =>
+    setEventDays(days => days.map((day, i) => i === index ? { ...day, [key]: value } : day))
+  const removeDay = (index: number) => setEventDays(days => {
+    const day = days[index]
+    if (day?.id) setRemovedEventBookingIds(ids => [...ids, day.id!])
+    return days.filter((_, i) => i !== index)
+  })
+
   return (
     <div className="space-y-6">
       <div>
@@ -276,16 +287,46 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
         {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
       </div>
 
-      {portal === 'admin' && (
-        <Controller control={control} name="brand_id" render={({ field }) => (
-          <BrandSelector value={field.value ?? ''} onChange={field.onChange} />
-        )} />
-      )}
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-5">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Lugar y fechas</p>
+          <p className="text-xs text-gray-500 mt-0.5">La dirección exacta será privada hasta que la influencer sea aceptada.</p>
+        </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Descripción</label>
-        <textarea {...register('description')} rows={5} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre del lugar</label>
+          <input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full" placeholder="Ej. Centro Parque" />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Calle y número</label><input {...register('address')} className="input-base w-full" placeholder="Ej. Av. Presidente Riesco 5335" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna</label><input {...register('commune')} className="input-base w-full" placeholder="Ej. Las Condes" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Región</label><input {...register('region')} className="input-base w-full" placeholder="Ej. Metropolitana" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">País</label><input {...register('country')} className="input-base w-full" placeholder="Chile" /></div>
+        </div>
+
+        <div className="border-t border-gray-200 pt-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div><p className="text-sm font-semibold text-gray-800">Días y horarios</p><p className="text-xs text-gray-500">Agrega un día por cada fecha del evento.</p></div>
+            <button type="button" onClick={addDay} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50"><Plus className="h-3.5 w-3.5" /> Agregar día</button>
+          </div>
+          <div className="space-y-2">
+            {(eventDays.length ? eventDays : [{ starts_at: '', ends_at: '' }]).map((day, index) => {
+              const date = day.starts_at?.slice(0, 10) ?? ''
+              const startTime = day.starts_at?.slice(11, 16) ?? ''
+              const endTime = day.ends_at?.slice(11, 16) ?? ''
+              return <div key={day.id ?? index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end rounded-lg bg-white p-3 border border-gray-200">
+                <div><label className="block text-xs font-medium text-gray-500 mb-1">Fecha</label><input type="date" value={date} onChange={e => { const d=e.target.value; updateDay(index,'starts_at',d ? `${d}T${startTime || '00:00'}` : ''); updateDay(index,'ends_at',d ? `${d}T${endTime || '00:00'}` : '') }} className="input-base w-full" /></div>
+                <div><label className="block text-xs font-medium text-gray-500 mb-1">Desde</label><input type="time" value={startTime} onChange={e => date && updateDay(index,'starts_at',`${date}T${e.target.value}`)} className="input-base w-full" /></div>
+                <div><label className="block text-xs font-medium text-gray-500 mb-1">Hasta</label><input type="time" value={endTime} onChange={e => date && updateDay(index,'ends_at',`${date}T${e.target.value}`)} className="input-base w-full" /></div>
+                <button type="button" onClick={() => removeDay(index)} disabled={eventDays.length <= 1} className="mb-1 rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-30" title="Quitar día"><X className="h-4 w-4" /></button>
+              </div>
+            })}
+          </div>
+        </div>
       </div>
+
+      {portal === 'admin' && <Controller control={control} name="brand_id" render={({ field }) => <BrandSelector value={field.value ?? ''} onChange={field.onChange} />} />}
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Cómo participarán las influencers <span className="text-red-500">*</span></label>
@@ -294,33 +335,13 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
             {[
               { value: 'public', title: 'Pública', desc: 'Cualquier influencer puede postular.' },
               { value: 'private_pro', title: 'Privada (Pro)', desc: 'Solo influencers Pro pueden postular.' },
-              { value: 'invitation', title: 'Por invitación', desc: 'Solo influencers que invites pueden participar.' },
-            ].map(option => (
-              <button key={option.value} type="button" onClick={() => field.onChange(option.value)}
-                className={cn('text-left rounded-xl border p-4 transition-all',
-                  field.value === option.value ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white hover:border-gray-300')}>
-                <p className="text-sm font-semibold text-gray-900">{option.title}</p>
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{option.desc}</p>
-              </button>
-            ))}
+              { value: 'invitation', title: 'Por invitación', desc: 'Solo influencers invitadas pueden participar.' },
+            ].map(option => <button key={option.value} type="button" onClick={() => field.onChange(option.value)} className={cn('text-left rounded-xl border p-4 transition-all', field.value === option.value ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white hover:border-gray-300')}><p className="text-sm font-semibold text-gray-900">{option.title}</p><p className="text-xs text-gray-500 mt-1">{option.desc}</p></button>)}
           </div>
         )} />
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4">
-        <div>
-          <p className="text-sm font-semibold text-gray-800">Lugar y fecha</p>
-          <p className="text-xs text-gray-500">Ingresa dónde y cuándo se realizará.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha</label>
-          <input type="date" {...register('start_date')} className="input-base w-full" />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Lugar</label><input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full" placeholder="Ej. Centro Parque" /></div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label><input {...register('address')} className="input-base w-full" placeholder="Ej. Av. Presidente Riesco 5335, Santiago" /></div>
-        </div>
-      </div>
+      <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Descripción</label><textarea {...register('description')} rows={5} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" /></div>
     </div>
   )
 }
@@ -370,7 +391,7 @@ export function CampaignForm({
   const [draftSaving, setDraftSaving] = useState(false)
   const [campaignId, setCampaignId] = useState<string | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
-  const [eventDays, setEventDays] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([])
+  const [eventDays, setEventDays] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([{ starts_at: '', ends_at: '' }])
   const [removedEventBookingIds, setRemovedEventBookingIds] = useState<string[]>([])
   const [venueName, setVenueName] = useState('')
   const [arrivalInstructions, setArrivalInstructions] = useState('')
@@ -383,7 +404,7 @@ export function CampaignForm({
       approval_required: true,
       platforms: [],
       hashtags: [], social_tags: ['@influencers.snc'], tags: [], deliverable_templates: [], campaign_benefits: [],
-      brand_id: '', visibility: 'open', access_mode: 'public', address: '', whatsapp_group_url: '', application_questions: [],
+      brand_id: '', visibility: 'open', access_mode: 'public', address: '', commune: '', region: '', country: 'Chile', whatsapp_group_url: '', application_questions: [],
       application_deadline: '', max_influencers: undefined, event_date: '', approval_submission_url: '', reference_url: '',
       brief_url: '', collaborator_ids: [],
     },
@@ -419,8 +440,8 @@ export function CampaignForm({
     } = data
     return {
       ...campaignFields,
-      start_date: data.start_date || null,
-      end_date: data.end_date || null,
+      start_date: eventDays.find(day => day.starts_at)?.starts_at.slice(0, 10) || data.start_date || null,
+      end_date: [...eventDays].reverse().find(day => day.starts_at)?.starts_at.slice(0, 10) || data.end_date || null,
       budget_total: (data.budget_total !== undefined && !isNaN(data.budget_total as number)) ? data.budget_total : (data.type === 'commission' ? 0 : null),
       goals: data.goals ?? {},
       social_tags: data.social_tags ?? [],
@@ -439,6 +460,9 @@ export function CampaignForm({
         approval_submission_url: approval_submission_url || null,
         whatsapp_group_url: data.whatsapp_group_url?.trim() || null,
         venue_name: venueName.trim() || null,
+        commune: data.commune?.trim() || null,
+        region: data.region?.trim() || null,
+        country: data.country?.trim() || 'Chile',
         access_mode: access_mode || 'public',
       },
       application_deadline: data.visibility === 'open' && data.application_deadline
@@ -466,7 +490,7 @@ export function CampaignForm({
       if (!day.starts_at || !day.ends_at) continue
       const payload = {
         title: values.name.trim(), description: values.description ?? '',
-        location: address, location_details: { venue_name: venueName.trim() || null, instructions: arrivalInstructions.trim() || null },
+        location: address, location_details: { venue_name: venueName.trim() || null, commune: values.commune?.trim() || null, region: values.region?.trim() || null, country: values.country?.trim() || 'Chile', instructions: arrivalInstructions.trim() || null, address_hidden: Boolean(address) },
         starts_at: new Date(day.starts_at).toISOString(), ends_at: new Date(day.ends_at).toISOString(), timezone: 'America/Santiago',
       }
       const response = await fetch('/api/bookings', {

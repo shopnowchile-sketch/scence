@@ -55,46 +55,23 @@ const campaignBenefitSchema = z.object({
 
 const schema = z.object({
   name: z.string().min(3, 'Mínimo 3 caracteres').max(120),
-  // 3000, no 500: description es ahora el único concepto de "descripción"
-  // (antes 500 alcanzaba porque content_guidelines existía aparte; ahora
-  // absorbe ese contenido también). Mismo límite que ya usa el panel de
-  // edición del admin. Pedido de Pri 2026-09-04.
   description: z.string().max(3000).optional(),
   type: z.enum(['sponsored_post', 'ambassador', 'ugc', 'event_appearance', 'product_seeding', 'live', 'commission']),
-  platforms: z.array(z.string()).min(1, 'Selecciona al menos una plataforma'),
+  platforms: z.array(z.string()).optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   event_date: z.string().optional(),
   budget_total: nanToUndef,
   commission_rate: nanToUndefClamped,
   currency: z.enum(['USD', 'EUR', 'MXN', 'CLP', 'COP', 'ARS', 'BRL', 'GBP']),
-  goals: z.object({
-    impressions:      nanToUndef,
-    reach:            nanToUndef,
-    engagement_rate:  nanToUndefClamped,
-    clicks:           nanToUndef,
-    conversions:      nanToUndef,
-  }).optional(),
-  hashtags: z.array(z.string()).optional(),
-  social_tags: z.array(z.string()).optional(),
-  approval_required: z.boolean(),
-  approval_submission_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
-  reference_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
-  brief_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
-  collaborator_ids: z.array(z.string()).optional(),
-  tags: z.array(z.string()).optional(),
-  deliverable_templates: z.array(deliverableSchema).optional(),
-  campaign_benefits: z.array(campaignBenefitSchema).optional(),
-  brand_id: z.string().optional(),
-  visibility: z.enum(['private', 'open']).default('private'),
-  address: z.string().max(300).optional(),
-  whatsapp_group_url: z.string().url('Ingresa un enlace válido').optional().or(z.literal('')),
-  application_questions: z.array(z.string().min(1)).optional(),
-  application_deadline: z.string().optional(),
-  max_influencers: z.preprocess(
-    v => (v === '' || (typeof v === 'number' && isNaN(v))) ? undefined : v,
-    z.number().int().min(1, 'Debe haber al menos 1 cupo').optional()
-  ),
+  goals: z.object({ impressions: nanToUndef, reach: nanToUndef, engagement_rate: nanToUndefClamped, clicks: nanToUndef, conversions: nanToUndef }).optional(),
+  hashtags: z.array(z.string()).optional(), social_tags: z.array(z.string()).optional(), approval_required: z.boolean(),
+  approval_submission_url: z.string().optional(), reference_url: z.string().optional(), brief_url: z.string().optional(),
+  collaborator_ids: z.array(z.string()).optional(), tags: z.array(z.string()).optional(),
+  deliverable_templates: z.array(deliverableSchema).optional(), campaign_benefits: z.array(campaignBenefitSchema).optional(),
+  brand_id: z.string().optional(), visibility: z.enum(['private', 'open']).default('private'),
+  address: z.string().max(300).optional(), whatsapp_group_url: z.string().optional(), application_questions: z.array(z.string()).optional(),
+  application_deadline: z.string().optional(), max_influencers: z.number().int().min(1).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -138,11 +115,7 @@ const ACTIVATION_RULES = [
   ['manual', 'Activación manual'],
 ] as const
 
-const STEPS = [
-  { id: 1, label: 'Información', icon: Target },
-  { id: 2, label: 'Condiciones', icon: Calendar },
-  { id: 3, label: 'Contenido',   icon: FileText },
-]
+const STEPS = [{ id: 1, label: 'Información', icon: Target }] as const
 
 // ── Hashtag input ─────────────────────────────────────────────────────────────
 function HashtagInput({ value = [], onChange }: { value?: string[]; onChange: (v: string[]) => void }) {
@@ -293,19 +266,11 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
   setRemovedEventBookingIds: (updater: (ids: string[]) => string[]) => void
   portal?: 'admin' | 'brand'
 }) {
-  const watchedVisibility = useWatch({ control, name: 'visibility' })
-  const watchedType = useWatch({ control, name: 'type' })
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Nombre de la campaña <span className="text-red-500">*</span>
-        </label>
-        <input
-          {...register('name')}
-          className="input-base w-full"
-          placeholder="Ej. Nike Air Max — Verano 2026"
-        />
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre de la campaña <span className="text-red-500">*</span></label>
+        <input {...register('name')} className="input-base w-full" placeholder="Ej. Evento SCENCE — Noviembre 2026" />
         {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
       </div>
 
@@ -315,377 +280,25 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
         )} />
       )}
 
-      {/* Canje/Beneficio destacado en el Paso 1 — la influencer lo mira primero
-          para decidir si postula (pedido de Pri 2026-09-04). Antes vivía en el
-          Paso 2, después de que ya existiera la campaña. */}
-      <Controller control={control} name="campaign_benefits" render={({ field }) => (
-        <CampaignBenefitsInput value={field.value ?? []} onChange={field.onChange} errors={errors.campaign_benefits as Array<{ description?: { message?: string } }> | undefined} />
-      )} />
-
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Descripción de la campaña <span className="text-gray-400 text-xs">(visible antes de postular)</span>
-        </label>
-        <textarea
-          {...register('description')}
-          rows={3}
-          maxLength={3000}
-          className="input-base w-full resize-none"
-          placeholder="Breve descripción de los objetivos de la campaña…"
-        />
-        <p className="text-xs text-gray-400 mt-1">Explica de qué trata la campaña. Las influencers verán este texto junto con el canje antes de postular.</p>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Descripción</label>
+        <textarea {...register('description')} rows={5} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" />
       </div>
 
-      {watchedType === 'event_appearance' && (
-        <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Fechas y horas del evento</p>
-              <p className="text-xs text-gray-500">Agrega cada día del evento. Esto es distinto de la duración total de la campaña.</p>
-            </div>
-            <button type="button" onClick={() => setEventDays(days => [...days, { starts_at: '', ends_at: '' }])} className="inline-flex items-center gap-1 text-sm font-semibold text-violet-700 hover:text-violet-800">
-              <Plus className="h-4 w-4" /> Agregar día
-            </button>
-          </div>
-          {eventDays.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-violet-200 bg-white/70 px-3 py-2 text-sm text-gray-500">Aún no agregas fechas del evento.</p>
-          ) : eventDays.map((day, index) => (
-            <div key={day.id ?? index} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end rounded-lg bg-white p-3 border border-violet-100">
-              <div><label className="block text-xs font-medium text-gray-600 mb-1">Inicio</label><input type="datetime-local" value={day.starts_at} onChange={e => setEventDays(days => days.map((item, itemIndex) => itemIndex === index ? { ...item, starts_at: e.target.value } : item))} className="input-base w-full" /></div>
-              <div><label className="block text-xs font-medium text-gray-600 mb-1">Término</label><input type="datetime-local" value={day.ends_at} onChange={e => setEventDays(days => days.map((item, itemIndex) => itemIndex === index ? { ...item, ends_at: e.target.value } : item))} className="input-base w-full" /></div>
-              <button type="button" aria-label="Quitar día" onClick={() => { if (day.id) setRemovedEventBookingIds(ids => [...ids, day.id!]); setEventDays(days => days.filter((_, itemIndex) => itemIndex !== index)) }} className="h-10 w-10 inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
-            </div>
-          ))}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre del lugar</label><input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full" placeholder="Ej. Hotel Marriott Santiago" /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label><input {...register('address')} className="input-base w-full" placeholder="Av., número, comuna" /></div>
-          </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Indicaciones para llegar <span className="text-gray-400 font-normal">(opcional)</span></label><input value={arrivalInstructions} onChange={e => setArrivalInstructions(e.target.value)} className="input-base w-full" placeholder="Ej. Entrada techada por atrás del hotel" /></div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Grupo de WhatsApp <span className="text-gray-400 font-normal">(opcional)</span></label><input {...register('whatsapp_group_url')} type="url" className="input-base w-full" placeholder="https://chat.whatsapp.com/..." /><p className="text-xs text-gray-400 mt-1">Se mostrará a las influencers solo después de confirmar su asistencia.</p></div>
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Lugar y fecha</p>
+          <p className="text-xs text-gray-500">Ingresa dónde y cuándo se realizará.</p>
         </div>
-      )}
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Duración de la campaña</label>
-        <p className="text-xs text-gray-400 mb-2">Corresponde al período completo en que la campaña estará activa.</p>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha</label>
+          <input type="date" {...register('start_date')} className="input-base w-full" />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div><label className="block text-xs text-gray-500 mb-1">Fecha inicio</label><input type="date" {...register('start_date')} className="input-base w-full" /></div>
-          <div><label className="block text-xs text-gray-500 mb-1">Fecha fin</label><input type="date" {...register('end_date')} className="input-base w-full" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Lugar</label><input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full" placeholder="Ej. Centro Parque" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección</label><input {...register('address')} className="input-base w-full" placeholder="Ej. Av. Presidente Riesco 5335, Santiago" /></div>
         </div>
       </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">
-          Tipo de campaña <span className="text-red-500">*</span>
-        </label>
-        <Controller
-          control={control}
-          name="type"
-          render={({ field }) => (
-            <div className="grid grid-cols-2 gap-3">
-              {CAMPAIGN_TYPES.map(t => (
-                <button key={t.value} type="button" onClick={() => field.onChange(t.value)}
-                  className={cn(
-                    'text-left p-3.5 rounded-xl border-2 transition-all',
-                    field.value === t.value ? 'border-violet-500 bg-violet-50' : 'border-gray-200 hover:border-gray-300 bg-white'
-                  )}>
-                  <div className={cn('text-sm font-semibold', field.value === t.value ? 'text-violet-700' : 'text-gray-800')}>{t.label}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{t.desc}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        />
-        {errors.type && <p className="text-xs text-red-500 mt-1">{errors.type.message}</p>}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">
-          Plataformas <span className="text-red-500">*</span>
-        </label>
-        <Controller
-          control={control}
-          name="platforms"
-          render={({ field }) => (
-            <div className="flex flex-wrap gap-2">
-              {PLATFORMS.map(p => {
-                const active = field.value?.includes(p)
-                return (
-                  <button key={p} type="button"
-                    onClick={() => {
-                      const next = active ? field.value.filter((v: string) => v !== p) : [...(field.value ?? []), p]
-                      field.onChange(next)
-                    }}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
-                      active ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                    )}>
-                    <span>{PLATFORM_ICONS[p]}</span>
-                    {PLATFORM_LABELS[p] ?? p}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        />
-        {errors.platforms && <p className="text-xs text-red-500 mt-1">{errors.platforms.message}</p>}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Visibilidad</label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-violet-300 transition-colors">
-            <input type="radio" value="private" {...register('visibility')} className="mt-1" />
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Privada</div>
-              <div className="text-xs text-gray-500 mt-0.5">Solo influencers invitadas o asignadas.</div>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-violet-300 transition-colors">
-            <input type="radio" value="open" {...register('visibility')} className="mt-1" />
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Pública</div>
-              <div className="text-xs text-gray-500 mt-0.5">Las influencers pueden postular desde su portal.</div>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      {/* Preguntas de postulación — opcional en cualquier visibilidad. Pública:
-          la influencer las responde para postular. Privada: las responde para
-          aceptar la invitación (pedido de Pri 2026-07-12, mismo mecanismo,
-          reutiliza application_questions/application_answers). */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Preguntas {watchedVisibility === 'open' ? 'de postulación' : 'para aceptar la invitación'} <span className="text-gray-400 text-xs">(opcional)</span>
-        </label>
-        <p className="text-xs text-gray-400 mb-2">
-          {watchedVisibility === 'open'
-            ? 'Si agregas preguntas, la influencer deberá responderlas para poder postular.'
-            : 'Si agregas preguntas, la influencer deberá responderlas antes de poder aceptar la invitación.'}
-        </p>
-        <Controller
-          control={control}
-          name="application_questions"
-          render={({ field }) => (
-            <QuestionsInput value={field.value ?? []} onChange={field.onChange} />
-          )}
-        />
-      </div>
-    </div>
-  )
-}
-
-// ── Step 2 — Budget & Fechas ──────────────────────────────────────────────────
-function CampaignBenefitsInput({ value = [], onChange, errors }: {
-  value?: CampaignBenefitInput[]
-  onChange: (value: CampaignBenefitInput[]) => void
-  errors?: Array<{ description?: { message?: string } }>
-}) {
-  function add() {
-    onChange([...value, {
-      benefit_type: 'ticket', description: '', quantity: 1,
-      estimated_value: undefined, currency: 'CLP', activation_rule: 'deliverables_completed',
-      sales_target: undefined, commission_rate: undefined,
-    }])
-  }
-  function update(index: number, patch: Partial<CampaignBenefitInput>) {
-    onChange(value.map((benefit, position) => position === index ? { ...benefit, ...patch } : benefit))
-  }
-  return (
-    <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-violet-900">Beneficios para cada influencer</p>
-          <p className="text-xs text-violet-600 mt-0.5">Se mostrarán antes de postular. Todas reciben las mismas condiciones.</p>
-        </div>
-        <button type="button" onClick={add} className="text-xs font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-3 py-2">
-          + Agregar
-        </button>
-      </div>
-      {value.length === 0 && <p className="text-xs text-violet-500">Sin beneficios definidos.</p>}
-      {value.map((benefit, index) => (
-        <div key={index} className="rounded-xl border border-violet-100 bg-white p-3 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <select value={benefit.benefit_type} onChange={e => update(index, { benefit_type: e.target.value as CampaignBenefitInput['benefit_type'], estimated_value: undefined, commission_rate: undefined })} className="input-base w-full">
-              {BENEFIT_TYPES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-            <input type="number" min="1" step="1" value={benefit.quantity} onChange={e => update(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} className="input-base w-full" placeholder="Cantidad" />
-            <select value={benefit.activation_rule} onChange={e => update(index, { activation_rule: e.target.value as CampaignBenefitInput['activation_rule'], sales_target: e.target.value === 'sales_target' ? benefit.sales_target : undefined })} className="input-base w-full">
-              {ACTIVATION_RULES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-          </div>
-          <input value={benefit.description} onChange={e => update(index, { description: e.target.value })} maxLength={500}
-            className={cn('input-base w-full', errors?.[index]?.description && 'border-red-400 focus:border-red-400')}
-            placeholder="Ej. Entrada general para Maturana Sunset" />
-          {errors?.[index]?.description?.message && <p className="text-xs text-red-500">{errors[index]!.description!.message}</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {benefit.activation_rule === 'sales_target' && (
-              <input type="number" min="1" step="1" value={benefit.sales_target ?? ''} onChange={e => update(index, { sales_target: Number(e.target.value) || undefined })} className="input-base w-full" placeholder="Ventas necesarias" />
-            )}
-            {benefit.benefit_type === 'sales_commission' ? (
-              <input type="number" min="0" max="100" step="0.01" value={benefit.commission_rate ?? ''} onChange={e => update(index, { commission_rate: e.target.value === '' ? undefined : Number(e.target.value) })} className="input-base w-full" placeholder="Comisión %" />
-            ) : (
-              <>
-                <input type="number" min="0" step="1000" value={benefit.estimated_value ?? ''} onChange={e => update(index, { estimated_value: e.target.value === '' ? undefined : Number(e.target.value) })} className="input-base w-full" placeholder="Valor estimado" />
-                <select value={benefit.currency} onChange={e => update(index, { currency: e.target.value })} className="input-base w-full">
-                  {CURRENCIES.map(currency => <option key={currency.value} value={currency.value}>{currency.value}</option>)}
-                </select>
-              </>
-            )}
-          </div>
-          <button type="button" onClick={() => onChange(value.filter((_, position) => position !== index))} className="text-xs font-medium text-red-500">Eliminar beneficio</button>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function Step2({ register, control, errors, portal = 'admin' }: StepProps & { portal?: 'admin' | 'brand' }) {
-  const watchedType = (control as unknown as { _formValues: { type: string } })._formValues?.type
-  const isCommission = watchedType === 'commission'
-  const visibility = useWatch({ control, name: 'visibility' })
-  return (
-    <div className="space-y-6">
-      {visibility === 'open' && (
-        <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
-          <div>
-            <p className="text-sm font-semibold text-violet-900">Postulaciones y cupos</p>
-            <p className="text-xs text-violet-600 mt-0.5">La campaña mostrará “Cupos limitados” y cerrará automáticamente en la fecha indicada.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-violet-800 mb-1">Fecha y hora límite</label>
-              <input type="datetime-local" {...register('application_deadline')} className="input-base w-full" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-violet-800 mb-1">Cantidad de cupos</label>
-              <input type="number" min="1" step="1" {...register('max_influencers', { valueAsNumber: true })}
-                className="input-base w-full" placeholder="Ej. 20" />
-              {errors.max_influencers && <p className="text-xs text-red-500 mt-1">{errors.max_influencers.message}</p>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Budget total</label>
-          <input type="number" step="1000" min="0"
-            {...register('budget_total', { valueAsNumber: true })}
-            className="input-base w-full" placeholder="0" />
-          <p className="text-xs text-gray-400 mt-1">Ingresa 0 si es canje o sin presupuesto definido</p>
-          {errors.budget_total && <p className="text-xs text-red-500 mt-1">{errors.budget_total.message}</p>}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Moneda</label>
-          <select {...register('currency')} className="input-base w-full">
-            {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <Controller control={control} name="type" render={({ field }) => (
-        field.value === 'commission' ? (
-          <div className="p-4 rounded-xl border-2 border-violet-200 bg-violet-50">
-            <label className="block text-sm font-semibold text-violet-800 mb-1.5">
-              💰 Comisión por ventas (%)
-            </label>
-            <input type="number" step="0.5" min="0" max="100"
-              {...register('commission_rate', { valueAsNumber: true })}
-              className="input-base w-full" placeholder="Ej. 10" />
-            <p className="text-xs text-violet-600 mt-1">Porcentaje del total de ventas que recibirá cada influencer</p>
-          </div>
-        ) : <></>
-      )} />
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">
-          Metas <span className="text-gray-400 text-xs">(opcional)</span>
-        </label>
-        <div className="grid grid-cols-2 gap-4">
-          {[
-            { name: 'goals.impressions' as const, label: 'Impresiones',         placeholder: 'Ej. 1,000,000' },
-            { name: 'goals.reach' as const,       label: 'Alcance (Reach)',      placeholder: 'Ej. 500,000' },
-            { name: 'goals.clicks' as const,      label: 'Clicks',               placeholder: 'Ej. 10,000' },
-            { name: 'goals.conversions' as const, label: 'Conversiones',         placeholder: 'Ej. 500' },
-          ].map(f => (
-            <div key={f.name}>
-              <label className="block text-xs text-gray-500 mb-1">{f.label}</label>
-              <input type="number" {...register(f.name, { valueAsNumber: true })}
-                className="input-base w-full" placeholder={f.placeholder} />
-            </div>
-          ))}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Engagement rate (%)</label>
-            <input type="number" step="0.1" min="0" max="100"
-              {...register('goals.engagement_rate', { valueAsNumber: true })}
-              className="input-base w-full" placeholder="Ej. 5.0" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// DeliverableTemplateBuilder now imported from @/components/campaigns/DeliverableTemplateBuilder
-
-// ── Step 3 — Contenido ────────────────────────────────────────────────────────
-function Step3({ register, control, setValue, campaignType, campaignId }: StepProps & { campaignId?: string | null }) {
-  const currentTemplates = useWatch({ control, name: 'deliverable_templates' }) ?? []
-  const suggested = campaignType ? (CAMPAIGN_DELIVERABLE_DEFAULTS[campaignType] ?? []) : []
-  const typeLabel = CAMPAIGN_TYPES.find(t => t.value === campaignType)?.label
-
-  // Auto-fill on first entry to this step (when templates still empty)
-  useEffect(() => {
-    if (suggested.length > 0 && currentTemplates.length === 0 && setValue) {
-      setValue('deliverable_templates', suggested.map(s => ({ ...s, due_date: '' })))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Deliverables requeridos
-        </label>
-
-        {/* Banner de sugeridos */}
-        {suggested.length > 0 && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-violet-50 border border-violet-100 mb-3">
-            <span className="text-violet-500 mt-0.5">✨</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-violet-700">
-                Deliverables sugeridos para campaña de tipo <span className="font-bold">{typeLabel}</span>
-              </p>
-              <p className="text-xs text-violet-500 mt-0.5">Pre-cargados automáticamente — puedes editarlos o agregar más.</p>
-            </div>
-            {currentTemplates.length === 0 && (
-              <button
-                type="button"
-                onClick={() => setValue?.('deliverable_templates', suggested.map(s => ({ ...s, due_date: '' })))}
-                className="text-xs text-violet-600 font-semibold hover:underline whitespace-nowrap"
-              >
-                Restaurar
-              </button>
-            )}
-          </div>
-        )}
-
-        <p className="text-xs text-gray-400 mb-2">Selecciona los tipos y agrega detalles. Se asignarán a cada influencer en la campaña.</p>
-        <Controller control={control} name="deliverable_templates"
-          render={({ field }) => (
-            <DeliverableTemplateBuilder value={field.value} onChange={field.onChange} />
-          )} />
-      </div>
-
-      {/* Marcas colaboradoras, tags/hashtags, brief, tags internos, aprobación
-          de contenido: se editan después, con la campaña ya creada en draft
-          (Marcas participantes, panel de edición "Contenido", subida de brief
-          desde el detalle). Paso 3 queda enfocado solo en deliverables — pedido
-          de Pri 2026-09-04, simplificar la creación. */}
     </div>
   )
 }
@@ -743,26 +356,14 @@ export function CampaignForm({
   const { register, control, handleSubmit, getValues, setValue, trigger, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
+      type: 'event_appearance',
       currency: 'CLP',
       approval_required: true,
       platforms: [],
-      hashtags: [],
-      social_tags: ['@influencers.snc'],
-      tags: [],
-      deliverable_templates: [],
-      campaign_benefits: [],
-      brand_id: '',
-      visibility: 'private',
-      address: '',
-      whatsapp_group_url: '',
-      application_questions: [],
-      application_deadline: '',
-      max_influencers: undefined,
-      event_date: '',
-      approval_submission_url: '',
-      reference_url: '',
-      brief_url: '',
-      collaborator_ids: [],
+      hashtags: [], social_tags: ['@influencers.snc'], tags: [], deliverable_templates: [], campaign_benefits: [],
+      brand_id: '', visibility: 'private', address: '', whatsapp_group_url: '', application_questions: [],
+      application_deadline: '', max_influencers: undefined, event_date: '', approval_submission_url: '', reference_url: '',
+      brief_url: '', collaborator_ids: [],
     },
   })
 
@@ -921,11 +522,7 @@ export function CampaignForm({
   }, [campaignId, apiEndpoint, autosaveSignature])
 
   async function goNext() {
-    const fieldsPerStep: Record<number, (keyof FormValues)[]> = {
-      1: ['name', 'type', 'platforms'],
-      2: [],
-      3: [],
-    }
+    const fieldsPerStep: Record<number, (keyof FormValues)[]> = { 1: ['name'] }
     const ok = await trigger(fieldsPerStep[step] ?? [])
     if (!ok) return
 
@@ -987,25 +584,13 @@ export function CampaignForm({
     }
   }
 
-  // Mapea cada campo del schema al paso del wizard donde se edita, para poder
-  // devolver al usuario al paso correcto cuando falla la validación final.
-  const STEP_BY_FIELD: Record<string, number> = {
-    name: 1, type: 1, platforms: 1, visibility: 1,
-    start_date: 1, end_date: 1, event_date: 1, budget_total: 2, commission_rate: 2, currency: 2, brand_id: 1, goals: 2,
-    hashtags: 3, social_tags: 3, tags: 3, deliverable_templates: 3, approval_required: 3,
-    application_questions: 1, application_deadline: 2, max_influencers: 2, campaign_benefits: 1,
-  }
+  // La creación ahora solo valida los campos visibles y esenciales.
+  const STEP_BY_FIELD: Record<string, number> = { name: 1, description: 1, brand_id: 1, start_date: 1, address: 1 }
 
-  // formErrors puede anidar arrays (ej. campaign_benefits[2].description) — un
-  // lookup plano en el primer nivel no encuentra el mensaje real ahí, y el
-  // toast quedaba genérico sin decir qué campo revisar. Bajamos recursivo
-  // hasta el primer nodo con .message.
   function findFirstError(node: unknown, path: string[] = []): { path: string[]; message?: string } | null {
     if (!node || typeof node !== 'object') return null
     const record = node as Record<string, unknown>
-    if (typeof record.message === 'string' && typeof record.type === 'string') {
-      return { path, message: record.message }
-    }
+    if (typeof record.message === 'string' && typeof record.type === 'string') return { path, message: record.message }
     for (const key of Object.keys(record)) {
       if (key === 'ref' || key === 'types') continue
       const found = findFirstError(record[key], [...path, key])
@@ -1031,46 +616,17 @@ export function CampaignForm({
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => router.back()}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Nueva campaña</h1>
-          <p className="text-sm text-gray-400">
-            Paso {step} de {STEPS.length}
-            {draftSavedAt && <span className="text-emerald-500"> · Borrador guardado ✓</span>}
-          </p>
-        </div>
+        <button type="button" onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"><ChevronLeft className="h-5 w-5" /></button>
+        <div><h1 className="text-2xl font-bold text-gray-900 tracking-tight">Nueva campaña</h1><p className="text-sm text-gray-400">{draftSavedAt && <span className="text-emerald-500">Borrador guardado ✓</span>}</p></div>
       </div>
 
       {/* Stepper */}
-      <div className="flex items-center gap-2">
-        {STEPS.map((s, i) => {
-          const Icon = s.icon
-          const done   = step > s.id
-          const active = step === s.id
-          return (
-            <div key={s.id} className="flex items-center gap-2 flex-1">
-              <div className={cn(
-                'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all',
-                active ? 'bg-violet-600 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'
-              )}>
-                {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-                <span className="hidden sm:inline">{s.label}</span>
-              </div>
-              {i < STEPS.length - 1 && <div className={cn('h-px flex-1', done ? 'bg-emerald-300' : 'bg-gray-200')} />}
-            </div>
-          )
-        })}
-      </div>
+      <div className="flex items-center gap-2"><div className="bg-violet-600 text-white px-3 py-2 rounded-xl text-sm font-medium">Información</div></div>
 
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-6">
           {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} />}
-          {step === 2 && <Step2 register={register} control={control} errors={errors} portal={portal} />}
-          {step === 3 && <Step3 register={register} control={control} errors={errors} setValue={setValue} campaignType={campaignType} campaignId={campaignId} />}
         </div>
 
         {/* Navigation */}
@@ -1080,19 +636,9 @@ export function CampaignForm({
             <ChevronLeft className="h-4 w-4" /> Anterior
           </button>
 
-          {step < STEPS.length ? (
-            <button type="button" onClick={goNext} disabled={draftSaving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-              Siguiente <ChevronRight className="h-4 w-4" />
-            </button>
-          ) : (
-            <button type="submit" disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-              {saving ? (
-                <><div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Creando…</>
-              ) : (
-                <><Sparkles className="h-4 w-4" />{portal === 'brand' ? 'Crear y enviar a revisión' : 'Crear campaña'}</>
-              )}
+          <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+            {saving ? <><div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Creando…</> : <><Sparkles className="h-4 w-4" />{portal === 'brand' ? 'Crear y enviar a revisión' : 'Crear campaña'}</>}
+          </button>
             </button>
           )}
         </div>

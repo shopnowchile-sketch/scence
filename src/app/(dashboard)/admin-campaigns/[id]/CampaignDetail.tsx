@@ -2798,9 +2798,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           </div>
           <div className="min-w-0 flex-1 lg:min-w-[260px]">
             <div className="mb-1 flex items-center gap-1.5">
-              {Boolean(campaignBrands[0]?.name) && (
+              {summaryEditOpen ? (
+                <select
+                  value={summaryEditForm.brand_id}
+                  onChange={event => setSummaryEditForm(previous => ({ ...previous, brand_id: event.target.value }))}
+                  className="max-w-[220px] truncate border-0 bg-transparent p-0 text-[11px] font-semibold uppercase tracking-wider text-gray-500 outline-none focus:ring-0"
+                  aria-label="Marca principal"
+                >
+                  <option value="">Sin marca</option>
+                  {campaignBrands.map(brand => (
+                    <option key={String(brand.id)} value={String(brand.id)}>{String(brand.name)}</option>
+                  ))}
+                </select>
+              ) : Boolean(campaignBrands[0]?.name) ? (
                 <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-gray-500">{String(campaignBrands[0].name)}</p>
-              )}
+              ) : null}
               {canEditCampaign && (summaryEditOpen ? <div className="flex items-center gap-1"><button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving} className="rounded px-2 py-1 text-xs font-semibold text-gray-500 hover:bg-gray-100">Cancelar</button><button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-md bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div> : <button type="button" onClick={openSummaryEditor} title="Editar resumen de campaña" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -2819,14 +2831,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         <option key={String(brand.id)} value={String(brand.id)}>{String(brand.name)}</option>
                       ))}
                     </select>
-                  </div>
-                  <div className="flex min-w-0 items-center gap-2 flex-wrap">
-                    <input
-                      value={summaryEditForm.name}
-                      onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))}
-                      aria-label="Nombre de campaña"
-                      className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-0"
-                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <select

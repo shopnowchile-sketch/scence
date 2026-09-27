@@ -53,7 +53,7 @@ type CampaignRow = {
   campaign_deliverables: Deliverable[]
   event_booking?: {
     id: string; title: string | null; starts_at: string | null; ends_at: string | null
-    location: string | null; location_details?: { venue_name?: string; commune?: string; instructions?: string; address_hidden?: boolean; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null; status: string | null
+    location: string | null; location_details?: { venue_name?: string; commune?: string; region?: string; country?: string; instructions?: string; address_hidden?: boolean; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null; status: string | null
   } | null
   campaign: {
     id: string; name: string; status: string
@@ -77,7 +77,7 @@ type PreviewCampaign = {
   description: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
   cover_url?: string | null
-  event_booking?: { id: string | null; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; commune?: string; instructions?: string; address_hidden?: boolean } | null } | null
+  event_booking?: { id: string | null; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; commune?: string; region?: string; country?: string; instructions?: string; address_hidden?: boolean } | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
   deliverable_templates: Array<{ type: string; quantity?: number; description?: string; due_date?: string | null }> | null
@@ -128,7 +128,7 @@ type EventBookingLike = {
   starts_at: string | null
   ends_at: string | null
   location?: string | null
-  location_details?: { venue_name?: string; commune?: string; instructions?: string; address_hidden?: boolean; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null
+  location_details?: { venue_name?: string; commune?: string; region?: string; country?: string; instructions?: string; address_hidden?: boolean; schedule?: Array<{ starts_at?: string; ends_at?: string }> } | null
 }
 
 const EVENT_TZ = 'America/Santiago'
@@ -201,12 +201,13 @@ function EventBookingCard({ booking, showLocation, fallbackDate }: { booking: Ev
     ? [{ day: new Date(`${fallbackDate.slice(0, 10)}T00:00:00`).toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }), time: 'Hora por confirmar' }]
     : []
   const countdown = eventCountdown(rawSlots[0]?.starts_at ?? fallbackDate)
-  const venueName = booking?.location_details?.venue_name?.trim() || null
+  const venueName = showLocation ? booking?.location_details?.venue_name?.trim() || null : null
   const commune = booking?.location_details?.commune?.trim() || null
+  const country = booking?.location_details?.country?.trim() || 'Chile'
   const address = showLocation ? booking?.location?.trim() || null : null
   // Dirección cargada por la marca pero todavía privada (postulación sin aprobar).
   const addressHidden = !address && booking?.location_details?.address_hidden === true
-  const hasPlace = !!venueName || !!commune || !!address || addressHidden
+  const hasPlace = !!venueName || !!commune || !!country || !!address || addressHidden
   if (!rows.length && !hasPlace) return null
 
   return (
@@ -235,9 +236,9 @@ function EventBookingCard({ booking, showLocation, fallbackDate }: { booking: Ev
           <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">Lugar</p>
           {venueName && <p className="mt-0.5 text-base font-extrabold leading-tight text-violet-950">{venueName}</p>}
           {address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noopener noreferrer" className="mt-0.5 block text-sm font-semibold text-violet-700 underline underline-offset-2">{address}</a>}
-          {commune && <p className="mt-0.5 text-sm font-semibold text-violet-800">{commune}</p>}
+          {commune && <p className="mt-0.5 text-sm font-semibold text-violet-800">{commune}{country ? `, ${country}` : ''}</p>}
           {!venueName && !address && !commune && !addressHidden && <p className="mt-0.5 text-base font-extrabold leading-tight text-violet-950">Lugar por confirmar</p>}
-          {addressHidden && <p className={cn('text-[11px] font-medium leading-snug text-violet-700', venueName || commune ? 'mt-1' : 'mt-0.5')}>Dirección exacta al aprobarse tu postulación.</p>}
+          {addressHidden && <p className={cn('text-[11px] font-medium leading-snug text-violet-700', venueName || commune ? 'mt-1' : 'mt-0.5')}>Lugar y dirección exacta disponibles al ser aceptada.</p>}
         </div>
       </div>
       {showLocation && booking?.location_details?.instructions?.trim() && (

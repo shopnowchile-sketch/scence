@@ -2878,7 +2878,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           <input
                             type="date"
                             value={eventScheduleForm[0].starts_at ? eventScheduleForm[0].starts_at.slice(0, 10) : ''}
-                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: \`\${event.target.value}T\${day.starts_at?.slice(11, 16) || '00:00'}\` } : day))}
+                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: `${event.target.value}T${day.starts_at?.slice(11, 16) || '00:00'}` } : day))}
                             className="w-[125px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
                             aria-label="Fecha"
                           />
@@ -2888,7 +2888,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           <input
                             type="time"
                             value={eventScheduleForm[0].starts_at ? eventScheduleForm[0].starts_at.slice(11, 16) : ''}
-                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: \`\${day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T\${event.target.value}\` } : day))}
+                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: `${day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T${event.target.value}` } : day))}
                             className="w-[105px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
                             aria-label="Hora de inicio"
                           />
@@ -2896,7 +2896,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           <input
                             type="time"
                             value={eventScheduleForm[0].ends_at ? eventScheduleForm[0].ends_at.slice(11, 16) : ''}
-                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, ends_at: \`\${day.ends_at?.slice(0, 10) || day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T\${event.target.value}\` } : day))}
+                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, ends_at: `${day.ends_at?.slice(0, 10) || day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T${event.target.value}` } : day))}
                             className="w-[105px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
                             aria-label="Hora de término"
                           />

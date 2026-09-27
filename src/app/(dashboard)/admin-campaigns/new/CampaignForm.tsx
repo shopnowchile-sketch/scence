@@ -414,6 +414,7 @@ export function CampaignForm({
         reference_url: reference_url || null,
         approval_submission_url: approval_submission_url || null,
         whatsapp_group_url: data.whatsapp_group_url?.trim() || null,
+        venue_name: venueName.trim() || null,
       },
       application_deadline: data.visibility === 'open' && data.application_deadline
         ? new Date(data.application_deadline).toISOString()

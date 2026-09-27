@@ -280,31 +280,31 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
   })
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la campaña <span className="text-red-500">*</span></label>
         <input {...register('name')} className="input-base w-full !py-2" placeholder="Ej. Evento SCENCE — Noviembre 2026" />
         {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2.5">
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-2.5 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-gray-900">Lugar y fechas</p>
-            <p className="text-[11px] text-gray-500">La dirección exacta será privada hasta aceptar a la influencer.</p>
+            <p className="text-[11px] text-gray-500">Solo la comuna y el país se muestran al postular. El lugar y la dirección se muestran al aceptar.</p>
           </div>
           <span className="text-[11px] text-gray-400 shrink-0">Información del evento</span>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del lugar <span className="font-normal text-gray-400">(al aceptar)</span></label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del lugar <span className="font-normal text-gray-400">(visible al aceptar)</span></label>
           <input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full !py-2" placeholder="Ej. Centro Parque" />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
           <div><label className="block text-xs font-medium text-gray-600 mb-1">Calle y número <span className="font-normal text-gray-400">(al aceptar)</span></label><input {...register('address')} className="input-base w-full !py-2" placeholder="Av. Presidente Riesco 5335" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Comuna <span className="font-normal text-gray-400">(al postular)</span></label><input {...register('commune')} className="input-base w-full !py-2" placeholder="Las Condes" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Región <span className="font-normal text-gray-400">(oculta al postular)</span></label><input {...register('region')} className="input-base w-full !py-2" placeholder="Metropolitana" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Comuna <span className="font-normal text-gray-400">(visible al postular)</span></label><input {...register('commune')} className="input-base w-full !py-2" placeholder="Las Condes" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Región <span className="font-normal text-gray-400">(no visible)</span></label><input {...register('region')} className="input-base w-full !py-2" placeholder="Metropolitana" /></div>
           <div><label className="block text-xs font-medium text-gray-600 mb-1">País <span className="font-normal text-gray-400">(al postular)</span></label><input {...register('country')} className="input-base w-full !py-2" placeholder="Chile" /></div>
         </div>
 
@@ -669,21 +669,21 @@ export function CampaignForm({
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-3">
+    <div className="max-w-4xl mx-auto space-y-2">
       {/* Header */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <button type="button" onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"><ChevronLeft className="h-5 w-5" /></button>
-        <div><h1 className="text-xl font-bold text-gray-900 tracking-tight">Nueva campaña</h1><p className="text-sm text-gray-400">{draftSavedAt && <span className="text-emerald-500">Borrador guardado ✓</span>}</p></div>
+        <div><h1 className="text-lg font-bold text-gray-900 tracking-tight">Nueva campaña</h1><p className="text-sm text-gray-400">{draftSavedAt && <span className="text-emerald-500">Borrador guardado ✓</span>}</p></div>
       </div>
 
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
-        <div className="card p-4">
+        <div className="card p-3">
           {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} />}
         </div>
 
         {/* Navigation */}
-        <div className="flex justify-between mt-2.5">
+        <div className="flex justify-between mt-2">
           <button type="button" onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
             className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             <ChevronLeft className="h-4 w-4" /> Anterior

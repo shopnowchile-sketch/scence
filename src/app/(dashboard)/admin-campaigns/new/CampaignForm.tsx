@@ -280,14 +280,14 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
   })
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la campaña <span className="text-red-500">*</span></label>
-        <input {...register('name')} className="input-base w-full" placeholder="Ej. Evento SCENCE — Noviembre 2026" />
+        <input {...register('name')} className="input-base w-full !py-2" placeholder="Ej. Evento SCENCE — Noviembre 2026" />
         {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3.5 space-y-3">
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2.5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-gray-900">Lugar y fechas</p>
@@ -298,14 +298,14 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
 
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del lugar</label>
-          <input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full" placeholder="Ej. Centro Parque" />
+          <input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full !py-2" placeholder="Ej. Centro Parque" />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Calle y número</label><input {...register('address')} className="input-base w-full" placeholder="Av. Presidente Riesco 5335" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Comuna</label><input {...register('commune')} className="input-base w-full" placeholder="Las Condes" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Región</label><input {...register('region')} className="input-base w-full" placeholder="Metropolitana" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">País</label><input {...register('country')} className="input-base w-full" placeholder="Chile" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Calle y número</label><input {...register('address')} className="input-base w-full !py-2" placeholder="Av. Presidente Riesco 5335" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Comuna</label><input {...register('commune')} className="input-base w-full !py-2" placeholder="Las Condes" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Región</label><input {...register('region')} className="input-base w-full !py-2" placeholder="Metropolitana" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">País</label><input {...register('country')} className="input-base w-full !py-2" placeholder="Chile" /></div>
         </div>
 
         <div className="border-t border-gray-200 pt-3">
@@ -333,18 +333,18 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
 
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
-        <textarea {...register('description')} rows={3} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" />
+        <textarea {...register('description')} rows={2} maxLength={3000} className="input-base w-full resize-none !py-2" placeholder="Describe brevemente la campaña…" />
       </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">Cómo participarán las influencers <span className="text-red-500">*</span></label>
         <Controller control={control} name="access_mode" render={({ field }) => (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {[
               { value: 'public', title: 'Pública', desc: 'Cualquier influencer puede postular.' },
               { value: 'private_pro', title: 'Privada (Pro)', desc: 'Solo influencers Pro pueden postular.' },
               { value: 'invitation', title: 'Por invitación', desc: 'Solo influencers invitadas pueden participar.' },
-            ].map(option => <button key={option.value} type="button" onClick={() => field.onChange(option.value)} className={cn('text-left rounded-lg border p-3 transition-all', field.value === option.value ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white hover:border-gray-300')}><p className="text-sm font-semibold text-gray-900">{option.title}</p><p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{option.desc}</p></button>)}
+            ].map(option => <button key={option.value} type="button" onClick={() => field.onChange(option.value)} className={cn('text-left rounded-lg border p-2.5 transition-all', field.value === option.value ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white hover:border-gray-300')}><p className="text-sm font-semibold text-gray-900">{option.title}</p><p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{option.desc}</p></button>)}
           </div>
         )} />
       </div>
@@ -669,30 +669,30 @@ export function CampaignForm({
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-3">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"><ChevronLeft className="h-5 w-5" /></button>
-        <div><h1 className="text-2xl font-bold text-gray-900 tracking-tight">Nueva campaña</h1><p className="text-sm text-gray-400">{draftSavedAt && <span className="text-emerald-500">Borrador guardado ✓</span>}</p></div>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"><ChevronLeft className="h-5 w-5" /></button>
+        <div><h1 className="text-xl font-bold text-gray-900 tracking-tight">Nueva campaña</h1><p className="text-sm text-gray-400">{draftSavedAt && <span className="text-emerald-500">Borrador guardado ✓</span>}</p></div>
       </div>
 
       {/* Stepper */}
-      <div className="flex items-center gap-2"><div className="bg-violet-600 text-white px-3 py-2 rounded-xl text-sm font-medium">Información</div></div>
+      <div className="flex items-center"><div className="bg-violet-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium">Información</div></div>
 
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
-        <div className="card p-6">
+        <div className="card p-4">
           {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} />}
         </div>
 
         {/* Navigation */}
-        <div className="flex justify-between mt-4">
+        <div className="flex justify-between mt-2.5">
           <button type="button" onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-600 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             <ChevronLeft className="h-4 w-4" /> Anterior
           </button>
 
-          <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+          <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
             {saving ? <><div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Creando…</> : <><Sparkles className="h-4 w-4" />{portal === 'brand' ? 'Crear y enviar a revisión' : 'Crear campaña'}</>}
           </button>
         </div>

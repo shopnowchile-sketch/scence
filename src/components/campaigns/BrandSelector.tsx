@@ -25,6 +25,7 @@ export function BrandSelector({
   const [query, setQuery]     = useState('')
   const [creating, setCreating] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch('/api/brands')
@@ -77,7 +78,7 @@ export function BrandSelector({
   return (
     <div ref={rootRef} className="relative">
       <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        Marca <span className="text-gray-400 text-xs">(opcional)</span>
+        Marca principal
       </label>
 
       <button
@@ -97,6 +98,7 @@ export function BrandSelector({
             <Search className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
             <input
               autoFocus
+              ref={searchRef}
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !exactMatch && query.trim()) createBrand() }}
@@ -137,17 +139,28 @@ export function BrandSelector({
             )}
           </div>
 
-          {query.trim() && !exactMatch && (
-            <button
-              type="button"
-              onClick={createBrand}
-              disabled={creating}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-violet-600 hover:bg-violet-50 border-t border-gray-100 transition-colors disabled:opacity-50"
-            >
-              {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              Crear marca &quot;{query.trim()}&quot;
-            </button>
-          )}
+          <div className="border-t border-gray-100">
+            {query.trim() && !exactMatch ? (
+              <button
+                type="button"
+                onClick={createBrand}
+                disabled={creating}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-violet-600 hover:bg-violet-50 transition-colors disabled:opacity-50"
+              >
+                {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Crear marca &quot;{query.trim()}&quot;
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => searchRef.current?.focus()}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-violet-600 hover:bg-violet-50 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Crear nueva marca
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

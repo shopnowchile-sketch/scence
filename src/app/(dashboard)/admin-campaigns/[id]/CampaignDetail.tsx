@@ -2807,7 +2807,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : summaryEditOpen ? <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} aria-label="Nombre de campaña" className="h-9 min-w-[220px] flex-1 rounded-lg border border-violet-300 bg-white px-2 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {summaryEditOpen && (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600">
-                  <span>Visibilidad</span>
+                  <span>Acceso</span>
                   <select
                     value={summaryEditForm.visibility}
                     onChange={e => setSummaryEditForm(previous => ({ ...previous, visibility: e.target.value }))}

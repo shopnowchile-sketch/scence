@@ -2806,7 +2806,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="flex items-center gap-2 flex-wrap">
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : summaryEditOpen ? <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} aria-label="Nombre de campaña" className="h-9 min-w-[220px] flex-1 rounded-lg border border-violet-300 bg-white px-2 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {summaryEditOpen && (
-                <div className="absolute left-0 top-8 z-40 w-[min(760px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-4 shadow-xl">
+                <div className="mt-3 w-full rounded-xl border border-violet-200 bg-violet-50/30 p-4">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="text-xs font-semibold text-gray-600">Marca principal
                       <BrandSelector value={summaryEditForm.brand_id} onChange={brand_id => setSummaryEditForm(previous => ({ ...previous, brand_id }))} />

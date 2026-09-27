@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // directas a borradores o campañas todavía en revisión.
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, status, visibility, organization_id, application_deadline, applications_closed_at, max_influencers, brand_id, application_questions, created_by')
+    .select('id, name, status, visibility, organization_id, application_deadline, applications_closed_at, max_influencers, brand_id, application_questions, created_by, metadata')
     .eq('id', params.id)
     .single()
 
@@ -71,6 +71,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (creatorIsInfluencer) {
       return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
     }
+  }
+
+  const campaignMetadata = campaign.metadata && typeof campaign.metadata === 'object' && !Array.isArray(campaign.metadata)
+    ? campaign.metadata as Record<string, unknown>
+    : {}
+  const accessMode = campaignMetadata.access_mode === 'invitation' ? 'invitation' : campaign.visibility === 'private' ? 'private_pro' : 'public'
+
+  if (accessMode === 'invitation') {
+    return NextResponse.json({ error: 'Esta campaña es solo por invitación.', code: 'INVITATION_ONLY' }, { status: 403 })
   }
 
   if (campaign.visibility !== 'open' && campaign.visibility !== 'private') {

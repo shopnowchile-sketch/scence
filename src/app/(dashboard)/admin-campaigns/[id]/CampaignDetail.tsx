@@ -2806,67 +2806,106 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="flex items-center gap-2 flex-wrap">
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : summaryEditOpen ? <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} aria-label="Nombre de campaña" className="h-9 min-w-[220px] flex-1 rounded-lg border border-violet-300 bg-white px-2 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {summaryEditOpen && (
-                <div className="mt-3 w-full space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="text-xs font-semibold text-gray-600">Marca principal
-                      <BrandSelector value={summaryEditForm.brand_id} onChange={brand_id => setSummaryEditForm(previous => ({ ...previous, brand_id }))} />
-                    </div>
-                    <label className="text-xs font-semibold text-gray-600">Tipo de campaña
-                      <select value={summaryEditForm.type} onChange={e => setSummaryEditForm(previous => ({ ...previous, type: e.target.value }))} className="input-base mt-1 w-full"><option value="event_appearance">Evento</option><option value="content_creation">Creación de contenido</option><option value="commission">Comisión</option></select>
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600 sm:col-span-2">Descripción
-                      <textarea value={summaryEditForm.description} onChange={e => setSummaryEditForm(previous => ({ ...previous, description: e.target.value }))} rows={2} className="input-base mt-1 w-full resize-none" />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600">Fecha inicio
-                      <input type="date" value={summaryEditForm.start_date} onChange={e => setSummaryEditForm(previous => ({ ...previous, start_date: e.target.value }))} className="input-base mt-1 w-full" />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600">Fecha término
-                      <input type="date" value={summaryEditForm.end_date} onChange={e => setSummaryEditForm(previous => ({ ...previous, end_date: e.target.value }))} className="input-base mt-1 w-full" />
-                    </label>
-                    <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-white p-2.5">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-600">Días y horarios</span>
-                        <button type="button" onClick={addEventDay} className="text-xs font-semibold text-violet-600 hover:text-violet-700">+ Agregar día</button>
-                      </div>
-                      <div className="space-y-1.5">
-                        {eventScheduleForm.map((day, index) => (
-                          <div key={day.id ?? index} className="grid grid-cols-[1.25fr_1fr_1fr_auto] gap-1.5">
-                            <input type="datetime-local" value={day.starts_at} onChange={e => setEventScheduleForm(previous => previous.map((item, i) => i === index ? { ...item, starts_at: e.target.value } : item))} className="input-base !py-1.5 text-xs" />
-                            <input type="time" value={day.starts_at ? day.starts_at.slice(11, 16) : ''} onChange={e => day.starts_at && setEventScheduleForm(previous => previous.map((item, i) => i === index ? { ...item, starts_at: `${item.starts_at.slice(0,10)}T${e.target.value}` } : item))} className="input-base !py-1.5 text-xs" />
-                            <input type="time" value={day.ends_at ? day.ends_at.slice(11, 16) : ''} onChange={e => day.ends_at && setEventScheduleForm(previous => previous.map((item, i) => i === index ? { ...item, ends_at: `${item.ends_at.slice(0,10)}T${e.target.value}` } : item))} className="input-base !py-1.5 text-xs" />
-                            <button type="button" onClick={() => setEventScheduleForm(previous => previous.filter((_, i) => i !== index))} disabled={eventScheduleForm.length <= 1} className="px-1 text-gray-400 hover:text-red-500 disabled:opacity-30"><X className="h-3.5 w-3.5" /></button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <label className="text-xs font-semibold text-gray-600">Nombre del lugar
-                      <input value={summaryEditForm.venue_name} onChange={e => setSummaryEditForm(previous => ({ ...previous, venue_name: e.target.value }))} className="input-base mt-1 w-full" />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600">Calle y número
-                      <input value={summaryEditForm.location} onChange={e => setSummaryEditForm(previous => ({ ...previous, location: e.target.value }))} className="input-base mt-1 w-full" />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600">Comuna
-                      <input list="summary-edit-communes" value={summaryEditForm.commune} onChange={e => setSummaryEditForm(previous => ({ ...previous, commune: e.target.value }))} className="input-base mt-1 w-full" />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600">Región
-                      <input value={summaryEditForm.region} onChange={e => setSummaryEditForm(previous => ({ ...previous, region: e.target.value }))} className="input-base mt-1 w-full" />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600">País
-                      <input value={summaryEditForm.country} onChange={e => setSummaryEditForm(previous => ({ ...previous, country: e.target.value }))} className="input-base mt-1 w-full" />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-600 sm:col-span-2">Acceso
-                      <select value={summaryEditForm.access_mode} onChange={e => setSummaryEditForm(previous => ({ ...previous, access_mode: e.target.value, visibility: e.target.value === 'public' ? 'open' : 'private' }))} className="input-base mt-1 w-full">
-                        <option value="public">Pública</option><option value="private_pro">Privada (Pro)</option><option value="invitation">Por invitación</option>
-                      </select>
-                    </label>
+                <div className="mt-2 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={summaryEditForm.brand_id}
+                      onChange={event => setSummaryEditForm(previous => ({ ...previous, brand_id: event.target.value }))}
+                      className="max-w-[220px] truncate border-0 bg-transparent p-0 text-[11px] font-semibold uppercase tracking-wider text-gray-500 outline-none focus:ring-0"
+                      aria-label="Marca principal"
+                    >
+                      <option value="">Sin marca</option>
+                      {campaignBrands.map(brand => (
+                        <option key={String(brand.id)} value={String(brand.id)}>{String(brand.name)}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="mt-1 flex justify-end gap-2">
-                    <button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100">Cancelar</button>
-                    <button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar cambios'}</button>
+                  <div className="flex min-w-0 items-center gap-2 flex-wrap">
+                    <input
+                      value={summaryEditForm.name}
+                      onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))}
+                      aria-label="Nombre de campaña"
+                      className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-0"
+                    />
                   </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={c.status}
+                      disabled={patchCampaign.isPending}
+                      onChange={event => handleStatusChange(event.target.value as CampaignStatus)}
+                      className={cn('badge appearance-none cursor-pointer border-0 pr-5 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50', campaignStatusBadgeClass(c.status))}
+                      aria-label="Estado"
+                    >
+                      {CAMPAIGN_STATUS_OPTIONS.map(status => <option key={status} value={status}>{campaignStatusLabel(status)}</option>)}
+                    </select>
+                    <select
+                      value={summaryEditForm.type}
+                      onChange={event => setSummaryEditForm(previous => ({ ...previous, type: event.target.value }))}
+                      className="badge appearance-none cursor-pointer border-0 bg-gray-100 pr-5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                      aria-label="Tipo de campaña"
+                    >
+                      <option value="event_appearance">Evento</option>
+                      <option value="content_creation">Creación de contenido</option>
+                      <option value="commission">Comisión</option>
+                    </select>
+                  </div>
+                  {canEditCampaign && !coverAsset && (
+                    <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">
+                      <ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}
+                    </button>
+                  )}
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                    {eventScheduleForm[0] ? (
+                      <>
+                        <span className="inline-flex items-center gap-2">
+                          <Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" />
+                          <input
+                            type="date"
+                            value={eventScheduleForm[0].starts_at ? eventScheduleForm[0].starts_at.slice(0, 10) : ''}
+                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: \`\${event.target.value}T\${day.starts_at?.slice(11, 16) || '00:00'}\` } : day))}
+                            className="w-[125px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
+                            aria-label="Fecha"
+                          />
+                        </span>
+                        <span className="inline-flex items-center gap-2">
+                          <Clock className="h-4 w-4 flex-shrink-0 text-violet-600" />
+                          <input
+                            type="time"
+                            value={eventScheduleForm[0].starts_at ? eventScheduleForm[0].starts_at.slice(11, 16) : ''}
+                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: \`\${day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T\${event.target.value}\` } : day))}
+                            className="w-[105px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
+                            aria-label="Hora de inicio"
+                          />
+                          <span>–</span>
+                          <input
+                            type="time"
+                            value={eventScheduleForm[0].ends_at ? eventScheduleForm[0].ends_at.slice(11, 16) : ''}
+                            onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, ends_at: \`\${day.ends_at?.slice(0, 10) || day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T\${event.target.value}\` } : day))}
+                            className="w-[105px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
+                            aria-label="Hora de término"
+                          />
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm text-gray-400">Sin fecha agendada</span>
+                    )}
+                  </div>
+                  <div className="flex min-w-0 items-center gap-2 text-sm">
+                    <MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" />
+                    <input
+                      value={summaryEditForm.location}
+                      onChange={event => setSummaryEditForm(previous => ({ ...previous, location: event.target.value }))}
+                      placeholder="Dirección o lugar"
+                      className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
+                      aria-label="Lugar"
+                    />
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
+                    <FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? 'Brief' : 'Sin brief'}
+                  </span>
                 </div>
               )}
-              {isBrandPortal ? (
+
                 <CampaignStatusBadge status={c.status} />
               ) : (
                 <div className="relative inline-flex">

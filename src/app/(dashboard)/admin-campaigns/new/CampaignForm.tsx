@@ -260,7 +260,7 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin' }: StepProps & {
+function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin', campaignType }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
   setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>>
   venueName: string
@@ -334,6 +334,26 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
         <textarea {...register('description')} rows={2} maxLength={3000} className="input-base w-full resize-none !py-2" placeholder="Describe brevemente la campaña…" />
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Entregables</p>
+          <p className="text-[11px] text-gray-500">Se definen una sola vez para la campaña y se asignan automáticamente a todas las influencers aceptadas. No necesitas elegir una influencer.</p>
+        </div>
+        <Controller
+          control={control}
+          name="deliverable_templates"
+          render={({ field }) => (
+            <DeliverableTemplateBuilder
+              value={field.value ?? []}
+              onChange={field.onChange}
+              campaignType={campaignType}
+              showSuggestions={false}
+              compact
+            />
+          )}
+        />
       </div>
 
       <div>
@@ -679,7 +699,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-3">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
         </div>
 
         {/* Navigation */}

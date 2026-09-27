@@ -1332,7 +1332,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [timeEditOpen, setTimeEditOpen] = useState(false)
   const [timeEditForm, setTimeEditForm] = useState({ start_time: '', end_time: '' })
   const [summaryEditSaving, setSummaryEditSaving] = useState(false)
-  const [summaryEditForm, setSummaryEditForm] = useState({ name: '', start_date: '', end_date: '', visibility: 'private', access_mode: 'public', venue_name: '', location: '', location_instructions: '' })
+  const [summaryEditForm, setSummaryEditForm] = useState({ name: '', description: '', brand_id: '', type: 'event_appearance', start_date: '', end_date: '', visibility: 'private', access_mode: 'public', venue_name: '', location: '', commune: '', region: '', country: 'Chile', location_instructions: '' })
   const [eventScheduleForm, setEventScheduleForm] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([])
   const [locationEditOpen, setLocationEditOpen] = useState(false)
   const [locationEditSaving, setLocationEditSaving] = useState(false)
@@ -2806,19 +2806,49 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             <div className="flex items-center gap-2 flex-wrap">
               {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : summaryEditOpen ? <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} aria-label="Nombre de campaña" className="h-9 min-w-[220px] flex-1 rounded-lg border border-violet-300 bg-white px-2 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {summaryEditOpen && (
-                <label className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600">
-                  <span>Acceso</span>
-                  <select
-                    value={summaryEditForm.visibility}
-                    onChange={e => setSummaryEditForm(previous => ({ ...previous, visibility: e.target.value }))}
-                    disabled={summaryEditSaving}
-                    aria-label="Visibilidad de la campaña"
-                    className="rounded-md border-0 bg-violet-50 px-2 py-1 text-xs font-bold text-violet-800 outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"
-                  >
-                    <option value="private">Privada</option>
-                    <option value="open">Pública</option>
-                  </select>
-                </label>
+                <div className="absolute left-0 top-8 z-40 w-[min(760px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-4 shadow-xl">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="text-xs font-semibold text-gray-600">Marca principal
+                      <BrandSelector value={summaryEditForm.brand_id} onChange={brand_id => setSummaryEditForm(previous => ({ ...previous, brand_id }))} />
+                    </div>
+                    <label className="text-xs font-semibold text-gray-600">Tipo de campaña
+                      <select value={summaryEditForm.type} onChange={e => setSummaryEditForm(previous => ({ ...previous, type: e.target.value }))} className="input-base mt-1 w-full"><option value="event_appearance">Evento</option><option value="content_creation">Creación de contenido</option><option value="commission">Comisión</option></select>
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-2">Descripción
+                      <textarea value={summaryEditForm.description} onChange={e => setSummaryEditForm(previous => ({ ...previous, description: e.target.value }))} rows={2} className="input-base mt-1 w-full resize-none" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600">Fecha inicio
+                      <input type="date" value={summaryEditForm.start_date} onChange={e => setSummaryEditForm(previous => ({ ...previous, start_date: e.target.value }))} className="input-base mt-1 w-full" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600">Fecha término
+                      <input type="date" value={summaryEditForm.end_date} onChange={e => setSummaryEditForm(previous => ({ ...previous, end_date: e.target.value }))} className="input-base mt-1 w-full" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600">Nombre del lugar
+                      <input value={summaryEditForm.venue_name} onChange={e => setSummaryEditForm(previous => ({ ...previous, venue_name: e.target.value }))} className="input-base mt-1 w-full" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600">Calle y número
+                      <input value={summaryEditForm.location} onChange={e => setSummaryEditForm(previous => ({ ...previous, location: e.target.value }))} className="input-base mt-1 w-full" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600">Comuna
+                      <input list="summary-edit-communes" value={summaryEditForm.commune} onChange={e => setSummaryEditForm(previous => ({ ...previous, commune: e.target.value }))} className="input-base mt-1 w-full" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600">Región
+                      <input value={summaryEditForm.region} onChange={e => setSummaryEditForm(previous => ({ ...previous, region: e.target.value }))} className="input-base mt-1 w-full" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600">País
+                      <input value={summaryEditForm.country} onChange={e => setSummaryEditForm(previous => ({ ...previous, country: e.target.value }))} className="input-base mt-1 w-full" />
+                    </label>
+                    <label className="text-xs font-semibold text-gray-600 sm:col-span-2">Acceso
+                      <select value={summaryEditForm.access_mode} onChange={e => setSummaryEditForm(previous => ({ ...previous, access_mode: e.target.value, visibility: e.target.value === 'public' ? 'open' : 'private' }))} className="input-base mt-1 w-full">
+                        <option value="public">Pública</option><option value="private_pro">Privada (Pro)</option><option value="invitation">Por invitación</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100">Cancelar</button>
+                    <button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar cambios'}</button>
+                  </div>
+                </div>
               )}
               {isBrandPortal ? (
                 <CampaignStatusBadge status={c.status} />

@@ -328,6 +328,10 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
 
       {portal === 'admin' && <Controller control={control} name="brand_id" render={({ field }) => <BrandSelector value={field.value ?? ''} onChange={field.onChange} />} />}
 
+
+
+      <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Descripción</label><textarea {...register('description')} rows={5} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" /></div>
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Cómo participarán las influencers <span className="text-red-500">*</span></label>
         <Controller control={control} name="access_mode" render={({ field }) => (
@@ -340,8 +344,6 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
           </div>
         )} />
       </div>
-
-      <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Descripción</label><textarea {...register('description')} rows={5} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" /></div>
     </div>
   )
 }

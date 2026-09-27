@@ -411,6 +411,7 @@ export function CampaignForm({
   function buildPayload(data: FormValues) {
     const {
       event_date,
+      access_mode,
       reference_url,
       approval_submission_url,
       collaborator_ids: _collaboratorIds,
@@ -428,7 +429,7 @@ export function CampaignForm({
       commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
       brand_id: data.brand_id || null,
       visibility: data.access_mode === 'public' ? 'open' : 'private',
-      access_mode: data.access_mode,
+      
       address: data.address?.trim() || null,
       application_questions: data.application_questions ?? [],
       brief_url: data.brief_url || null,
@@ -438,6 +439,7 @@ export function CampaignForm({
         approval_submission_url: approval_submission_url || null,
         whatsapp_group_url: data.whatsapp_group_url?.trim() || null,
         venue_name: venueName.trim() || null,
+        access_mode: access_mode || 'public',
       },
       application_deadline: data.visibility === 'open' && data.application_deadline
         ? new Date(data.application_deadline).toISOString()

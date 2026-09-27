@@ -262,7 +262,7 @@ interface StepProps {
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
 function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin' }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
-  setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>
+  setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>>
   venueName: string
   setVenueName: (value: string) => void
   arrivalInstructions: string

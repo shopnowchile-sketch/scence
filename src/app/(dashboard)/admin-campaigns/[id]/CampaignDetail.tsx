@@ -2922,6 +2922,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 </div>
               )}
 
+              {isBrandPortal ? (
                 <CampaignStatusBadge status={c.status} />
               ) : (
                 <div className="relative inline-flex">

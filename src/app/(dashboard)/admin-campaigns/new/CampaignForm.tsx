@@ -262,7 +262,7 @@ interface StepProps {
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
 function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin' }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
-  setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>>
+  setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>
   venueName: string
   setVenueName: (value: string) => void
   arrivalInstructions: string
@@ -280,46 +280,49 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
   })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre de la campaña <span className="text-red-500">*</span></label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la campaña <span className="text-red-500">*</span></label>
         <input {...register('name')} className="input-base w-full" placeholder="Ej. Evento SCENCE — Noviembre 2026" />
         {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-5">
-        <div>
-          <p className="text-sm font-semibold text-gray-900">Lugar y fechas</p>
-          <p className="text-xs text-gray-500 mt-0.5">La dirección exacta será privada hasta que la influencer sea aceptada.</p>
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3.5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Lugar y fechas</p>
+            <p className="text-[11px] text-gray-500">La dirección exacta será privada hasta aceptar a la influencer.</p>
+          </div>
+          <span className="text-[11px] text-gray-400 shrink-0">Información del evento</span>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre del lugar</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del lugar</label>
           <input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full" placeholder="Ej. Centro Parque" />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Calle y número</label><input {...register('address')} className="input-base w-full" placeholder="Ej. Av. Presidente Riesco 5335" /></div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna</label><input {...register('commune')} className="input-base w-full" placeholder="Ej. Las Condes" /></div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Región</label><input {...register('region')} className="input-base w-full" placeholder="Ej. Metropolitana" /></div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1.5">País</label><input {...register('country')} className="input-base w-full" placeholder="Chile" /></div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Calle y número</label><input {...register('address')} className="input-base w-full" placeholder="Av. Presidente Riesco 5335" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Comuna</label><input {...register('commune')} className="input-base w-full" placeholder="Las Condes" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Región</label><input {...register('region')} className="input-base w-full" placeholder="Metropolitana" /></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">País</label><input {...register('country')} className="input-base w-full" placeholder="Chile" /></div>
         </div>
 
-        <div className="border-t border-gray-200 pt-4">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div><p className="text-sm font-semibold text-gray-800">Días y horarios</p><p className="text-xs text-gray-500">Agrega un día por cada fecha del evento.</p></div>
-            <button type="button" onClick={addDay} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50"><Plus className="h-3.5 w-3.5" /> Agregar día</button>
+        <div className="border-t border-gray-200 pt-3">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <p className="text-xs font-semibold text-gray-700">Días y horarios</p>
+            <button type="button" onClick={addDay} className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-50"><Plus className="h-3 w-3" /> Agregar día</button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {(eventDays.length ? eventDays : [{ starts_at: '', ends_at: '' }]).map((day, index) => {
               const date = day.starts_at?.slice(0, 10) ?? ''
               const startTime = day.starts_at?.slice(11, 16) ?? ''
               const endTime = day.ends_at?.slice(11, 16) ?? ''
-              return <div key={day.id ?? index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end rounded-lg bg-white p-3 border border-gray-200">
-                <div><label className="block text-xs font-medium text-gray-500 mb-1">Fecha</label><input type="date" value={date} onChange={e => { const d=e.target.value; updateDay(index,'starts_at',d ? `${d}T${startTime || '00:00'}` : ''); updateDay(index,'ends_at',d ? `${d}T${endTime || '00:00'}` : '') }} className="input-base w-full" /></div>
-                <div><label className="block text-xs font-medium text-gray-500 mb-1">Desde</label><input type="time" value={startTime} onChange={e => date && updateDay(index,'starts_at',`${date}T${e.target.value}`)} className="input-base w-full" /></div>
-                <div><label className="block text-xs font-medium text-gray-500 mb-1">Hasta</label><input type="time" value={endTime} onChange={e => date && updateDay(index,'ends_at',`${date}T${e.target.value}`)} className="input-base w-full" /></div>
-                <button type="button" onClick={() => removeDay(index)} disabled={eventDays.length <= 1} className="mb-1 rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-30" title="Quitar día"><X className="h-4 w-4" /></button>
+              return <div key={day.id ?? index} className="grid grid-cols-[1.25fr_1fr_1fr_auto] gap-1.5 items-end rounded-lg bg-white px-2.5 py-2 border border-gray-200">
+                <div><label className="block text-[10px] font-medium text-gray-500 mb-0.5">Fecha</label><input type="date" value={date} onChange={e => { const d=e.target.value; updateDay(index,'starts_at',d ? `${d}T${startTime || '00:00'}` : ''); updateDay(index,'ends_at',d ? `${d}T${endTime || '00:00'}` : '') }} className="input-base w-full !py-1.5 text-sm" /></div>
+                <div><label className="block text-[10px] font-medium text-gray-500 mb-0.5">Desde</label><input type="time" value={startTime} onChange={e => date && updateDay(index,'starts_at',`${date}T${e.target.value}`)} className="input-base w-full !py-1.5 text-sm" /></div>
+                <div><label className="block text-[10px] font-medium text-gray-500 mb-0.5">Hasta</label><input type="time" value={endTime} onChange={e => date && updateDay(index,'ends_at',`${date}T${e.target.value}`)} className="input-base w-full !py-1.5 text-sm" /></div>
+                <button type="button" onClick={() => removeDay(index)} disabled={eventDays.length <= 1} className="mb-0.5 rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-30" title="Quitar día"><X className="h-3.5 w-3.5" /></button>
               </div>
             })}
           </div>
@@ -328,19 +331,20 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
 
       {portal === 'admin' && <Controller control={control} name="brand_id" render={({ field }) => <BrandSelector value={field.value ?? ''} onChange={field.onChange} />} />}
 
-
-
-      <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Descripción</label><textarea {...register('description')} rows={5} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" /></div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
+        <textarea {...register('description')} rows={3} maxLength={3000} className="input-base w-full resize-none" placeholder="Describe brevemente la campaña…" />
+      </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Cómo participarán las influencers <span className="text-red-500">*</span></label>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Cómo participarán las influencers <span className="text-red-500">*</span></label>
         <Controller control={control} name="access_mode" render={({ field }) => (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {[
               { value: 'public', title: 'Pública', desc: 'Cualquier influencer puede postular.' },
               { value: 'private_pro', title: 'Privada (Pro)', desc: 'Solo influencers Pro pueden postular.' },
               { value: 'invitation', title: 'Por invitación', desc: 'Solo influencers invitadas pueden participar.' },
-            ].map(option => <button key={option.value} type="button" onClick={() => field.onChange(option.value)} className={cn('text-left rounded-xl border p-4 transition-all', field.value === option.value ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white hover:border-gray-300')}><p className="text-sm font-semibold text-gray-900">{option.title}</p><p className="text-xs text-gray-500 mt-1">{option.desc}</p></button>)}
+            ].map(option => <button key={option.value} type="button" onClick={() => field.onChange(option.value)} className={cn('text-left rounded-lg border p-3 transition-all', field.value === option.value ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-gray-200 bg-white hover:border-gray-300')}><p className="text-sm font-semibold text-gray-900">{option.title}</p><p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{option.desc}</p></button>)}
           </div>
         )} />
       </div>

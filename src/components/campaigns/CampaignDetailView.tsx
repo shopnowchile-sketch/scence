@@ -18,6 +18,7 @@
 
 import { CampaignDetail }        from '@/app/(dashboard)/admin-campaigns/[id]/CampaignDetail'
 import { InfluencerCampaignView } from './CampaignDetailView.influencer'
+import { CampaignSetupChecklist } from './CampaignSetupChecklist'
 
 export type CampaignDetailMode = 'admin' | 'influencer'
 
@@ -29,6 +30,6 @@ interface Props {
 }
 
 export function CampaignDetailView({ id, mode, defaultTab = 'overview' }: Props) {
-  if (mode === 'admin') return <CampaignDetail key={id} id={id} defaultTab={defaultTab as any} />
+  if (mode === 'admin') return <><CampaignSetupChecklist id={id} /><CampaignDetail key={id} id={id} defaultTab={defaultTab as any} /></>
   return <InfluencerCampaignView id={id} />
 }

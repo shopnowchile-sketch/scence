@@ -2988,10 +2988,27 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               <div className="text-sm font-bold text-gray-900">{campaignBrands.length}</div>
               <div className="text-[10px] font-medium text-gray-500">Marcas</div>
             </button>}
+            {summaryEditOpen ? (
+              // Mismo mapeo que la creación de campaña: public → open; private_pro/invitation → private.
+              <div className="rounded-lg bg-blue-50 px-2 py-1.5 text-center ring-1 ring-blue-200">
+                <select
+                  value={summaryEditForm.access_mode}
+                  onChange={event => { const accessMode = event.target.value; setSummaryEditForm(previous => ({ ...previous, access_mode: accessMode, visibility: accessMode === 'public' ? 'open' : 'private' })) }}
+                  className="w-full rounded border border-blue-200 bg-white px-1 py-0.5 text-sm font-bold text-blue-700 outline-none focus:ring-2 focus:ring-blue-300"
+                  aria-label="Visibilidad"
+                >
+                  <option value="public">Pública</option>
+                  <option value="private_pro">Privada (Pro)</option>
+                  <option value="invitation">Por invitación</option>
+                </select>
+                <div className="text-[10px] font-medium text-blue-600">Visibilidad</div>
+              </div>
+            ) : (
             <button type="button" onClick={() => goToKpiSection('overview')} className="rounded-lg bg-blue-50 px-2 py-1.5 text-center transition hover:bg-blue-100 hover:ring-1 hover:ring-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-300" title="Ver resumen de campaña">
               <div className="text-sm font-bold text-blue-700">{c.metadata?.access_mode === 'invitation' ? 'Por invitación' : c.metadata?.access_mode === 'private_pro' || c.visibility === 'private' ? 'Privada (Pro)' : 'Pública'}</div>
               <div className="text-[10px] font-medium text-blue-600">Visibilidad</div>
             </button>
+            )}
             <button type="button" onClick={() => goToKpiSection('influencers', true)} className={cn('rounded-lg px-2 py-1.5 text-center transition hover:ring-1 focus:outline-none focus:ring-2', c.applications_closed_at ? 'bg-amber-50 hover:bg-amber-100 hover:ring-amber-200 focus:ring-amber-300' : 'bg-emerald-50 hover:bg-emerald-100 hover:ring-emerald-200 focus:ring-emerald-300')} title="Ver postulaciones">
               <div className={cn('text-xs font-bold', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>{c.metadata?.access_mode === 'invitation' ? 'Por invitación' : c.visibility === 'open' ? (c.applications_closed_at ? 'Cerradas' : 'Abiertas') : 'Solo Pro'}</div>
               <div className={cn('text-[10px] font-medium', c.applications_closed_at ? 'text-amber-700' : 'text-emerald-700')}>Postulaciones</div>

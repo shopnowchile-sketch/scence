@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail, sponsorOpportunityEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
@@ -64,10 +65,20 @@ export async function resolvePendingCampaignAnnouncement(
 
   // Ya asignadas/postuladas, o ya notificadas antes: la tabla de idempotencia
   // es lo que impide que reactivar una campaña reenvíe el correo.
-  const [{ data: existingRows }, { data: notifiedRows }] = await Promise.all([
-    admin.from('campaign_influencers').select('influencer_id').eq('campaign_id', campaignId),
-    admin.from('campaign_influencer_notifications').select('influencer_id').eq('campaign_id', campaignId),
+  // FIX 2026-09-28: PostgREST corta cada respuesta en 1.000 filas. Sin paginar,
+  // el roster (~2.600) quedaba truncado y la lista de ya notificadas también:
+  // el aviso nunca llegaba a más de ~1.000 influencers y, al pasar de 1.000
+  // notificadas, se podía reenviar a quien ya lo recibió.
+  const [{ data: existingRows, error: existingErr }, { data: notifiedRows, error: notifiedErr }] = await Promise.all([
+    fetchAllRows<{ influencer_id: string | null }>((from, to) => admin.from('campaign_influencers').select('influencer_id').eq('campaign_id', campaignId).order('influencer_id').range(from, to)),
+    fetchAllRows<{ influencer_id: string | null }>((from, to) => admin.from('campaign_influencer_notifications').select('influencer_id').eq('campaign_id', campaignId).order('influencer_id').range(from, to)),
   ])
+  // Falla cerrado: sin la lista completa de exclusiones no se puede garantizar
+  // que no se reenvíe a quien ya fue notificada.
+  if (existingErr || notifiedErr) {
+    console.error('[resolvePendingCampaignAnnouncement] error listando exclusiones', existingErr ?? notifiedErr)
+    return { campaign, pending: [], skipped: 'query_error' as const }
+  }
 
   const excludeIds = new Set([
     ...(existingRows ?? []).map(r => r.influencer_id).filter(Boolean),
@@ -77,11 +88,13 @@ export async function resolvePendingCampaignAnnouncement(
   // Sin filtro por organization_id: las marcas quedan con organization_id propia
   // y aislada (fix 2026-07-02), así que filtrar por la org de la campaña dejaría
   // fuera a casi todo el roster.
-  const { data: candidates, error: infErr } = await admin
+  const { data: candidates, error: infErr } = await fetchAllRows<{ id: string; user_id: string | null; display_name: string | null; email: string | null }>((from, to) => admin
     .from('influencers')
     .select('id, user_id, display_name, email')
     .eq('is_active', true)
     .not('email', 'is', null)
+    .order('id')
+    .range(from, to))
 
   if (infErr || !candidates) {
     console.error('[resolvePendingCampaignAnnouncement] error listando influencers', infErr)

@@ -5,7 +5,20 @@ import { toast } from 'sonner'
 import { Search, Plus, Check, ChevronDown, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Brand = { id: string; name: string }
+type Brand = { id: string; name: string; instagram?: string | null }
+
+// Búsqueda tolerante: ignora mayúsculas, tildes, espacios, emojis y signos, y
+// busca también por Instagram. Así "i love bbq" encuentra "i 💙 bbq"
+// (@ilovebbq.cl) y un nombre recién editado se encuentra por su @handle.
+function compact(value: string | null | undefined) {
+  return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+export function brandMatchesQuery(brand: { name: string; instagram?: string | null }, query: string) {
+  const q = compact(query)
+  if (!q) return true
+  return compact(brand.name).includes(q) || compact(brand.instagram).includes(q)
+}
 
 /**
  * BrandSelector — combobox con filtro por texto + creación de marca nueva inline.
@@ -27,13 +40,18 @@ export function BrandSelector({
   const rootRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    fetch('/api/brands')
+  // Se recarga al abrir: si la marca se editó en Marcas (otra pestaña o sin
+  // recargar), el selector muestra el nombre actual. Mismo endpoint liviano que
+  // ya usan los otros selectores de marca (sin tope de 100).
+  function loadBrands() {
+    return fetch('/api/brands?options=1&limit=5000')
       .then(r => r.json())
-      .then(j => setBrands((j.data ?? []).map((b: Brand) => ({ id: b.id, name: b.name }))))
+      .then(j => setBrands((j.data ?? []).map((b: Brand) => ({ id: b.id, name: b.name, instagram: b.instagram ?? null }))))
       .catch(() => toast.error('No se pudieron cargar las marcas'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+  useEffect(() => { void loadBrands() }, [])
+  useEffect(() => { if (open) void loadBrands() }, [open])
 
   // Cerrar al hacer clic afuera
   useEffect(() => {
@@ -46,10 +64,12 @@ export function BrandSelector({
 
   const selected = brands.find(b => b.id === value)
   const filtered = query.trim()
-    ? brands.filter(b => b.name.toLowerCase().includes(query.trim().toLowerCase()))
+    ? brands.filter(b => brandMatchesQuery(b, query))
     : brands
 
-  const exactMatch = brands.some(b => b.name.toLowerCase() === query.trim().toLowerCase())
+  // Evita crear un duplicado si lo escrito ya corresponde a una marca (por
+  // nombre o Instagram, ignorando espacios/emojis/tildes).
+  const exactMatch = Boolean(compact(query)) && brands.some(b => compact(b.name) === compact(query) || compact(b.instagram) === compact(query))
 
   async function createBrand() {
     const name = query.trim()
@@ -63,7 +83,7 @@ export function BrandSelector({
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      const newBrand = { id: json.data.id, name: json.data.name }
+      const newBrand: Brand = { id: json.data.id, name: json.data.name, instagram: json.data.instagram ?? null }
       setBrands(prev => [...prev, newBrand].sort((a, b) => a.name.localeCompare(b.name)))
       onChange(newBrand.id)
       toast.success(`Marca "${newBrand.name}" creada`)

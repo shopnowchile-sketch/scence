@@ -27,7 +27,7 @@ import { COMUNAS_CHILE, groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, CAMPAIGN_DELIVERABLE_DEFAULTS, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
-import { BrandSelector } from '@/components/campaigns/BrandSelector'
+import { BrandSelector, brandMatchesQuery } from '@/components/campaigns/BrandSelector'
 import { AttendanceConfirmationPanel } from '@/components/campaigns/AttendanceConfirmationPanel'
 import { CampaignEmailModal } from '@/components/campaigns/CampaignEmailModal'
 import { createClient } from '@/lib/supabase/client'
@@ -969,7 +969,9 @@ function CoBrandManager({
   const [brokenLogos, setBrokenLogos] = useState<string[]>([])
 
   useEffect(() => {
-    if (!open || options.length > 0) return
+    // Se recarga cada vez que se abre: una marca editada en Marcas aparece con
+    // su nombre actual sin tener que recargar la página.
+    if (!open) return
     let cancelled = false
     setLoadingOptions(true)
     fetch(isBrandPortal ? '/api/brand/brands' : '/api/brands?options=1&limit=5000')
@@ -986,7 +988,7 @@ function CoBrandManager({
       .catch(() => { /* sin catálogo el campo sigue funcionando a mano */ })
       .finally(() => { if (!cancelled) setLoadingOptions(false) })
     return () => { cancelled = true }
-  }, [open, options.length, isBrandPortal])
+  }, [open, isBrandPortal])
 
   const instagramValid = /^(?:@?[a-z0-9._]{1,30}|https?:\/\/(?:www\.)?instagram\.com\/[a-z0-9._]{1,30}\/?)/i.test(instagram.trim())
 
@@ -1004,9 +1006,7 @@ function CoBrandManager({
     : undefined
   const query = instagram.trim().replace(/^@/, '').toLowerCase()
   const suggestions = (query
-    ? registered.filter(brand =>
-        brand.name.toLowerCase().includes(query) ||
-        (normalizeInstagramHandle(brand.instagram) ?? '').includes(query))
+    ? registered.filter(brand => brandMatchesQuery(brand, query))
     : registered
   ).slice(0, 6)
 

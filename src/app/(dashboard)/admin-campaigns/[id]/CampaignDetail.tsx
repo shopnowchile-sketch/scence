@@ -1380,7 +1380,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [notifyResult, setNotifyResult] = useState<{ sent: number; failed: number; remaining: number } | null>(null)
   // Pendientes por avisar. Se consulta al abrir la campaña activa para que el
   // panel muestre el número real en vez de obligar a hacer click para saberlo.
-  const [notifyPending, setNotifyPending] = useState<{ pending: number; requires_pro: boolean } | null>(null)
+  const [notifyPending, setNotifyPending] = useState<{ pending: number; requires_pro: boolean; reopen_pending?: number } | null>(null)
   const [addingDeliverable, setAddingDeliverable] = useState(false)
   const [deliverableStatusFilter, setDeliverableStatusFilter] = useState<DeliverableStatus | null>(null)
   const [campaignInvoices, setCampaignInvoices] = useState<Array<Record<string, unknown>>>([])
@@ -1464,8 +1464,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       try {
         const r = await fetch(`/api/campaigns/${id}/notify-influencers`)
         if (!r.ok) return
-        const json = await r.json() as { pending?: number; requires_pro?: boolean }
-        if (!cancelled) setNotifyPending({ pending: json.pending ?? 0, requires_pro: !!json.requires_pro })
+        const json = await r.json() as { pending?: number; requires_pro?: boolean; reopen_pending?: number }
+        if (!cancelled) setNotifyPending({ pending: json.pending ?? 0, requires_pro: !!json.requires_pro, reopen_pending: json.reopen_pending ?? 0 })
       } catch { /* el panel cae al texto genérico */ }
     })()
     return () => { cancelled = true }
@@ -3208,7 +3208,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         const json = await r.json()
                         if (!r.ok) throw new Error(json.error ?? 'Error al notificar')
                         setNotifyResult(json)
-                        setNotifyPending({ pending: json.remaining ?? 0, requires_pro: notifyPending?.requires_pro ?? false })
+                        setNotifyPending({ pending: json.remaining ?? 0, requires_pro: notifyPending?.requires_pro ?? false, reopen_pending: notifyPending?.reopen_pending ?? 0 })
                         if (json.sent > 0) toast.success(`Email enviado a ${json.sent} influencer(s)`)
                         else toast.success(json.message ?? 'No quedan influencers por avisar')
                       } catch (e) {
@@ -3227,6 +3227,57 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   </button>
                   </div>
                 </div>
+                {/* Segundo aviso: la campaña pasó de Privada (Pro) a Pública. Va solo a
+                    las que recibieron el aviso Pro y no son Pro ni postularon. */}
+                {(notifyPending?.reopen_pending ?? 0) > 0 && (
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                    <p className="text-xs text-gray-500">
+                      {notifyPending?.reopen_pending} influencers sin Plan Pro recibieron el aviso cuando era Solo Pro. Avísales que ahora está abierta para todas.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={notifying}
+                        onClick={async () => {
+                          setNotifying(true)
+                          try {
+                            const r = await fetch(`/api/campaigns/${id}/notify-influencers?test=1&mode=reopened`, { method: 'POST' })
+                            const json = await r.json()
+                            if (!r.ok) throw new Error(json.error ?? 'Error al enviar la prueba')
+                            toast.success(`Prueba enviada a ${json.to}`)
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : 'Error al enviar la prueba')
+                          }
+                          setNotifying(false)
+                        }}
+                        className="text-xs font-semibold px-3 py-2 rounded-full border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        Enviarme una prueba
+                      </button>
+                      <button
+                        disabled={notifying}
+                        onClick={async () => {
+                          const total = notifyPending?.reopen_pending ?? 0
+                          if (!window.confirm(`Se enviará "Ahora abierta para todas" a ${total} influencers. Esta acción no se puede deshacer. ¿Continuar?`)) return
+                          setNotifying(true)
+                          try {
+                            const r = await fetch(`/api/campaigns/${id}/notify-influencers?mode=reopened`, { method: 'POST' })
+                            const json = await r.json()
+                            if (!r.ok) throw new Error(json.error ?? 'Error al notificar')
+                            setNotifyPending(previous => previous ? { ...previous, reopen_pending: json.remaining ?? 0 } : previous)
+                            if (json.sent > 0) toast.success(`Email enviado a ${json.sent} influencer(s)`)
+                            else toast.success(json.message ?? 'No quedan influencers por avisar')
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : 'Error al notificar')
+                          }
+                          setNotifying(false)
+                        }}
+                        className="flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {notifying ? 'Enviando…' : `Avisar que ahora es abierta (${notifyPending?.reopen_pending})`}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {notifyResult && (
                   <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
                     Enviados: <strong className="text-gray-700">{notifyResult.sent}</strong>

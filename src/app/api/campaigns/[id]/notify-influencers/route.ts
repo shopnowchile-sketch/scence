@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { announceCampaignToInfluencers, resolvePendingCampaignAnnouncement, sendCampaignAnnouncementPreview } from '@/lib/campaign-notifications'
+import { announceCampaignReopened, announceCampaignToInfluencers, resolvePendingCampaignAnnouncement, resolveReopenedCampaignAnnouncement, sendCampaignAnnouncementPreview, sendCampaignReopenedPreview } from '@/lib/campaign-notifications'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
@@ -32,10 +32,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { campaign, pending, skipped } = await resolvePendingCampaignAnnouncement(params.id, admin)
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  // Segundo aviso "ahora abierta para todas" (solo si la campaña pasó de Pro a Pública).
+  const reopened = await resolveReopenedCampaignAnnouncement(params.id, admin)
 
   return NextResponse.json({
     pending: pending.length,
     requires_pro: campaign.visibility === 'private',
+    reopen_pending: reopened.skipped ? 0 : reopened.pending.length,
     skipped: skipped ?? null,
   })
 }
@@ -58,11 +61,22 @@ export async function POST(_req: NextRequest, { params }: Params) {
   // ?test=1 → una sola copia al correo de quien aprieta el botón. No marca a
   // nadie como notificada ni le escribe a ninguna influencer: sirve para
   // revisar asunto, copy y links ANTES del envío real, que es irreversible.
+  const reopenedMode = _req.nextUrl.searchParams.get('mode') === 'reopened'
   if (_req.nextUrl.searchParams.get('test') === '1') {
     if (!user.email) return NextResponse.json({ error: 'Tu cuenta no tiene email para enviar la prueba' }, { status: 422 })
-    const preview = await sendCampaignAnnouncementPreview(params.id, user.email, admin)
+    const preview = reopenedMode
+      ? await sendCampaignReopenedPreview(params.id, user.email, admin)
+      : await sendCampaignAnnouncementPreview(params.id, user.email, admin)
     if (!preview.ok) return NextResponse.json({ error: preview.error ?? 'No se pudo enviar la prueba' }, { status: 500 })
     return NextResponse.json({ test: true, sent: 1, failed: 0, remaining: 0, to: user.email })
+  }
+
+  if (reopenedMode) {
+    const reopened = await announceCampaignReopened(params.id, admin)
+    if (reopened.skipped === 'not_found') return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    if (reopened.skipped === 'not_reopened') return NextResponse.json({ error: 'La campaña debe estar activa y haber pasado a Pública' }, { status: 422 })
+    if (reopened.skipped) return NextResponse.json({ error: 'No se pudo completar el envío' }, { status: 500 })
+    return NextResponse.json({ ...reopened, message: reopened.sent === 0 ? 'No quedan influencers por avisar' : undefined })
   }
 
   const result = await announceCampaignToInfluencers(params.id, admin)

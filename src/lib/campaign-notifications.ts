@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail, sponsorOpportunityEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
@@ -245,6 +246,162 @@ export async function sendCampaignAnnouncementPreview(
       campaignType: campaign.type,
       applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
       requiresPro: campaign.visibility === 'private',
+    }),
+  })
+  if (error) return { ok: false, error: error.message ?? 'Resend error' }
+  return { ok: true }
+}
+
+// ── Segundo aviso: "ahora abierta para todas" ────────────────────────────────
+// Caso: la campaña se anunció como Privada (Pro) y después pasó a Pública.
+// Las que recibieron el primer correo ("postula con Plan Pro") no vuelven a
+// recibir el aviso normal (idempotencia por campaña). Este envío les avisa que
+// ya pueden postular sin Pro.
+// - Marca de corte: campaigns.metadata.opened_to_public_at.
+// - Destinatarias: notificadas ANTES del corte, activas, con email, que no
+//   postularon/fueron asignadas, que NO son Pro (ya podían postular) y que no
+//   apagaron public_campaigns_email.
+// - Idempotencia sin tablas nuevas: al enviar se actualiza sent_at de su fila
+//   en campaign_influencer_notifications; al quedar posterior al corte, ya no
+//   vuelve a calificar. Un lote que falla queda pendiente para reintentar.
+
+const REOPENED_SPOTS_NOTE = 'Ahora esta campaña está abierta para todas: ya no necesitas Plan Pro para postular. Los cupos son limitados y se asignan por orden de postulación.'
+
+function reopenedSubject(name: string) {
+  return `Ahora abierta para todas: ${name} — postula sin Plan Pro`
+}
+
+export async function resolveReopenedCampaignAnnouncement(
+  campaignId: string,
+  admin: ReturnType<typeof createAdminClient>
+) {
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .select('id, name, type, visibility, status, metadata')
+    .eq('id', campaignId)
+    .maybeSingle()
+  if (!campaign) return { campaign: null, pending: [], skipped: 'not_found' as const }
+  const openedAt = (campaign.metadata as Record<string, unknown> | null)?.opened_to_public_at
+  if (campaign.status !== 'active' || campaign.visibility !== 'open' || typeof openedAt !== 'string' || Number.isNaN(Date.parse(openedAt))) {
+    return { campaign, pending: [], skipped: 'not_reopened' as const }
+  }
+
+  const [{ data: notifiedBefore, error: notifiedErr }, { data: existingRows, error: existingErr }] = await Promise.all([
+    fetchAllRows<{ influencer_id: string | null }>((from, to) => admin.from('campaign_influencer_notifications').select('influencer_id').eq('campaign_id', campaignId).lt('sent_at', openedAt).order('influencer_id').range(from, to)),
+    fetchAllRows<{ influencer_id: string | null }>((from, to) => admin.from('campaign_influencers').select('influencer_id').eq('campaign_id', campaignId).order('influencer_id').range(from, to)),
+  ])
+  if (notifiedErr || existingErr) {
+    console.error('[resolveReopenedCampaignAnnouncement] error listando', notifiedErr ?? existingErr)
+    return { campaign, pending: [], skipped: 'query_error' as const }
+  }
+
+  const existing = new Set((existingRows ?? []).map(r => r.influencer_id).filter(Boolean))
+  const ids = Array.from(new Set((notifiedBefore ?? []).map(r => r.influencer_id).filter((id): id is string => Boolean(id) && !existing.has(id))))
+  if (ids.length === 0) return { campaign, pending: [], skipped: undefined }
+
+  const candidates: Array<{ id: string; user_id: string | null; display_name: string | null; email: string | null }> = []
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await admin.from('influencers').select('id, user_id, display_name, email').in('id', ids.slice(i, i + 200)).eq('is_active', true).not('email', 'is', null)
+    if (error) {
+      console.error('[resolveReopenedCampaignAnnouncement] error listando influencers', error)
+      return { campaign, pending: [], skipped: 'query_error' as const }
+    }
+    candidates.push(...(data ?? []))
+  }
+
+  // Las Pro ya podían postular: no se les escribe. Falla cerrado si no se puede verificar.
+  let proIds: Set<string>
+  try { proIds = await getInfluencerProIds(admin, candidates.map(inf => inf.id)) } catch (error) {
+    console.error('[resolveReopenedCampaignAnnouncement] error verificando Pro', error)
+    return { campaign, pending: [], skipped: 'query_error' as const }
+  }
+
+  const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
+  const optedOut = new Set<string>()
+  for (let i = 0; i < userIds.length; i += 500) {
+    const { data: profiles } = await admin.from('profiles').select('id, metadata').in('id', userIds.slice(i, i + 500))
+    for (const profile of profiles ?? []) {
+      const metadata = profile.metadata && typeof profile.metadata === 'object' ? profile.metadata as Record<string, unknown> : {}
+      const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
+        ? metadata.notification_preferences as Record<string, unknown>
+        : {}
+      if (preferences.public_campaigns_email === false) optedOut.add(profile.id)
+    }
+  }
+
+  const pending = candidates
+    .filter(inf => !proIds.has(inf.id))
+    .filter(inf => !inf.user_id || !optedOut.has(inf.user_id))
+  return { campaign, pending, skipped: undefined }
+}
+
+export async function announceCampaignReopened(
+  campaignId: string,
+  admin: ReturnType<typeof createAdminClient>
+): Promise<{ sent: number; failed: number; remaining: number; skipped?: string }> {
+  try {
+    const { campaign, pending, skipped } = await resolveReopenedCampaignAnnouncement(campaignId, admin)
+    if (!campaign || skipped) return { sent: 0, failed: 0, remaining: 0, skipped }
+    let sent = 0
+    let failed = 0
+    for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+      const chunk = pending.slice(i, i + BATCH_SIZE)
+      const validChunk = chunk.filter(inf => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inf.email ?? ''))
+      if (validChunk.length === 0) continue
+      try {
+        const { error: batchErr } = await getResend().batch.send(
+          validChunk.map(inf => ({
+            from: FROM_EMAIL,
+            to: inf.email as string,
+            subject: reopenedSubject(campaign.name),
+            html: campaignOpenAvailableEmail({
+              influencerName: inf.display_name ?? 'influencer',
+              campaignName: campaign.name,
+              campaignType: campaign.type,
+              applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
+              requiresPro: false,
+              spotsNote: REOPENED_SPOTS_NOTE,
+            }),
+          }))
+        )
+        if (batchErr) throw new Error(batchErr.message ?? 'Resend batch error')
+        const { error: markErr } = await admin
+          .from('campaign_influencer_notifications')
+          .update({ sent_at: new Date().toISOString() })
+          .eq('campaign_id', campaignId)
+          .in('influencer_id', validChunk.map(inf => inf.id))
+        if (markErr) console.error('[announceCampaignReopened] error marcando', markErr)
+        sent += validChunk.length
+      } catch (e) {
+        console.error('[announceCampaignReopened] error en batch', e)
+        failed += validChunk.length
+      }
+    }
+    return { sent, failed, remaining: Math.max(0, pending.length - sent) }
+  } catch (e) {
+    console.error('[announceCampaignReopened] fallo no bloqueante', e)
+    return { sent: 0, failed: 0, remaining: 0, skipped: 'exception' }
+  }
+}
+
+export async function sendCampaignReopenedPreview(
+  campaignId: string,
+  to: string,
+  admin: ReturnType<typeof createAdminClient>
+): Promise<{ ok: boolean; error?: string }> {
+  const { data: campaign } = await admin.from('campaigns').select('id, name, type').eq('id', campaignId).maybeSingle()
+  if (!campaign) return { ok: false, error: 'Campaña no encontrada' }
+  const { error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to, tags: [emailAudience('admin')],
+    subject: `[PRUEBA] ${reopenedSubject(campaign.name)}`,
+    html: campaignOpenAvailableEmail({
+      influencerName: 'Camila',
+      campaignName: campaign.name,
+      campaignType: campaign.type,
+      applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
+      requiresPro: false,
+      spotsNote: REOPENED_SPOTS_NOTE,
     }),
   })
   if (error) return { ok: false, error: error.message ?? 'Resend error' }

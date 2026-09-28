@@ -4,7 +4,7 @@ import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
-import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { cancelInfluencerPayPalAtPeriodEnd, persistInfluencerProCancellation } from '@/lib/influencer-paypal'
 
 type Params = { params: { id: string } }
@@ -129,11 +129,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   const proSource = (await getInfluencerProStatuses(admin, [params.id])).get(params.id) ?? 'free'
+  const proSubscription = proSource === 'paid'
+    ? (await getInfluencerProSubscriptionDetails(admin, [params.id])).get(params.id) ?? null
+    : null
   return NextResponse.json({
     data: {
       ...influencer,
       is_pro: proSource !== 'free',
       pro_source: proSource,
+      pro_subscription: proSubscription,
       campaign_influencers: campaignInfluencers ?? [],
       campaign_deliverables: campaignDeliverables ?? [],
       barters: bartersRes.data ?? [],

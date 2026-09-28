@@ -4,7 +4,7 @@ import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getPrimarySocial } from '@/lib/influencers/ranking'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
-import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 
 // 'followers' / 'engagement_rate' viven en la tabla join (influencer_social_profiles),
@@ -412,6 +412,8 @@ export async function GET(request: NextRequest) {
   // filtro/sort de plan), se resuelve acá solo para la página actual, igual
   // que antes.
   const proStatuses = fullProStatuses ?? await getInfluencerProStatuses(admin, withLastSeen.map(inf => inf.id as string))
+  // Solo lectura para mostrar "Cancelada · hasta …" en Admin; no cambia quién es Pro.
+  const proSubscriptions = await getInfluencerProSubscriptionDetails(admin, withLastSeen.map(inf => inf.id as string))
   const enriched = withLastSeen.map(inf => {
     const orgId = inf.organization_id as string | null
     const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []
@@ -428,7 +430,8 @@ export async function GET(request: NextRequest) {
 
     const pro_source = proStatuses.get(inf.id as string) ?? 'free'
     const pro_attempt_count = proAttemptByInfluencer.get(inf.id as string) ?? 0
-    return { ...inf, is_pro: pro_source !== 'free', pro_source, pro_attempt_count, registered_by, associated_brands }
+    const pro_subscription = pro_source === 'paid' ? proSubscriptions.get(inf.id as string) ?? null : null
+    return { ...inf, is_pro: pro_source !== 'free', pro_source, pro_subscription, pro_attempt_count, registered_by, associated_brands }
   })
 
   return NextResponse.json({ data: enriched, total: count ?? 0, page, limit })

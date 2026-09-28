@@ -349,6 +349,12 @@ export function InfluencerTable({
                       )}>
                         {inf.pro_source === 'manual' ? 'PRO manual' : inf.is_pro ? 'PRO pagado' : 'Gratis'}
                       </span>
+                      {/* Cancelada pero con período pagado vigente: sigue siendo Pro hasta pro_until. */}
+                      {inf.pro_source === 'paid' && inf.pro_subscription?.subscription_status === 'canceled' && (
+                        <div className="mt-1 whitespace-nowrap text-[10px] font-semibold text-amber-700">
+                          Cancelada{inf.pro_subscription.pro_until ? ` · hasta ${new Date(inf.pro_subscription.pro_until).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', timeZone: 'America/Santiago' })}` : ''}
+                        </div>
+                      )}
                     </td>
                   )}
 

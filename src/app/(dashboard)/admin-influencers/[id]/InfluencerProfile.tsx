@@ -436,6 +436,8 @@ export function InfluencerProfile({ id }: { id: string }) {
 
   // ── Data ─────────────────────────────────────────────────────────────────────
   const influencer = res.data as InfluencerDetail
+  // Cancelada con período pagado vigente: sigue siendo Pro hasta pro_until (grantsPro).
+  const proCanceled = influencer.pro_source === 'paid' && influencer.pro_subscription?.subscription_status === 'canceled'
   const socialProfiles: SocialProfile[] = influencer.social_profiles ?? []
   const rateCards: RateCard[] = (influencer.rate_cards ?? []).filter(rc => rc.is_active !== false)
   const campaignInfluencers: CampaignInfluencerJoin[] = influencer.campaign_influencers ?? []
@@ -890,16 +892,22 @@ export function InfluencerProfile({ id }: { id: string }) {
                     {influencer.pro_source === 'manual' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-violet-700">MANUAL</span>}
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
-                    {influencer.pro_source === 'paid' ? 'Suscripción activa por pago' : influencer.pro_source === 'manual' ? 'Acceso Pro otorgado manualmente' : 'Cuenta gratuita'}
+                    {proCanceled
+                      ? `Cancelada, no se renovará${influencer.pro_subscription?.pro_until ? ` · Pro hasta ${new Date(influencer.pro_subscription.pro_until).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Santiago' })}` : ''}`
+                      : influencer.pro_source === 'paid' ? 'Suscripción activa por pago' : influencer.pro_source === 'manual' ? 'Acceso Pro otorgado manualmente' : 'Cuenta gratuita'}
                   </p>
                 </div>
               </div>
               </div>
-              {influencer.pro_source === 'paid' ? (
+              {influencer.pro_source === 'paid' ? (proCanceled ? (
+                <span className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-700">
+                  Cancelada · no se renovará
+                </span>
+              ) : (
                 <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
                   <CheckCircle2 className="h-4 w-4" /> Suscripción activa
                 </span>
-              ) : (
+              )) : (
                 <button
                   type="button"
                   onClick={() => void handleManualPro(influencer.pro_source !== 'manual')}

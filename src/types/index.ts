@@ -77,6 +77,8 @@ export interface Influencer {
   is_active: boolean
   is_pro?: boolean
   pro_source?: 'paid' | 'manual' | 'free'
+  /** Solo si pro_source === 'paid'. canceled = no renueva, Pro hasta pro_until. */
+  pro_subscription?: { subscription_status: 'active' | 'canceled'; renews: boolean; pro_until: string | null } | null
   pro_attempt_count?: number
   rating: number | null
   notes: string | null

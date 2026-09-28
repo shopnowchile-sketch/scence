@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Webhook } from 'svix'
 import { createAdminClient } from '@/lib/supabase/server'
 import { classifyResendEvent, recordOptOut } from '@/lib/email-optouts'
+import { EMAIL_AUDIENCE_TAG } from '@/lib/inactive-influencer-email-guard'
 
 type ResendWebhookPayload = {
   type?: string
@@ -42,6 +43,19 @@ const EVENT_ACTION_TYPE: Record<string, string> = {
   'email.suppressed': 'email_suppressed',
 }
 
+// Resend manda tags como objeto { name: value } o como lista [{ name, value }].
+function audienceTag(tags: unknown): string | null {
+  if (Array.isArray(tags)) {
+    const tag = tags.find(item => item && typeof item === 'object' && (item as { name?: unknown }).name === EMAIL_AUDIENCE_TAG) as { value?: unknown } | undefined
+    return typeof tag?.value === 'string' ? tag.value : null
+  }
+  if (tags && typeof tags === 'object') {
+    const value = (tags as Record<string, unknown>)[EMAIL_AUDIENCE_TAG]
+    return typeof value === 'string' ? value : null
+  }
+  return null
+}
+
 function firstEmail(value: unknown): string | null {
   if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : null
   return typeof value === 'string' ? value : null
@@ -77,6 +91,17 @@ export async function POST(req: NextRequest) {
   const recipientEmail = firstEmail(data.to)
   const subject = typeof data.subject === 'string' ? data.subject : null
   const occurredAt = event.created_at ?? new Date().toISOString()
+
+  // FIX 2026-09-28 (incidente Color Run): cada evento (sent/delivered/opened/
+  // clicked) de un envío masivo a influencers hacía 3-4 queries al CRM, entre
+  // ellas un ilike sobre crm_leads. ~2.000 eventos en minutos saturaron la base
+  // y la app devolvió 504. El seguimiento de eventos es del CRM: los emails que
+  // no son CRM responden de inmediato. Rebotes/quejas/supresiones se siguen
+  // procesando siempre (bloqueo comercial automático).
+  const decision = classifyResendEvent(eventType, data as { bounce?: { type?: string | null; subType?: string | null } | null })
+  if (audienceTag(data.tags) !== 'crm' && !decision.block) {
+    return NextResponse.json({ received: true, skipped: 'non_crm' })
+  }
 
   let leadId: string | null = null
 
@@ -140,8 +165,6 @@ export async function POST(req: NextRequest) {
   // de recibir prospección. Los rebotes transitorios (buzón lleno) NO bloquean.
   // Esto solo afecta a los dos caminos comerciales del CRM: los emails
   // transaccionales no consultan esta lista.
-  const decision = classifyResendEvent(eventType, data as { bounce?: { type?: string | null; subType?: string | null } | null })
-
   if (decision.block && decision.reason && recipientEmail) {
     const { ok, inserted } = await recordOptOut(admin, {
       email: recipientEmail,

@@ -12,7 +12,7 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
-import { getPlanTier, PLAN_LIMITS } from '@/lib/plan-limits'
+import { getPlanTier, PLAN_LIMITS, PLAN_TIERS } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
 
 type SortKey = 'name' | 'status' | 'industry' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy' | 'plan'
@@ -110,6 +110,16 @@ export default function BrandsPage() {
   const [selected, setSelected]       = useState<Brand | null>(null)
   const [view, setView]               = useLocalStorageState<'list' | 'grid'>('scence:admin:brands:view', 'list')
   const [brandInfluencers, setBrandInfluencers] = useState<BrandInfluencer[]>([])
+  // Selección múltiple para acciones masivas. Cada acción reutiliza el
+  // endpoint que ya usa la ficha de la marca (PATCH /api/brands/[id] y
+  // POST /api/brands/[id]/documents), marca por marca: mismas validaciones,
+  // permisos y efectos que hacerlo una a una.
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [bulkPlan, setBulkPlan] = useState('')
+  const [bulkStatus, setBulkStatus] = useState('')
+  const [bulkTemplateId, setBulkTemplateId] = useState('')
+  const [docTemplates, setDocTemplates] = useState<Array<{ id: string; name: string; document_type?: string }>>([])
+  const [bulkRunning, setBulkRunning] = useState(false)
   const [loadingInf, setLoadingInf]   = useState(false)
 
   // Debounce search — only fire API after 350ms of no typing
@@ -234,6 +244,78 @@ export default function BrandsPage() {
     return filtered
   }, [brands, statusFilter, sortKey, sortOrder])
 
+  useEffect(() => {
+    if (checkedIds.size === 0 || docTemplates.length > 0) return
+    fetch('/api/contracts/templates')
+      .then(res => (res.ok ? res.json() : { data: [] }))
+      .then(json => {
+        const available = (json.data ?? []) as Array<{ id: string; name: string; document_type?: string }>
+        setDocTemplates(available)
+        setBulkTemplateId(current => current || available.find(t => t.document_type === 'nda' || /nda/i.test(t.name))?.id || '')
+      })
+      .catch(() => { /* sin templates no se ofrece el envío */ })
+  }, [checkedIds.size, docTemplates.length])
+
+  function toggleChecked(id: string) {
+    setCheckedIds(previous => {
+      const next = new Set(previous)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function runBulk(label: string, action: (brand: Brand) => Promise<'ok' | 'skipped'>) {
+    const targets = brands.filter(brand => checkedIds.has(brand.id))
+    if (targets.length === 0) return
+    if (!confirm(`${label} para ${targets.length} marca(s). ¿Continuar?`)) return
+    setBulkRunning(true)
+    let ok = 0, skipped = 0
+    const failed: string[] = []
+    // Secuencial a propósito: evita picos de carga en la base y en el envío de emails.
+    for (const brand of targets) {
+      try {
+        const result = await action(brand)
+        if (result === 'ok') ok += 1
+        else skipped += 1
+      } catch {
+        failed.push(brand.name)
+      }
+    }
+    setBulkRunning(false)
+    if (ok > 0) toast.success(`${label}: ${ok} marca(s) actualizada(s)`)
+    if (skipped > 0) toast.message(`${skipped} marca(s) omitida(s)`)
+    if (failed.length > 0) toast.error(`No se pudo en: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? '…' : ''}`)
+    setCheckedIds(new Set())
+    load(search)
+  }
+
+  async function patchBrand(brand: Brand, body: Record<string, unknown>) {
+    const res = await fetch(`/api/brands/${brand.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error()
+    return 'ok' as const
+  }
+
+  async function sendDocument(brand: Brand) {
+    if (!brand.contact_email) return 'skipped' as const
+    const template = docTemplates.find(t => t.id === bulkTemplateId)
+    // No duplica: si la marca ya tiene ese documento pendiente o firmado, se omite.
+    const existingRes = await fetch(`/api/brands/${brand.id}/documents`)
+    const existing = existingRes.ok ? ((await existingRes.json()).data ?? []) as Array<{ title: string; status: string }> : []
+    if (template && existing.some(doc => doc.title === template.name && (doc.status === 'pending' || doc.status === 'signed'))) return 'skipped' as const
+    const res = await fetch(`/api/brands/${brand.id}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_id: bulkTemplateId }),
+    })
+    if (!res.ok) throw new Error()
+    return 'ok' as const
+  }
+
   function openCreate() {
     setEditing(null)
     setShowModal(true)
@@ -353,9 +435,49 @@ export default function BrandsPage() {
             </div>
           ) : view === 'list' ? (
             /* ── List view ── */
+            <div className="space-y-3">
+            {checkedIds.size > 0 && (
+              <div className="card flex flex-wrap items-center gap-3 p-3">
+                <span className="text-sm font-semibold text-gray-800">{checkedIds.size} seleccionada(s)</span>
+                <div className="flex items-center gap-1.5">
+                  <select value={bulkPlan} onChange={e => setBulkPlan(e.target.value)} className="input-base py-1.5 text-sm" aria-label="Plan">
+                    <option value="">Cambiar plan…</option>
+                    {PLAN_TIERS.map(tier => <option key={tier} value={tier}>{PLAN_LIMITS[tier].label}</option>)}
+                    <option value="inherit">Heredar (según suscripción)</option>
+                  </select>
+                  <button type="button" disabled={!bulkPlan || bulkRunning}
+                    onClick={() => runBulk(`Cambiar plan a ${bulkPlan === 'inherit' ? 'Heredar' : PLAN_LIMITS[bulkPlan as keyof typeof PLAN_LIMITS]?.label ?? bulkPlan}`, brand => patchBrand(brand, { subscription_plan_override: bulkPlan === 'inherit' ? null : bulkPlan }))}
+                    className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">Aplicar</button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} className="input-base py-1.5 text-sm" aria-label="Estado">
+                    <option value="">Cambiar estado…</option>
+                    <option value="approved">Aprobada (activa)</option>
+                    <option value="pending_approval">Pendiente</option>
+                    <option value="suspended">Suspendida</option>
+                  </select>
+                  <button type="button" disabled={!bulkStatus || bulkRunning}
+                    onClick={() => runBulk(`Cambiar estado a ${statusLabel(bulkStatus)}${bulkStatus === 'suspended' ? ' (quita el plan manual)' : ''}`, brand => patchBrand(brand, { status: bulkStatus }))}
+                    className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">Aplicar</button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <select value={bulkTemplateId} onChange={e => setBulkTemplateId(e.target.value)} className="input-base py-1.5 text-sm" aria-label="Documento">
+                    <option value="">Enviar documento…</option>
+                    {docTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  <button type="button" disabled={!bulkTemplateId || bulkRunning}
+                    onClick={() => runBulk(`Enviar "${docTemplates.find(t => t.id === bulkTemplateId)?.name ?? 'documento'}" por email (link a Documentos del portal)`, sendDocument)}
+                    className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"><Send className="h-3.5 w-3.5" /> Enviar</button>
+                </div>
+                <button type="button" onClick={() => setCheckedIds(new Set())} disabled={bulkRunning} className="ml-auto text-xs font-semibold text-gray-500 hover:text-gray-800">
+                  {bulkRunning ? 'Procesando…' : 'Limpiar selección'}
+                </button>
+              </div>
+            )}
             <div className="card overflow-x-auto">
               <table className="w-full min-w-[640px]" style={{ tableLayout: 'fixed' }}>
                 <colgroup>
+                  <col style={{ width: 40 }} />
                   <col style={{ width: widths.name }} />
                   {visibleColumns.status         && <col style={{ width: widths.status }} />}
                   {visibleColumns.plan           && <col style={{ width: widths.plan }} />}
@@ -370,6 +492,12 @@ export default function BrandsPage() {
                 </colgroup>
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="px-3 py-3">
+                      <input type="checkbox" aria-label="Seleccionar todas"
+                        checked={visibleBrands.length > 0 && visibleBrands.every((brand: Brand) => checkedIds.has(brand.id))}
+                        onChange={event => setCheckedIds(event.target.checked ? new Set(visibleBrands.map((brand: Brand) => brand.id)) : new Set())}
+                        className="h-4 w-4 rounded border-gray-300 text-violet-600" />
+                    </th>
                     <SortableTH col="name" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('name', e)}>Marca</SortableTH>
                     {visibleColumns.status && (
                       <SortableTH col="status" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('status', e)}>Estado</SortableTH>
@@ -408,7 +536,11 @@ export default function BrandsPage() {
                     return (
                       <tr key={b.id} onClick={() => { window.location.href = `/admin-brands/${b.id}` }}
                         className={cn('cursor-pointer hover:bg-gray-50 transition-colors',
-                          selected?.id === b.id ? 'bg-violet-50' : '')}>
+                          selected?.id === b.id || checkedIds.has(b.id) ? 'bg-violet-50' : '')}>
+                        <td className="px-3 py-3" onClick={event => event.stopPropagation()}>
+                          <input type="checkbox" aria-label={`Seleccionar ${b.name}`} checked={checkedIds.has(b.id)} onChange={() => toggleChecked(b.id)}
+                            className="h-4 w-4 rounded border-gray-300 text-violet-600" />
+                        </td>
                         <td className="px-4 py-3 overflow-hidden">
                           <div className="flex items-center gap-3 min-w-0">
                             {b.logo_url
@@ -484,6 +616,7 @@ export default function BrandsPage() {
                   })}
                 </tbody>
               </table>
+            </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

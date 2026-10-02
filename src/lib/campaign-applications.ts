@@ -271,7 +271,8 @@ export async function ensureEventAttendanceDeliverable(
   ])
   if (bookingError) throw bookingError
   if (campaignError) throw campaignError
-  const hasEvent = !!eventBooking || campaign?.type === 'event_appearance'
+  const hasAttendanceTemplate = templates.some((template) => template?.type === 'event_attendance')
+  const hasEvent = !!eventBooking || campaign?.type === 'event_appearance' || hasAttendanceTemplate
   if (!hasEvent) return false
 
   const { data: existing, error: existingError } = await admin

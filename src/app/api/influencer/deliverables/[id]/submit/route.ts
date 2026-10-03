@@ -64,6 +64,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Esta campaña aún no está activa' }, { status: 403 })
     }
   }
+  if (deliverable.type === 'event_attendance') {
+    return NextResponse.json({ error: 'Este entregable es una confirmación de asistencia. Usa el botón de confirmar asistencia.' }, { status: 422 })
+  }
   if (deliverable.status === 'approved' || deliverable.status === 'published') {
     return NextResponse.json({ error: 'Este deliverable ya fue aprobado' }, { status: 422 })
   }

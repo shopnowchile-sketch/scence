@@ -130,7 +130,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const cfg = DELIVERABLE_STATUS[d.status] ?? { label: d.status, color: 'bg-gray-100 text-gray-500' }
-  const canSubmit = d.status === 'pending' || d.status === 'rejected'
+  const canSubmit = d.type !== 'event_attendance' && (d.status === 'pending' || d.status === 'rejected')
   const isDone = d.status === 'approved' || d.status === 'published'
 
   async function submit() {

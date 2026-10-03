@@ -47,7 +47,7 @@ const DELIVERABLE_STATUS: Record<string, { label: string; color: string }> = {
   pending:    { label: 'Pendiente',    color: 'bg-amber-100 text-amber-700' },
   in_review:  { label: 'En revisión', color: 'bg-blue-100 text-blue-700' },
   approved:   { label: 'Aprobado',    color: 'bg-green-100 text-green-700' },
-  rejected:   { label: 'Corrección pendiente', color: 'bg-amber-100 text-amber-700' },
+  rejected:   { label: 'Subir nuevamente', color: 'bg-amber-100 text-amber-700' },
   published:  { label: 'Publicado',   color: 'bg-violet-100 text-violet-700' },
 }
 
@@ -229,7 +229,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
               className="flex items-center gap-1.5 text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 px-4 py-2.5 rounded-xl transition-colors shadow-sm"
             >
               <Upload className="h-4 w-4" />
-              {d.status === 'rejected' ? 'Reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
+              {d.status === 'rejected' ? 'Subir nuevamente' : d.content_url ? 'Actualizar' : 'Subir'}
             </button>
           )}
           {d.status === 'in_review' && (
@@ -317,7 +317,7 @@ function DeliverablesPageInner() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const campRes = await fetch('/api/influencer/campaigns')
+      const campRes = await fetch('/api/influencer/campaigns', { cache: 'no-store' })
       const campData = await campRes.json()
 
       // Build deliverables from campaign_influencers

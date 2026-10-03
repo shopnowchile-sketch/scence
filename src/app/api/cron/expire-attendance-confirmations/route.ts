@@ -47,33 +47,12 @@ export async function GET(request: NextRequest) {
       .in('id', ids).is('attendance_response', null).lt('due_date', today)
     : { data: [], error: null }
   if (stillOverdueError) return NextResponse.json({ error: stillOverdueError.message }, { status: 500 })
-  const assignmentIds = Array.from(new Set((stillOverdue ?? []).map(row => row.campaign_influencer_id).filter((id): id is string => !!id)))
+  // IMPORTANTE: vencer la confirmación de asistencia NO rechaza la participación
+  // de la influencer en la campaña. El entregable de asistencia queda rechazado,
+  // pero los demás entregables (Reel/Story/contenido) siguen activos mientras la
+  // campaña continúe vigente. application_status es la fuente de verdad de la
+  // participación y solo debe cambiar por una decisión explícita de gestión.
+  const released = 0
 
-  let released = 0
-  if (assignmentIds.length) {
-    const { data: assignments, error: assignmentsError } = await admin.from('campaign_influencers')
-      .select('id, metadata')
-      .in('id', assignmentIds)
-      .eq('application_status', 'accepted')
-    if (assignmentsError) return NextResponse.json({ error: assignmentsError.message }, { status: 500 })
-
-    for (const assignment of assignments ?? []) {
-      const metadata = {
-        ...((assignment.metadata as Record<string, unknown> | null) ?? {}),
-        removal_reason: 'attendance_deadline_closed',
-        removal_message: 'Lo sentimos, no confirmaste tu asistencia antes de la fecha límite y los cupos se cerraron.',
-        removed_at: now.toISOString(),
-      }
-      const { data: updated, error: updateError } = await admin.from('campaign_influencers').update({
-        // Invariante 16.1: application_status es la única fuente de verdad;
-        // campaign_influencers.status nunca se escribe.
-        application_status: 'rejected',
-        metadata,
-        updated_at: now.toISOString(),
-      }).eq('id', assignment.id).eq('application_status', 'accepted').select('id').maybeSingle()
-      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
-      if (updated) released += 1
-    }
-  }
   return NextResponse.json({ ok: true, released, campaigns_completed: completedCampaigns?.length ?? 0 })
 }

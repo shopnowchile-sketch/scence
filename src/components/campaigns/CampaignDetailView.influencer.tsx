@@ -427,7 +427,7 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
           const opened = openId === d.id
           const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
           const dueDays = d.due_date && !complete ? daysRemaining(d.due_date) : null
-          const statusLabel = isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : contentOverdue ? 'Plazo vencido' : isRejected ? 'Corrección pendiente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'
+          const statusLabel = isAttendance && attendanceLabel ? attendanceLabel : attendanceExpired ? 'Plazo vencido' : contentOverdue ? 'Plazo vencido' : isRejected ? 'Subir nuevamente' : isReview ? 'En revisión' : complete ? 'Completado' : 'Pendiente'
           return <div key={d.id} className={cn('rounded-xl border p-3 sm:p-4', !canAct ? 'border-gray-100' : isNoShow ? 'border-slate-200 bg-slate-50' : attendanceExpired ? 'border-amber-200 bg-amber-50/60' : contentOverdue ? 'border-amber-200 bg-amber-50/60' : isRejected ? 'border-amber-200 bg-amber-50/50' : isReview ? 'border-blue-100 bg-blue-50/30' : complete ? 'border-green-100 bg-green-50/30' : 'border-gray-100')}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -503,7 +503,7 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
               </div>
               </div>
               {canAct && (isAttendance && !d.attendance_response && !attendanceExpired ? <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'confirmed')} className="text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 disabled:opacity-50">{attendanceSaving === d.id ? 'Guardando…' : 'Confirmar asistencia'}</button><button disabled={attendanceSaving === d.id} onClick={() => respondAttendance(d, 'declined')} className="text-xs font-bold border border-rose-200 bg-white text-rose-700 px-3 py-2.5 rounded-lg hover:bg-rose-50 disabled:opacity-50">No podré asistir</button></div> : canSubmit && !isAttendance && <button onClick={() => { setOpenId(opened ? null : d.id); setUrl(d.content_url ?? ''); setNotes('') }} className="w-full shrink-0 text-xs font-bold bg-violet-600 text-white px-3 py-2.5 rounded-lg hover:bg-violet-700 sm:w-auto">
-                {isRejected ? 'Corregir y reenviar' : d.content_url ? 'Actualizar' : 'Subir'}
+                {isRejected ? 'Subir nuevamente' : d.content_url ? 'Actualizar' : 'Subir'}
               </button>)}
             </div>
             {canAct && opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
@@ -678,7 +678,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res  = await fetch('/api/influencer/my-campaigns')
+      const res  = await fetch('/api/influencer/my-campaigns', { cache: 'no-store' })
       const json = await res.json()
       const found = (json.data ?? []).find((ci: CampaignRow) => ci.campaign?.id === id || ci.id === id)
       if (found) {

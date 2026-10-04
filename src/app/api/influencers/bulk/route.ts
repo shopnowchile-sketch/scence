@@ -25,6 +25,10 @@ export interface BulkRow {
   email?: string
   phone?: string
   location_id?: string
+  // Legacy geography fields are input-only for CSV compatibility; never persisted.
+  city?: string
+  country?: string
+  commune?: string
   bio?: string
   categories?: string
   instagram?: string | number

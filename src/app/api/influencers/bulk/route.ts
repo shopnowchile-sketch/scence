@@ -113,7 +113,8 @@ export async function POST(request: NextRequest) {
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const rows: BulkRow[] = body.rows ?? []
-  const requireInstagram = (body as { requireInstagram?: boolean }).requireInstagram === true
+  // Instagram es obligatorio para toda importación. No se puede desactivar desde el cliente.
+  const requireInstagram = true
   if (!rows.length) return NextResponse.json({ error: 'No rows provided' }, { status: 400 })
   if (rows.length > 1500) return NextResponse.json({ error: 'Max 1500 rows per batch' }, { status: 400 })
 
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
     // Fila vacía
     if (!row.display_name && !row.email && !igKey) { skippedEmpty++; return }
 
-    // Validación opcional: requiere instagram_url
+    // Instagram es obligatorio en toda importación
     if (requireInstagram && !igKey) { skippedNoInstagram++; return }
 
     // Dedup por email (DB o dentro del archivo)

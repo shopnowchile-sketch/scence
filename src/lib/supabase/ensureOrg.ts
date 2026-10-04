@@ -254,6 +254,22 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
       .maybeSingle()
 
     if (orphan) {
+      // Nunca vincular al usuario una influencer incompleta: también debe tener
+      // Instagram antes de poder entrar al portal.
+      const { data: orphanInstagram } = await admin
+        .from('influencer_social_profiles')
+        .select('id')
+        .eq('influencer_id', orphan.id)
+        .eq('platform', 'instagram')
+        .not('username', 'is', null)
+        .limit(1)
+        .maybeSingle()
+
+      if (!orphanInstagram) {
+        console.error('[ensureInfluencerRow] influencer orphan sin Instagram; no se vincula')
+        return null
+      }
+
       const { error: linkErr } = await admin
         .from('influencers')
         .update({ user_id: user.id })
@@ -264,6 +280,18 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
         return orphan
       }
     }
+  }
+
+  // Esta ruta es solo un respaldo para cuentas de influencer que no fueron
+  // provisionadas por handle_new_user(). Nunca crea una influencer sin Instagram.
+  const rawInstagram = user.user_metadata?.instagram_username
+  const instagramUsername = typeof rawInstagram === 'string'
+    ? rawInstagram.trim().replace(/^@+/, '').toLowerCase()
+    : ''
+
+  if (!instagramUsername || !/^[a-z0-9._]{1,30}$/.test(instagramUsername)) {
+    console.error('[ensureInfluencerRow] Instagram requerido; no se crea influencer sin Instagram')
+    return null
   }
 
   const { data: org } = await admin
@@ -293,6 +321,25 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
     })
     .select('id, display_name')
     .single()
+
+  if (!error && influencer) {
+    const { error: instagramError } = await admin
+      .from('influencer_social_profiles')
+      .insert({
+        influencer_id: influencer.id,
+        platform: 'instagram',
+        username: instagramUsername,
+        profile_url: `https://www.instagram.com/${instagramUsername}`,
+        followers: 0,
+        is_primary: true,
+      })
+
+    if (instagramError) {
+      await admin.from('influencers').delete().eq('id', influencer.id)
+      console.error('[ensureInfluencerRow] failed to create required Instagram profile:', instagramError.message)
+      return null
+    }
+  }
 
   // FIX (2026-07-04, root cause "no veía las campañas" — 33 cuentas afectadas):
   // `influencers.user_id` tiene un UNIQUE constraint (influencers_user_id_key).

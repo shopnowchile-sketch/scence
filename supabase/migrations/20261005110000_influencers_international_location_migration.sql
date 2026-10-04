@@ -1,17 +1,7 @@
 -- Influencers: complete location source-of-truth migration (international-safe)
 --
--- Goals:
---   1. Allow influencer.location_id to point to country/region/city/commune,
---      never to a physical place.
---   2. Preserve explicit legacy country data by mapping it to the canonical
---      global locations catalog.
---   3. Resolve high-confidence Chile locations where legacy city matches an
---      existing commune.
---   4. Do NOT guess ambiguous/incomplete legacy data.
---
--- This migration is intentionally non-destructive. Legacy country/city/commune
--- columns remain until every consumer and every unresolved record has been
--- audited.
+-- Non-destructive. Legacy country/city/commune stay until all unresolved data
+-- and all application consumers have been audited.
 
 CREATE OR REPLACE FUNCTION public.validate_influencer_location()
 RETURNS trigger
@@ -20,14 +10,11 @@ AS $function$
 DECLARE
   v_level public.locations.level%TYPE;
 BEGIN
-  IF NEW.location_id IS NULL THEN
-    RETURN NEW;
-  END IF;
+  IF NEW.location_id IS NULL THEN RETURN NEW; END IF;
 
   SELECT level INTO v_level
   FROM public.locations
-  WHERE id = NEW.location_id
-    AND is_active = true;
+  WHERE id = NEW.location_id AND is_active = true;
 
   IF v_level IS NULL THEN
     RAISE EXCEPTION 'La ubicación seleccionada no existe o está inactiva'
@@ -44,7 +31,6 @@ END;
 $function$;
 
 -- Canonical country names for values explicitly present in legacy data.
--- No location IDs are hardcoded.
 WITH country_map(legacy_value, canonical_name) AS (
   VALUES
     ('cl', 'Chile'),
@@ -67,19 +53,57 @@ SELECT
   'country', true
 FROM country_map cm
 WHERE EXISTS (
-  SELECT 1
-  FROM public.influencers i
+  SELECT 1 FROM public.influencers i
   WHERE i.location_id IS NULL
     AND public.locations_norm(trim(i.country)) = public.locations_norm(cm.legacy_value)
 )
 AND NOT EXISTS (
-  SELECT 1
-  FROM public.locations l
+  SELECT 1 FROM public.locations l
   WHERE l.level = 'country'
     AND public.locations_norm(l.name) = public.locations_norm(cm.canonical_name)
 );
 
--- 1) Preserve every explicit country, even when city/region is missing.
+-- 1) High-confidence Chile migration.
+-- The legacy city is used only when it exactly matches one active official
+-- commune in Chile. We never infer a commune from free-form addresses here.
+WITH chile AS (
+  SELECT id
+  FROM public.locations
+  WHERE level = 'country'
+    AND public.locations_norm(name) = public.locations_norm('Chile')
+),
+candidate AS (
+  SELECT
+    i.id AS influencer_id,
+    min(l.id) AS location_id
+  FROM public.influencers i
+  JOIN chile c ON true
+  JOIN public.locations l
+    ON l.level = 'commune'
+   AND l.is_active = true
+   AND public.locations_norm(l.name) = public.locations_norm(i.city)
+  JOIN public.locations parent_region ON parent_region.id = l.parent_id
+  WHERE i.location_id IS NULL
+    AND public.locations_norm(trim(i.country)) IN (
+      public.locations_norm('cl'),
+      public.locations_norm('chile'),
+      public.locations_norm('chili'),
+      public.locations_norm('chie')
+    )
+    AND parent_region.parent_id = c.id
+    AND nullif(trim(i.city), '') IS NOT NULL
+  GROUP BY i.id
+  HAVING count(*) = 1
+)
+UPDATE public.influencers i
+SET location_id = candidate.location_id
+FROM candidate
+WHERE i.id = candidate.influencer_id
+  AND i.location_id IS NULL;
+
+-- 2) Explicit country fallback.
+-- This preserves real international/Chile data even when city is missing or
+-- ambiguous. It is deliberately country-level rather than guessing a city.
 WITH country_map(legacy_value, canonical_name) AS (
   VALUES
     ('cl', 'Chile'),
@@ -100,48 +124,6 @@ JOIN public.locations l
  AND public.locations_norm(l.name) = public.locations_norm(cm.canonical_name)
 WHERE i.location_id IS NULL
   AND public.locations_norm(trim(i.country)) = public.locations_norm(cm.legacy_value);
-
--- 2) High-confidence Chile migration:
--- legacy city is the official commune name. We only assign when there is
--- exactly one active commune with that normalized name under Chile.
-WITH chile AS (
-  SELECT id
-  FROM public.locations
-  WHERE level = 'country'
-    AND public.locations_norm(name) = public.locations_norm('Chile')
-),
-candidate AS (
-  SELECT
-    i.id AS influencer_id,
-    min(l.id) AS location_id,
-    count(*) AS matches
-  FROM public.influencers i
-  JOIN chile c ON true
-  JOIN public.locations l
-    ON l.level = 'commune'
-   AND l.is_active = true
-   AND public.locations_norm(l.name) = public.locations_norm(i.city)
-  JOIN public.locations parent_region ON parent_region.id = l.parent_id
-  WHERE i.location_id IS NULL
-    AND public.locations_norm(trim(i.country)) IN (
-      public.locations_norm('cl'),
-      public.locations_norm('chile'),
-      public.locations_norm('chili'),
-      public.locations_norm('chie')
-    )
-    AND (
-      parent_region.parent_id = c.id
-      OR parent_region.id = c.id
-    )
-    AND nullif(trim(i.city), '') IS NOT NULL
-  GROUP BY i.id
-  HAVING count(*) = 1
-)
-UPDATE public.influencers i
-SET location_id = candidate.location_id
-FROM candidate
-WHERE i.id = candidate.influencer_id
-  AND i.location_id IS NULL;
 
 COMMENT ON COLUMN public.influencers.location_id IS
   'Fuente oficial de ubicación geográfica de la influencer. Puede apuntar a country, region, city o commune; nunca a place. Los campos country/city/commune legacy permanecen solo durante la transición.';

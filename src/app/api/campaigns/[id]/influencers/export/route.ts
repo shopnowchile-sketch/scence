@@ -51,8 +51,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       fee, currency, accepted_at, updated_at, application_status,
       influencer:influencers (
-        display_name, email, phone, whatsapp, commune, categories,
-        influencer_social_profiles (platform, username, followers, engagement_rate)
+        display_name, email, phone, whatsapp, location_id, categories,
+        influencer_social_profiles (platform, username, followers, engagement_rate),
+        location:locations (country, region, city, commune, place)
       )
     `)
     .eq('campaign_id', params.id)
@@ -82,7 +83,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       Instagram: instagram?.username ? `@${instagram.username.replace(/^@/, '')}` : '',
       Seguidores: instagram?.followers ?? '',
       'Engagement (%)': instagram?.engagement_rate ?? '',
-      Comuna: influencer?.commune ?? '',
+      Comuna: influencer?.location?.commune ?? '',
       Categorías: influencer?.categories?.join(', ') ?? '',
       Estado: 'Seleccionada',
       Fee: item.fee ?? '',

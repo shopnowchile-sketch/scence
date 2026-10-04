@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
+// Preview verification build: canonical influencer geography resolver.
 export type OfficialInfluencerLocation = {
   country: string | null
   region: string | null

@@ -17,27 +17,25 @@ export async function GET() {
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
-  let query = admin
-    .from('influencers')
-    .select('commune')
-    .not('commune', 'is', null)
-
-  if (orgId) query = query.eq('organization_id', orgId)
-
-  const { data, error } = await query
+  const { data: rows, error } = await admin
+    .from('locations')
+    .select('name')
+    .eq('level', 'commune')
+    .eq('is_active', true)
+    .order('name')
 
   if (error) {
     console.error('[GET /api/influencers/communes]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Agrupa por comuna real (mayúsculas/tildes/espacios distintos del mismo
-  // valor) sin tocar la base — pedido de Pri 2026-07-13. `variants` trae
-  // todos los valores crudos que existen hoy para esa comuna, para que el
-  // filtro pueda seguir matcheando aunque el dato en `influencers.commune`
-  // no esté normalizado todavía.
-  const raw = (data ?? []).map(r => r.commune).filter((c): c is string => !!c && c.trim() !== '')
-  const communes = groupCommunes(raw)
+  // Fuente única: catálogo oficial de locations. variants se conserva
+  // únicamente por compatibilidad con el componente de filtros mientras
+  // migramos el GET principal a location_id.
+  const communes = (rows ?? []).map(row => ({
+    label: row.name,
+    variants: [row.name],
+  }))
 
   return NextResponse.json({ data: communes })
 }

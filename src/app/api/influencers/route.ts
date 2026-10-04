@@ -52,14 +52,54 @@ export async function GET(request: NextRequest) {
   const platform   = searchParams.get('platform')
   const category   = searchParams.get('category')
   const country    = searchParams.get('country')
-  const commune    = searchParams.get('commune')
-  // El filtro "Comuna" del front (InfluencerFilters) manda todas las
-  // variantes crudas de esa comuna real separadas por coma (ver
-  // /api/influencers/communes + src/lib/communes-chile.ts groupCommunes) —
-  // influencers.commune sigue sin normalizar en la base, así que hace falta
-  // matchear cualquiera de esas variantes. Si viene un solo valor (deep links
-  // viejos, ej. desde data-quality ranking) se comporta igual que antes.
+  const commune = searchParams.get('commune')
   const communeList = commune ? commune.split(',').map(s => s.trim()).filter(Boolean) : []
+
+  // Ubicación oficial: los filtros nunca consultan influencers.commune.
+  // Resolvemos el nombre visible del filtro contra locations y usamos
+  // location_id como único criterio persistido.
+  const normalizeLocationName = (value: string) =>
+    value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  const { data: officialCommunes } = await admin
+    .from('locations')
+    .select('id, name, parent_id')
+    .eq('level', 'commune')
+    .eq('is_active', true)
+  const communeIdByName = new Map(
+    (officialCommunes ?? []).map(row => [normalizeLocationName(row.name), row.id])
+  )
+  const communeIds = communeList
+    .map(name => communeIdByName.get(normalizeLocationName(name)))
+    .filter((id): id is string => Boolean(id))
+  const officialParentIds = Array.from(new Set((officialCommunes ?? []).map(row => row.parent_id).filter(Boolean)))
+  const { data: officialParents } = officialParentIds.length
+    ? await admin.from('locations').select('id, name, level, parent_id').in('id', officialParentIds)
+    : { data: [], error: null }
+  const regionIds = Array.from(new Set((officialParents ?? []).map(row => row.level === 'region' ? row.id : row.parent_id).filter(Boolean)))
+  const { data: officialRegions } = regionIds.length
+    ? await admin.from('locations').select('id, name, level, parent_id').in('id', regionIds)
+    : { data: [], error: null }
+  const countryIds = Array.from(new Set((officialRegions ?? []).map(row => row.parent_id).filter(Boolean)))
+  const { data: officialCountries } = countryIds.length
+    ? await admin.from('locations').select('id, name, level, parent_id').in('id', countryIds)
+    : { data: [], error: null }
+
+  const officialById = new Map<string, { id: string; name: string; level: string; parent_id: string | null }>()
+  for (const row of [...(officialParents ?? []), ...(officialRegions ?? []), ...(officialCountries ?? [])]) {
+    officialById.set(row.id, row)
+  }
+  const locationDisplayById = new Map<string, { commune: string; city: string | null; region: string | null; country: string | null }>()
+  for (const communeRow of officialCommunes ?? []) {
+    const parent = communeRow.parent_id ? officialById.get(communeRow.parent_id) : null
+    const region = parent?.level === 'region' ? parent : parent?.parent_id ? officialById.get(parent.parent_id) : null
+    const country = region?.parent_id ? officialById.get(region.parent_id) : null
+    locationDisplayById.set(communeRow.id, {
+      commune: communeRow.name,
+      city: parent?.level === 'city' ? parent.name : null,
+      region: region?.name ?? null,
+      country: country?.name ?? null,
+    })
+  }
   const verified   = searchParams.get('verified')
   const isActive   = searchParams.get('is_active')
   const rawPlan    = searchParams.get('plan')
@@ -85,16 +125,16 @@ export async function GET(request: NextRequest) {
     const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
       (from, to) => {
         let q = admin.from('influencers').select(`
-          id, display_name, email, city, commune, categories, is_verified,
+          id, display_name, email, location_id, categories, is_verified,
           social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
         `).range(from, to)
         if (country) q = q.eq('country', country)
-        if (communeList.length === 1) q = q.eq('commune', communeList[0])
-        else if (communeList.length > 1) q = q.in('commune', communeList)
+        if (communeIds.length === 1) q = q.eq('location_id', communeIds[0])
+        else if (communeIds.length > 1) q = q.in('location_id', communeIds)
         if (verified === 'true') q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
         if (isActive === 'true') q = q.eq('is_active', true)
-        if (search) q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
+        if (search) q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%`)
         if (category) q = q.contains('categories', [category])
         return q
       },
@@ -147,7 +187,7 @@ export async function GET(request: NextRequest) {
       whatsapp,
       country,
       city,
-      commune,
+      location_id,
       birth_date,
       address,
       categories,
@@ -319,8 +359,8 @@ export async function GET(request: NextRequest) {
       .range((page - 1) * limit, page * limit - 1)
 
     if (country)  query = query.eq('country', country)
-    if (communeList.length === 1) query = query.eq('commune', communeList[0])
-    else if (communeList.length > 1) query = query.in('commune', communeList)
+    if (communeIds.length === 1) query = query.eq('location_id', communeIds[0])
+    else if (communeIds.length > 1) query = query.in('location_id', communeIds)
     if (verified === 'true')  query = query.eq('is_verified', true)
     if (isActive === 'false') query = query.eq('is_active', false)
     if (isActive === 'true')  query = query.eq('is_active', true)
@@ -365,6 +405,19 @@ export async function GET(request: NextRequest) {
       last_sign_in_at: uid ? (lastSeenMap[uid] ?? null) : null,
     } as Record<string, unknown>
   })
+  // Exponer nombres geográficos derivados de locations para compatibilidad
+  // de la UI. La fuente ya no es influencers.country/city/commune.
+  const withOfficialLocation = withLastSeen.map(inf => {
+    const location = typeof inf.location_id === 'string'
+      ? locationDisplayById.get(inf.location_id)
+      : null
+    return {
+      ...inf,
+      country: location?.country ?? null,
+      city: location?.city ?? null,
+      commune: location?.commune ?? null,
+    } as Record<string, unknown>
+  })
 
   // ── "Registrada por" + "Marcas asignadas" ─────────────────────────────────
   // Fuente: brand_influencers (marca↔influencer, n:n) + influencers.organization_id.
@@ -378,7 +431,7 @@ export async function GET(request: NextRequest) {
   //   Esta inferencia depende de que brand_influencers SOLO se escriba desde
   //   flujos controlados de la app (hoy: este POST). Como la tabla está vacía
   //   hasta ahora, queda correcta desde este cambio en adelante.
-  const influencerIds = withLastSeen.map(inf => inf.id as string)
+  const influencerIds = withOfficialLocation.map(inf => inf.id as string)
   const brandsByInfluencer = new Map<string, Array<{ id: string; name: string; created_at: string }>>()
 
   if (influencerIds.length > 0) {
@@ -411,10 +464,10 @@ export async function GET(request: NextRequest) {
   // plan) en vez de repetir la consulta — si no se calculó (caso normal, sin
   // filtro/sort de plan), se resuelve acá solo para la página actual, igual
   // que antes.
-  const proStatuses = fullProStatuses ?? await getInfluencerProStatuses(admin, withLastSeen.map(inf => inf.id as string))
+  const proStatuses = fullProStatuses ?? await getInfluencerProStatuses(admin, withOfficialLocation.map(inf => inf.id as string))
   // Solo lectura para mostrar "Cancelada · hasta …" en Admin; no cambia quién es Pro.
-  const proSubscriptions = await getInfluencerProSubscriptionDetails(admin, withLastSeen.map(inf => inf.id as string))
-  const enriched = withLastSeen.map(inf => {
+  const proSubscriptions = await getInfluencerProSubscriptionDetails(admin, withOfficialLocation.map(inf => inf.id as string))
+  const enriched = withOfficialLocation.map(inf => {
     const orgId = inf.organization_id as string | null
     const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []
     const associated_brands = brandsForInf.map(b => ({ id: b.id, name: b.name }))
@@ -451,7 +504,7 @@ export async function POST(request: NextRequest) {
 
   const {
     display_name, email, phone,
-    bio, avatar_url, city, commune, birth_date, country, address, address_lat, address_lng,
+    bio, avatar_url, location_id, birth_date, address, address_lat, address_lng,
     categories, tags, is_verified = false, is_active = false,  // Default: draft
     social_profiles = [], rate_cards = [], organization_id,
     notes, first_name, last_name,
@@ -459,6 +512,9 @@ export async function POST(request: NextRequest) {
 
   if (!display_name) {
     return NextResponse.json({ error: 'display_name is required' }, { status: 422 })
+  }
+  if (typeof location_id !== 'string' || !location_id.trim()) {
+    return NextResponse.json({ error: 'location_id es obligatorio y debe ser una comuna oficial.' }, { status: 422 })
   }
 
   // instagram_url se conserva solo para completar datos auxiliares del flujo
@@ -494,7 +550,7 @@ export async function POST(request: NextRequest) {
       organization_id: orgId,
       display_name,
       email: email ?? null, phone: phone ?? null, bio: bio ?? null,
-      avatar_url: avatar_url ?? null, city: city ?? null, commune: body.commune ?? null, birth_date: birth_date ?? null, country: country ?? null,
+      avatar_url: avatar_url ?? null, location_id: location_id.trim(), birth_date: birth_date ?? null,
       address: address ?? null, address_lat: address_lat ?? null, address_lng: address_lng ?? null,
       categories: categories ?? [], tags: tags ?? [],
       is_verified, is_active, notes: notes ?? null,

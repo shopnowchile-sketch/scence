@@ -10,8 +10,9 @@ import Link from 'next/link'
 import {
   ChevronLeft, Loader2, AlertCircle, Save, Plus, Trash2,
 } from 'lucide-react'
-import { cn, PLATFORM_ICONS, PLATFORM_LABELS, CATEGORY_OPTIONS, COUNTRY_OPTIONS } from '@/lib/utils'
+import { cn, PLATFORM_ICONS, PLATFORM_LABELS, CATEGORY_OPTIONS } from '@/lib/utils'
 import { useInfluencer } from '@/hooks/useInfluencersList'
+import { InfluencerLocationPicker, type InfluencerLocation } from '@/components/influencers/InfluencerLocationPicker'
 import type { SocialProfile, RateCard } from '@/types'
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -36,9 +37,7 @@ const schema = z.object({
   email:               z.string().email('Email inválido').optional().or(z.literal('')),
   phone:               z.string().optional(),
   bio:                 z.string().max(500).optional(),
-  city:                z.string().optional(),
-  country:             z.string().optional(),
-  commune:             z.string().optional(),
+  location_id:         z.string().uuid('Selecciona una comuna'),
   birth_date:          z.string().optional(),
   address:             z.string().optional(),
   categories:          z.array(z.string()).optional(),
@@ -133,9 +132,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
         email:               inf.email ?? '',
         phone:               inf.phone ?? '',
         bio:                 inf.bio ?? '',
-        city:                inf.city ?? '',
-        country:             inf.country ?? '',
-        commune:             inf.commune ?? '',
+        location_id:         inf.location_id ?? '',
         birth_date:          inf.birth_date ?? '',
         address:             (inf.address ?? meta.address ?? '') as string,
         categories:          (inf.categories ?? []) as string[],
@@ -159,9 +156,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
           email:      data.email      || null,
           phone:      data.phone      || null,
           bio:        data.bio        || null,
-          city:       data.city       || null,
-          country:    data.country    || null,
-          commune:    data.commune    || null,
+          location_id: data.location_id,
           birth_date: data.birth_date || null,
           address:    data.address    || null,
           is_active: data.is_active,
@@ -239,20 +234,21 @@ export function InfluencerEditForm({ id }: { id: string }) {
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Teléfono</label>
               <input {...register('phone')} className="input-base w-full" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Ciudad</label>
-              <input {...register('city')} className="input-base w-full" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">País</label>
-              <select {...register('country')} className="input-base w-full">
-                <option value="">Seleccionar…</option>
-                {COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna</label>
-              <input {...register('commune')} className="input-base w-full" placeholder="Ej. Providencia" />
+            <div className="col-span-2">
+              <Controller
+                control={control}
+                name="location_id"
+                render={({ field, fieldState }) => (
+                  <>
+                    <InfluencerLocationPicker
+                      value={field.value ?? ''}
+                      required
+                      onChange={(location: InfluencerLocation | null) => field.onChange(location?.id ?? '')}
+                    />
+                    {fieldState.error && <p className="text-xs text-red-500 mt-1">{fieldState.error.message}</p>}
+                  </>
+                )}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha de nacimiento</label>

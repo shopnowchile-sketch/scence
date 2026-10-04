@@ -472,9 +472,16 @@ export function DataQualityClient() {
                   </p>
                 </div>
               </div>
-              <p className="max-w-xs text-right text-xs font-medium text-amber-800">
-                Los recordatorios masivos están desactivados para evitar envíos accidentales.
-              </p>
+              <button
+                onClick={handleNotifyNoInstagram}
+                disabled={busy === 'no-instagram'}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 disabled:opacity-50 flex-shrink-0"
+              >
+                {busy === 'no-instagram'
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Send className="h-4 w-4" />}
+                Enviar recordatorio
+              </button>
             </div>
           )}
 

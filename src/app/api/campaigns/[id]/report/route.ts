@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, fee, status, notes, application_status,
         influencer:influencers (
-          id, display_name, avatar_url, city, country,
+          id, display_name, avatar_url,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { normUrl, normEmail } from '@/lib/influencers/dataQuality'
+import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 
 /**
  * POST /api/influencers/bulk  — versión optimizada (batch)
@@ -154,7 +155,48 @@ export async function POST(request: NextRequest) {
   const seenEmails = new Set<string>()
   const seenIgUrls = new Set<string>()
 
-  rows.forEach(row => {
+  // Geography input is accepted only as an import compatibility layer.
+  // Nothing from city/country/commune is persisted; it is resolved to location_id.
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+  const normalizeLocationName = (value: string) =>
+    value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
+  rows.forEach((inputRow, index) => {
+    const row = { ...inputRow }
+    const explicitLocationId = typeof row.location_id === 'string' ? row.location_id.trim() : ''
+    const legacyCountry = typeof row.country === 'string' ? row.country.trim() : ''
+    const legacyCity = typeof row.city === 'string' ? row.city.trim() : ''
+    const legacyCommune = typeof row.commune === 'string' ? row.commune.trim() : ''
+
+    if (explicitLocationId) {
+      if (!locationDisplayById.has(explicitLocationId)) {
+        errors.push({ row: index + 2, error: 'location_id no corresponde a una ubicación geográfica oficial activa.' })
+        return
+      }
+    } else if (legacyCountry || legacyCity || legacyCommune) {
+      const countryKey = normalizeLocationName(legacyCountry)
+      const localityKey = normalizeLocationName(legacyCommune || legacyCity)
+      const candidates = Array.from(locationDisplayById.entries()).filter(([, location]) => {
+        if (countryKey && normalizeLocationName(location.country ?? '') !== countryKey) return false
+        if (localityKey) {
+          const cityKey = normalizeLocationName(location.city ?? '')
+          const communeKey = normalizeLocationName(location.commune ?? '')
+          return localityKey === cityKey || localityKey === communeKey
+        }
+        return Boolean(location.country)
+      })
+
+      if (candidates.length !== 1) {
+        errors.push({
+          row: index + 2,
+          error: candidates.length === 0
+            ? 'No se pudo resolver la ubicación legacy a una location oficial.'
+            : 'La ubicación legacy es ambigua; se requiere location_id oficial.',
+        })
+        return
+      }
+      row.location_id = candidates[0][0]
+    }
     const emailKey = normEmail(row.email as string)
     const igKey = normUrl(row.instagram_url as string)
 

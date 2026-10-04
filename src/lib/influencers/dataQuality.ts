@@ -89,9 +89,12 @@ function extractInstagramHandle(url: string | null, username: string | null): st
 
   let u = url.trim().toLowerCase()
   if (!u) return null
-  u = u.replace(/^https?:\/\//, '').replace(/[?#].*$/, '')
-  const domainMatch = u.match(/^(?:www\.)?instagram\.com\/([^/]+)/)
-  const raw = domainMatch ? domainMatch[1] : u.replace(/^\/+/, '').split('/')[0]
+  const stripped = u.replace(/^https?:\/\//, '').replace(/[?#].*$/, '').replace(/\/+$/, '')
+  const domainMatch = stripped.match(/^(?:www\.)?instagram\.com\/([^/]+)/)
+  if (domainMatch) return normHandle(domainMatch[1])
+  // A bare handle is valid; an arbitrary URL from another platform is not.
+  if (/^(?:https?:\/\/|www\.)/i.test(u)) return null
+  const raw = stripped.replace(/^\/+/, '').split('/')[0]
   return normHandle(raw)
 }
 
@@ -131,7 +134,9 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         platform: string; profile_url: string | null; username: string | null; followers: number | null
       }>
       const ig = profiles.find(p => p.platform === 'instagram')
-      const totalFollowers = profiles.reduce((s, p) => s + (p.followers ?? 0), 0)
+      // Data Quality's follower metric is specifically Instagram followers.
+      // Never sum TikTok/YouTube/etc. into the Instagram value.
+      const totalFollowers = ig?.followers ?? 0
       all.push({
         id: inf.id,
         display_name: inf.display_name,
@@ -276,11 +281,11 @@ function buildRanking(
 
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
   const active = scan.filter(i => i.is_active).length
-  const withInstagram = scan.filter(i => i.instagram_url || i.instagram_username).length
+  const withInstagram = scan.filter(i => extractInstagramHandle(i.instagram_url, i.instagram_username)).length
   const withoutCommune = scan.filter(i => !i.commune || !i.commune.trim()).length
   const withoutAddress = scan.filter(i => !i.address || !i.address.trim()).length
   const missingAnyRequired = scan.filter(i =>
-    !(i.instagram_url || i.instagram_username) || !i.commune?.trim() || !i.address?.trim()
+    !extractInstagramHandle(i.instagram_url, i.instagram_username) || !i.commune?.trim() || !i.address?.trim()
   ).length
 
   const dupRecordIds = new Set<string>()

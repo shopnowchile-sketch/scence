@@ -9,20 +9,17 @@ export type OfficialInfluencerLocation = {
   label: string | null
 }
 
-/**
- * Resolves influencer.location_id through the canonical locations hierarchy.
- * This is the only place report/ranking code should derive geography.
- */
-export async function getOfficialInfluencerLocations(
-  admin: SupabaseClient,
-  influencerRows: Array<{ id: string; location_id?: string | null }>
-): Promise<Map<string, OfficialInfluencerLocation>> {
-  const locationIds = Array.from(new Set(
-    influencerRows.map(row => row.location_id).filter((id): id is string => Boolean(id))
-  ))
-  const result = new Map<string, OfficialInfluencerLocation>()
-  if (locationIds.length === 0) return result
+type LocationNode = {
+  id: string
+  parent_id: string | null
+  level: 'country' | 'region' | 'city' | 'commune'
+  name: string
+  is_active: boolean
+}
 
+export async function getOfficialLocationDisplayMap(
+  admin: SupabaseClient
+): Promise<Map<string, OfficialInfluencerLocation>> {
   const { data: locations, error } = await fetchAllRows(
     (from, to) => admin
       .from('locations')
@@ -35,22 +32,12 @@ export async function getOfficialInfluencerLocations(
 
   if (error) throw error
 
-  const byId = new Map(
-    (locations ?? []).map(row => [row.id as string, row as {
-      id: string
-      parent_id: string | null
-      level: 'country' | 'region' | 'city' | 'commune'
-      name: string
-      is_active: boolean
-    }])
-  )
+  const rows = (locations ?? []) as LocationNode[]
+  const byId = new Map(rows.map(row => [row.id, row]))
+  const result = new Map<string, OfficialInfluencerLocation>()
 
-  for (const influencer of influencerRows) {
-    if (!influencer.location_id) continue
-
-    let current = byId.get(influencer.location_id)
-    if (!current) continue
-
+  for (const location of rows) {
+    let current: LocationNode | undefined = location
     let country: string | null = null
     let region: string | null = null
     let city: string | null = null
@@ -63,17 +50,36 @@ export async function getOfficialInfluencerLocations(
       if (current.level === 'region') region = current.name
       if (current.level === 'city') city = current.name
       if (current.level === 'commune') commune = current.name
-      if (!current.parent_id) break
-      current = byId.get(current.parent_id)
+      current = current.parent_id ? byId.get(current.parent_id) : undefined
     }
 
-    result.set(influencer.id, {
+    result.set(location.id, {
       country,
       region,
       city,
       commune,
       label: commune ?? city ?? region ?? country ?? null,
     })
+  }
+
+  return result
+}
+
+/**
+ * Resolves influencer.location_id through the canonical locations hierarchy.
+ * This is the only place report/ranking code should derive geography.
+ */
+export async function getOfficialInfluencerLocations(
+  admin: SupabaseClient,
+  influencerRows: Array<{ id: string; location_id?: string | null }>
+): Promise<Map<string, OfficialInfluencerLocation>> {
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+  const result = new Map<string, OfficialInfluencerLocation>()
+
+  for (const influencer of influencerRows) {
+    if (!influencer.location_id) continue
+    const location = locationDisplayById.get(influencer.location_id)
+    if (location) result.set(influencer.id, location)
   }
 
   return result

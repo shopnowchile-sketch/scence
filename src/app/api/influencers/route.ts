@@ -201,8 +201,6 @@ export async function GET(request: NextRequest) {
       email,
       phone,
       whatsapp,
-      country,
-      city,
       location_id,
       birth_date,
       address,

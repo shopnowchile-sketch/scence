@@ -59,6 +59,49 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Geografía oficial: se deriva exclusivamente de locations.location_id.
+  const locationId = influencer.location_id as string | null
+  const { data: locationNode } = locationId
+    ? await admin
+        .from('locations')
+        .select('id, name, parent_id, level')
+        .eq('id', locationId)
+        .eq('is_active', true)
+        .maybeSingle()
+    : { data: null }
+
+  const parentId = locationNode?.parent_id ?? null
+  const { data: parentRows } = parentId
+    ? await admin.from('locations').select('id, name, parent_id, level').eq('id', parentId)
+    : { data: [] }
+  const locationParent = parentRows?.[0] ?? null
+
+  const grandParentId = locationParent?.parent_id ?? null
+  const { data: grandParentRows } = grandParentId
+    ? await admin.from('locations').select('id, name, parent_id, level').eq('id', grandParentId)
+    : { data: [] }
+  const locationGrandParent = grandParentRows?.[0] ?? null
+
+  const greatGrandParentId = locationGrandParent?.parent_id ?? null
+  const { data: greatGrandParentRows } = greatGrandParentId
+    ? await admin.from('locations').select('id, name, parent_id, level').eq('id', greatGrandParentId)
+    : { data: [] }
+  const locationGreatGrandParent = greatGrandParentRows?.[0] ?? null
+
+  const ancestors = [locationNode, locationParent, locationGrandParent, locationGreatGrandParent].filter(Boolean) as Array<{
+    id: string
+    name: string
+    parent_id: string | null
+    level: string
+  }>
+  const byLevel = (level: string) => ancestors.find(node => node.level === level)?.name ?? null
+
+  const officialLocation = {
+    commune: byLevel('commune'),
+    city: byLevel('city'),
+    country: byLevel('country'),
+  }
+
   // Campaigns via campaign_influencers
   const { data: campaignInfluencers } = await admin
     .from('campaign_influencers')
@@ -135,6 +178,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({
     data: {
       ...influencer,
+      ...officialLocation,
       is_pro: proSource !== 'free',
       pro_source: proSource,
       pro_subscription: proSubscription,
@@ -168,6 +212,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
     first_name, last_name, deactivation_reason, status: influencerStatus,
     // Strip any other relation fields
     campaign_deliverables: _cd,
+    // Geography is now sourced only from locations.location_id.
+    // Never write the legacy text geography columns.
+    country: _country,
+    city: _city,
+    commune: _commune,
     ...rest
   } = body
 
@@ -327,11 +376,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // Campos que no son columnas reales → van dentro de metadata JSONB
   const META_FIELDS = ['deactivation_reason', 'first_name', 'last_name', 'status']
+  const LEGACY_GEO_FIELDS = ['country', 'city', 'commune']
   const metaPatch: Record<string, unknown> = {}
   const columnPatch: Record<string, unknown> = {}
 
   for (const [k, v] of Object.entries(body)) {
     if (META_FIELDS.includes(k)) metaPatch[k] = v
+    else if (LEGACY_GEO_FIELDS.includes(k)) continue
     else columnPatch[k] = v
   }
 

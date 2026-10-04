@@ -12,14 +12,40 @@ export async function GET() {
   const { data, error } = await admin
     .from('influencers')
     .select(`
-      id, display_name, avatar_url, bio, email, phone, city, country,
-      address, commune, location_id, birth_date, categories, tags, is_verified, organization_id,
+      id, display_name, avatar_url, bio, email, phone,
+      address, location_id, birth_date, categories, tags, is_verified, organization_id,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('user_id', user.id)
     .single()
 
   if (error || !data) return NextResponse.json({ error: 'Influencer profile not found' }, { status: 404 })
+
+  // Geografía de presentación: siempre se deriva de locations usando location_id.
+  const { data: communeLocation } = await admin
+    .from('locations')
+    .select('id, name, parent_id, level')
+    .eq('id', data.location_id)
+    .eq('level', 'commune')
+    .eq('is_active', true)
+    .maybeSingle()
+  const { data: parentLocations } = communeLocation?.parent_id
+    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [communeLocation.parent_id])
+    : { data: [] }
+  const parent = parentLocations?.[0] ?? null
+  const { data: grandParentLocations } = parent?.parent_id
+    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [parent.parent_id])
+    : { data: [] }
+  const grandParent = grandParentLocations?.[0] ?? null
+  const { data: countryLocations } = grandParent?.parent_id
+    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [grandParent.parent_id])
+    : { data: [] }
+  const countryLocation = countryLocations?.[0] ?? null
+  const officialLocation = {
+    commune: communeLocation?.name ?? null,
+    city: parent?.level === 'city' ? parent.name : null,
+    country: (parent?.level === 'country' ? parent : grandParent?.level === 'country' ? grandParent : countryLocation)?.name ?? null,
+  }
 
   // Marcas referidas: cuenta brands cuyo metadata.referred_by_instagram matchea
   // el Instagram de esta influencer. Se calcula en vivo (no es un contador
@@ -37,7 +63,7 @@ export async function GET() {
     referred_brands_count = count ?? 0
   }
 
-  return NextResponse.json({ data: { ...data, referred_brands_count } })
+  return NextResponse.json({ data: { ...data, ...officialLocation, referred_brands_count } })
 }
 
 // PATCH /api/influencer/me
@@ -51,7 +77,7 @@ export async function PATCH(req: Request) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, address, commune, location_id, birth_date')
+    .select('id, display_name, address, location_id, birth_date')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
@@ -181,8 +207,8 @@ export async function PATCH(req: Request) {
   const { data: updated } = await admin
     .from('influencers')
     .select(`
-      id, display_name, avatar_url, bio, email, phone, city, country,
-      address, commune, location_id, birth_date, categories, tags, is_verified,
+      id, display_name, avatar_url, bio, email, phone,
+      address, location_id, birth_date, categories, tags, is_verified,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('id', influencer.id)

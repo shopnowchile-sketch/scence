@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 
 type Params = { params: { id: string } }
 
@@ -52,8 +53,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       fee, currency, accepted_at, updated_at, application_status,
       influencer:influencers (
         display_name, email, phone, whatsapp, location_id, categories,
-        influencer_social_profiles (platform, username, followers, engagement_rate),
-        location:locations (country, region, city, commune, place)
+        influencer_social_profiles (platform, username, followers, engagement_rate)
       )
     `)
     .eq('campaign_id', params.id)
@@ -70,8 +70,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   type Social = { platform: string; username: string | null; followers: number | null; engagement_rate: number | null }
   type Influencer = {
     display_name: string; email: string | null; phone: string | null; whatsapp: string | null
-    commune: string | null; categories: string[] | null; influencer_social_profiles: Social[] | null
+    location_id: string | null; categories: string[] | null; influencer_social_profiles: Social[] | null
   }
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+
   const rows = (data ?? []).map(item => {
     const influencer = item.influencer as unknown as Influencer | null
     const instagram = influencer?.influencer_social_profiles?.find(profile => profile.platform === 'instagram')
@@ -83,7 +85,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       Instagram: instagram?.username ? `@${instagram.username.replace(/^@/, '')}` : '',
       Seguidores: instagram?.followers ?? '',
       'Engagement (%)': instagram?.engagement_rate ?? '',
-      Comuna: influencer?.location?.commune ?? '',
+      Comuna: influencer?.location_id ? (locationDisplayById.get(influencer.location_id)?.commune ?? '') : '',
       Categorías: influencer?.categories?.join(', ') ?? '',
       Estado: 'Seleccionada',
       Fee: item.fee ?? '',

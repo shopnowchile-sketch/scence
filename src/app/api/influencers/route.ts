@@ -383,16 +383,19 @@ export async function GET(request: NextRequest) {
       .order(sortBy, { ascending: sortDir })
       .range((page - 1) * limit, page * limit - 1)
 
-    if (country)  query = query.eq('country', country)
-    if (communeIds.length === 1) query = query.eq('location_id', communeIds[0])
-    else if (communeIds.length > 1) query = query.in('location_id', communeIds)
-    if (verified === 'true')  query = query.eq('is_verified', true)
+    if (requestedLocationIds.length === 0 && (country || communeList.length)) {
+      query = query.in('location_id', ['00000000-0000-0000-0000-000000000000'])
+    } else if (requestedLocationIds.length === 1) {
+      query = query.eq('location_id', requestedLocationIds[0])
+    } else if (requestedLocationIds.length > 1) {
+      query = query.in('location_id', requestedLocationIds)
+    }
+    if (verified === 'true') query = query.eq('is_verified', true)
     if (isActive === 'false') query = query.eq('is_active', false)
-    if (isActive === 'true')  query = query.eq('is_active', true)
+    if (isActive === 'true') query = query.eq('is_active', true)
     if (search) {
-      query = query.or(
-        `display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`
-      )
+      const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
+      query = query.or(`display_name.ilike.%${search}%,email.ilike.%${search}%${locationOr}`)
     }
     if (category) {
       query = query.contains('categories', [category])

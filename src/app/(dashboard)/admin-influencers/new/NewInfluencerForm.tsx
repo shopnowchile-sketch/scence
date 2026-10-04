@@ -42,7 +42,7 @@ const schema = z.object({
   email:        z.string().email('Email inválido').optional().or(z.literal('')),
   phone:        z.string().optional(),
   bio:          z.string().max(500).optional(),
-  location_id:  z.string().uuid('Selecciona una comuna'),
+  location_id:  z.string().uuid('Selecciona una ubicación'),
   address:      z.string().optional(),
   address_lat:  z.number().optional(),
   address_lng:  z.number().optional(),
@@ -484,7 +484,7 @@ function Step4({ values }: Step4Props) {
         {[
           ['Nombre',       values.display_name],
           ['Email',        values.email || '—'],
-          ['Ubicación',    values.location_id ? 'Comuna seleccionada' : '—'],
+          ['Ubicación',    values.location_id ? 'Ubicación seleccionada' : '—'],
           ['Categorías',   values.categories?.join(', ') || '—'],
           ['Redes sociales', values.social_profiles?.map(sp => `@${sp.username} (${PLATFORM_LABELS[sp.platform] ?? sp.platform})`).join(', ')],
           ['Seguidores (principal)', primaryProfile ? primaryProfile.followers_count.toLocaleString('es-CL') : '—'],

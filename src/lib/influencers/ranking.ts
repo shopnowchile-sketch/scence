@@ -23,6 +23,7 @@ export type RankingInfluencerRow = {
   email?: string | null
   user_id?: string | null
   last_sign_in_at?: string | null
+  // Geography is derived from influencer.location_id by the API boundary.
   city?: string | null
   commune?: string | null
   country?: string | null

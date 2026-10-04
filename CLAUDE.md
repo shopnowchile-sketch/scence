@@ -389,6 +389,20 @@ Una influencer con `is_active = false` no puede recibir ningún email enviado po
 - Falla cerrado: si no se puede verificar, no se envía.
 - Los filtros `is_active` en las queries de cada ruta se mantienen (contadores exactos y mensajes claros al admin); no reemplazan la barrera.
 
+### 16.11 Ubicación = `locations` (fuente única)
+
+`public.locations` es la **única fuente de verdad de ubicación**. Una sola tabla autorreferenciada (`parent_id`):
+`country → region → [city opcional] → commune → place`.
+
+- `level` = nivel jerárquico. `type` = categoría del lugar (solo `place`). No mezclar.
+- Geografía (country…commune) = catálogo global, `organization_id NULL`, sin dirección ni coordenadas. Una comuna existe **una vez por región** (cuelgue de la región o de una ciudad).
+- `place` = lugar físico: dueño (`organization_id` + `brand_id`/`owner_influencer_id`), `address`, `lat/lng`, `is_private`. `influencer_home` siempre privado.
+- La jerarquía la valida la base (`locations_validate_hierarchy`). No duplicar la validación como fuente de verdad en la app.
+- Sin DELETE: soft delete con `is_active` (bloqueado si hay hijos activos).
+- `/api/locations` es solo admin de plataforma (`isPlatformAdmin`). Incluye domicilios privados: cualquier consumidor no-admin debe filtrar por dueño + `is_private`.
+- Consumidores (brands, campaigns, bookings, events) guardan **solo `location_id` → place**. Nunca volver a guardar country/region/city/commune/address en paralelo. País/región/comuna se derivan con `location_breadcrumb()`.
+- `brand_locations` es legado: se migra a `locations` y se elimina (Fase 2). No agregarle funcionalidad.
+
 ## Regla final para Claude
 
 Antes de escribir código, piensa como:

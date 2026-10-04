@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { getOfficialInfluencerLocations } from '@/lib/influencer-location'
 
 // GET /api/influencer/me
 export async function GET() {
@@ -22,29 +23,12 @@ export async function GET() {
   if (error || !data) return NextResponse.json({ error: 'Influencer profile not found' }, { status: 404 })
 
   // Geografía de presentación: siempre se deriva de locations usando location_id.
-  const { data: communeLocation } = await admin
-    .from('locations')
-    .select('id, name, parent_id, level')
-    .eq('id', data.location_id)
-    .eq('level', 'commune')
-    .eq('is_active', true)
-    .maybeSingle()
-  const { data: parentLocations } = communeLocation?.parent_id
-    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [communeLocation.parent_id])
-    : { data: [] }
-  const parent = parentLocations?.[0] ?? null
-  const { data: grandParentLocations } = parent?.parent_id
-    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [parent.parent_id])
-    : { data: [] }
-  const grandParent = grandParentLocations?.[0] ?? null
-  const { data: countryLocations } = grandParent?.parent_id
-    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [grandParent.parent_id])
-    : { data: [] }
-  const countryLocation = countryLocations?.[0] ?? null
-  const officialLocation = {
-    commune: communeLocation?.name ?? null,
-    city: parent?.level === 'city' ? parent.name : null,
-    country: (parent?.level === 'country' ? parent : grandParent?.level === 'country' ? grandParent : countryLocation)?.name ?? null,
+  const officialLocations = await getOfficialInfluencerLocations(admin, [{
+    id: data.id as string,
+    location_id: data.location_id as string | null,
+  }])
+  const officialLocation = officialLocations.get(data.id as string) ?? {
+    country: null, region: null, city: null, commune: null, label: null,
   }
 
   // Marcas referidas: cuenta brands cuyo metadata.referred_by_instagram matchea

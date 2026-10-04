@@ -461,6 +461,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'display_name is required' }, { status: 422 })
   }
 
+  // instagram_url se conserva solo para completar datos auxiliares del flujo
+  // (por ejemplo, el link de afiliada); nunca autoriza por sí solo la creación.
+  const igUrl = (body.instagram_url as string) ?? null
+
   // Instagram es obligatorio y debe quedar realmente guardado como social profile.
   // No aceptamos instagram_url suelto porque eso permitía crear la influencer
   // sin una fila de Instagram en influencer_social_profiles.

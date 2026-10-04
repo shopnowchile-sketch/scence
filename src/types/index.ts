@@ -60,6 +60,7 @@ export interface Influencer {
   country: string | null
   city: string | null
   commune: string | null
+  location_id: string | null
   birth_date: string | null       // fecha de nacimiento (YYYY-MM-DD)
   address: string | null          // dirección completa para Google Maps
   address_lat: number | null      // coordenadas guardadas

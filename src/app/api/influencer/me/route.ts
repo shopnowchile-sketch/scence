@@ -13,7 +13,7 @@ export async function GET() {
     .from('influencers')
     .select(`
       id, display_name, avatar_url, bio, email, phone, city, country,
-      address, commune, birth_date, categories, tags, is_verified, organization_id,
+      address, commune, location_id, birth_date, categories, tags, is_verified, organization_id,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('user_id', user.id)
@@ -51,14 +51,14 @@ export async function PATCH(req: Request) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, address, commune, birth_date')
+    .select('id, display_name, address, commune, location_id, birth_date')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
 
   // Allowed profile fields
   const profileUpdate: Record<string, unknown> = {}
-  const allowed = ['display_name', 'bio', 'phone', 'city', 'country', 'address', 'commune', 'birth_date', 'avatar_url', 'categories']
+  const allowed = ['display_name', 'bio', 'phone', 'address', 'birth_date', 'avatar_url', 'categories', 'location_id']
   for (const key of allowed) {
     if (key in body) profileUpdate[key] = body[key]
   }
@@ -77,7 +77,7 @@ export async function PATCH(req: Request) {
   // impide guardar. Cuando se necesite de verdad (contratos, pagos) se exige
   // en ese punto, no acá.
   const finalAddress = 'address' in profileUpdate ? String(profileUpdate.address ?? '').trim() : String(influencer.address ?? '').trim()
-  const finalCommune = 'commune' in profileUpdate ? String(profileUpdate.commune ?? '').trim() : String(influencer.commune ?? '').trim()
+  const finalLocationId = 'location_id' in profileUpdate ? String(profileUpdate.location_id ?? '').trim() : String(influencer.location_id ?? '').trim()
   const finalDisplayName = 'display_name' in profileUpdate ? String(profileUpdate.display_name ?? '').trim() : String(influencer.display_name ?? '').trim()
 
   let finalHasInstagram: boolean
@@ -111,7 +111,7 @@ export async function PATCH(req: Request) {
   const missing: string[] = []
   if (!finalDisplayName) missing.push('nombre')
   if (!finalAddress) missing.push('dirección')
-  if (!finalCommune) missing.push('comuna')
+  if (!finalLocationId) missing.push('comuna')
   if (!finalHasInstagram) missing.push('Instagram')
   if (missing.length > 0) {
     return NextResponse.json(
@@ -182,7 +182,7 @@ export async function PATCH(req: Request) {
     .from('influencers')
     .select(`
       id, display_name, avatar_url, bio, email, phone, city, country,
-      address, commune, birth_date, categories, tags, is_verified,
+      address, commune, location_id, birth_date, categories, tags, is_verified,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('id', influencer.id)

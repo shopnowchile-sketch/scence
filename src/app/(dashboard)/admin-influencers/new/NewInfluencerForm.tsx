@@ -14,7 +14,8 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2,
   User, Share2, DollarSign, Check,
 } from 'lucide-react'
-import { cn, PLATFORM_ICONS, PLATFORM_LABELS, CATEGORY_OPTIONS, COUNTRY_OPTIONS } from '@/lib/utils'
+import { cn, PLATFORM_ICONS, PLATFORM_LABELS, CATEGORY_OPTIONS } from '@/lib/utils'
+import { InfluencerLocationPicker, type InfluencerLocation } from '@/components/influencers/InfluencerLocationPicker'
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 const socialProfileSchema = z.object({
@@ -41,8 +42,7 @@ const schema = z.object({
   email:        z.string().email('Email inválido').optional().or(z.literal('')),
   phone:        z.string().optional(),
   bio:          z.string().max(500).optional(),
-  city:         z.string().optional(),
-  country:      z.string().optional(),
+  location_id:  z.string().uuid('Selecciona una comuna'),
   address:      z.string().optional(),
   address_lat:  z.number().optional(),
   address_lng:  z.number().optional(),
@@ -211,20 +211,23 @@ function Step1({ register, control, setValue, errors }: Step1Props) {
           placeholder="Breve descripción del influencer…" />
       </div>
 
-      {/* Location */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Location — fuente única: locations */}
+      <div className="space-y-4">
+        <Controller
+          control={control}
+          name="location_id"
+          render={({ field, fieldState }) => (
+            <>
+              <InfluencerLocationPicker
+                value={field.value ?? ''}
+                required
+                onChange={(location: InfluencerLocation | null) => field.onChange(location?.id ?? '')}
+              />
+              {fieldState.error && <p className="text-xs text-red-500 mt-1">{fieldState.error.message}</p>}
+            </>
+          )}
+        />
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Ciudad</label>
-          <input {...register('city')} className="input-base w-full" placeholder="Ciudad de México" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">País</label>
-          <select {...register('country')} className="input-base w-full">
-            <option value="">Seleccionar…</option>
-            {COUNTRY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-          </select>
-        </div>
-        <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección (Google Maps)</label>
           <Controller
             control={control}
@@ -481,7 +484,7 @@ function Step4({ values }: Step4Props) {
         {[
           ['Nombre',       values.display_name],
           ['Email',        values.email || '—'],
-          ['Ubicación',    [values.city, values.country].filter(Boolean).join(', ') || '—'],
+          ['Ubicación',    values.location_id ? 'Comuna seleccionada' : '—'],
           ['Categorías',   values.categories?.join(', ') || '—'],
           ['Redes sociales', values.social_profiles?.map(sp => `@${sp.username} (${PLATFORM_LABELS[sp.platform] ?? sp.platform})`).join(', ')],
           ['Seguidores (principal)', primaryProfile ? primaryProfile.followers_count.toLocaleString('es-CL') : '—'],
@@ -521,7 +524,7 @@ export function NewInfluencerForm() {
 
   async function goNext() {
     const stepFields: Record<number, (keyof FormValues)[]> = {
-      1: ['display_name'],
+      1: ['display_name', 'location_id'],
       2: ['social_profiles'],
       3: [],
     }

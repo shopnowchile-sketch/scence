@@ -14,6 +14,7 @@ import NotificationPreferencesForm from '@/components/settings/NotificationPrefe
 import { InfluencerPlanSettings } from '../inf-plan/InfluencerPlanSettings'
 import { InfluencerDocuments } from './_components/InfluencerDocuments'
 import { InfluencerAffiliate } from './_components/InfluencerAffiliate'
+import { InfluencerLocationPicker, type InfluencerLocation } from '@/components/influencers/InfluencerLocationPicker'
 
 type SocialProfile = {
   id?: string
@@ -38,6 +39,7 @@ type InfluencerProfile = {
   country: string | null
   address: string | null
   commune: string | null
+  location_id: string | null
   birth_date: string | null
   categories: string[] | null
   influencer_social_profiles: SocialProfile[] | null
@@ -62,6 +64,7 @@ function missingProfileItems(p: {
   display_name?: string | null
   address?: string | null
   commune?: string | null
+  location_id?: string | null
   birth_date?: string | null
   hasInstagram: boolean
 }): MissingProfileItem[] {
@@ -79,6 +82,7 @@ function missingFromProfile(p: InfluencerProfile): MissingProfileItem[] {
     display_name: p.display_name,
     address: p.address,
     commune: p.commune,
+    location_id: p.location_id,
     birth_date: p.birth_date,
     hasInstagram: (p.influencer_social_profiles ?? []).some(
       sp => sp.platform === 'instagram' && sp.username && sp.username.trim()
@@ -219,10 +223,8 @@ export default function ProfilePage() {
       display_name: profile.display_name ?? '',
       bio: profile.bio ?? '',
       phone: profile.phone ?? '',
-      city: profile.city ?? '',
-      country: profile.country ?? '',
       address: profile.address ?? '',
-      commune: profile.commune ?? '',
+      location_id: profile.location_id ?? '',
       birth_date: profile.birth_date ?? '',
       categories: (profile.categories ?? []).join(', '),
     })
@@ -567,11 +569,13 @@ export default function ProfilePage() {
           <div id={SECTION_IDS.ubicacion} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 scroll-mt-24">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-400" /> Dirección y ubicación</h2>
             <Field label="Dirección completa *" value={editForm.address} onChange={v => setEditForm(f => ({ ...f, address: v }))} placeholder="Av. Providencia 1234, Depto 5" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Comuna *" value={editForm.commune} onChange={v => setEditForm(f => ({ ...f, commune: v }))} placeholder="Providencia" />
-              <Field label="Ciudad" value={editForm.city} onChange={v => setEditForm(f => ({ ...f, city: v }))} placeholder="Santiago" />
-            </div>
-            <Field label="País" value={editForm.country} onChange={v => setEditForm(f => ({ ...f, country: v }))} placeholder="Chile" />
+            <InfluencerLocationPicker
+              value={editForm.location_id}
+              required
+              onChange={(location: InfluencerLocation | null) =>
+                setEditForm(f => ({ ...f, location_id: location?.id ?? '' }))
+              }
+            />
           </div>
 
           <div id={SECTION_IDS.redes} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 scroll-mt-24">

@@ -300,20 +300,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El email es requerido' }, { status: 422 })
   }
 
-  // Instagram es el identificador principal del sistema (misma regla que admin).
+  // Instagram es obligatorio y debe quedar realmente guardado como social profile.
+  // No aceptamos instagram_url suelto porque eso permitía crear la influencer
+  // sin una fila de Instagram en influencer_social_profiles.
   const profilesArr = social_profiles as Array<Record<string, unknown>>
-  const igProfile = profilesArr.find(sp => sp.platform === 'instagram')
-  const igUsernameRaw = (igProfile?.username as string | undefined)
-    ?? (body.instagram_url ? (() => {
-      try {
-        const parts = new URL(body.instagram_url as string).pathname.split('/').filter(Boolean)
-        return parts[parts.length - 1]?.replace(/^@/, '') ?? null
-      } catch { return null }
-    })() : null)
+  const igProfile = profilesArr.find(
+    sp => sp.platform === 'instagram'
+      && typeof sp.username === 'string'
+      && sp.username.trim().length > 0
+  )
+  const igUsernameRaw = igProfile?.username as string | undefined
 
   if (!igUsernameRaw) {
     return NextResponse.json(
-      { error: 'Instagram es obligatorio. Instagram es el identificador principal del sistema.' },
+      { error: 'Instagram es obligatorio para crear una influencer.' },
       { status: 422 }
     )
   }

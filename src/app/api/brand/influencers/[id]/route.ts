@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOfficialInfluencerLocations } from '@/lib/influencer-location'
 
 type Params = { params: { id: string } }
 
@@ -79,7 +80,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data, error } = await admin
     .from('influencers')
     .select(`
-      id, display_name, bio, avatar_url, categories, country, city,
+      id, display_name, bio, avatar_url, categories, location_id,
       influencer_social_profiles (
         platform, username, followers, engagement_rate, is_primary, synced_at, sync_status
       ),
@@ -96,6 +97,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const officialLocations = await getOfficialInfluencerLocations(admin, [{ id: data.id, location_id: data.location_id }])
+  const officialLocation = officialLocations.get(data.id) ?? { country: null, region: null, city: null, commune: null, label: null }
+
   const { data: documents } = await admin
     .from('influencer_documents')
     .select('id, document_type, title, original_filename, storage_path, mime_type, file_size, visibility, created_at')
@@ -110,5 +114,5 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }))
 
   const isPro = await isInfluencerPro(admin, data.id)
-  return NextResponse.json({ data: { ...data, is_pro: isPro, influencer_documents: documentsWithUrls } })
+  return NextResponse.json({ data: { ...data, ...officialLocation, is_pro: isPro, influencer_documents: documentsWithUrls } })
 }

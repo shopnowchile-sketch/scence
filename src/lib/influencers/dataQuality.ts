@@ -17,7 +17,7 @@ export interface ScanInfluencer {
 }
 
 // Ranking por comuna / nicho (pedido Pri 2026-07-13): value=null representa
-// "Sin comuna" / "Sin nicho" — se incluye como una fila más del ranking (no
+// "Sin comuna oficial" / "Sin nicho" — se incluye como una fila más del ranking (no
 // aparte), así el orden de mayor a menor queda consistente entre ambos casos.
 export interface RankingItem {
   value: string | null
@@ -297,7 +297,7 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     else byMixed += g.influencers.length - 1
   }
 
-  const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna')
+  const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna oficial')
   const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
 
   return {

@@ -86,6 +86,9 @@ export async function GET(request: NextRequest) {
     ? await admin.from('locations').select('id, name, level, parent_id').in('id', countryIds)
     : null
   const officialCountries = officialCountriesResult?.data ?? []
+  const countryIdByName = new Map(
+    officialCountries.map(row => [normalizeLocationName(row.name), row.id])
+  )
 
   const officialById = new Map<string, { id: string; name: string; level: string; parent_id: string | null }>()
   for (const row of [...(officialParents ?? []), ...(officialRegions ?? []), ...(officialCountries ?? [])]) {
@@ -103,6 +106,20 @@ export async function GET(request: NextRequest) {
       country: country?.name ?? null,
     })
   }
+  const countryLocationIds = country
+    ? Array.from(locationDisplayById.entries())
+        .filter(([, location]) => normalizeLocationName(location.country ?? '') === normalizeLocationName(country))
+        .map(([id]) => id)
+    : []
+  const communeLocationIds = communeList.map(name => communeIdByName.get(normalizeLocationName(name))).filter((id): id is string => Boolean(id))
+  const requestedLocationIds = communeList.length ? communeLocationIds : country ? countryLocationIds : []
+  const locationSearchIds = search
+    ? Array.from(locationDisplayById.entries())
+        .filter(([, location]) => [location.commune, location.city, location.region, location.country]
+          .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false))
+        .map(([id]) => id)
+    : []
+
   const verified   = searchParams.get('verified')
   const isActive   = searchParams.get('is_active')
   const rawPlan    = searchParams.get('plan')
@@ -131,13 +148,16 @@ export async function GET(request: NextRequest) {
           id, display_name, email, location_id, categories, is_verified,
           social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
         `).range(from, to)
-        if (country) q = q.eq('country', country)
-        if (communeIds.length === 1) q = q.eq('location_id', communeIds[0])
-        else if (communeIds.length > 1) q = q.in('location_id', communeIds)
+        if (requestedLocationIds.length === 0 && (country || communeList.length)) q = q.in('location_id', ['00000000-0000-0000-0000-000000000000'])
+        else if (requestedLocationIds.length === 1) q = q.eq('location_id', requestedLocationIds[0])
+        else if (requestedLocationIds.length > 1) q = q.in('location_id', requestedLocationIds)
         if (verified === 'true') q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
         if (isActive === 'true') q = q.eq('is_active', true)
-        if (search) q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%`)
+        if (search) {
+          const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
+          q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%${locationOr}`)
+        }
         if (category) q = q.contains('categories', [category])
         return q
       },
@@ -223,11 +243,12 @@ export async function GET(request: NextRequest) {
     `
 
   const isJoinSort = (JOIN_SORT_COLS as readonly string[]).includes(rawSort)
+  const isLocationSort = rawSort === 'country' || rawSort === 'city' || rawSort === 'commune'
   const isPlanSort = rawSort === 'plan'
   // Filtrar por plan también exige el dataset completo antes de paginar,
   // aunque el sort activo sea uno normal (ej. filtrar Gratis pero seguir
   // ordenado por "Más recientes").
-  const needsFullDataset = isJoinSort || isPlanSort || Boolean(planParam) || proAttemptParam
+  const needsFullDataset = isJoinSort || isLocationSort || isPlanSort || Boolean(planParam) || proAttemptParam
 
   let data: Record<string, unknown>[] = []
   let count = 0
@@ -255,14 +276,15 @@ export async function GET(request: NextRequest) {
     const { data: allRows, error } = await fetchAllRows<Record<string, unknown>>(
       (from, to) => {
         let q = admin.from('influencers').select(SELECT).range(from, to)
-        if (country)  q = q.eq('country', country)
-        if (communeList.length === 1) q = q.eq('commune', communeList[0])
-        else if (communeList.length > 1) q = q.in('commune', communeList)
-        if (verified === 'true')  q = q.eq('is_verified', true)
+        if (requestedLocationIds.length === 0 && (country || communeList.length)) q = q.in('location_id', ['00000000-0000-0000-0000-000000000000'])
+        else if (requestedLocationIds.length === 1) q = q.eq('location_id', requestedLocationIds[0])
+        else if (requestedLocationIds.length > 1) q = q.in('location_id', requestedLocationIds)
+        if (verified === 'true') q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
-        if (isActive === 'true')  q = q.eq('is_active', true)
+        if (isActive === 'true') q = q.eq('is_active', true)
         if (search) {
-          q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
+          const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
+          q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%${locationOr}`)
         }
         if (category) q = q.contains('categories', [category])
         return q
@@ -333,6 +355,13 @@ export async function GET(request: NextRequest) {
           const va = valueOf(a)
           const vb = valueOf(b)
           return sortDir ? va - vb : vb - va
+        })
+      } else if (isLocationSort) {
+        sorted = [...withPlan].sort((a, b) => {
+          const la = locationDisplayById.get(a.location_id as string)?.[rawSort as 'country' | 'city' | 'commune'] ?? ''
+          const lb = locationDisplayById.get(b.location_id as string)?.[rawSort as 'country' | 'city' | 'commune'] ?? ''
+          const cmp = la.localeCompare(lb, 'es', { sensitivity: 'base' })
+          return sortDir ? cmp : -cmp
         })
       } else {
         // Filtro de plan con un sort normal (ej. "Más recientes"): la

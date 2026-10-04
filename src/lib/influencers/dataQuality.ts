@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 
 export interface ScanInfluencer {
   id: string
@@ -10,6 +11,7 @@ export interface ScanInfluencer {
   instagram_username: string | null
   followers: number
   commune: string | null
+  location_id: string | null
   address: string | null
   categories: string[] | null
 }
@@ -104,7 +106,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     const { data, error } = await admin
       .from('influencers')
       .select(`
-        id, display_name, email, is_active, created_at, commune, address, categories,
+        id, display_name, email, is_active, created_at, location_id, address, categories,
         social_profiles:influencer_social_profiles ( platform, profile_url, username, followers )
       `)
       .eq('organization_id', orgId)
@@ -139,7 +141,8 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         instagram_url: ig?.profile_url ?? null,
         instagram_username: ig?.username ?? null,
         followers: totalFollowers,
-        commune: (inf as { commune?: string | null }).commune ?? null,
+        commune: null,
+        location_id: (inf as { location_id?: string | null }).location_id ?? null,
         address: (inf as { address?: string | null }).address ?? null,
         categories: (inf as { categories?: string[] | null }).categories ?? null,
       })
@@ -149,7 +152,12 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     from += PAGE
   }
 
-  return all
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+  return all.map(inf => ({
+    ...inf,
+    location_id: (inf as ScanInfluencer).location_id ?? null,
+    commune: inf.location_id ? (locationDisplayById.get(inf.location_id)?.commune ?? null) : null,
+  }))
 }
 
 /**

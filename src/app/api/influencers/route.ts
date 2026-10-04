@@ -68,9 +68,6 @@ export async function GET(request: NextRequest) {
   const communeIdByName = new Map(
     (officialCommunes ?? []).map(row => [normalizeLocationName(row.name), row.id])
   )
-  const communeIds = communeList
-    .map(name => communeIdByName.get(normalizeLocationName(name)))
-    .filter((id): id is string => Boolean(id))
   const officialParentIds = Array.from(new Set((officialCommunes ?? []).map(row => row.parent_id).filter(Boolean)))
   const officialParentsResult = officialParentIds.length
     ? await admin.from('locations').select('id, name, level, parent_id').in('id', officialParentIds)
@@ -86,10 +83,6 @@ export async function GET(request: NextRequest) {
     ? await admin.from('locations').select('id, name, level, parent_id').in('id', countryIds)
     : null
   const officialCountries = officialCountriesResult?.data ?? []
-  const countryIdByName = new Map(
-    officialCountries.map(row => [normalizeLocationName(row.name), row.id])
-  )
-
   const officialById = new Map<string, { id: string; name: string; level: string; parent_id: string | null }>()
   for (const row of [...(officialParents ?? []), ...(officialRegions ?? []), ...(officialCountries ?? [])]) {
     officialById.set(row.id, row)

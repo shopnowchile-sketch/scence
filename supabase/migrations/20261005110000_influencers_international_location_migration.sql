@@ -30,18 +30,11 @@ BEGIN
 END;
 $function$;
 
--- Canonical country names for values explicitly present in legacy data.
 WITH country_map(legacy_value, canonical_name) AS (
   VALUES
-    ('cl', 'Chile'),
-    ('chile', 'Chile'),
-    ('chili', 'Chile'),
-    ('chie', 'Chile'),
-    ('argentina', 'Argentina'),
-    ('colombia', 'Colombia'),
-    ('españa', 'España'),
-    ('paraguay', 'Paraguay'),
-    ('méxico', 'México')
+    ('cl', 'Chile'), ('chile', 'Chile'), ('chili', 'Chile'), ('chie', 'Chile'),
+    ('argentina', 'Argentina'), ('colombia', 'Colombia'), ('españa', 'España'),
+    ('paraguay', 'Paraguay'), ('méxico', 'México')
 )
 INSERT INTO public.locations (
   organization_id, name, type, address, city, region, country,
@@ -64,8 +57,6 @@ AND NOT EXISTS (
 );
 
 -- 1) High-confidence Chile migration.
--- The legacy city is used only when it exactly matches one active official
--- commune in Chile. We never infer a commune from free-form addresses here.
 WITH chile AS (
   SELECT id
   FROM public.locations
@@ -75,7 +66,7 @@ WITH chile AS (
 candidate AS (
   SELECT
     i.id AS influencer_id,
-    min(l.id) AS location_id
+    (array_agg(l.id))[1] AS location_id
   FROM public.influencers i
   JOIN chile c ON true
   JOIN public.locations l
@@ -102,19 +93,11 @@ WHERE i.id = candidate.influencer_id
   AND i.location_id IS NULL;
 
 -- 2) Explicit country fallback.
--- This preserves real international/Chile data even when city is missing or
--- ambiguous. It is deliberately country-level rather than guessing a city.
 WITH country_map(legacy_value, canonical_name) AS (
   VALUES
-    ('cl', 'Chile'),
-    ('chile', 'Chile'),
-    ('chili', 'Chile'),
-    ('chie', 'Chile'),
-    ('argentina', 'Argentina'),
-    ('colombia', 'Colombia'),
-    ('españa', 'España'),
-    ('paraguay', 'Paraguay'),
-    ('méxico', 'México')
+    ('cl', 'Chile'), ('chile', 'Chile'), ('chili', 'Chile'), ('chie', 'Chile'),
+    ('argentina', 'Argentina'), ('colombia', 'Colombia'), ('españa', 'España'),
+    ('paraguay', 'Paraguay'), ('méxico', 'México')
 )
 UPDATE public.influencers i
 SET location_id = l.id

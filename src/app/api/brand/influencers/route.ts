@@ -146,10 +146,9 @@ export async function GET(req: NextRequest) {
             .filter(([, location]) => [location.country, location.region, location.city, location.commune]
               .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false))
             .map(([id]) => id)
-          const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
-          q = q.or(`display_name.ilike.%${search}%,location_id.in.(${locationSearchIds.join(',')})`)
-          if (!locationSearchIds.length) q = q.or(`display_name.ilike.%${search}%`)
-          else q = q.or(`display_name.ilike.%${search}%${locationOr}`)
+          q = locationSearchIds.length
+            ? q.or(`display_name.ilike.%${search}%,location_id.in.(${locationSearchIds.join(',')})`)
+            : q.ilike('display_name', `%${search}%`)
         }
         if (category) q = q.contains('categories', [category])
         return q
@@ -349,6 +348,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El email es requerido' }, { status: 422 })
   }
 
+  let canonicalLocationId: string | null = null
+  if (typeof location_id === 'string' && location_id.trim()) {
+    const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+    if (!locationDisplayById.has(location_id.trim())) {
+      return NextResponse.json({ error: 'La ubicación seleccionada no es válida.' }, { status: 422 })
+    }
+    canonicalLocationId = location_id.trim()
+  }
+
   // Instagram es obligatorio y debe quedar realmente guardado como social profile.
   // No aceptamos instagram_url suelto porque eso permitía crear la influencer
   // sin una fila de Instagram en influencer_social_profiles.
@@ -423,7 +431,7 @@ export async function POST(req: NextRequest) {
       organization_id: brand.organization_id, // ← forzado server-side, nunca del body
       display_name: (display_name as string).trim(),
       email: emailNorm, phone: phone ?? null, bio: bio ?? null,
-      avatar_url: avatar_url ?? null, location_id: typeof location_id === 'string' && location_id.trim() ? location_id.trim() : null,
+      avatar_url: avatar_url ?? null, location_id: canonicalLocationId,
       birth_date: birth_date ?? null,
       address: address ?? null, address_lat: address_lat ?? null, address_lng: address_lng ?? null,
       categories: categories ?? [], tags: tags ?? [],

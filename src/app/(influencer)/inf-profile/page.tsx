@@ -63,7 +63,6 @@ type MissingProfileItem = { label: string; section: ProfileSection; blocking: bo
 function missingProfileItems(p: {
   display_name?: string | null
   address?: string | null
-  commune?: string | null
   location_id?: string | null
   birth_date?: string | null
   hasInstagram: boolean
@@ -72,7 +71,7 @@ function missingProfileItems(p: {
   if (!p.display_name?.trim()) missing.push({ label: 'Nombre',   section: 'personal',  blocking: true })
   if (!p.hasInstagram)         missing.push({ label: 'Instagram', section: 'redes',     blocking: true })
   if (!p.address?.trim())      missing.push({ label: 'Dirección', section: 'ubicacion', blocking: true })
-  if (!p.commune?.trim())      missing.push({ label: 'Comuna',    section: 'ubicacion', blocking: true })
+  if (!p.location_id?.trim())  missing.push({ label: 'Comuna',    section: 'ubicacion', blocking: true })
   if (!p.birth_date?.trim())   missing.push({ label: 'Fecha de nacimiento', section: 'personal', blocking: false })
   return missing
 }
@@ -81,7 +80,6 @@ function missingFromProfile(p: InfluencerProfile): MissingProfileItem[] {
   return missingProfileItems({
     display_name: p.display_name,
     address: p.address,
-    commune: p.commune,
     location_id: p.location_id,
     birth_date: p.birth_date,
     hasInstagram: (p.influencer_social_profiles ?? []).some(
@@ -162,7 +160,7 @@ export default function ProfilePage() {
   const [loading,   setLoading]   = useState(true)
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
-  const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', city: '', country: '', address: '', commune: '', birth_date: '', categories: '' })
+  const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', address: '', location_id: '', birth_date: '', categories: '' })
   const [socials,   setSocials]   = useState<SocialProfile[]>([])
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
@@ -242,7 +240,7 @@ export default function ProfilePage() {
     return missingProfileItems({
       display_name: editForm.display_name,
       address: editForm.address,
-      commune: editForm.commune,
+      location_id: editForm.location_id,
       birth_date: editForm.birth_date,
       hasInstagram: socials.some(s => !s._delete && s.platform === 'instagram' && s.username.trim()),
     })

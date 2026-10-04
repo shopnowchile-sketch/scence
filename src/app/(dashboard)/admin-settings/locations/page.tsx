@@ -261,44 +261,84 @@ function LocationModal({ state, onClose, onSaved }: { state: ModalState; onClose
 
 // ── Página ───────────────────────────────────────────────────────────────────
 export default function AdminSettingsLocationsPage() {
-  const [parentId, setParentId]   = useState<string | null>(null)
-  const [nodes, setNodes]         = useState<LocationRow[]>([])
-  const [trail, setTrail]         = useState<BreadcrumbItem[]>([])
-  const [loading, setLoading]     = useState(true)
+  const [nodes, setNodes] = useState<LocationRow[]>([])
+  const [childrenByParent, setChildrenByParent] = useState<Record<string, LocationRow[]>>({})
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [loadingChildren, setLoadingChildren] = useState<Set<string>>(new Set())
   const [showInactive, setShowInactive] = useState(false)
-  const [query, setQuery]         = useState('')
-  const [results, setResults]     = useState<SearchRow[] | null>(null)
-  const [modal, setModal]         = useState<ModalState | null>(null)
-  const [toggling, setToggling]   = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchRow[] | null>(null)
+  const [modal, setModal] = useState<ModalState | null>(null)
+  const [toggling, setToggling] = useState<string | null>(null)
 
   const inactiveParam = showInactive ? '&include_inactive=1' : ''
 
-  const load = useCallback(() => {
+  const loadRoot = useCallback(async () => {
     setLoading(true)
-    api<{ data: LocationRow[]; breadcrumb: BreadcrumbItem[] }>(`/api/locations?parent_id=${parentId ?? ''}${inactiveParam}`)
-      .then(j => { setNodes(j.data); setTrail(j.breadcrumb) })
-      .catch(e => toast.error((e as Error).message))
-      .finally(() => setLoading(false))
-  }, [parentId, inactiveParam])
+    try {
+      const j = await api('/api/locations?parent_id=' + (inactiveParam || '')) as { data: LocationRow[]; breadcrumb: BreadcrumbItem[] }
+      setNodes(j.data)
+      setChildrenByParent({})
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }, [inactiveParam])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { loadRoot() }, [loadRoot])
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults(null); return }
     let stale = false
     const t = setTimeout(() => {
-      api<{ data: SearchRow[] }>(`/api/locations?q=${encodeURIComponent(query)}${inactiveParam}`)
-        .then(j => { if (!stale) setResults(j.data) })
+      api('/api/locations?q=' + encodeURIComponent(query) + inactiveParam)
+        .then(j => { if (!stale) setResults((j as { data: SearchRow[] }).data) })
         .catch(e => { if (!stale) toast.error((e as Error).message) })
     }, 250)
     return () => { stale = true; clearTimeout(t) }
   }, [query, inactiveParam])
 
-  function open(id: string | null) { setQuery(''); setResults(null); setParentId(id) }
+  async function loadChildren(parentId: string) {
+    if (childrenByParent[parentId] || loadingChildren.has(parentId)) return
+    setLoadingChildren(prev => new Set(prev).add(parentId))
+    try {
+      const j = await api('/api/locations?parent_id=' + parentId + inactiveParam) as { data: LocationRow[]; breadcrumb: BreadcrumbItem[] }
+      setChildrenByParent(prev => ({ ...prev, [parentId]: j.data }))
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setLoadingChildren(prev => {
+        const next = new Set(prev)
+        next.delete(parentId)
+        return next
+      })
+    }
+  }
+
+  function refreshTree() {
+    setExpanded(new Set())
+    void loadRoot()
+  }
+
+  async function toggleExpanded(n: LocationRow) {
+    const next = new Set(expanded)
+    if (next.has(n.id)) {
+      next.delete(n.id)
+      setExpanded(next)
+      return
+    }
+
+    next.add(n.id)
+    setExpanded(next)
+
+    if (n.level !== 'place') await loadChildren(n.id)
+  }
 
   async function editNode(n: LocationRow) {
     try {
-      const j = await api<{ data: LocationRow; breadcrumb: BreadcrumbItem[] }>(`/api/locations/${n.id}`)
+      const j = await api('/api/locations/' + n.id) as { data: LocationRow; breadcrumb: BreadcrumbItem[] }
       setModal({ mode: 'edit', node: j.data, trail: j.breadcrumb })
     } catch (e) { toast.error((e as Error).message) }
   }
@@ -306,72 +346,144 @@ export default function AdminSettingsLocationsPage() {
   async function toggleActive(n: LocationRow) {
     setToggling(n.id)
     try {
-      await api(`/api/locations/${n.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      await api('/api/locations/' + n.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: !n.is_active }),
       })
       toast.success(n.is_active ? 'Desactivada' : 'Activada')
-      load()
+      refreshTree()
     } catch (e) { toast.error((e as Error).message) }
     setToggling(null)
   }
 
-  const current = trail[trail.length - 1] ?? null
-  const childLevels = CHILD_LEVELS[current?.level ?? 'root']
+  function openCreate(level: LocationLevel, parent: LocationRow | null, path: BreadcrumbItem[]) {
+    setModal({
+      mode: 'create',
+      level,
+      parent: parent ? { id: parent.id, name: parent.name, level: parent.level } : null,
+      trail: path,
+    })
+  }
 
-  function Row({ n, path }: { n: LocationRow; path?: BreadcrumbItem[] }) {
+  function TreeNode({ n, depth, path }: { n: LocationRow; depth: number; path: BreadcrumbItem[] }) {
     const Icon = LEVEL_ICONS[n.level]
-    const navigable = n.level !== 'place'
-    const orphan = n.level === 'place' && !n.parent_id
-    const go = () => {
-      if (navigable) open(n.id)
-      else if (path && path.length > 1) open(path[path.length - 2].id)
-    }
+    const isExpanded = expanded.has(n.id)
+    const isPlace = n.level === 'place'
+    const childLevels = CHILD_LEVELS[n.level]
+    const children = childrenByParent[n.id] ?? []
+    const isLoading = loadingChildren.has(n.id)
+    const childPath = [...path, { id: n.id, name: n.name, level: n.level }]
+
     return (
-      <li className={`flex items-center gap-3 px-5 py-3 hover:bg-gray-50/60 ${!n.is_active ? 'opacity-50' : ''}`}>
-        <Icon className="h-4 w-4 text-violet-500 flex-shrink-0" />
-        <button type="button" onClick={go} className="flex-1 min-w-0 text-left">
-          <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-2">
-            {n.name}
-            {n.is_private && <Lock className="h-3 w-3 text-gray-400" />}
-            {!n.is_active && <span className="text-[10px] uppercase font-semibold text-gray-400">Inactiva</span>}
-            {orphan && <span className="text-[10px] uppercase font-semibold text-amber-600 flex items-center gap-0.5"><AlertTriangle className="h-3 w-3" />Sin comuna</span>}
+      <li className={!n.is_active ? 'opacity-50' : ''}>
+        <div className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50/70 group" style={{ paddingLeft: (16 + depth * 24) + 'px' }}>
+          <button
+            type="button"
+            onClick={() => toggleExpanded(n)}
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100 flex-shrink-0"
+            aria-label={isExpanded ? 'Contraer' : 'Expandir'}
+          >
+            <ChevronRight className={'h-4 w-4 text-gray-400 transition-transform ' + (isExpanded ? 'rotate-90' : '')} />
+          </button>
+
+          <Icon className="h-4 w-4 text-violet-500 flex-shrink-0" />
+
+          <button type="button" onClick={() => toggleExpanded(n)} className="flex-1 min-w-0 text-left">
+            <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-2">
+              {n.name}
+              {n.is_private && <Lock className="h-3 w-3 text-gray-400" />}
+              {!n.is_active && <span className="text-[10px] uppercase font-semibold text-gray-400">Inactiva</span>}
+              {n.level === 'place' && !n.parent_id && (
+                <span className="text-[10px] uppercase font-semibold text-amber-600 flex items-center gap-0.5">
+                  <AlertTriangle className="h-3 w-3" />Sin comuna
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-gray-400 truncate">
+              {isPlace
+                ? [PLACE_TYPE_LABELS[n.type ?? 'other'], n.address].filter(Boolean).join(' · ') || 'Sin detalles'
+                : LEVEL_LABELS[n.level]}
+            </div>
+          </button>
+
+          {!isPlace && n.children_count !== undefined && (
+            <span className="text-xs text-gray-400 tabular-nums">{n.children_count}</span>
+          )}
+
+          <button onClick={() => editNode(n)} className="p-1.5 hover:bg-gray-100 rounded-lg opacity-60 group-hover:opacity-100" title="Editar">
+            <Pencil className="h-3.5 w-3.5 text-gray-400" />
+          </button>
+
+          <button onClick={() => toggleActive(n)} disabled={toggling === n.id} className="p-1.5 hover:bg-gray-100 rounded-lg opacity-60 group-hover:opacity-100" title={n.is_active ? 'Desactivar' : 'Activar'}>
+            {toggling === n.id
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
+              : <Power className={'h-3.5 w-3.5 ' + (n.is_active ? 'text-gray-400' : 'text-emerald-500')} />}
+          </button>
+        </div>
+
+        {isExpanded && (
+          <div>
+            {isPlace ? (
+              <div className="mx-4 mb-2 rounded-xl border border-gray-100 bg-gray-50/70 px-4 py-3" style={{ marginLeft: (40 + depth * 24) + 'px' }}>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
+                  <span className="font-medium text-gray-800">{PLACE_TYPE_LABELS[n.type ?? 'other']}</span>
+                  {n.is_private && <span>Privado</span>}
+                  {n.owner_influencer_id && <span>Domicilio de influencer</span>}
+                </div>
+                <div className="mt-1.5 flex items-start gap-1.5 text-sm text-gray-800">
+                  <MapPin className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />
+                  <span>{n.address || 'Sin dirección registrada'}</span>
+                </div>
+                {n.lat != null && n.lng != null && <div className="mt-1 text-[11px] text-gray-400">{n.lat}, {n.lng}</div>}
+                {n.notes && <p className="mt-1.5 text-xs text-gray-500">{n.notes}</p>}
+              </div>
+            ) : (
+              <>
+                {isLoading ? (
+                  <div className="flex items-center gap-2 py-2 text-xs text-gray-400" style={{ paddingLeft: (65 + depth * 24) + 'px' }}>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Cargando…
+                  </div>
+                ) : children.length === 0 ? (
+                  <div className="py-2 text-xs text-gray-400" style={{ paddingLeft: (65 + depth * 24) + 'px' }}>Sin elementos.</div>
+                ) : (
+                  <ul className="divide-y divide-gray-50">
+                    {children.map(child => <TreeNode key={child.id} n={child} depth={depth + 1} path={childPath} />)}
+                  </ul>
+                )}
+
+                <div className="py-2 flex flex-wrap gap-2" style={{ paddingLeft: (65 + depth * 24) + 'px' }}>
+                  {childLevels.map(level => (
+                    <button key={level} onClick={() => openCreate(level, n, childPath)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700 border border-violet-200 rounded-lg px-2.5 py-1 hover:bg-violet-50">
+                      <Plus className="h-3 w-3" /> {LEVEL_LABELS[level]}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-          <div className="text-xs text-gray-400 truncate">
-            {path
-              ? path.slice(0, -1).map(b => b.name).join(' › ') || LEVEL_LABELS[n.level]
-              : [LEVEL_LABELS[n.level], n.type && PLACE_TYPE_LABELS[n.type], n.address].filter(Boolean).join(' · ')}
-          </div>
-        </button>
-        {navigable && n.children_count !== undefined && <span className="text-xs text-gray-400">{n.children_count}</span>}
-        <button onClick={() => editNode(n)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="Editar">
-          <Pencil className="h-3.5 w-3.5 text-gray-400" />
-        </button>
-        <button onClick={() => toggleActive(n)} disabled={toggling === n.id} className="p-1.5 hover:bg-gray-100 rounded-lg"
-          title={n.is_active ? 'Desactivar' : 'Activar'}>
-          {toggling === n.id ? <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
-            : <Power className={`h-3.5 w-3.5 ${n.is_active ? 'text-gray-400' : 'text-emerald-500'}`} />}
-        </button>
-        {navigable && <ChevronRight className="h-4 w-4 text-gray-300" />}
+        )}
       </li>
     )
   }
 
   return (
-    <div className="max-w-3xl">
-      {modal && <LocationModal state={modal} onClose={() => setModal(null)} onSaved={load} />}
+    <div className="max-w-4xl">
+      {modal && <LocationModal state={modal} onClose={() => setModal(null)} onSaved={refreshTree} />}
 
       <div className="card overflow-visible">
         <div className="px-5 py-4 border-b border-gray-100 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-gray-900">Ubicaciones</h3>
-              <p className="text-xs text-gray-400 mt-0.5">País › Región › (Ciudad) › Comuna › Lugar. Fuente única de ubicación de SCENCE.</p>
+              <p className="text-xs text-gray-400 mt-0.5">Expande el árbol: País › Región › Ciudad › Comuna › Lugar. La dirección aparece dentro del lugar.</p>
             </div>
             <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer whitespace-nowrap">
               <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Ver inactivas
             </label>
           </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar comuna, región o lugar…" className="input-base w-full pl-9" />
@@ -381,40 +493,15 @@ export default function AdminSettingsLocationsPage() {
         {results ? (
           results.length === 0
             ? <div className="p-8 text-center text-sm text-gray-400">Sin resultados.</div>
-            : <ul className="divide-y divide-gray-50">{results.map(r => <Row key={r.id} n={r} path={r.breadcrumb} />)}</ul>
+            : <ul className="divide-y divide-gray-50">{results.map(r => <TreeNode key={r.id} n={r} depth={0} path={r.breadcrumb.slice(0, -1)} />)}</ul>
         ) : (
-          <>
-            <div className="px-5 py-3 border-b border-gray-50 flex flex-wrap items-center justify-between gap-2">
-              <nav className="flex flex-wrap items-center gap-1 text-sm">
-                <button onClick={() => open(null)} className={trail.length ? 'text-violet-600 hover:underline' : 'font-semibold text-gray-900'}>Todas</button>
-                {trail.map((b, i) => (
-                  <span key={b.id} className="flex items-center gap-1">
-                    <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                    {i === trail.length - 1
-                      ? <span className="font-semibold text-gray-900">{b.name}</span>
-                      : <button onClick={() => open(b.id)} className="text-violet-600 hover:underline">{b.name}</button>}
-                  </span>
-                ))}
-              </nav>
-              <div className="flex gap-2">
-                {childLevels.map(level => (
-                  <button key={level}
-                    onClick={() => setModal({ mode: 'create', level, parent: current, trail })}
-                    className="flex items-center gap-1.5 text-sm font-semibold text-violet-600 hover:text-violet-700 border border-violet-200 rounded-xl px-3 py-1.5 hover:bg-violet-50">
-                    <Plus className="h-3.5 w-3.5" /> {LEVEL_LABELS[level]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="p-8 text-center text-sm text-gray-400">Cargando…</div>
-            ) : nodes.length === 0 ? (
-              <div className="p-8 text-center text-sm text-gray-400">Sin ubicaciones en este nivel.</div>
-            ) : (
-              <ul className="divide-y divide-gray-50">{nodes.map(n => <Row key={n.id} n={n} />)}</ul>
-            )}
-          </>
+          loading ? (
+            <div className="p-8 text-center text-sm text-gray-400">Cargando ubicaciones…</div>
+          ) : nodes.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">Sin ubicaciones.</div>
+          ) : (
+            <ul className="divide-y divide-gray-50">{nodes.map(n => <TreeNode key={n.id} n={n} depth={0} path={[]} />)}</ul>
+          )
         )}
       </div>
     </div>

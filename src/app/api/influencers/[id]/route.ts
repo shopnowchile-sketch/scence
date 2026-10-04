@@ -169,6 +169,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
     first_name, last_name, deactivation_reason, status: influencerStatus,
     // Strip any other relation fields
     campaign_deliverables: _cd,
+    // Geography is now sourced only from locations.location_id.
+    // Never write the legacy text geography columns.
+    country: _country,
+    city: _city,
+    commune: _commune,
     ...rest
   } = body
 
@@ -328,11 +333,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // Campos que no son columnas reales → van dentro de metadata JSONB
   const META_FIELDS = ['deactivation_reason', 'first_name', 'last_name', 'status']
+  const LEGACY_GEO_FIELDS = ['country', 'city', 'commune']
   const metaPatch: Record<string, unknown> = {}
   const columnPatch: Record<string, unknown> = {}
 
   for (const [k, v] of Object.entries(body)) {
     if (META_FIELDS.includes(k)) metaPatch[k] = v
+    else if (LEGACY_GEO_FIELDS.includes(k)) continue
     else columnPatch[k] = v
   }
 

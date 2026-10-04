@@ -50,7 +50,12 @@ const schema = z.object({
   tags:         z.array(z.string()).optional(),
   is_verified:  z.boolean(),
   // Step 2 — social
-  social_profiles: z.array(socialProfileSchema).min(1, 'Agrega al menos una red social'),
+  social_profiles: z.array(socialProfileSchema)
+    .min(1, 'Agrega al menos una red social')
+    .refine(
+      profiles => profiles.some(profile => profile.platform === 'instagram' && profile.username.trim().length > 0),
+      'Instagram es obligatorio para crear una influencer'
+    ),
   // Step 3 — rates
   rate_cards: z.array(rateCardSchema).optional(),
 })
@@ -357,7 +362,7 @@ function Step2({ register, control, setValue, errors, profileFields, socialProfi
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Usuario / handle</label>
+              <label className="block text-xs text-gray-500 mb-1">Usuario / handle <span className="text-red-500">*</span></label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
                 <input {...register(`social_profiles.${i}.username`)}

@@ -23,8 +23,7 @@ export interface BulkRow {
   display_name?: string
   email?: string
   phone?: string
-  city?: string
-  country?: string
+  location_id?: string
   bio?: string
   categories?: string
   instagram?: string | number
@@ -202,8 +201,7 @@ export async function POST(request: NextRequest) {
         display_name: row.display_name || row.email?.split('@')[0] || 'Sin nombre',
         email: row.email || null,
         phone: row.phone || null,
-        city: row.city || null,
-        country: row.country || null,
+        location_id: row.location_id || null,
         bio: row.bio || null,
         categories: parseCategories(row.categories),
         is_active: true,

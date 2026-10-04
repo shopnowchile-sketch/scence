@@ -72,17 +72,20 @@ export async function GET(request: NextRequest) {
     .map(name => communeIdByName.get(normalizeLocationName(name)))
     .filter((id): id is string => Boolean(id))
   const officialParentIds = Array.from(new Set((officialCommunes ?? []).map(row => row.parent_id).filter(Boolean)))
-  const { data: officialParents } = officialParentIds.length
+  const officialParentsResult = officialParentIds.length
     ? await admin.from('locations').select('id, name, level, parent_id').in('id', officialParentIds)
-    : { data: [], error: null }
-  const regionIds = Array.from(new Set((officialParents ?? []).map(row => row.level === 'region' ? row.id : row.parent_id).filter(Boolean)))
-  const { data: officialRegions } = regionIds.length
+    : null
+  const officialParents = officialParentsResult?.data ?? []
+  const regionIds = Array.from(new Set(officialParents.map(row => row.level === 'region' ? row.id : row.parent_id).filter(Boolean)))
+  const officialRegionsResult = regionIds.length
     ? await admin.from('locations').select('id, name, level, parent_id').in('id', regionIds)
-    : { data: [], error: null }
-  const countryIds = Array.from(new Set((officialRegions ?? []).map(row => row.parent_id).filter(Boolean)))
-  const { data: officialCountries } = countryIds.length
+    : null
+  const officialRegions = officialRegionsResult?.data ?? []
+  const countryIds = Array.from(new Set(officialRegions.map(row => row.parent_id).filter(Boolean)))
+  const officialCountriesResult = countryIds.length
     ? await admin.from('locations').select('id, name, level, parent_id').in('id', countryIds)
-    : { data: [], error: null }
+    : null
+  const officialCountries = officialCountriesResult?.data ?? []
 
   const officialById = new Map<string, { id: string; name: string; level: string; parent_id: string | null }>()
   for (const row of [...(officialParents ?? []), ...(officialRegions ?? []), ...(officialCountries ?? [])]) {

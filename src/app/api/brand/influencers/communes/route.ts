@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
-import { groupCommunes } from '@/lib/communes-chile'
+import { getOfficialInfluencerLocations } from '@/lib/influencer-location'
 
 // GET /api/brand/influencers/communes
 // Mismo alcance de influencers que /api/brand/influencers: exclusivamente
@@ -39,16 +39,19 @@ export async function GET() {
 
   const { data, error } = await admin
     .from('influencers')
-    .select('commune')
+    .select('id, location_id')
     .in('id', influencerIds)
-    .not('commune', 'is', null)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Mismo criterio que /api/influencers/communes: agrupa por comuna real sin
-  // tocar la base (pedido de Pri 2026-07-13).
-  const raw = (data ?? []).map(r => r.commune).filter((c): c is string => !!c && c.trim() !== '')
-  const communes = groupCommunes(raw)
+  const officialLocations = await getOfficialInfluencerLocations(admin, data ?? [])
+  const labels = Array.from(officialLocations.values())
+    .map(location => location.commune)
+    .filter((name): name is string => Boolean(name))
+
+  const communes = Array.from(new Set(labels))
+    .sort((a, b) => a.localeCompare(b, 'es'))
+    .map(label => ({ label, variants: [label] }))
 
   return NextResponse.json({ data: communes })
 }

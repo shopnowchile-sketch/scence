@@ -4,6 +4,7 @@ import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getPrimarySocial } from '@/lib/influencers/ranking'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 
@@ -55,61 +56,28 @@ export async function GET(request: NextRequest) {
   const commune = searchParams.get('commune')
   const communeList = commune ? commune.split(',').map(s => s.trim()).filter(Boolean) : []
 
-  // Ubicación oficial: los filtros nunca consultan influencers.commune.
-  // Resolvemos el nombre visible del filtro contra locations y usamos
-  // location_id como único criterio persistido.
+  // Ubicación oficial: todos los filtros y labels se resuelven desde locations.
   const normalizeLocationName = (value: string) =>
     value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-  const { data: officialCommunes } = await admin
-    .from('locations')
-    .select('id, name, parent_id')
-    .eq('level', 'commune')
-    .eq('is_active', true)
-  const communeIdByName = new Map(
-    (officialCommunes ?? []).map(row => [normalizeLocationName(row.name), row.id])
-  )
-  const officialParentIds = Array.from(new Set((officialCommunes ?? []).map(row => row.parent_id).filter(Boolean)))
-  const officialParentsResult = officialParentIds.length
-    ? await admin.from('locations').select('id, name, level, parent_id').in('id', officialParentIds)
-    : null
-  const officialParents = officialParentsResult?.data ?? []
-  const regionIds = Array.from(new Set(officialParents.map(row => row.level === 'region' ? row.id : row.parent_id).filter(Boolean)))
-  const officialRegionsResult = regionIds.length
-    ? await admin.from('locations').select('id, name, level, parent_id').in('id', regionIds)
-    : null
-  const officialRegions = officialRegionsResult?.data ?? []
-  const countryIds = Array.from(new Set(officialRegions.map(row => row.parent_id).filter(Boolean)))
-  const officialCountriesResult = countryIds.length
-    ? await admin.from('locations').select('id, name, level, parent_id').in('id', countryIds)
-    : null
-  const officialCountries = officialCountriesResult?.data ?? []
-  const officialById = new Map<string, { id: string; name: string; level: string; parent_id: string | null }>()
-  for (const row of [...(officialParents ?? []), ...(officialRegions ?? []), ...(officialCountries ?? [])]) {
-    officialById.set(row.id, row)
-  }
-  const locationDisplayById = new Map<string, { commune: string; city: string | null; region: string | null; country: string | null }>()
-  for (const communeRow of officialCommunes ?? []) {
-    const parent = communeRow.parent_id ? officialById.get(communeRow.parent_id) : null
-    const region = parent?.level === 'region' ? parent : parent?.parent_id ? officialById.get(parent.parent_id) : null
-    const country = region?.parent_id ? officialById.get(region.parent_id) : null
-    locationDisplayById.set(communeRow.id, {
-      commune: communeRow.name,
-      city: parent?.level === 'city' ? parent.name : null,
-      region: region?.name ?? null,
-      country: country?.name ?? null,
-    })
-  }
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+
   const countryLocationIds = country
     ? Array.from(locationDisplayById.entries())
         .filter(([, location]) => normalizeLocationName(location.country ?? '') === normalizeLocationName(country))
         .map(([id]) => id)
     : []
-  const communeLocationIds = communeList.map(name => communeIdByName.get(normalizeLocationName(name))).filter((id): id is string => Boolean(id))
+  const communeLocationIds = communeList
+    .map(name => Array.from(locationDisplayById.entries())
+      .find(([, location]) => normalizeLocationName(location.commune ?? '') === normalizeLocationName(name))?.[0])
+    .filter((id): id is string => Boolean(id))
   const requestedLocationIds = communeList.length ? communeLocationIds : country ? countryLocationIds : []
+
   const locationSearchIds = search
     ? Array.from(locationDisplayById.entries())
-        .filter(([, location]) => [location.commune, location.city, location.region, location.country]
-          .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false))
+        .filter(([, location]) =>
+          [location.commune, location.city, location.region, location.country]
+            .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false)
+        )
         .map(([id]) => id)
     : []
 
@@ -201,8 +169,6 @@ export async function GET(request: NextRequest) {
       email,
       phone,
       whatsapp,
-      country,
-      city,
       location_id,
       birth_date,
       address,

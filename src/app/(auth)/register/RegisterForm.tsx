@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Eye, EyeOff, Building2, User, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react'
 import { createBrowserClient } from '@/lib/supabase/client'
-import { COMUNAS_CHILE } from '@/lib/communes-chile'
+import { InfluencerLocationPicker } from '@/components/influencers/InfluencerLocationPicker'
 import { cn } from '@/lib/utils'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ const influencerSchema = z.object({
   display_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
   instagram_username: z.string().trim().min(2, 'Instagram es obligatorio').max(100)
     .refine(isValidInstagramHandle, 'Ingresa un usuario de Instagram válido (ej. @sofiacontreras)'),
-  commune:      z.string().trim().min(2, 'Comuna es obligatoria').max(100),
+  location_id:  z.string().uuid('Selecciona tu ubicación'),
   address:      z.string().trim().min(5, 'Dirección es obligatoria').max(200),
   birth_date:   z.string().min(1, 'Fecha de nacimiento es obligatoria'),
   email:        z.string().email('Email inválido'),
@@ -291,12 +291,12 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
   const [error,   setError]   = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<InfluencerValues>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<InfluencerValues>({
     resolver: zodResolver(influencerSchema),
   })
   const pwd = watch('password') ?? ''
 
-  async function onSubmit({ display_name, instagram_username, commune, address, birth_date, email, password }: InfluencerValues) {
+  async function onSubmit({ display_name, instagram_username, location_id, address, birth_date, email, password }: InfluencerValues) {
     const instagramHandle = normalizeInstagramHandle(instagram_username)
     setLoading(true); setError(null)
     const { error: e } = await supabase.auth.signUp({
@@ -310,7 +310,7 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
           display_name,
           is_influencer: true,
           instagram_username: instagramHandle,
-          commune,
+          location_id,
           address,
           birth_date,
         },
@@ -356,12 +356,12 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
           {errors.instagram_username && <p className="text-xs text-red-500 mt-1">{errors.instagram_username.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Comuna <span className="text-red-500" aria-hidden="true">*</span></label>
-          <input {...register('commune')} list="influencer-register-communes" className="input-base w-full" placeholder="Providencia" />
-          <datalist id="influencer-register-communes">
-            {COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}
-          </datalist>
-          {errors.commune && <p className="text-xs text-red-500 mt-1">{errors.commune.message}</p>}
+          <InfluencerLocationPicker
+            value={watch('location_id') ?? ''}
+            required
+            onChange={location => setValue('location_id', location?.id ?? '', { shouldValidate: true })}
+          />
+          {errors.location_id && <p className="text-xs text-red-500 mt-1">{errors.location_id.message}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Dirección <span className="text-red-500" aria-hidden="true">*</span></label>

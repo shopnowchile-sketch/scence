@@ -10,6 +10,8 @@ export type InfluencerLocation = {
   city: string | null
   region: string | null
   country: string | null
+  level: 'country' | 'region' | 'city' | 'commune'
+  breadcrumb?: string
 }
 
 export function InfluencerLocationPicker({
@@ -60,7 +62,7 @@ export function InfluencerLocationPicker({
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        Comuna {required && <span className="text-red-500">*</span>}
+        Ubicación {required && <span className="text-red-500">*</span>}
       </label>
 
       {selected ? (
@@ -69,9 +71,7 @@ export function InfluencerLocationPicker({
             <MapPin className="h-4 w-4 text-violet-600 shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-medium text-violet-900">{selected.name}</p>
-              <p className="text-xs text-violet-600 truncate">
-                {[selected.city, selected.region, selected.country].filter(Boolean).join(' · ')}
-              </p>
+              <p className="text-xs text-violet-600 truncate">{selected.breadcrumb ?? [selected.city, selected.region, selected.country].filter(Boolean).join(' · ')}</p>
             </div>
           </div>
           <button type="button" onClick={() => { setSelected(null); onChange(null) }} className="text-xs font-medium text-violet-700 hover:text-violet-900">
@@ -84,7 +84,7 @@ export function InfluencerLocationPicker({
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Buscar comuna…"
+            placeholder="Buscar país, región, ciudad o comuna…"
             className="input-base w-full pl-9"
           />
           {(loading || options.length > 0) && (
@@ -100,7 +100,7 @@ export function InfluencerLocationPicker({
                   <MapPin className="h-4 w-4 text-gray-400 shrink-0" />
                   <span className="min-w-0">
                     <span className="block text-sm text-gray-800">{option.name}</span>
-                    <span className="block text-xs text-gray-400">{[option.city, option.region, option.country].filter(Boolean).join(' · ')}</span>
+                    <span className="block text-xs text-gray-400">{option.breadcrumb ?? [option.city, option.region, option.country].filter(Boolean).join(' · ')}</span>
                   </span>
                 </button>
               ))}

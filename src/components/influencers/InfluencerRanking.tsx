@@ -136,7 +136,7 @@ export function InfluencerRanking({
       rows = rows.filter(inf =>
         String(inf.display_name ?? '').toLowerCase().includes(q) ||
         String(inf.email ?? '').toLowerCase().includes(q) ||
-        String(inf.commune ?? inf.city ?? '').toLowerCase().includes(q) ||
+        String(inf.commune ?? inf.city ?? inf.country ?? '').toLowerCase().includes(q) ||
         (inf.social_profiles ?? []).some(profile => String(profile.username ?? '').toLowerCase().replace(/^@+/, '').includes(q))
       )
     }

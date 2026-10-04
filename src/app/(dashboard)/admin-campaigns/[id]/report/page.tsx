@@ -8,8 +8,6 @@ interface Influencer {
   id: string
   display_name: string
   avatar_url: string | null
-  city: string | null
-  country: string | null
   influencer_social_profiles: Array<{
     platform: string
     username: string | null
@@ -159,7 +157,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
       campaign_influencers (
         id, fee, status, notes,
         influencer:influencers (
-          id, display_name, avatar_url, city, country,
+          id, display_name, avatar_url,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),

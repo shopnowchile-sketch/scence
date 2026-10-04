@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     admin.from('campaign_influencers')
       .select(`
         influencer_id, fee, status,
-        influencer:influencers (id, display_name, avatar_url, city,
+        influencer:influencers (id, display_name, avatar_url,
           influencer_social_profiles (platform, followers, engagement_rate, is_primary)),
         campaign:campaigns!inner (organization_id)
       `)

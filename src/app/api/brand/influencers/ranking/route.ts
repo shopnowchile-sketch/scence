@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/influencers/ranking'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOfficialInfluencerLocations } from '@/lib/influencer-location'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -108,9 +109,7 @@ export async function GET(req: NextRequest) {
         id,
         user_id,
         display_name,
-        city,
-        commune,
-        country,
+        location_id,
         categories,
         rating,
         social_profiles:influencer_social_profiles (
@@ -149,7 +148,13 @@ export async function GET(req: NextRequest) {
     deliverables = delRows ?? []
   }
 
-  let rows = buildRankingRows(influencers ?? [], campaignInfluencers, deliverables)
+  const officialLocations = await getOfficialInfluencerLocations(admin, influencers ?? [])
+  const influencersWithOfficialLocation = (influencers ?? []).map(inf => ({
+    ...inf,
+    ...(officialLocations.get(String(inf.id)) ?? { country: null, city: null, commune: null }),
+  }))
+
+  let rows = buildRankingRows(influencersWithOfficialLocation, campaignInfluencers, deliverables)
 
   if (search) {
     rows = rows.filter(inf =>

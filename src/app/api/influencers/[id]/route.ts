@@ -59,7 +59,50 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Geografía oficial: la respuesta se deriva exclusivamente de locations.location_id.\n  const { data: communeLocation } = await admin\n    .from('locations')\n    .select('id, name, parent_id, level')\n    .eq('id', influencer.location_id)\n    .eq('level', 'commune')\n    .eq('is_active', true)\n    .maybeSingle()\n  const { data: parentRows } = communeLocation?.parent_id\n    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [communeLocation.parent_id])\n    : { data: [] }\n  const locationParent = parentRows?.[0] ?? null\n  const { data: grandParentRows } = locationParent?.parent_id\n    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [locationParent.parent_id])\n    : { data: [] }\n  const locationGrandParent = grandParentRows?.[0] ?? null\n  const { data: countryRows } = locationGrandParent?.parent_id\n    ? await admin.from('locations').select('id, name, parent_id, level').in('id', [locationGrandParent.parent_id])\n    : { data: [] }\n  const locationCountry = countryRows?.[0] ?? null\n  const officialLocation = {\n    commune: communeLocation?.name ?? null,\n    city: locationParent?.level === 'city' ? locationParent.name : null,\n    country: (locationParent?.level === 'country' ? locationParent : locationGrandParent?.level === 'country' ? locationGrandParent : locationCountry)?.name ?? null,\n  }\n\n  // Campaigns via campaign_influencers
+  // Geografía oficial: se deriva exclusivamente de locations.location_id.
+  const locationId = influencer.location_id as string | null
+  const { data: locationNode } = locationId
+    ? await admin
+        .from('locations')
+        .select('id, name, parent_id, level')
+        .eq('id', locationId)
+        .eq('is_active', true)
+        .maybeSingle()
+    : { data: null }
+
+  const parentId = locationNode?.parent_id ?? null
+  const { data: parentRows } = parentId
+    ? await admin.from('locations').select('id, name, parent_id, level').eq('id', parentId)
+    : { data: [] }
+  const locationParent = parentRows?.[0] ?? null
+
+  const grandParentId = locationParent?.parent_id ?? null
+  const { data: grandParentRows } = grandParentId
+    ? await admin.from('locations').select('id, name, parent_id, level').eq('id', grandParentId)
+    : { data: [] }
+  const locationGrandParent = grandParentRows?.[0] ?? null
+
+  const greatGrandParentId = locationGrandParent?.parent_id ?? null
+  const { data: greatGrandParentRows } = greatGrandParentId
+    ? await admin.from('locations').select('id, name, parent_id, level').eq('id', greatGrandParentId)
+    : { data: [] }
+  const locationGreatGrandParent = greatGrandParentRows?.[0] ?? null
+
+  const ancestors = [locationNode, locationParent, locationGrandParent, locationGreatGrandParent].filter(Boolean) as Array<{
+    id: string
+    name: string
+    parent_id: string | null
+    level: string
+  }>
+  const byLevel = (level: string) => ancestors.find(node => node.level === level)?.name ?? null
+
+  const officialLocation = {
+    commune: byLevel('commune'),
+    city: byLevel('city'),
+    country: byLevel('country'),
+  }
+
+  // Campaigns via campaign_influencers
   const { data: campaignInfluencers } = await admin
     .from('campaign_influencers')
     .select(`

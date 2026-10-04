@@ -461,15 +461,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'display_name is required' }, { status: 422 })
   }
 
-  // Validación: Instagram es el identificador principal del sistema.
-  // Debe venir instagram_url directo o un social_profile de instagram con profile_url.
-  const igUrl = (body.instagram_url as string) ?? null
+  // Instagram es obligatorio y debe quedar realmente guardado como social profile.
+  // No aceptamos instagram_url suelto porque eso permitía crear la influencer
+  // sin una fila de Instagram en influencer_social_profiles.
   const hasIgProfile = (social_profiles as Array<Record<string, unknown>>).some(
-    sp => sp.platform === 'instagram' && (sp.profile_url || sp.instagram_url || sp.username)
+    sp => sp.platform === 'instagram'
+      && typeof sp.username === 'string'
+      && sp.username.trim().length > 0
   )
-  if (!igUrl && !hasIgProfile) {
+  if (!hasIgProfile) {
     return NextResponse.json(
-      { error: 'instagram_url es obligatorio. Instagram es el identificador principal del sistema.' },
+      { error: 'Instagram es obligatorio para crear una influencer.' },
       { status: 422 }
     )
   }

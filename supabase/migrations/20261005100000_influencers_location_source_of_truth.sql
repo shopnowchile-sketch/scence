@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Influencers — ubicación geográfica como fuente única de verdad
--- Fase 2A: vincula cada influencer a la comuna oficial de public.locations.
+-- Fase 2B: vincula cada influencer a una ubicación geográfica oficial de public.locations.
 --
 -- No elimina todavía country/city/commune: primero se migra y se cambia todo
 -- el código consumidor. La eliminación será una fase posterior y separada.
@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS influencers_location_id_idx
   ON public.influencers(location_id);
 
 COMMENT ON COLUMN public.influencers.location_id IS
-  'Comuna oficial de residencia/pertenencia de la influencer. Fuente única de verdad geográfica; apunta a locations.level=commune.';
+  'Ubicación geográfica oficial de residencia/pertenencia de la influencer. Fuente única de verdad; apunta a locations.level=country, region, city o commune (no place).';
 
 -- Backfill conservador por nombre oficial normalizado.
 -- locations contiene únicamente las 346 comunas oficiales de Chile.
@@ -58,8 +58,8 @@ BEGIN
       USING ERRCODE = 'foreign_key_violation';
   END IF;
 
-  IF v_level <> 'commune' THEN
-    RAISE EXCEPTION 'La ubicación de una influencer debe ser una comuna'
+  IF v_level NOT IN ('country', 'region', 'city', 'commune') THEN
+    RAISE EXCEPTION 'La ubicación de una influencer debe ser geográfica (country, region, city o commune)'
       USING ERRCODE = 'check_violation';
   END IF;
 

@@ -699,7 +699,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-3">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} physicalLocation={physicalLocation} setPhysicalLocation={value => { setPhysicalLocation(value); setValue('location_id', value.locationId) }} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} physicalLocation={physicalLocation} setPhysicalLocation={value => { setPhysicalLocation(value); setVenueName(value.venueName ?? ''); setValue('location_id', value.locationId); setValue('address', value.address ?? ''); setValue('commune', value.commune ?? ''); setValue('region', value.region ?? ''); setValue('country', value.country ?? 'Chile') }} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
         </div>
 
         {/* Navigation */}

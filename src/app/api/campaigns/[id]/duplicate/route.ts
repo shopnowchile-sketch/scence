@@ -42,6 +42,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
       created_by: user.id,
       created_by_brand_id: source.created_by_brand_id ?? null,
       brand_id: source.brand_id ?? null,
+      location_id: source.location_id ?? null,
       name: copyName,
       description: source.description ?? null,
       brief_url: source.brief_url ?? null,
@@ -77,7 +78,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
   const [{ data: collaborators }, { data: event }] = await Promise.all([
     admin.from('campaign_brands').select('brand_id').eq('campaign_id', params.id),
-    admin.from('bookings').select('title, description, event_type, location, location_details, is_virtual, virtual_link, starts_at, ends_at, fee, currency, travel_covered, travel_budget, wardrobe_provided, notes, internal_notes, metadata').eq('campaign_id', params.id).order('starts_at', { ascending: true }).limit(1).maybeSingle(),
+    admin.from('bookings').select('title, description, event_type, location, location_id, location_details, is_virtual, virtual_link, starts_at, ends_at, fee, currency, travel_covered, travel_budget, wardrobe_provided, notes, internal_notes, metadata').eq('campaign_id', params.id).order('starts_at', { ascending: true }).limit(1).maybeSingle(),
   ])
 
   if (collaborators?.length) {
@@ -93,6 +94,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
       description: event.description ?? null,
       event_type: event.event_type ?? 'event',
       location: event.location ?? null,
+      location_id: event.location_id ?? source.location_id ?? null,
       location_details: event.location_details ?? {},
       is_virtual: event.is_virtual ?? false,
       virtual_link: event.virtual_link ?? null,

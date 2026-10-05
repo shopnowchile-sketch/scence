@@ -148,26 +148,43 @@ export async function POST(req: NextRequest) {
     inheritedCampaignLocationId = campaign?.location_id ?? null
   }
 
-  let resolvedLocation
-  try {
-    resolvedLocation = await resolvePhysicalLocation(admin, {
-      locationId: location_id ?? inheritedCampaignLocationId ?? null,
-      venueName: typeof location_details?.venue_name === 'string' ? location_details.venue_name : null,
-      address: location ?? null,
-      commune: typeof location_details?.commune === 'string' ? location_details.commune : null,
-      region: typeof location_details?.region === 'string' ? location_details.region : null,
-      country: typeof location_details?.country === 'string' ? location_details.country : null,
-      organizationId: campaignOrgId,
-    })
-  } catch (error) {
-    if (error instanceof PhysicalLocationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+  let canonicalLocationId: string | null = null
+  let canonicalLocation: string | null = null
+  if (!is_virtual) {
+    try {
+      const resolvedLocation = await resolvePhysicalLocation(admin, {
+        locationId: location_id ?? inheritedCampaignLocationId ?? null,
+        venueName: typeof location_details?.venue_name === 'string' ? location_details.venue_name : null,
+        address: location ?? null,
+        commune: typeof location_details?.commune === 'string' ? location_details.commune : null,
+        region: typeof location_details?.region === 'string' ? location_details.region : null,
+        country: typeof location_details?.country === 'string' ? location_details.country : null,
+        organizationId: campaignOrgId,
+      })
+      if (resolvedLocation.matchType === 'ambiguous') {
+        return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+      }
+      const hasLocationInput = Boolean(
+        location_id ||
+        inheritedCampaignLocationId ||
+        (typeof location === 'string' && location.trim()) ||
+        (location_details && typeof location_details === 'object' && ['venue_name', 'commune', 'region', 'country'].some(key => typeof location_details[key] === 'string' && location_details[key].trim()))
+      )
+      if (resolvedLocation.matchType === 'insufficient_data' && hasLocationInput) {
+        return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+      }
+      canonicalLocationId = resolvedLocation.locationId
+      if (canonicalLocationId) {
+        const { data: canonical } = await admin.from('locations').select('name, address').eq('id', canonicalLocationId).single()
+        canonicalLocation = canonical?.address ?? canonical?.name ?? null
+      }
+    } catch (error) {
+      if (error instanceof PhysicalLocationError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
     }
-    throw error
   }
-
-  const canonicalLocation = resolvedLocation.locationDisplay
-  const canonicalLocationId = resolvedLocation.locationId
 
   // 1. Crear en Google Calendar
   let gcalEventId: string | null = null

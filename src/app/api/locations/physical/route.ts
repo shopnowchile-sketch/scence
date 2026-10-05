@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   if (!all) {
     const brand = await resolveBrandAccess(user.id)
-    if (!brand || !hasBrandPermission(brand, 'campaign.read')) {
+    if (!brand || !hasBrandPermission(brand, 'location.read')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { formatFollowers } from '@/lib/utils'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 
@@ -25,9 +26,14 @@ interface Report {
   duplicatesByEmail: number
   duplicatesByInstagram: number
   duplicatesByMixed: number
-  communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
+  geography: GeographyCountry[]
+  unassignedGeography: number
 }
+
+interface GeographyInfluencer { id: string; display_name: string | null; email: string | null; instagram_username: string | null; followers: number; is_active: boolean; address: string | null }
+interface GeographyNode { id: string; label: string; level: 'country' | 'region' | 'city' | 'commune'; count: number; children: GeographyNode[]; influencers: GeographyInfluencer[] }
+type GeographyCountry = GeographyNode
 
 interface RankingItem {
   value: string | null
@@ -84,13 +90,9 @@ function StatCard({ icon: Icon, label, value, tone = 'violet', href }: {
   return <div className="card p-4">{content}</div>
 }
 
-// Ranking por comuna / nicho (pedido Pri 2026-07-13): lista simple ordenada
-// de mayor a menor, cada fila clickeable hacia /admin-influencers con el
-// filtro correspondiente. "Sin comuna"/"Sin nicho" usa el sentinel __none__
-// en la URL — InfluencersClient lo resuelve client-side (mismo patrón que
-// "Sin Instagram"), ya que no hay filtro server-side de "IS NULL".
+// Ranking de nichos: se mantiene como resumen secundario; la geografía se explora arriba por Región → Comuna → Influencer.
 function RankingList({ title, items, paramName }: {
-  title: string; items: RankingItem[]; paramName: 'commune' | 'niche'
+  title: string; items: RankingItem[]; paramName: 'niche'
 }) {
   return (
     <div className="card p-5">
@@ -121,6 +123,7 @@ export function DataQualityClient() {
   const [busy, setBusy] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
   const [mergingAll, setMergingAll] = useState(false)
+  const [selectedGeoPath, setSelectedGeoPath] = useState<string[]>([])
   const [mergeAllProgress, setMergeAllProgress] = useState<{ done: number; total: number } | null>(null)
   const [keepChoice, setKeepChoice] = useState<Record<string, string>>({})
   const { isAdmin } = useIsAdmin()
@@ -439,141 +442,93 @@ export function DataQualityClient() {
             </div>
           )}
 
-          {/* Ranking por comuna / nicho */}
+          {/* Geografía: País → Región → Comuna/Ciudad → Influencers */}
           {report && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <RankingList title="Ranking por comuna oficial" items={report.communeRanking} paramName="commune" />
-              <RankingList title="Ranking por nicho" items={report.nicheRanking} paramName="niche" />
-            </div>
-          )}
-
-          {!isAdmin && (
-            <div className="card p-4 flex items-center gap-3 border-amber-200 bg-amber-50/40 text-sm text-amber-700">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              Solo administradores pueden combinar o eliminar registros permanentemente. Tienes vista de solo lectura.
-            </div>
-          )}
-
-          {/* Acción: pedir a las influencers con Instagram/comuna/dirección incompletos que
-              actualicen su perfil. Instagram, comuna y dirección son obligatorios para
-              entrar al portal (ProfileCompletionGate). El conteo de la tarjeta de abajo es
-              solo "sin Instagram" (viene del report), pero el envío real usa dry-run del
-              endpoint, que también detecta a quienes tienen Instagram y les falta comuna o
-              dirección — por eso no se oculta el botón cuando withoutInstagram es 0. */}
-          {isAdmin && report && (
-            <div className="card p-5 flex items-center justify-between border-amber-200 bg-amber-50/40">
-              <div className="flex items-center gap-3">
-                <Instagram className="h-5 w-5 text-amber-500" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / comuna / dirección)</p>
-                  <p className="text-xs text-gray-500">
-                    {report.withoutInstagram} sin Instagram · {report.withoutCommune} sin comuna · {report.withoutAddress} sin dirección ·{' '}
-                    <strong>{report.missingAnyRequired} con algún dato obligatorio faltante</strong>. Los tres son obligatorios para usar el portal.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleNotifyNoInstagram}
-                disabled={busy === 'no-instagram'}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 disabled:opacity-50 flex-shrink-0"
-              >
-                {busy === 'no-instagram'
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Send className="h-4 w-4" />}
-                Enviar recordatorio
-              </button>
-            </div>
-          )}
-
-          {isAdmin && (
-            <div className="card p-5 flex items-center justify-between border-violet-200 bg-violet-50/40">
-              <div className="flex items-center gap-3">
-                <Mail className="h-5 w-5 text-violet-600" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Cuentas recuperadas sin email de acceso</p>
-                  <p className="text-xs text-gray-500">Envía un nuevo link solo a las influencers que fueron reparadas tras quedar huérfanas.</p>
-                </div>
-              </div>
-              <button onClick={handleSendRecoveredAccess} disabled={busy === 'recovery-access'}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                {busy === 'recovery-access' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar emails de acceso
-              </button>
-            </div>
-          )}
-
-          {/* Duplicados */}
-          <div id="duplicados-detectados" className="space-y-3 scroll-mt-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
-                Duplicados detectados ({groups.length} grupo{groups.length !== 1 ? 's' : ''})
-              </h3>
-              {isAdmin && groups.length > 1 && (
-                <button onClick={handleMergeAll} disabled={mergingAll || busy !== null}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                  {mergingAll
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <GitMerge className="h-3.5 w-3.5" />}
-                  {mergingAll && mergeAllProgress
-                    ? `Combinando… (${mergeAllProgress.done}/${mergeAllProgress.total})`
-                    : `Combinar todos (${groups.length})`}
-                </button>
-              )}
-            </div>
-            {groups.length === 0 ? (
-              <div className="card p-8 text-center">
-                <ShieldCheck className="h-10 w-10 text-emerald-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500 font-medium">Sin duplicados. Base limpia ✅</p>
-              </div>
-            ) : groups.map(g => (
-              <div key={g.key} className="card p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="badge badge-gray text-[11px]">{TYPE_LABELS[g.type]}</span>
-                    <span className="text-sm font-semibold text-gray-700 truncate max-w-xs">{g.value}</span>
-                    <span className="text-xs text-gray-400">· {g.influencers.length} registros</span>
-                  </div>
-                  {isAdmin && (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => handleMerge(g)} disabled={busy === g.key}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 rounded-lg border border-violet-200 hover:bg-violet-50 disabled:opacity-50">
-                        {busy === g.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />}
-                        Combinar
-                      </button>
-                      <button onClick={() => handleDeleteDuplicates(g)} disabled={busy === g.key}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 rounded-lg border border-red-200 hover:bg-red-50 disabled:opacity-50">
-                        <Trash2 className="h-3.5 w-3.5" /> Eliminar duplicados
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {g.influencers.map(inf => (
-                    <label key={inf.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <input type="radio" name={`keep-${g.key}`} checked={keepChoice[g.key] === inf.id}
-                        onChange={() => setKeepChoice(p => ({ ...p, [g.key]: inf.id }))}
-                        className="text-violet-600" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Link href={`/admin-influencers/${inf.id}`} target="_blank"
-                            className="text-sm font-medium text-gray-900 hover:text-violet-700 truncate">
-                            {inf.display_name ?? '(sin nombre)'}
-                          </Link>
-                          {!inf.is_active && <span className="badge badge-gray text-[10px]">Inactivo</span>}
-                          {keepChoice[g.key] === inf.id && <span className="badge badge-green text-[10px]">Conservar</span>}
-                        </div>
-                        <div className="text-xs text-gray-400 truncate">
-                          {inf.email ?? 'sin email'} · {inf.instagram_username ? `@${inf.instagram_username}` : 'sin IG'} · {formatFollowers(inf.followers)} followers
-                        </div>
+            <div className="card p-5">
+              {(() => {
+                const findPath = (nodes: GeographyNode[], ids: string[]): GeographyNode | null => {
+                  if (!ids.length) return null
+                  for (const node of nodes) {
+                    if (node.id !== ids[0]) continue
+                    if (ids.length === 1) return node
+                    return findPath(node.children, ids.slice(1))
+                  }
+                  return null
+                }
+                const current = findPath(report.geography, selectedGeoPath)
+                const currentChildren = current?.children ?? report.geography
+                const isLeaf = Boolean(current && current.children.length === 0)
+                const currentTitle = current?.label ?? 'País'
+                const currentCount = current?.count ?? report.total
+                const directInfluencers = current?.influencers ?? []
+                const hasUnassigned = selectedGeoPath.length === 0 && report.unassignedGeography > 0
+                const goTo = (index: number) => setSelectedGeoPath(selectedGeoPath.slice(0, index))
+                return (
+                  <>
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Distribución geográfica</h3>
+                        <p className="text-xs text-gray-400 mt-1">País → Región → Comuna / Ciudad → Influencers · fuente única: locations</p>
                       </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
+                      {selectedGeoPath.length > 0 && (
+                        <div className="flex items-center gap-1 text-xs font-semibold text-violet-600 flex-wrap justify-end">
+                          <button onClick={() => goTo(0)} className="hover:underline">Países</button>
+                          {(() => {
+                            const labels: string[] = []
+                            let nodes = report.geography
+                            selectedGeoPath.forEach((id, index) => {
+                              const node = nodes.find(n => n.id === id)
+                              if (!node) return
+                              labels.push(node.label)
+                              nodes = node.children
+                            })
+                            return labels.map((label, index) => <span key={index} className="flex items-center gap-1"><span className="text-gray-300">/</span><button onClick={() => goTo(index + 1)} className={index === labels.length - 1 ? 'text-gray-500' : 'hover:underline'}>{label}</button></span>)
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-lg font-bold text-gray-900">{currentTitle}</span>
+                      <span className="text-sm text-gray-400">· {currentCount.toLocaleString()} influencers</span>
+                    </div>
+                    {!isLeaf ? (
+                      currentChildren.length === 0 ? (
+                        <div className="py-10 text-center text-sm text-gray-400">Sin datos geográficos canónicos en este nivel.</div>
+                      ) : (
+                        <div className="h-[340px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={currentChildren} margin={{ top: 8, right: 12, left: 0, bottom: 65 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={85} />
+                              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                              <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
+                              <Bar dataKey="count" name="Influencers" fill="#7c3aed" radius={[6, 6, 0, 0]} cursor="pointer" onClick={(entry) => setSelectedGeoPath([...selectedGeoPath, String(entry.id)])} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )
+                    ) : null}
+
+                    {directInfluencers.length > 0 && (
+                      <div className="mt-5">
+                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                          Influencers asignadas directamente a {currentTitle} · {directInfluencers.length}
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead>
+                            <tbody>{directInfluencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody></table>
+                          </div>
+                        </div>
+                    )}
+
+                    {hasUnassigned && (
+                      <div className="mt-5 p-4 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-800">
+                        Hay <strong>{report.unassignedGeography.toLocaleString()}</strong> influencers sin ubicación canónica. No se mezclan con País/Región/Comuna para no falsear los gráficos.
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          )}
+

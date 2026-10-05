@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
 export interface ScanInfluencer {
   id: string
@@ -11,9 +12,13 @@ export interface ScanInfluencer {
   instagram_username: string | null
   followers: number
   commune: string | null
+  region: string | null
   location_id: string | null
   address: string | null
   categories: string[] | null
+  locationLevel: 'country' | 'region' | 'city' | 'commune' | null
+  locationName: string | null
+  locationAncestors: Array<{ id: string; level: 'country' | 'region' | 'city' | 'commune'; name: string }>
 }
 
 export interface RankingItem {
@@ -43,9 +48,31 @@ export interface DataQualityReport {
   duplicatesByEmail: number
   duplicatesByInstagram: number
   duplicatesByMixed: number
-  communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
+  geography: GeographyCountry[]
+  unassignedGeography: number
 }
+
+export interface GeographyInfluencer {
+  id: string
+  display_name: string | null
+  email: string | null
+  instagram_username: string | null
+  followers: number
+  is_active: boolean
+  address: string | null
+}
+
+export interface GeographyNode {
+  id: string
+  label: string
+  level: 'country' | 'region' | 'city' | 'commune'
+  count: number
+  children: GeographyNode[]
+  influencers: GeographyInfluencer[]
+}
+
+export type GeographyCountry = GeographyNode
 
 function normUrl(url: string | null): string | null {
   if (!url) return null
@@ -122,6 +149,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         instagram_username: ig?.username ?? null,
         followers: totalFollowers,
         commune: null,
+        region: null,
         location_id: (inf as { location_id?: string | null }).location_id ?? null,
         address: (inf as { address?: string | null }).address ?? null,
         categories: (inf as { categories?: string[] | null }).categories ?? null,
@@ -132,12 +160,45 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     from += PAGE
   }
 
-  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
-  return all.map(inf => ({
-    ...inf,
-    location_id: inf.location_id ?? null,
-    commune: inf.location_id ? (locationDisplayById.get(inf.location_id)?.commune ?? null) : null,
-  }))
+  const [locationDisplayById, locationRowsResult] = await Promise.all([
+    getOfficialLocationDisplayMap(admin),
+    fetchAllRows(
+      (from, to) => admin.from('locations')
+        .select('id, parent_id, level, name, is_active')
+        .eq('is_active', true)
+        .neq('level', 'place')
+        .range(from, to),
+      { maxRows: 5000 },
+    ),
+  ])
+  if (locationRowsResult.error) throw locationRowsResult.error
+
+  type LocationNode = { id: string; parent_id: string | null; level: 'country' | 'region' | 'city' | 'commune'; name: string; is_active: boolean }
+  const locationMap = new Map<string, LocationNode>(
+    ((locationRowsResult.data ?? []) as LocationNode[]).map(row => [row.id, row] as const),
+  )
+
+  return all.map(inf => {
+    const path: LocationNode[] = []
+    let current = inf.location_id ? locationMap.get(inf.location_id) : undefined
+    const visited = new Set<string>()
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id)
+      path.push(current)
+      current = current.parent_id ? locationMap.get(current.parent_id) : undefined
+    }
+    path.reverse()
+    const display = inf.location_id ? locationDisplayById.get(inf.location_id) : undefined
+    return {
+      ...inf,
+      location_id: inf.location_id ?? null,
+      commune: display?.commune ?? null,
+      region: display?.region ?? null,
+      locationLevel: path[path.length - 1]?.level ?? null,
+      locationName: path[path.length - 1]?.name ?? null,
+      locationAncestors: path.map(node => ({ id: node.id, level: node.level, name: node.name })),
+    }
+  })
 }
 
 function mergeOverlappingGroups(rawGroups: DuplicateGroup[]): DuplicateGroup[] {
@@ -269,7 +330,9 @@ function buildRanking(
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
   const active = scan.filter(i => i.is_active).length
   const withInstagram = scan.filter(i => extractInstagramHandle(i.instagram_url, i.instagram_username)).length
-  const withoutCommune = scan.filter(i => !i.commune || !i.commune.trim()).length
+  // A valid commune means the canonical location itself is a commune.
+  // Region/country assignments are intentionally incomplete for portal access.
+  const withoutCommune = scan.filter(i => !i.location_id || !i.commune?.trim()).length
   const withoutAddress = scan.filter(i => !i.address || !i.address.trim()).length
   const missingAnyRequired = scan.filter(i =>
     !extractInstagramHandle(i.instagram_url, i.instagram_username) || !i.commune?.trim() || !i.address?.trim()
@@ -284,8 +347,50 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     else byMixed += g.influencers.length - 1
   }
 
-  const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna oficial')
   const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
+
+  const countryMap = new Map<string, GeographyNode>()
+  const influencerForGeo = (inf: ScanInfluencer): GeographyInfluencer => ({
+    id: inf.id, display_name: inf.display_name, email: inf.email,
+    instagram_username: inf.instagram_username, followers: inf.followers,
+    is_active: inf.is_active, address: inf.address,
+  })
+
+  for (const inf of scan) {
+    const path = inf.locationAncestors
+    if (!path.length) continue
+    let children = Array.from(countryMap.values())
+    for (let index = 0; index < path.length; index++) {
+      const ancestor = path[index]
+      let node = children.find(child => child.id === ancestor.id)
+      if (!node) {
+        node = { id: ancestor.id, label: ancestor.name, level: ancestor.level, count: 0, children: [], influencers: [] }
+        if (index === 0) countryMap.set(node.id, node)
+        else {
+          const parent = path[index - 1]
+          const attach = (nodes: GeographyNode[]): GeographyNode | null => {
+            for (const candidate of nodes) {
+              if (candidate.id === parent.id) return candidate
+              const nested = attach(candidate.children)
+              if (nested) return nested
+            }
+            return null
+          }
+          attach(Array.from(countryMap.values()))?.children.push(node)
+        }
+      }
+      node.count++
+      if (index === path.length - 1) node.influencers.push(influencerForGeo(inf))
+      children = node.children
+    }
+  }
+
+  const sortGeo = (nodes: GeographyNode[]): GeographyNode[] => nodes
+    .map(node => ({ ...node, children: sortGeo(node.children), influencers: [...node.influencers].sort((a,b) => b.followers-a.followers || (a.display_name ?? '').localeCompare(b.display_name ?? '', 'es-CL')) }))
+    .sort((a,b) => b.count-a.count || a.label.localeCompare(b.label, 'es-CL'))
+
+  const geography = sortGeo(Array.from(countryMap.values()))
+  const unassignedGeography = scan.filter(i => i.locationAncestors.length === 0).length
 
   return {
     total: scan.length,
@@ -301,9 +406,9 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     duplicatesByEmail: byEmail,
     duplicatesByInstagram: byInstagram,
     duplicatesByMixed: byMixed,
-    communeRanking,
     nicheRanking,
+    geography,
+    unassignedGeography,
   }
 }
-
 export { normUrl, normHandle, normEmail }

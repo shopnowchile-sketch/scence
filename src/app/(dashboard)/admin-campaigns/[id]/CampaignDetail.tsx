@@ -3658,7 +3658,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           {inf.display_name}
                         </span>
                         <p className="text-xs text-gray-400 truncate">
-                          {[inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
+                          {[inf.commune || inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
                           {primarySP?.username && (
                             <>
                               {' · '}
@@ -4171,7 +4171,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         <div className="min-w-0">
                           <h3 className="text-base font-bold text-gray-900 truncate">{selectedInfluencer.display_name}</h3>
                           <p className="text-xs text-gray-400">
-                            {[selectedInfluencer.city, selectedInfluencer.country].filter(Boolean).join(', ') || 'Sin ubicación'}
+                            {[selectedInfluencer.commune || selectedInfluencer.city, selectedInfluencer.country].filter(Boolean).join(', ') || 'Sin ubicación'}
                           </p>
                         </div>
                       </div>

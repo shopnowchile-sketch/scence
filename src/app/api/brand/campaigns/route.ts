@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       budget_total, currency, hashtags, platforms,
       campaign_influencers (
         id, application_status, fee, currency,
-        influencer:influencers (id, display_name, avatar_url, city,
+        influencer:influencers (id, display_name, avatar_url,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),

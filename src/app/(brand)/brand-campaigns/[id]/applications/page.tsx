@@ -33,7 +33,7 @@ interface Application {
     avatar_url: string | null
     bio: string | null
     categories: string[]
-    city: string | null
+    city?: string | null
     is_pro?: boolean
     pro_source?: 'paid' | 'manual' | 'free'
     influencer_social_profiles: SocialProfile[]

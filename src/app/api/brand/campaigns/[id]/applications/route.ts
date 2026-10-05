@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       id, application_status, origin, message, fee, deliverables_spec, application_answers, created_at,
       influencer:influencers (
-        id, display_name, avatar_url, bio, categories, city, country,
+        id, display_name, avatar_url, bio, categories,
         influencer_social_profiles (platform, username, followers, engagement_rate, is_primary)
       )
     `)

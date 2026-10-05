@@ -84,3 +84,22 @@ export async function getOfficialInfluencerLocations(
 
   return result
 }
+
+/**
+ * Reemplaza country/region/city/commune de una fila de influencer por los
+ * valores derivados de location_id → locations. Sin location_id (o con un
+ * location_id que no resuelve) quedan en null: nunca se usa geografía legacy.
+ */
+export function withOfficialInfluencerLocation<T extends { location_id?: string | null }>(
+  influencer: T,
+  locationDisplayById: Map<string, OfficialInfluencerLocation>
+): T & { country: string | null; region: string | null; city: string | null; commune: string | null } {
+  const location = influencer.location_id ? locationDisplayById.get(influencer.location_id) : undefined
+  return {
+    ...influencer,
+    country: location?.country ?? null,
+    region: location?.region ?? null,
+    city: location?.city ?? null,
+    commune: location?.commune ?? null,
+  }
+}

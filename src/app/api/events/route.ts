@@ -74,6 +74,12 @@ export async function POST(request: NextRequest) {
     event_date,
     location,
     location_id,
+    location_details,
+    venue_name,
+    commune,
+    city,
+    region,
+    country,
     is_virtual = false,
     virtual_link,
     capacity,
@@ -106,8 +112,12 @@ export async function POST(request: NextRequest) {
     try {
       const resolvedLocation = await resolvePhysicalLocation(admin, {
         locationId: requestedLocationId ?? inheritedLocationId,
-        venueName: null,
+        venueName: typeof venue_name === 'string' ? venue_name : (typeof location_details?.venue_name === 'string' ? location_details.venue_name : null),
         address: legacyLocation,
+        commune: typeof commune === 'string' ? commune : (typeof location_details?.commune === 'string' ? location_details.commune : null),
+        city: typeof city === 'string' ? city : null,
+        region: typeof region === 'string' ? region : (typeof location_details?.region === 'string' ? location_details.region : null),
+        country: typeof country === 'string' ? country : (typeof location_details?.country === 'string' ? location_details.country : null),
         organizationId: orgId,
       })
       if (resolvedLocation.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })

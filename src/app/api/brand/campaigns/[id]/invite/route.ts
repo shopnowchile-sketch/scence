@@ -61,10 +61,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!influencer_id) return NextResponse.json({ error: 'influencer_id requerido' }, { status: 422 })
 
   // ── Roster limit gating ───────────────────────────────────────────────────
-  // Resolver plan efectivo: override individual de la marca (brand.id) →
-  // subscriptions activa/trialing → fallback organizations.subscription_plan.
-  // IMPORTANTE: pasar brand.id para respetar subscription_plan_override.
-  const orgPlan = await resolveBrandPlan(admin, brand.organization_id, brand.id)
+  // Plan efectivo de la marca (fuente única: resolveBrandPlanAccess).
+  const orgPlan = await resolveBrandPlan(admin, brand.id)
   const limits  = getPlanLimits(orgPlan)
 
   // IDs de todas las campañas de esta marca

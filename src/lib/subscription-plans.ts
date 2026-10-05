@@ -26,15 +26,3 @@ export async function getActivePlans(admin: SupabaseClient): Promise<Subscriptio
   if (error) throw new Error(error.message)
   return (data ?? []) as SubscriptionPlan[]
 }
-
-export async function getOrgSubscription(admin: SupabaseClient, organizationId: string) {
-  const { data } = await admin
-    .from('subscriptions')
-    .select('*, plan:subscription_plans(*)')
-    .eq('organization_id', organizationId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  return data
-}

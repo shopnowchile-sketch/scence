@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
-import { getActivePlans, getOrgSubscription } from '@/lib/subscription-plans'
-import { resolveBrandPlan } from '@/lib/plan-limits'
+import { getActivePlans } from '@/lib/subscription-plans'
+import { resolveBrandPlanAccess } from '@/lib/plan-limits'
 
 // GET /api/brand/billing — planes activos + suscripción actual + plan efectivo de la org
 //
@@ -23,19 +23,16 @@ export async function GET() {
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
   if (!hasBrandPermission(access, 'billing.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const orgId = access.organizationId
 
-  const [plans, subscription, orgPlan, brand] = await Promise.all([
+  const [plans, planAccess] = await Promise.all([
     getActivePlans(admin),
-    getOrgSubscription(admin, orgId),
-    resolveBrandPlan(admin, orgId, access.brandId),
-    admin.from('brands').select('subscription_plan_override').eq('id', access.brandId).maybeSingle(),
+    resolveBrandPlanAccess(admin, access.brandId),
   ])
 
   return NextResponse.json({
     plans,
-    subscription,
-    org_plan: orgPlan,
-    has_active_subscription: Boolean(subscription) || Boolean(brand.data?.subscription_plan_override),
+    subscription: planAccess.subscription,
+    org_plan: planAccess.plan,
+    has_active_subscription: planAccess.hasActiveAccess,
   })
 }

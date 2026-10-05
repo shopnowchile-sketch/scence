@@ -2,18 +2,17 @@
  * plan-limits.ts
  * Fuente de verdad de límites internos por plan de marca en SCENCE.
  *
- * Fuente de plan (en orden de prioridad):
- *   1. brands.subscription_plan_override
- *   2. subscriptions.status IN ('active','trialing') → subscription_plans.tier
- *   3. organizations.subscription_plan
- *   4. Basic como fallback
+ * Fuente de plan (en orden de prioridad) — ver resolveBrandPlanAccess():
+ *   1. brands.subscription_plan_override (otorgado manualmente por un admin)
+ *   2. suscripción de MARCA active/trialing de la org de la marca
+ *      (nunca una suscripción de influencer)
+ *   3. Basic
  *
  * Mapping de valores a tier:
  *   'free' | null | '' | 'starter' | 'basic'   → basic  (más restrictivo)
  *   'growth'                                     → growth
  *   'pro' | 'plus' | 'enterprise'               → pro    (sin límite práctico)
  *
- * Sin Stripe, sin billing real — solo gating interno.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -68,7 +67,7 @@ export const PLAN_LIMITS = {
 // ── Helper principal ──────────────────────────────────────────────────────────
 
 /**
- * Devuelve los límites del plan a partir de organizations.subscription_plan.
+ * Devuelve los límites de un valor de plan (tier o valor legacy).
  * Normaliza valores legacy ('starter', 'plus', 'enterprise', 'free', null).
  */
 export function getPlanLimits(orgPlan: string | null | undefined): PlanLimits {
@@ -91,61 +90,147 @@ export function formatPriceCLP(amount: number): string {
   return `$${amount.toLocaleString('es-CL')}`
 }
 
-// ── Resolución de plan activo (backend) ──────────────────────────────────────
+// ── Precio comercial Brand (USD, PayPal) ─────────────────────────────────────
 
 /**
- * Resuelve el plan efectivo de una org consultando la fuente correcta:
- *   1. subscriptions activa/trialing → subscription_plans.tier
- *   2. Fallback: organizations.subscription_plan
- *
- * Devuelve un string normalizable por getPlanTier/getPlanLimits.
- * Solo para uso en rutas de API (server-side con admin client).
+ * Precio comercial de los planes de marca: lo que se muestra en el botón de
+ * PayPal y en el email de confirmación. Única definición en código.
+ * (El monto que PayPal cobra lo fija cada PAYPAL_*_PLAN_ID en PayPal.)
  */
-export async function resolveBrandPlan(
-  admin: SupabaseClient,
-  organizationId: string,
-  brandId?: string | null,
-): Promise<string> {
-  // 1. Override manual individual de la marca.
-  if (brandId) {
-    const { data: brand } = await admin
-      .from('brands')
-      .select('subscription_plan_override')
-      .eq('id', brandId)
-      .maybeSingle()
+export const BRAND_PLAN_USD_PRICING = {
+  basic:  { launch: 79,  regular: 106.65 },
+  growth: { launch: 279, regular: 376.65 },
+  pro:    { launch: 749, regular: 1011.15 },
+} as const satisfies Record<PlanTier, { launch: number; regular: number }>
 
-    const override = brand?.subscription_plan_override
+// ── Plan y acceso de marca (backend) — fuente única ──────────────────────────
+//
+// Regla:
+//   1. brands.subscription_plan_override = plan otorgado MANUALMENTE por un admin.
+//   2. Suscripción de MARCA de la organización de la marca que da acceso:
+//      active/trialing, o canceled con current_period_end futuro (cancelar =
+//      no renovar; el período pagado se respeta, igual que Influencer Pro).
+//      Una suscripción de influencer (metadata.account_type = 'influencer')
+//      jamás cuenta, aunque comparta organización o fila de subscription_plans.
+//   3. basic.
+// Acceso activo al portal = override administrativo o suscripción de marca que da acceso.
 
-    if (
-      typeof override === 'string' &&
-      (PLAN_TIERS as readonly string[]).includes(override)
-    ) {
-      return override
-    }
+type SubscriptionMetadata = { account_type?: unknown } | null | undefined
+
+/** true si la fila de `subscriptions` pertenece a una influencer (nunca cuenta para marcas). */
+export function isInfluencerSubscription(metadata: unknown): boolean {
+  return (metadata as SubscriptionMetadata)?.account_type === 'influencer'
+}
+
+export function normalizePlanOverride(value: unknown): PlanTier | null {
+  return typeof value === 'string' && (PLAN_TIERS as readonly string[]).includes(value) ? value as PlanTier : null
+}
+
+export type BrandSubscriptionRow = {
+  id: string
+  organization_id: string
+  status: string
+  created_at: string
+  current_period_end: string | null
+  paypal_subscription_id: string | null
+  metadata: unknown
+  plan: { tier?: string | null } | null
+}
+
+export type BrandPlanAccess = {
+  plan: PlanTier
+  source: 'override' | 'subscription' | 'none'
+  override: PlanTier | null
+  subscription: BrandSubscriptionRow | null
+  hasActiveAccess: boolean
+}
+
+/**
+ * ¿Esta suscripción de marca da acceso hoy? active/trialing siempre; canceled
+ * solo mientras dure el período pagado. past_due/incomplete nunca.
+ * (Misma regla que grantsPro de Influencer Pro, sin compartir código.)
+ */
+export function brandSubscriptionGrantsAccess(
+  subscription: Pick<BrandSubscriptionRow, 'status' | 'current_period_end' | 'metadata'>,
+  now: number = Date.now(),
+): boolean {
+  if (isInfluencerSubscription(subscription.metadata)) return false
+  if (subscription.status === 'active' || subscription.status === 'trialing') return true
+  return subscription.status === 'canceled'
+    && Boolean(subscription.current_period_end)
+    && new Date(subscription.current_period_end as string).getTime() > now
+}
+
+/** Regla pura: override → suscripción de marca que da acceso → basic. */
+export function computeBrandPlanAccess(override: unknown, brandSubscription: BrandSubscriptionRow | null, now: number = Date.now()): BrandPlanAccess {
+  const activeBrandSubscription = brandSubscription && brandSubscriptionGrantsAccess(brandSubscription, now) ? brandSubscription : null
+  const manual = normalizePlanOverride(override)
+  if (manual) {
+    return { plan: manual, source: 'override', override: manual, subscription: activeBrandSubscription, hasActiveAccess: true }
   }
+  if (activeBrandSubscription) {
+    return { plan: getPlanTier(activeBrandSubscription.plan?.tier), source: 'subscription', override: null, subscription: activeBrandSubscription, hasActiveAccess: true }
+  }
+  return { plan: 'basic', source: 'none', override: null, subscription: null, hasActiveAccess: false }
+}
 
-  // 2. Suscripción financiera activa de la organización.
-  const { data: sub } = await admin
+const BRAND_SUBSCRIPTION_SELECT = 'id, organization_id, status, created_at, current_period_end, paypal_subscription_id, metadata, plan:subscription_plans(tier)'
+
+/**
+ * Suscripción de MARCA que da acceso, por organización. Prioridad: una
+ * active/trialing (la más reciente); si no hay, una canceled con período vigente.
+ */
+async function loadAccessGrantingBrandSubscriptions(admin: SupabaseClient, organizationIds: string[]) {
+  const byOrganization = new Map<string, BrandSubscriptionRow>()
+  if (organizationIds.length === 0) return byOrganization
+  const { data, error } = await admin
     .from('subscriptions')
-    .select('status, plan:subscription_plans(tier)')
-    .eq('organization_id', organizationId)
-    .in('status', ['active', 'trialing'])
+    .select(BRAND_SUBSCRIPTION_SELECT)
+    .in('organization_id', organizationIds)
+    .in('status', ['active', 'trialing', 'canceled'])
     .order('created_at', { ascending: false })
-    .limit(1)
+  if (error) throw new Error(`No se pudo leer la suscripción de la marca: ${error.message}`)
+  const now = Date.now()
+  for (const row of (data ?? []) as unknown as BrandSubscriptionRow[]) {
+    if (!brandSubscriptionGrantsAccess(row, now)) continue
+    const current = byOrganization.get(row.organization_id)
+    const isRenewing = row.status === 'active' || row.status === 'trialing'
+    const currentIsRenewing = current?.status === 'active' || current?.status === 'trialing'
+    if (!current || (isRenewing && !currentIsRenewing)) byOrganization.set(row.organization_id, row)
+  }
+  return byOrganization
+}
+
+type BrandPlanInput = { id: string; organization_id: string | null; subscription_plan_override?: unknown }
+
+/** Plan y acceso de varias marcas (una sola lectura de suscripciones). */
+export async function resolveBrandPlanAccessMany(admin: SupabaseClient, brands: BrandPlanInput[]) {
+  const organizationIds = Array.from(new Set(brands.map(b => b.organization_id).filter((id): id is string => Boolean(id))))
+  const subscriptions = await loadAccessGrantingBrandSubscriptions(admin, organizationIds)
+  return new Map(brands.map(b => [
+    b.id,
+    computeBrandPlanAccess(b.subscription_plan_override, b.organization_id ? subscriptions.get(b.organization_id) ?? null : null),
+  ]))
+}
+
+/**
+ * Plan y acceso de UNA marca. Siempre usa la organización de la propia marca
+ * (nunca la de una campaña: muchas campañas viven en la org de la agencia).
+ */
+export async function resolveBrandPlanAccess(admin: SupabaseClient, brandId: string): Promise<BrandPlanAccess> {
+  const { data: brand, error } = await admin
+    .from('brands')
+    .select('id, organization_id, subscription_plan_override')
+    .eq('id', brandId)
     .maybeSingle()
+  if (error) throw new Error(`No se pudo leer la marca: ${error.message}`)
+  if (!brand) return computeBrandPlanAccess(null, null)
+  return (await resolveBrandPlanAccessMany(admin, [brand])).get(brand.id) ?? computeBrandPlanAccess(null, null)
+}
 
-  const tier = (sub?.plan as { tier?: string } | null)?.tier
-  if (tier) return tier
-
-  // 3. Plan heredado de la organización.
-  const { data: org } = await admin
-    .from('organizations')
-    .select('subscription_plan')
-    .eq('id', organizationId)
-    .single()
-
-  // 4. Basic.
-  return org?.subscription_plan ?? 'basic'
+/** Plan efectivo de la marca (basic | growth | pro). */
+export async function resolveBrandPlan(admin: SupabaseClient, brandId: string): Promise<PlanTier> {
+  return (await resolveBrandPlanAccess(admin, brandId)).plan
 }
 
 // ── Códigos de error para respuestas API ──────────────────────────────────────

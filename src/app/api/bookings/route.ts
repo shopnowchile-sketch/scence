@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
   let query = admin
     .from('bookings')
-    .select(`*, influencer:influencers (id, display_name, avatar_url), campaign:campaigns (id, name, location_id), location:locations (id, name, address, level, type, is_private, is_active)`)
+    .select(`*, influencer:influencers (id, display_name, avatar_url), campaign:campaigns (id, name, location_id), physical_location:locations (id, name, address, level, type, is_private, is_active)`)
     .eq('organization_id', orgId)
     .order('starts_at', { ascending: true })
     .limit(limit)

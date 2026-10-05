@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { resolvePhysicalLocation, PhysicalLocationError } from '@/lib/resolvePhysicalLocation'
 
 // ── GET /api/events ───────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -72,6 +73,8 @@ export async function POST(request: NextRequest) {
     description,
     event_date,
     location,
+    location_id,
+    location_details,
     is_virtual = false,
     virtual_link,
     capacity,
@@ -87,6 +90,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'event_date is required' }, { status: 422 })
   }
 
+  let resolvedLocation
+  try {
+    resolvedLocation = await resolvePhysicalLocation(admin, {
+      locationId: location_id ?? null,
+      location: location ?? null,
+      locationDetails: location_details ?? null,
+      isVirtual: is_virtual ?? false,
+    })
+  } catch (error) {
+    if (error instanceof PhysicalLocationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    throw error
+  }
+
+  const canonicalLocation = resolvedLocation.locationDisplay
+  const canonicalLocationId = resolvedLocation.locationId
+
   const { data, error } = await admin
     .from('events')
     .insert({
@@ -95,7 +116,9 @@ export async function POST(request: NextRequest) {
       name: (name as string).trim(),
       description: description ?? null,
       event_date,
-      location: location ?? null,
+      location: canonicalLocation,
+      location_id: canonicalLocationId,
+      location_details: location_details ?? null,
       is_virtual,
       virtual_link: virtual_link ?? null,
       capacity: capacity ?? null,

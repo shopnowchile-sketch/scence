@@ -8,7 +8,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { BarChart, Bar, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { useRouter } from 'next/navigation'
 import { formatFollowers } from '@/lib/utils'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 
@@ -29,11 +30,8 @@ interface Report {
   duplicatesByInstagram: number
   duplicatesByMixed: number
   nicheRanking: RankingItem[]
-  geographyNodes: GeographyNode[]
-  geographyInfluencers: GeographyInfluencer[]
+  geographyNodes: GeographyCountNode[]
 }
-
-type LocationStatus = 'ok' | 'missing' | 'orphan' | 'inactive'
 
 interface GeographyNode {
   id: string
@@ -42,15 +40,8 @@ interface GeographyNode {
   level: 'country' | 'region' | 'city' | 'commune'
 }
 
-interface GeographyInfluencer {
-  id: string
-  display_name: string | null
-  email: string | null
-  instagram_username: string | null
-  followers: number
-  is_active: boolean
-  location_status: LocationStatus
-  location_path: string[]
+interface GeographyCountNode extends GeographyNode {
+  direct: number
 }
 
 interface RankingItem {
@@ -81,202 +72,224 @@ const TYPE_LABELS: Record<string, string> = {
   email: 'Email', instagram: 'Instagram', mixed: 'Email + Instagram',
 }
 
-// href opcional: si viene, la tarjeta completa es un link (pedido Pri:
-// tarjetas clickeables hacia /admin-influencers con el filtro correspondiente,
-// o hacia una sección de esta misma pantalla como #duplicados-detectados).
-function StatCard({ icon: Icon, label, value, tone = 'violet', href }: {
-  icon: React.ElementType; label: string; value: number | string; tone?: string; href?: string
+// ── Paleta ────────────────────────────────────────────────────────────────────
+// Una serie = un tono (violeta SCENCE). Estados de calidad usan colores de
+// estado reservados y siempre van con etiqueta + número (nunca color solo).
+const BAR_COLOR = '#7c3aed'
+const STATUS_COLORS = { ok: '#16a34a', missing: '#d97706', inactive: '#ea580c', orphan: '#dc2626' } as const
+const LEVEL_COLORS = { commune: '#6d28d9', region: '#8b5cf6', country: '#c4b5fd', none: '#d1d5db' } as const
+
+const pct = (value: number, total: number) => (total > 0 ? Math.round((value / total) * 1000) / 10 : 0)
+const fmt = (n: number) => n.toLocaleString('es-CL')
+
+function KpiCard({ icon: Icon, label, value, sub, href, tone }: {
+  icon: React.ElementType; label: string; value: number; sub?: React.ReactNode; href?: string
+  tone: 'violet' | 'blue' | 'amber' | 'red'
 }) {
-  const content = (
-    <div className="flex items-center gap-3">
-      <div className={`w-9 h-9 rounded-lg bg-${tone}-100 flex items-center justify-center flex-shrink-0`}>
-        <Icon className={`h-4 w-4 text-${tone}-600`} />
+  const tones = {
+    violet: 'bg-violet-50 text-violet-600', blue: 'bg-blue-50 text-blue-600',
+    amber: 'bg-amber-50 text-amber-600', red: 'bg-red-50 text-red-600',
+  }
+  const body = (
+    <div className="flex items-start gap-3">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${tones[tone]}`}>
+        <Icon className="h-5 w-5" />
       </div>
-      <div>
-        <div className="text-xl font-bold text-gray-900">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-        <div className="text-xs text-gray-400">{label}</div>
+      <div className="min-w-0">
+        <div className="text-2xl font-bold text-gray-900 tabular-nums leading-tight">{fmt(value)}</div>
+        <div className="text-xs font-medium text-gray-500">{label}</div>
+        {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
       </div>
     </div>
   )
-  if (href) {
-    return (
-      <Link href={href} className="card p-4 block hover:shadow-md hover:border-violet-200 transition-shadow">
-        {content}
-      </Link>
-    )
-  }
-  return <div className="card p-4">{content}</div>
+  return href
+    ? <Link href={href} className="card p-4 block hover:shadow-md hover:border-violet-200 transition-shadow">{body}</Link>
+    : <div className="card p-4">{body}</div>
 }
 
-// Ranking por nicho (pedido Pri 2026-07-13): lista simple ordenada
-// de mayor a menor, cada fila clickeable hacia /admin-influencers con el
-// filtro correspondiente. "Sin nicho" usa el sentinel __none__
-// en la URL — InfluencersClient lo resuelve client-side (mismo patrón que
-// "Sin Instagram"), ya que no hay filtro server-side de "IS NULL".
-function RankingList({ title, items, paramName }: {
-  title: string; items: RankingItem[]; paramName: 'niche'
+function SectionTitle({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="mb-4">
+      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">{title}</h3>
+      {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
+    </div>
+  )
+}
+
+// Barra 100% apilada + leyenda con número y porcentaje. Cada segmento tiene
+// su etiqueta en la leyenda (la identidad nunca depende solo del color).
+function MeterCard({ title, hint, total, segments, footer }: {
+  title: string; hint?: string; total: number
+  segments: Array<{ key: string; label: string; value: number; color: string; href?: string }>
+  footer?: React.ReactNode
 }) {
   return (
-    <div className="card p-5">
-      <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{title}</h3>
-      <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-        {items.map(item => (
-          <Link
-            key={item.value ?? '__none__'}
-            href={`/admin-influencers?${paramName}=${encodeURIComponent(item.value ?? '__none__')}`}
-            className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 text-sm"
-          >
-            <span className={`truncate ${item.value === null ? 'text-gray-400 italic' : 'text-gray-700'}`}>
-              {item.label}
-            </span>
-            <span className="text-xs font-semibold text-gray-500 flex-shrink-0">{item.count.toLocaleString()}</span>
-          </Link>
+    <div className="card p-5 flex flex-col">
+      <SectionTitle title={title} hint={hint} />
+      <div className="flex h-3 w-full gap-[2px] overflow-hidden rounded-full bg-gray-100" role="img"
+        aria-label={segments.map(s => `${s.label}: ${s.value}`).join(', ')}>
+        {segments.filter(s => s.value > 0).map(s => (
+          <div key={s.key} title={`${s.label}: ${fmt(s.value)} (${pct(s.value, total)}%)`}
+            style={{ width: `${pct(s.value, total)}%`, background: s.color, minWidth: 3 }} />
         ))}
       </div>
+      <ul className="mt-4 space-y-2 text-sm">
+        {segments.map(s => {
+          const row = (
+            <>
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="h-2.5 w-2.5 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                <span className="text-gray-700 truncate">{s.label}</span>
+              </span>
+              <span className="tabular-nums text-gray-900 font-semibold flex-shrink-0">
+                {fmt(s.value)} <span className="text-gray-400 font-normal">· {pct(s.value, total)}%</span>
+              </span>
+            </>
+          )
+          return (
+            <li key={s.key}>
+              {s.href && s.value > 0
+                ? <Link href={s.href} className="flex items-center justify-between gap-3 rounded-md -mx-1 px-1 hover:bg-gray-50">{row}</Link>
+                : <div className="flex items-center justify-between gap-3">{row}</div>}
+            </li>
+          )
+        })}
+      </ul>
+      {footer && <div className="mt-auto pt-4 text-xs text-gray-500">{footer}</div>}
     </div>
   )
 }
 
-const LEVEL_LABELS: Record<GeographyNode['level'], string> = {
-  country: 'País', region: 'Región', city: 'Ciudad', commune: 'Comuna',
+// Barras horizontales ordenadas (una sola serie). Valor directo al final de
+// cada barra + tooltip. onSelect convierte cada barra en un paso de drilldown.
+function HBarChart({ data, onSelect, emptyText }: {
+  data: Array<{ id: string; name: string; count: number }>
+  onSelect?: (id: string) => void
+  emptyText: string
+}) {
+  if (data.length === 0) return <div className="py-10 text-center text-sm text-gray-400">{emptyText}</div>
+  return (
+    <div style={{ height: data.length * 30 + 16 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 48, left: 0, bottom: 4 }} barCategoryGap={6}>
+          <XAxis type="number" hide allowDecimals={false} />
+          <YAxis type="category" dataKey="name" width={150} interval={0} tickLine={false} axisLine={false}
+            tick={{ fontSize: 12, fill: '#374151' }} />
+          <Tooltip cursor={{ fill: '#f5f3ff' }} formatter={(v: number) => [fmt(v), 'Influencers']} />
+          <Bar dataKey="count" fill={BAR_COLOR} radius={[0, 4, 4, 0]} maxBarSize={18}
+            cursor={onSelect ? 'pointer' : undefined}
+            onClick={onSelect ? (entry: { id?: string }) => { if (entry?.id) onSelect(entry.id) } : undefined}>
+            <LabelList dataKey="count" position="right" formatter={(v: number) => fmt(v)}
+              style={{ fontSize: 11, fill: '#6b7280' }} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
 }
-const UNASSIGNED_LABELS: Record<Exclude<LocationStatus, 'ok'>, string> = {
-  missing: 'Sin ubicación', orphan: 'Ubicación huérfana', inactive: 'Ubicación inactiva',
-}
-const PAGE_SIZE = 50
 
-// Distribución geográfica: País → Región → Comuna/Ciudad → Influencers.
-// Fuente única: influencers.location_id → locations (resuelto en el servidor
-// por loadScan). Las influencers sin ubicación válida nunca se asignan a un
-// nodo: se cuentan aparte (sin ubicación / huérfana / inactiva).
-function GeographyDrilldown({ nodes, influencers }: { nodes: GeographyNode[]; influencers: GeographyInfluencer[] }) {
-  const [path, setPath] = useState<string[]>([])
-  const [unassigned, setUnassigned] = useState<Exclude<LocationStatus, 'ok'> | null>(null)
-  const [visible, setVisible] = useState(PAGE_SIZE)
-
-  const { byId, childrenOf, subtreeCount } = useMemo(() => {
+// Distribución geográfica. Fuente única: report.geographyNodes, construido en
+// el servidor desde influencers.location_id → locations. Los totales de cada
+// nodo suman su subárbol; los nombres salen tal cual de locations.
+function GeographySection({ nodes, located, unlocated }: { nodes: GeographyCountNode[]; located: number; unlocated: number }) {
+  const { byId, childrenOf, total } = useMemo(() => {
     const byId = new Map(nodes.map(n => [n.id, n]))
-    const childrenOf = new Map<string | null, GeographyNode[]>()
+    const childrenOf = new Map<string | null, GeographyCountNode[]>()
     for (const n of nodes) {
       const key = n.parent_id && byId.has(n.parent_id) ? n.parent_id : null
       childrenOf.set(key, [...(childrenOf.get(key) ?? []), n])
     }
-    const subtreeCount = new Map<string, number>()
-    for (const inf of influencers) for (const id of inf.location_path) subtreeCount.set(id, (subtreeCount.get(id) ?? 0) + 1)
-    return { byId, childrenOf, subtreeCount }
-  }, [nodes, influencers])
+    const total = new Map<string, number>()
+    const sum = (id: string): number => {
+      if (total.has(id)) return total.get(id)!
+      const value = (byId.get(id)?.direct ?? 0) + (childrenOf.get(id) ?? []).reduce((t, c) => t + sum(c.id), 0)
+      total.set(id, value)
+      return value
+    }
+    nodes.forEach(n => sum(n.id))
+    return { byId, childrenOf, total }
+  }, [nodes])
 
-  const unassignedCounts = useMemo(() => {
-    const c = { missing: 0, orphan: 0, inactive: 0 }
-    for (const inf of influencers) if (inf.location_status !== 'ok') c[inf.location_status]++
-    return c
-  }, [influencers])
-
-  const currentId = path[path.length - 1] ?? null
-  const current = currentId ? byId.get(currentId) ?? null : null
-  const children = (childrenOf.get(currentId) ?? [])
-    .map(n => ({ id: n.id, name: n.name, level: n.level, count: subtreeCount.get(n.id) ?? 0 }))
+  const rows = (parent: string | null) => (childrenOf.get(parent) ?? [])
+    .map(n => ({ id: n.id, name: n.name, count: total.get(n.id) ?? 0 }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'es-CL'))
-  const childLevel = children[0]?.level
 
-  // Detalle: en una hoja, todo su subárbol; en un nodo intermedio, solo las
-  // asignadas directamente a ese nivel (ej. "Chile" sin región).
-  const rows = unassigned
-    ? influencers.filter(i => i.location_status === unassigned)
-    : current
-      ? influencers.filter(i => children.length === 0 ? i.location_path.includes(current.id) : i.location_path[i.location_path.length - 1] === current.id)
-      : []
+  const countries = rows(null)
+  // Ruta del drilldown bajo un país: [país, región, ...]. Por defecto el país
+  // con más influencers, para que la vista inicial ya muestre regiones.
+  const [path, setPath] = useState<string[]>([])
+  const effectivePath = path.length ? path : countries[0] ? [countries[0].id] : []
+  const currentId = effectivePath[effectivePath.length - 1] ?? null
+  const current = currentId ? byId.get(currentId) ?? null : null
+  const children = current ? rows(current.id) : []
+  const childLevel = current ? (childrenOf.get(current.id) ?? [])[0]?.level : undefined
+  const directHere = current?.direct ?? 0
 
-  const goTo = (next: string[]) => { setPath(next); setUnassigned(null); setVisible(PAGE_SIZE) }
-  const showUnassigned = (status: Exclude<LocationStatus, 'ok'>) => { setPath([]); setUnassigned(status); setVisible(PAGE_SIZE) }
+  const levelLabel = (level?: GeographyNode['level']) =>
+    level === 'region' ? 'Regiones' : level === 'commune' ? 'Comunas' : level === 'city' ? 'Ciudades' : 'Ubicaciones'
 
   return (
-    <div className="card p-5 space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Distribución geográfica</h3>
-          <div className="flex items-center gap-1 text-xs font-semibold text-violet-600 flex-wrap mt-1">
-            <button onClick={() => goTo([])} className="hover:underline">Todas</button>
-            {path.map((id, idx) => (
-              <span key={id} className="flex items-center gap-1">
-                <span className="text-gray-300">/</span>
-                <button onClick={() => goTo(path.slice(0, idx + 1))} className="hover:underline">{byId.get(id)?.name}</button>
-              </span>
-            ))}
-            {unassigned && <span className="text-gray-500"><span className="text-gray-300">/ </span>{UNASSIGNED_LABELS[unassigned]}</span>}
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {(Object.keys(UNASSIGNED_LABELS) as Array<Exclude<LocationStatus, 'ok'>>).map(status => (
-            <button key={status} onClick={() => showUnassigned(status)} disabled={unassignedCounts[status] === 0}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40 ${unassigned === status ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {UNASSIGNED_LABELS[status]} · {unassignedCounts[status].toLocaleString()}
-            </button>
-          ))}
-        </div>
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+      <div className="card p-5 lg:col-span-2">
+        <SectionTitle title="Influencers por país" hint={`${fmt(located)} con ubicación válida · clic para ver sus regiones`} />
+        <HBarChart data={countries} onSelect={id => setPath([id])} emptyText="Sin influencers con ubicación." />
+        {unlocated > 0 && (
+          <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
+            <span className="font-semibold text-gray-700 tabular-nums">{fmt(unlocated)}</span> sin ubicación válida no se asignan a ningún país.
+          </p>
+        )}
       </div>
 
-      {!unassigned && (current?.level === 'commune' || current?.level === 'city') && (
-        <Link href={`/admin-influencers?commune=${encodeURIComponent(current.name)}`} className="text-xs font-semibold text-violet-600 hover:underline">
-          Ver {current.name} en Influencers →
-        </Link>
-      )}
-
-      {!unassigned && children.length > 0 && (
-        <div>
-          <p className="text-xs text-gray-400 mb-2">
-            {childLevel ? LEVEL_LABELS[childLevel] : ''} · {current ? `${current.name} · ` : ''}{(current ? subtreeCount.get(current.id) ?? 0 : children.reduce((t, c) => t + c.count, 0)).toLocaleString()} influencers con ubicación · clic para bajar de nivel
-          </p>
-          <div style={{ height: Math.max(120, children.length * 26 + 20) }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={children} layout="vertical" margin={{ top: 0, right: 24, left: 8, bottom: 0 }}>
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11 }} interval={0} />
-                <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
-                <Bar dataKey="count" fill="#7c3aed" radius={[0, 4, 4, 0]} cursor="pointer"
-                  onClick={(entry: { id?: string }) => entry?.id && goTo([...path, entry.id])} />
-              </BarChart>
-            </ResponsiveContainer>
+      <div className="card p-5 lg:col-span-3">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+              {levelLabel(childLevel)}{current ? ` de ${current.name}` : ''}
+            </h3>
+            <nav className="flex items-center gap-1 text-xs mt-1 flex-wrap" aria-label="Ruta geográfica">
+              {effectivePath.map((id, idx) => {
+                const last = idx === effectivePath.length - 1
+                return (
+                  <span key={id} className="flex items-center gap-1">
+                    {idx > 0 && <span className="text-gray-300">›</span>}
+                    {last
+                      ? <span className="font-semibold text-gray-700">{byId.get(id)?.name}</span>
+                      : <button onClick={() => setPath(effectivePath.slice(0, idx + 1))} className="font-semibold text-violet-600 hover:underline">{byId.get(id)?.name}</button>}
+                  </span>
+                )
+              })}
+              {current && <span className="text-gray-400">· {fmt(total.get(current.id) ?? 0)} influencers</span>}
+            </nav>
           </div>
-        </div>
-      )}
-
-      {rows.length > 0 && (
-        <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-            {unassigned
-              ? `${UNASSIGNED_LABELS[unassigned]} · ${rows.length.toLocaleString()}`
-              : children.length === 0
-                ? `Influencers en ${current?.name} · ${rows.length.toLocaleString()}`
-                : `Asignadas directamente a ${current?.name} (sin nivel inferior) · ${rows.length.toLocaleString()}`}
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-400 border-b">
-                  <th className="pb-2 pr-3">Influencer</th><th className="pb-2 pr-3">Instagram</th><th className="pb-2 pr-3">Followers</th><th className="pb-2 pr-3">Email</th><th className="pb-2">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(0, visible).map(inf => (
-                  <tr key={inf.id} className="border-b last:border-0">
-                    <td className="py-2 pr-3"><Link href={`/admin-influencers/${inf.id}`} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td>
-                    <td className="py-2 pr-3 text-gray-500">{inf.instagram_username ? `@${inf.instagram_username}` : '—'}</td>
-                    <td className="py-2 pr-3 text-gray-500">{formatFollowers(inf.followers)}</td>
-                    <td className="py-2 pr-3 text-gray-500">{inf.email || '—'}</td>
-                    <td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {rows.length > visible && (
-            <button onClick={() => setVisible(v => v + PAGE_SIZE)} className="mt-2 text-xs font-semibold text-violet-600 hover:underline">
-              Ver más ({(rows.length - visible).toLocaleString()} restantes)
-            </button>
+          {current && (current.level === 'commune' || current.level === 'city') && (
+            <Link href={`/admin-influencers?commune=${encodeURIComponent(current.name)}`}
+              className="text-xs font-semibold text-violet-600 hover:underline flex-shrink-0">
+              Ver influencers →
+            </Link>
           )}
         </div>
-      )}
+
+        {current && children.length === 0 ? (
+          <div className="py-8 text-center">
+            <p className="text-3xl font-bold text-gray-900 tabular-nums">{fmt(total.get(current.id) ?? 0)}</p>
+            <p className="text-sm text-gray-500 mb-4">influencers en {current.name}</p>
+            <Link href={`/admin-influencers?commune=${encodeURIComponent(current.name)}`}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700">
+              Ver listado filtrado
+            </Link>
+          </div>
+        ) : (
+          <div className="max-h-[560px] overflow-y-auto pr-1">
+            <HBarChart key={currentId ?? 'root'} data={children} emptyText="Sin subdivisiones con influencers."
+              onSelect={id => setPath([...effectivePath, id])} />
+          </div>
+        )}
+        {current && children.length > 0 && directHere > 0 && (
+          <p className="text-xs text-gray-500 mt-3">
+            + {fmt(directHere)} asignadas solo a nivel {current.level === 'country' ? 'país' : 'región'} ({current.name}), sin {current.level === 'country' ? 'región' : 'comuna'}.
+          </p>
+        )}
+      </div>
     </div>
   )
 }
@@ -292,6 +305,7 @@ export function DataQualityClient() {
   const [mergeAllProgress, setMergeAllProgress] = useState<{ done: number; total: number } | null>(null)
   const [keepChoice, setKeepChoice] = useState<Record<string, string>>({})
   const { isAdmin } = useIsAdmin()
+  const router = useRouter()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -525,8 +539,8 @@ export function DataQualityClient() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-7xl">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <Link href="/admin-influencers" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
             <ChevronLeft className="h-4 w-4" /> Influencers
@@ -553,69 +567,93 @@ export function DataQualityClient() {
         </div>
       ) : (
         <>
-          {/* KPIs — clickeables: Total/Sin Instagram/Duplicados llevan directo,
-              Activos/Inactivos son 2 links dentro de la misma tarjeta (no se
-              parte en 2 tarjetas para no romper el grid de 4 columnas). */}
-          {report && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard icon={Database} label="Total influencers" value={report.total} tone="violet" href="/admin-influencers" />
+          {report && (() => {
+            const invalidLocation = report.orphanLocation + report.inactiveLocation
+            const validLocation = report.total - report.withoutLocation - invalidLocation
+            const levelCount = (levels: GeographyNode['level'][]) =>
+              report.geographyNodes.filter(n => levels.includes(n.level)).reduce((t, n) => t + n.direct, 0)
+            const niches = report.nicheRanking.filter(n => n.value !== null)
+            const withoutNiche = report.nicheRanking.find(n => n.value === null)?.count ?? 0
+            return (
+              <>
+                {/* 1 · KPIs: cuántas hay, activas, Instagram, duplicados */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <KpiCard icon={Database} tone="violet" label="Total influencers" value={report.total} href="/admin-influencers"
+                    sub={<>{fmt(validLocation)} con ubicación válida ({pct(validLocation, report.total)}%)</>} />
+                  <KpiCard icon={Users} tone="blue" label="Activas" value={report.active}
+                    sub={<><Link href="/admin-influencers?status=active" className="hover:underline">{pct(report.active, report.total)}% activas</Link>{' · '}
+                      <Link href="/admin-influencers?status=inactive" className="hover:underline">{fmt(report.inactive)} inactivas</Link></>} />
+                  <KpiCard icon={Instagram} tone="amber" label="Sin Instagram" value={report.withoutInstagram} href="/admin-influencers?data_quality=missing_instagram"
+                    sub={<>{pct(report.withInstagram, report.total)}% con Instagram</>} />
+                  <KpiCard icon={AlertTriangle} tone="red" label="Registros duplicados" value={report.duplicateRecords} href="#duplicados-detectados"
+                    sub={<>{fmt(report.duplicateGroups)} grupo{report.duplicateGroups !== 1 ? 's' : ''}</>} />
+                </div>
 
-              <div className="card p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <Users className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold text-gray-900">
-                      <Link href="/admin-influencers?status=active" className="hover:underline hover:text-blue-700">
-                        {report.active.toLocaleString()}
-                      </Link>
-                      <span className="text-gray-300"> / </span>
-                      <Link href="/admin-influencers?status=inactive" className="hover:underline hover:text-blue-700">
-                        {report.inactive.toLocaleString()}
-                      </Link>
-                    </div>
-                    <div className="text-xs text-gray-400">Activos / Inactivos</div>
+                {/* 2 · Calidad de datos: ubicación, completitud geográfica, Instagram, duplicados */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <MeterCard title="Calidad de ubicación" hint="influencers.location_id → locations" total={report.total}
+                    segments={[
+                      { key: 'ok', label: 'Ubicación válida', value: validLocation, color: STATUS_COLORS.ok },
+                      { key: 'missing', label: 'Sin ubicación', value: report.withoutLocation, color: STATUS_COLORS.missing },
+                      { key: 'orphan', label: 'Ubicación huérfana', value: report.orphanLocation, color: STATUS_COLORS.orphan },
+                      { key: 'inactive', label: 'Ubicación inactiva', value: report.inactiveLocation, color: STATUS_COLORS.inactive },
+                    ]}
+                    footer={<><strong className="text-gray-700">{fmt(validLocation)} / {fmt(report.total)}</strong> con ubicación válida</>} />
+                  <MeterCard title="Nivel de ubicación" hint="Precisión del dato geográfico" total={report.total}
+                    segments={[
+                      { key: 'commune', label: 'Comuna / Ciudad', value: levelCount(['commune', 'city']), color: LEVEL_COLORS.commune },
+                      { key: 'region', label: 'Solo región', value: levelCount(['region']), color: LEVEL_COLORS.region },
+                      { key: 'country', label: 'Solo país', value: levelCount(['country']), color: LEVEL_COLORS.country },
+                      { key: 'none', label: 'Sin ubicación válida', value: report.withoutLocation + invalidLocation, color: LEVEL_COLORS.none },
+                    ]} />
+                  <MeterCard title="Instagram" hint="Identificador principal de la influencer" total={report.total}
+                    segments={[
+                      { key: 'with', label: 'Con Instagram', value: report.withInstagram, color: STATUS_COLORS.ok },
+                      { key: 'without', label: 'Sin Instagram', value: report.withoutInstagram, color: STATUS_COLORS.missing, href: '/admin-influencers?data_quality=missing_instagram' },
+                    ]} />
+                  <div className="card p-5">
+                    <SectionTitle title="Duplicados por tipo" hint="Registros sobrantes por criterio" />
+                    <ul className="space-y-3">
+                      {[
+                        { icon: Mail, label: 'Por email', value: report.duplicatesByEmail },
+                        { icon: Instagram, label: 'Por Instagram', value: report.duplicatesByInstagram },
+                        { icon: GitMerge, label: 'Email + Instagram', value: report.duplicatesByMixed },
+                      ].map(d => (
+                        <li key={d.label} className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-2 text-gray-700"><d.icon className="h-4 w-4 text-gray-400" />{d.label}</span>
+                          <span className="font-semibold tabular-nums text-gray-900">{fmt(d.value)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {report.duplicateRecords === 0
+                      ? <p className="mt-4 text-xs text-emerald-600 flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> Base sin duplicados</p>
+                      : <a href="#duplicados-detectados" className="mt-4 inline-block text-xs font-semibold text-violet-600 hover:underline">Revisar duplicados →</a>}
                   </div>
                 </div>
-              </div>
 
-              <StatCard icon={Instagram} label="Sin Instagram" value={report.withoutInstagram} tone="amber" href="/admin-influencers?data_quality=missing_instagram" />
-              <StatCard icon={AlertTriangle} label="Registros duplicados" value={report.duplicateRecords} tone="red" href="#duplicados-detectados" />
-            </div>
-          )}
+                {/* 3 · Distribución geográfica: País → Región → Comuna/Ciudad → Influencers */}
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 mb-3">Distribución geográfica</h2>
+                  <GeographySection nodes={report.geographyNodes} located={validLocation} unlocated={report.total - validLocation} />
+                </div>
 
-          {/* Desglose duplicados */}
-          {report && (
-            <div className="card p-5">
-              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Duplicados por tipo</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                  { icon: Mail, label: 'Por email', value: report.duplicatesByEmail },
-                  { icon: Instagram, label: 'Por Instagram', value: report.duplicatesByInstagram },
-                  { icon: GitMerge, label: 'Email + Instagram', value: report.duplicatesByMixed },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center gap-3">
-                    <s.icon className="h-4 w-4 text-gray-400" />
-                    <div>
-                      <div className="text-lg font-bold text-gray-900">{s.value}</div>
-                      <div className="text-xs text-gray-400">{s.label}</div>
-                    </div>
+                {/* 4 · Nichos */}
+                <div className="card p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <SectionTitle title="Influencers por nicho" hint="Una influencer puede tener varios nichos · clic para ver el listado" />
+                    {withoutNiche > 0 && (
+                      <Link href="/admin-influencers?niche=__none__" className="text-xs text-gray-500 hover:text-violet-700 flex-shrink-0">
+                        <span className="font-semibold text-gray-900 tabular-nums">{fmt(withoutNiche)}</span> sin nicho ({pct(withoutNiche, report.total)}%) →
+                      </Link>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Geografía (locations) + ranking por nicho */}
-          {report && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2">
-                <GeographyDrilldown nodes={report.geographyNodes} influencers={report.geographyInfluencers} />
-              </div>
-              <RankingList title="Ranking por nicho" items={report.nicheRanking} paramName="niche" />
-            </div>
-          )}
+                  <HBarChart data={niches.slice(0, 12).map(n => ({ id: n.value as string, name: n.label, count: n.count }))}
+                    emptyText="Sin nichos registrados."
+                    onSelect={id => router.push(`/admin-influencers?niche=${encodeURIComponent(id)}`)} />
+                </div>
+              </>
+            )
+          })()}
 
           {!isAdmin && (
             <div className="card p-4 flex items-center gap-3 border-amber-200 bg-amber-50/40 text-sm text-amber-700">
@@ -637,7 +675,7 @@ export function DataQualityClient() {
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / ubicación / dirección)</p>
                   <p className="text-xs text-gray-500">
-                    {report.withoutInstagram} sin Instagram · {report.withoutLocation + report.orphanLocation + report.inactiveLocation} sin ubicación válida · {report.withoutAddress} sin dirección ·{' '}
+                    {report.withoutInstagram} sin Instagram · {fmt(report.withoutLocation + report.orphanLocation + report.inactiveLocation)} sin ubicación válida · {report.withoutAddress} sin dirección ·{' '}
                     <strong>{report.missingAnyRequired} con algún dato obligatorio faltante</strong>. Los tres son obligatorios para usar el portal.
                   </p>
                 </div>

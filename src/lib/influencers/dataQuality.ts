@@ -36,15 +36,9 @@ export interface GeographyNode {
   level: LocationNode['level']
 }
 
-export interface GeographyInfluencer {
-  id: string
-  display_name: string | null
-  email: string | null
-  instagram_username: string | null
-  followers: number
-  is_active: boolean
-  location_status: LocationStatus
-  location_path: string[]
+/** Nodo usado por alguna influencer; `direct` = influencers cuyo location_id es este nodo. */
+export interface GeographyCountNode extends GeographyNode {
+  direct: number
 }
 
 export interface RankingItem {
@@ -77,9 +71,12 @@ export interface DataQualityReport {
   duplicatesByInstagram: number
   duplicatesByMixed: number
   nicheRanking: RankingItem[]
-  /** Nodos de locations usados por alguna influencer (y sus ancestros). */
-  geographyNodes: GeographyNode[]
-  geographyInfluencers: GeographyInfluencer[]
+  /**
+   * Nodos de locations con influencers (y sus ancestros), con conteo directo.
+   * Los totales por país/región/comuna se derivan sumando el subárbol.
+   * Solo incluye ubicaciones válidas (status ok); el resto se cuenta aparte.
+   */
+  geographyNodes: GeographyCountNode[]
 }
 
 function normUrl(url: string | null): string | null {
@@ -328,9 +325,13 @@ function buildRanking(
 }
 
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
-  const usedNodes = new Map<string, GeographyNode>()
+  const usedNodes = new Map<string, GeographyCountNode>()
   for (const inf of scan) {
-    for (const node of inf.location_path) usedNodes.set(node.id, node)
+    inf.location_path.forEach((node, idx) => {
+      const entry = usedNodes.get(node.id) ?? { ...node, direct: 0 }
+      if (idx === inf.location_path.length - 1) entry.direct++
+      usedNodes.set(node.id, entry)
+    })
   }
 
   const active = scan.filter(i => i.is_active).length
@@ -372,16 +373,6 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     duplicatesByMixed: byMixed,
     nicheRanking,
     geographyNodes: Array.from(usedNodes.values()),
-    geographyInfluencers: scan.map(i => ({
-      id: i.id,
-      display_name: i.display_name,
-      email: i.email,
-      instagram_username: extractInstagramHandle(i.instagram_url, i.instagram_username),
-      followers: i.followers,
-      is_active: i.is_active,
-      location_status: i.location_status,
-      location_path: i.location_path.map(node => node.id),
-    })),
   }
 }
 

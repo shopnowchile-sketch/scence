@@ -3,6 +3,7 @@ import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail, sponsorOpportunityEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
 
 const BATCH_SIZE = 100 // límite de resend.batch.send()
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -54,13 +55,19 @@ export async function resolvePendingCampaignAnnouncement(
 ) {
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, type, visibility, status')
+    .select('id, name, type, visibility, status, metadata')
     .eq('id', campaignId)
     .maybeSingle()
 
   if (!campaign) return { campaign: null, pending: [], skipped: 'not_found' as const }
   if (campaign.status !== 'active') return { campaign, pending: [], skipped: 'not_active' as const }
-  if (campaign.visibility !== 'open' && campaign.visibility !== 'private') {
+  // Solo por invitación (mismo criterio que /apply → INVITATION_ONLY): nadie
+  // puede postular por su cuenta, así que no se anuncia al roster. Las
+  // invitadas reciben su propio correo (notifyPreassignedInfluencersOnActivation).
+  if (
+    (campaign.visibility !== 'open' && campaign.visibility !== 'private') ||
+    isInvitationOnlyCampaign(campaign.metadata)
+  ) {
     return { campaign, pending: [], skipped: 'not_announceable' as const }
   }
 
@@ -118,7 +125,12 @@ export async function resolvePendingCampaignAnnouncement(
   const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
   const optedOut = new Set<string>()
   for (let i = 0; i < userIds.length; i += 500) {
-    const { data: profiles } = await admin.from('profiles').select('id, metadata').in('id', userIds.slice(i, i + 500))
+    const { data: profiles, error: profilesErr } = await admin.from('profiles').select('id, metadata').in('id', userIds.slice(i, i + 500))
+    // Falla cerrado: sin las preferencias no se puede respetar el opt-out.
+    if (profilesErr) {
+      console.error('[resolvePendingCampaignAnnouncement] error leyendo preferencias', profilesErr)
+      return { campaign, pending: [], skipped: 'query_error' as const }
+    }
     for (const profile of profiles ?? []) {
       const metadata = profile.metadata && typeof profile.metadata === 'object'
         ? profile.metadata as Record<string, unknown>
@@ -199,8 +211,14 @@ export async function announceCampaignToInfluencers(
             validChunk.map(inf => ({ campaign_id: campaignId, influencer_id: inf.id })),
             { onConflict: 'campaign_id,influencer_id' }
           )
-        if (markErr) console.error('[announceCampaignToInfluencers] error marcando notificadas', markErr)
         sent += validChunk.length
+        if (markErr) {
+          // Los correos de este lote YA salieron, pero no quedaron registrados:
+          // un nuevo intento se los reenviaría. Se corta el envío y se informa
+          // el error en vez de seguir como si nada.
+          console.error('[announceCampaignToInfluencers] error marcando notificadas — envío detenido', markErr)
+          return { sent, failed, remaining: Math.max(0, pending.length - sent), skipped: 'mark_error' }
+        }
       } catch (e) {
         console.error('[announceCampaignToInfluencers] error en batch', e)
         failed += validChunk.length

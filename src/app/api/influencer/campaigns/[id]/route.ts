@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { isInfluencerPro } from '@/lib/influencer-pro'
+import { isInvitationOnlyCampaign, publicCampaignMetadata } from '@/lib/campaign-field-guards'
 
 type Params = { params: { id: string } }
 
@@ -80,6 +81,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   }
 
+  // Solo por invitación (mismo criterio que /apply → INVITATION_ONLY): no es
+  // parte del marketplace. Solo la ve quien tiene una invitación vigente; sin
+  // fila (o con la invitación ya rechazada) se responde igual que a cualquier
+  // campaña no visible.
+  if (isInvitationOnlyCampaign(campaign.metadata) && (!existing || rejectedInvitation)) {
+    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
+
   // Rechazada sin participación real: mismo criterio que
   // /api/influencer/my-campaigns — si la postulación/invitación quedó
   // 'rejected' y no hay deliverables, booking, contrato ni pago asociado,
@@ -113,7 +122,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!isAccepted) {
     // El brief y el lugar son privados hasta la aceptación; la descripción,
     // requisitos y entregables siguen visibles para decidir si postular.
+    // metadata (dirección, WhatsApp, instrucciones, links) y las marcas
+    // colaboradoras también son operativas: misma regla que my-campaigns.
     delete payload.brief_url
+    delete payload.campaign_brands
+    payload.metadata = publicCampaignMetadata(campaign.metadata)
   }
 
   // Fecha y hora del evento ya son visibles antes de aceptar (para decidir si

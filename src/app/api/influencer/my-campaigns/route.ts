@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
+import { publicCampaignMetadata } from '@/lib/campaign-field-guards'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -160,10 +161,17 @@ export async function GET() {
 
   // Las marcas colaboradoras y sus handles forman parte del brief operativo.
   // No se exponen a quien todavía está postulando o debe aceptar una invitación.
+  // Lo mismo campaigns.metadata (dirección, WhatsApp, instrucciones, links):
+  // antes de aceptar solo viajan las claves públicas (publicCampaignMetadata).
   const assignedWithAllowedBrands = visibleAssignedFiltered.map((row: Record<string, unknown>) => {
     if (row.application_status === 'accepted') return row
     const campaign = row.campaign as Record<string, unknown> | null
-    return { ...row, campaign: campaign ? { ...campaign, campaign_brands: [] } : campaign }
+    return {
+      ...row,
+      campaign: campaign
+        ? { ...campaign, campaign_brands: [], metadata: publicCampaignMetadata(campaign.metadata) }
+        : campaign,
+    }
   })
 
   // Merge: assigned from admin + self-created
@@ -382,18 +390,27 @@ export async function POST(req: NextRequest) {
   }
 
   // Also link this influencer to the campaign
-  await admin.from('campaign_influencers').insert({
+  // Sin `status`: campaign_influencers.status no se escribe (CLAUDE.md 16.1).
+  const { error: linkErr } = await admin.from('campaign_influencers').insert({
     campaign_id: newCampaign.id,
     influencer_id: influencer.id,
     fee: fee ?? null,
     currency,
-    status: 'active',
     // La creadora de su propia campaña no está "postulando": queda aceptada.
     // Sin esto tomaba el DEFAULT 'pending' de la columna y el nuevo gate de
     // entregables (403 si no está accepted) la habría bloqueado en su propia
     // campaña. Las 2 campañas propias que ya existen ya están en 'accepted'.
     application_status: 'accepted',
   })
+
+  if (linkErr) {
+    // Sin el vínculo la campaña quedaría huérfana (la creadora no podría
+    // operarla): se deshace la campaña recién creada y se informa el error.
+    console.error('[POST /api/influencer/my-campaigns] link insert failed:', linkErr)
+    const { error: rollbackErr } = await admin.from('campaigns').delete().eq('id', newCampaign.id).eq('created_by', user.id)
+    if (rollbackErr) console.error('[POST /api/influencer/my-campaigns] rollback failed:', rollbackErr)
+    return NextResponse.json({ error: 'No se pudo crear la campaña' }, { status: 500 })
+  }
 
   return NextResponse.json({
     data: {

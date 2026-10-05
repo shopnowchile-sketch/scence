@@ -7,6 +7,7 @@ import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
+import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
 
 // 'followers' / 'engagement_rate' viven en la tabla join (influencer_social_profiles),
 // no son columnas de `influencers` — Postgres/PostgREST no puede hacer .order() por
@@ -49,7 +50,8 @@ export async function GET(request: NextRequest) {
   if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
-  const search     = searchParams.get('search')
+  // Se interpola en .or() de PostgREST: se limpia antes (sin inyección de filtros).
+  const search     = sanitizeSearchTerm(searchParams.get('search')) || null
   const platform   = searchParams.get('platform')
   const category   = searchParams.get('category')
   const country    = searchParams.get('country')

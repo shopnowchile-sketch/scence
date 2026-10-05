@@ -152,11 +152,19 @@ export async function POST(request: NextRequest) {
   const influencerRef = parseInfluencerReference(subscription?.custom_id)
   if (detailsResponse.ok && influencerRef) {
     const admin = createAdminClient()
-    const [{ data: influencer }, { data: plan }, { data: existing }] = await Promise.all([
+    const [{ data: referencedInfluencer }, { data: plan }, { data: existing }] = await Promise.all([
       admin.from('influencers').select('id, organization_id').eq('id', influencerRef.influencerId).maybeSingle(),
       admin.from('subscription_plans').select('id').eq('tier', 'pro').eq('is_active', true).maybeSingle(),
       admin.from('subscriptions').select('id, metadata, current_period_end, canceled_at').eq('paypal_subscription_id', id).maybeSingle(),
     ])
+    // El custom_id de PayPal queda fijo al crear la suscripción. Si esa ficha
+    // ya no existe (p. ej. fusionada con otra), manda la influencer que la fila
+    // de SCENCE tiene vinculada en metadata.influencer_id (fuente de verdad del Pro).
+    const linkedInfluencerId = (existing?.metadata as { influencer_id?: string } | null)?.influencer_id
+    const influencer = referencedInfluencer
+      ?? (linkedInfluencerId && linkedInfluencerId !== influencerRef.influencerId
+        ? (await admin.from('influencers').select('id, organization_id').eq('id', linkedInfluencerId).maybeSingle()).data
+        : null)
     if (!influencer?.organization_id || !plan) return NextResponse.json({ received: true })
     const status = STATUS_MAP[subscription.status] ?? 'incomplete'
     const start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString()

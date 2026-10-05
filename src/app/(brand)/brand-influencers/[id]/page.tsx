@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { InstagramSyncHint, hideUnconfirmedZero } from '@/components/influencers/InstagramSyncHint'
 import Link from 'next/link'
@@ -119,10 +120,9 @@ export default function BrandInfluencerProfilePage({
       <div className="card p-6">
         <div className="flex flex-col sm:flex-row sm:items-start gap-5">
           {data.avatar_url ? (
-            <img
+            <Image
               src={data.avatar_url}
-              alt={data.display_name}
-              className="h-24 w-24 rounded-2xl object-cover"
+              alt={data.display_name} width={96} height={96} className="h-24 w-24 rounded-2xl object-cover"
             />
           ) : (
             <div className="h-24 w-24 rounded-2xl bg-violet-100 flex items-center justify-center text-3xl font-bold text-violet-600">

@@ -69,6 +69,26 @@ export async function getOfficialLocationDisplayMap(
  * Resolves influencer.location_id through the canonical locations hierarchy.
  * This is the only place report/ranking code should derive geography.
  */
+export async function withOfficialInfluencerLocation<T extends { influencer?: ({ id: string; location_id?: string | null } & Record<string, unknown>) | null }>(
+  admin: SupabaseClient,
+  rows: T[],
+): Promise<T[]> {
+  const influencerRows = rows
+    .map(row => row.influencer)
+    .filter((influencer): influencer is NonNullable<T['influencer']> => Boolean(influencer))
+    .map(influencer => ({ id: influencer.id, location_id: influencer.location_id }))
+
+  const locations = await getOfficialInfluencerLocations(admin, influencerRows)
+
+  return rows.map(row => {
+    if (!row.influencer) return row
+    const location = locations.get(row.influencer.id)
+    return location
+      ? { ...row, influencer: { ...row.influencer, ...location } }
+      : row
+  })
+}
+
 export async function getOfficialInfluencerLocations(
   admin: SupabaseClient,
   influencerRows: Array<{ id: string; location_id?: string | null }>

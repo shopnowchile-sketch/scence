@@ -11,6 +11,7 @@ import {
 } from '@/lib/campaign-deliverables-sync'
 import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
+import { PhysicalLocationError, resolvePhysicalLocation } from '@/lib/resolvePhysicalLocation'
 
 type Params = { params: { id: string } }
 
@@ -79,6 +80,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       *,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
+      location:locations (id, name, address, level, type, is_private, is_active),
       campaign_brands (
         id,
         brand:brands (id, name, logo_url, website, instagram, contact_name, contact_email)
@@ -115,7 +117,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // del evento, en vez del rango general de duración de la campaña.
   const { data: eventBookings } = await admin
     .from('bookings')
-    .select('id, title, starts_at, ends_at, location, location_details, status')
+    .select('id, title, starts_at, ends_at, location, location_id, location_details, status')
     .eq('campaign_id', params.id)
     .order('starts_at', { ascending: true })
   const eventBooking = eventBookings?.[0] ?? null
@@ -144,7 +146,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const campaignWithEvent = {
     ...data,
     campaign_influencers: campaignInfluencersWithPlan,
-    address: typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null,
+    address: data.location?.address ?? (typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null),
     event_booking: eventBooking ?? null,
     // Una campaña de varios días usa varios bookings de campaña. Se mantiene
     // event_booking para consumidores existentes y se expone la agenda completa
@@ -196,6 +198,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
     organization_id: _oi,
     budget_spent: _bs,
     address,
+    location_id,
+    venue_name,
+    commune,
+    city,
+    region,
+    country,
     approval_submission_url,
     reference_url,
     event_date,
@@ -234,6 +242,36 @@ export async function PUT(request: NextRequest, { params }: Params) {
         .maybeSingle()
       if (selectedBrandError) return NextResponse.json({ error: selectedBrandError.message }, { status: 500 })
       if (!selectedBrand) return NextResponse.json({ error: 'La marca principal no existe' }, { status: 422 })
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'location_id') || [address, venue_name, commune, city, region].some(value => typeof value === 'string' && value.trim() !== '')) {
+    const { data: currentCampaign } = await admin.from('campaigns').select('organization_id, location_id, metadata').eq('id', params.id).maybeSingle()
+    const nextLocationId = Object.prototype.hasOwnProperty.call(body, 'location_id')
+      ? (typeof location_id === 'string' ? location_id : null)
+      : (currentCampaign?.location_id as string | null | undefined) ?? null
+
+    if (nextLocationId === null && ![address, venue_name, commune, city, region].some(value => typeof value === 'string' && value.trim() !== '')) {
+      rest.location_id = null
+    } else {
+      try {
+        const resolved = await resolvePhysicalLocation(admin, {
+          locationId: nextLocationId,
+          venueName: typeof venue_name === 'string' ? venue_name : null,
+          address: typeof address === 'string' ? address : null,
+          commune: typeof commune === 'string' ? commune : null,
+          city: typeof city === 'string' ? city : null,
+          region: typeof region === 'string' ? region : null,
+          country: typeof country === 'string' ? country : null,
+          organizationId: currentCampaign?.organization_id ?? orgId,
+        })
+        if (resolved.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+        if (resolved.matchType === 'insufficient_data') return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+        rest.location_id = resolved.locationId
+      } catch (error) {
+        if (error instanceof PhysicalLocationError) return NextResponse.json({ error: error.message }, { status: error.status })
+        throw error
+      }
     }
   }
 
@@ -375,7 +413,37 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { action, address, approval_submission_url, reference_url, event_date, collaborator_ids: _collaboratorIds, ...fields } = body
+  const { action, address, location_id, venue_name, commune, city, region, country, approval_submission_url, reference_url, event_date, collaborator_ids: _collaboratorIds, ...fields } = body
+
+  if (Object.prototype.hasOwnProperty.call(body, 'location_id') || [address, venue_name, commune, city, region].some(value => typeof value === 'string' && value.trim() !== '')) {
+    const { data: currentCampaign } = await admin.from('campaigns').select('organization_id, location_id').eq('id', params.id).maybeSingle()
+    const nextLocationId = Object.prototype.hasOwnProperty.call(body, 'location_id')
+      ? (typeof location_id === 'string' ? location_id : null)
+      : (currentCampaign?.location_id as string | null | undefined) ?? null
+
+    if (nextLocationId === null && ![address, venue_name, commune, city, region].some(value => typeof value === 'string' && value.trim() !== '')) {
+      fields.location_id = null
+    } else {
+      try {
+        const resolved = await resolvePhysicalLocation(admin, {
+          locationId: nextLocationId,
+          venueName: typeof venue_name === 'string' ? venue_name : null,
+          address: typeof address === 'string' ? address : null,
+          commune: typeof commune === 'string' ? commune : null,
+          city: typeof city === 'string' ? city : null,
+          region: typeof region === 'string' ? region : null,
+          country: typeof country === 'string' ? country : null,
+          organizationId: currentCampaign?.organization_id ?? orgId,
+        })
+        if (resolved.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+        if (resolved.matchType === 'insufficient_data') return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+        fields.location_id = resolved.locationId
+      } catch (error) {
+        if (error instanceof PhysicalLocationError) return NextResponse.json({ error: error.message }, { status: error.status })
+        throw error
+      }
+    }
+  }
 
   if ('campaign_benefits' in fields) {
     fields.campaign_benefits = normalizeCampaignBenefits(fields.campaign_benefits)

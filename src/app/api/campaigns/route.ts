@@ -281,7 +281,6 @@ export async function POST(request: NextRequest) {
     deliverable_templates,
     campaign_benefits,
     organization_id,
-    address,
     application_questions,
     visibility = 'private',
     application_deadline,

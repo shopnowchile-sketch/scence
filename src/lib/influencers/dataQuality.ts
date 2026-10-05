@@ -358,20 +358,29 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
   for (const inf of scan) {
     const path = inf.locationAncestors
     if (!path.length) continue
-    let currentMap = countryMap
-    let currentNode: GeographyNode | undefined
-    for (const ancestor of path) {
-      let node = currentMap.get(ancestor.id)
+    let children = Array.from(countryMap.values())
+    for (let index = 0; index < path.length; index++) {
+      const ancestor = path[index]
+      let node = children.find(child => child.id === ancestor.id)
       if (!node) {
         node = { id: ancestor.id, label: ancestor.name, level: ancestor.level, count: 0, children: [], influencers: [] }
-        currentMap.set(ancestor.id, node)
+        if (index === 0) countryMap.set(node.id, node)
+        else {
+          const parent = path[index - 1]
+          const attach = (nodes: GeographyNode[]): GeographyNode | null => {
+            for (const candidate of nodes) {
+              if (candidate.id === parent.id) return candidate
+              const nested = attach(candidate.children)
+              if (nested) return nested
+            }
+            return null
+          }
+          attach(Array.from(countryMap.values()))?.children.push(node)
+        }
       }
       node.count++
-      if (ancestor.id === path[path.length - 1].id) node.influencers.push(influencerForGeo(inf))
-      currentNode = node
-      currentMap = new Map(node.children.map(child => [child.id, child]))
-      // Keep the Map-backed children in sync after inserts.
-      if (currentMap.size !== node.children.length) node.children = Array.from(currentMap.values())
+      if (index === path.length - 1) node.influencers.push(influencerForGeo(inf))
+      children = node.children
     }
   }
 

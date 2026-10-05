@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
     .from('campaigns')
     .select(`
       id, name, description, type, status, visibility, application_deadline, location_id,
+      location:locations(id, name, address, level, type, is_private, is_active),
       max_influencers, start_date, end_date, created_at,
       budget_total, currency, hashtags, platforms,
       campaign_influencers (

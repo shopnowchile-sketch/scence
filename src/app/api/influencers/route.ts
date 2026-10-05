@@ -88,7 +88,8 @@ export async function GET(request: NextRequest) {
   const proAttemptParam = searchParams.get('pro_attempt') === '1'
   // Columnas ordenables directo en Postgres. 'followers'/'engagement_rate' se
   // manejan aparte (ver JOIN_SORT_COLS arriba) porque viven en la tabla join.
-  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'birth_date'] as const
+  // Geography sorting is resolved from locations below; never pass removed country/city/commune columns to Postgres.
+const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'birth_date'] as const
   const rawSort    = searchParams.get('sort_by') ?? 'created_at'
   const sortBy     = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
   const sortDir    = searchParams.get('sort_dir') === 'asc' ? true : false

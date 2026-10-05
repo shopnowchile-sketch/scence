@@ -44,8 +44,8 @@ export interface DataQualityReport {
   duplicatesByEmail: number
   duplicatesByInstagram: number
   duplicatesByMixed: number
-  communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
+  geography: GeographyRegion[]
   geography: GeographyRegion[]
 }
 
@@ -295,7 +295,9 @@ function buildRanking(
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
   const active = scan.filter(i => i.is_active).length
   const withInstagram = scan.filter(i => extractInstagramHandle(i.instagram_url, i.instagram_username)).length
-  const withoutCommune = scan.filter(i => !i.commune || !i.commune.trim()).length
+  // A valid commune means the canonical location itself is a commune.
+  // Region/country assignments are intentionally incomplete for portal access.
+  const withoutCommune = scan.filter(i => !i.location_id || !i.commune?.trim()).length
   const withoutAddress = scan.filter(i => !i.address || !i.address.trim()).length
   const missingAnyRequired = scan.filter(i =>
     !extractInstagramHandle(i.instagram_url, i.instagram_username) || !i.commune?.trim() || !i.address?.trim()
@@ -310,7 +312,6 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     else byMixed += g.influencers.length - 1
   }
 
-  const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna oficial')
   const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
 
   const regionMap = new Map<string, { count: number; communes: Map<string, GeographyCommune> }>()
@@ -356,7 +357,6 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     duplicatesByEmail: byEmail,
     duplicatesByInstagram: byInstagram,
     duplicatesByMixed: byMixed,
-    communeRanking,
     nicheRanking,
     geography,
   }

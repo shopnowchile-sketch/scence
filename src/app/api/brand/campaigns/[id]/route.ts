@@ -17,6 +17,7 @@ import {
 import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
+import { PhysicalLocationError, resolvePhysicalLocation } from '@/lib/resolvePhysicalLocation'
 
 type Params = { params: { id: string } }
 
@@ -55,6 +56,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       *,
       brand:brands!brand_id (id, name, logo_url, website, contact_name, contact_email),
+      location:locations (id, name, address, level, type, is_private, is_active),
       campaign_brands (
         id, role,
         brand:brands (id, name, logo_url, instagram)
@@ -107,7 +109,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     data: {
       ...data,
       campaign_influencers: campaignInfluencersWithPlan,
-      address: typeof metadata.address === 'string' ? metadata.address : null,
+      address: data.location?.address ?? (typeof metadata.address === 'string' ? metadata.address : null),
       // Misma agenda que el detalle admin: una campaña de varios días tiene
       // múltiples bookings de campaña, no un rango sintético.
       event_booking: eventBookings?.[0] ?? null,
@@ -144,6 +146,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const allowed = [
+    'location_id',
     'status',
     'name',
     'description',
@@ -245,6 +248,35 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       { error: 'Solo la marca creadora puede editar esta campaña' },
       { status: 403 },
     )
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'location_id') || ['address', 'venue_name', 'commune', 'city', 'region'].some(key => typeof body[key] === 'string' && String(body[key]).trim() !== '')) {
+    const nextLocationId = Object.prototype.hasOwnProperty.call(body, 'location_id')
+      ? (typeof body.location_id === 'string' ? body.location_id : null)
+      : null
+    const hasPhysicalHints = ['address', 'venue_name', 'commune', 'city', 'region'].some(key => typeof body[key] === 'string' && String(body[key]).trim() !== '')
+    if (nextLocationId === null && !hasPhysicalHints) {
+      updates.location_id = null
+    } else {
+      try {
+        const resolved = await resolvePhysicalLocation(admin, {
+          locationId: nextLocationId,
+          venueName: typeof body.venue_name === 'string' ? body.venue_name : null,
+          address: typeof body.address === 'string' ? body.address : null,
+          commune: typeof body.commune === 'string' ? body.commune : null,
+          city: typeof body.city === 'string' ? body.city : null,
+          region: typeof body.region === 'string' ? body.region : null,
+          country: typeof body.country === 'string' ? body.country : null,
+          organizationId: campaignBase.organization_id,
+        })
+        if (resolved.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+        if (resolved.matchType === 'insufficient_data') return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+        updates.location_id = resolved.locationId
+      } catch (error) {
+        if (error instanceof PhysicalLocationError) return NextResponse.json({ error: error.message }, { status: error.status })
+        throw error
+      }
+    }
   }
 
   if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {

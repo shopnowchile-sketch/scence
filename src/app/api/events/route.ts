@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
     event_date,
     location,
     location_id,
-    location_details,
     is_virtual = false,
     virtual_link,
     capacity,
@@ -95,7 +94,7 @@ export async function POST(request: NextRequest) {
     resolvedLocation = await resolvePhysicalLocation(admin, {
       locationId: location_id ?? null,
       location: location ?? null,
-      locationDetails: location_details ?? null,
+      locationDetails: null,
       isVirtual: is_virtual ?? false,
     })
   } catch (error) {
@@ -118,7 +117,6 @@ export async function POST(request: NextRequest) {
       event_date,
       location: canonicalLocation,
       location_id: canonicalLocationId,
-      location_details: location_details ?? null,
       is_virtual,
       virtual_link: virtual_link ?? null,
       capacity: capacity ?? null,

@@ -11,6 +11,7 @@ export type PhysicalLocationInput = {
   country?: string | null
   /** Internal server-only context used when a new place must be created. */
   organizationId?: string | null
+  createIfMissing?: boolean
 }
 
 export type PhysicalLocationMatchType = 'existing' | 'new' | 'ambiguous' | 'insufficient_data'
@@ -205,7 +206,7 @@ export async function resolvePhysicalLocation(
     }
   }
 
-  if (!enoughToCreate(input)) {
+  if (input.createIfMissing === false || !enoughToCreate(input)) {
     return { locationId: null, matchType: 'insufficient_data' }
   }
 

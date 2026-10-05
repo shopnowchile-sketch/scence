@@ -14,6 +14,7 @@ import {
 import { es } from 'date-fns/locale'
 import { cn, formatCurrency } from '@/lib/utils'
 import { AddressWithMap } from '@/components/maps/GoogleMap'
+import { PhysicalLocationPicker } from '@/components/locations/PhysicalLocationPicker'
 import type { Booking, BookingStatus } from '@/types'
 import { useBookings, useUpdateBookingStatus, useCancelBooking, useCreateBooking } from '@/hooks/useBookings'
 
@@ -27,6 +28,7 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
     ends_at: '',
     is_virtual: false,
     location: '',
+    location_id: '',
     virtual_link: '',
     fee: '',
     currency: 'CLP',
@@ -68,6 +70,7 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
         ends_at: new Date(form.ends_at).toISOString(),
         is_virtual: form.is_virtual,
         location: form.is_virtual ? null : form.location || null,
+        location_id: form.is_virtual ? null : form.location_id || null,
         virtual_link: form.is_virtual ? form.virtual_link || null : null,
         fee: form.fee ? Number(form.fee) : null,
         currency: form.currency || 'CLP',

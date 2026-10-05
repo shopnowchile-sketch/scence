@@ -173,8 +173,9 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
   if (locationRowsResult.error) throw locationRowsResult.error
 
   type LocationNode = { id: string; parent_id: string | null; level: 'country' | 'region' | 'city' | 'commune'; name: string; is_active: boolean }
-  const locationById = new Map<string, LocationNode>((locationRowsResult.data ?? []) as LocationNode[]).entries()
-  const locationMap = new Map<string, LocationNode>(locationById)
+  const locationMap = new Map<string, LocationNode>(
+    ((locationRowsResult.data ?? []) as LocationNode[]).map(row => [row.id, row] as const),
+  )
 
   return all.map(inf => {
     const path: LocationNode[] = []

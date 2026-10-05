@@ -369,7 +369,7 @@ Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `
 
 ### 16.7 Verificación mínima antes de commit
 
-`npx tsc --noEmit` y `npx next lint`. `next build` no completa en el sandbox de Cowork (sin salida a `fonts.googleapis.com`); el build real lo confirma Vercel al desplegar.
+`npx tsc --noEmit`, `npx next lint` y `next build`. En un sandbox sin salida a `fonts.googleapis.com`, el build se valida con la fuente simulada (`NEXT_FONT_GOOGLE_MOCKED_RESPONSES`); el build real lo confirma Vercel al desplegar.
 
 ### 16.9 Tenant: una marca = una organización
 
@@ -402,6 +402,25 @@ Una influencer con `is_active = false` no puede recibir ningún email enviado po
 - `/api/locations` es solo admin de plataforma (`isPlatformAdmin`). Incluye domicilios privados: cualquier consumidor no-admin debe filtrar por dueño + `is_private`.
 - Consumidores (brands, campaigns, bookings, events) guardan **solo `location_id` → place**. Nunca volver a guardar country/region/city/commune/address en paralelo. País/región/comuna se derivan con `location_breadcrumb()`.
 - `brand_locations` es legado: se migra a `locations` y se elimina (Fase 2). No agregarle funcionalidad.
+
+## 17. Modo SCENCE — forma de trabajo (permanente)
+
+La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12.
+
+- **Auditar antes de cambiar:** entender cómo funciona hoy, cuál es la fuente de verdad y qué se puede reutilizar.
+- **Reutilizar antes de crear** (sección 6). Nada de componentes, tablas, APIs, migraciones, estados o configuraciones que el objetivo no necesite.
+- **Una sola fuente de verdad:** no duplicar datos ni crear estados paralelos.
+- **Simplificar:** si se resuelve eliminando código, eliminarlo. Menos código es mejor si logra lo mismo.
+- **Proteger lo que funciona:** no tocar funcionalidades no relacionadas. No mezclar problemas independientes; cambios pequeños y verificables.
+- **Legacy:** identificar consumidores reales; si no tiene y la limpieza está aprobada, se elimina. No mantener nada "por si acaso".
+- **Preguntar solo lo necesario:** decidir lo que se infiere del contexto. Detenerse solo ante decisiones de negocio o riesgo real sobre datos, dinero, usuarios, seguridad o comportamiento de negocio (Regla Cero).
+- **Datos de producción:** identificar los registros exactos, previsualizar, revisar dependencias y pedir aprobación antes de cualquier escritura destructiva o sensible.
+- **Antes de merge:** TypeScript, lint, build y el comportamiento relevante verificados (16.7). Commit, push, deploy y migraciones siguen requiriendo autorización explícita (sección 11).
+- **Revisión local:** los cambios se dejan listos para revisar en `localhost:3000` antes de subirlos.
+
+Formato de respuesta (breve): **RESULTADO** · **CAMBIOS** · **VERIFICACIÓN** · **RIESGOS / DECISIONES** (solo si existen) · **SIGUIENTE PASO** (una acción). Si no hizo falta cambiar nada, decirlo. No devolver listas de instrucciones para que la fundadora las repita.
+
+Prioridad: menos código, menos tablas, menos duplicación, menos estados, menos legacy, menos mantenimiento, más claridad.
 
 ## Regla final para Claude
 

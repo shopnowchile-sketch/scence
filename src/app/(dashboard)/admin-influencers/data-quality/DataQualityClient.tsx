@@ -58,7 +58,17 @@ function HBarChart({ data, onSelect }: { data: BarRow[]; onSelect: (id: string) 
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 4 }} barCategoryGap={6}>
           <XAxis type="number" hide allowDecimals={false} />
           <YAxis type="category" dataKey="name" width={170} interval={0} tickLine={false} axisLine={false}
-            tick={{ fontSize: 12, fill: '#374151' }} />
+            tick={({ x, y, payload }: { x: number; y: number; payload: { value: string; index: number } }) => {
+              // El nombre también es clickeable (no solo la barra).
+              const row = data[payload.index]
+              const label = payload.value.length > 26 ? `${payload.value.slice(0, 25)}…` : payload.value
+              return (
+                <text x={x} y={y} dy={4} textAnchor="end" fontSize={12} fill="#374151" style={{ cursor: 'pointer' }}
+                  onClick={() => { if (row) onSelect(row.id) }}>
+                  <title>{payload.value}</title>{label}
+                </text>
+              )
+            }} />
           <Tooltip cursor={{ fill: '#f5f3ff' }} formatter={(v: number) => [fmt(v), 'Influencers']} />
           <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={20} cursor="pointer"
             onClick={(entry: { id?: string }) => { if (entry?.id) onSelect(entry.id) }}>

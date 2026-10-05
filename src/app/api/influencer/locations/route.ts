@@ -20,7 +20,10 @@ export async function GET(req: NextRequest) {
     { maxRows: 5000 }
   )
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    const message = error instanceof Error ? error.message : 'No se pudieron cargar las ubicaciones'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 
   const rows = (locations ?? []) as Array<{
     id: string

@@ -14,6 +14,7 @@ import {
   syncCampaignDeliverablesFromTemplates,
 } from '@/lib/campaign-deliverables-sync'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
+import { withOfficialInfluencerLocation } from '@/lib/influencer-location'
 
 type Params = { params: { id: string } }
 
@@ -59,7 +60,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, application_status, status, origin, message, fee, currency, notes,
         influencer:influencers (
-          id, display_name, email, avatar_url, city, country, commune, categories, rating,
+          id, display_name, email, avatar_url, location_id, categories, rating,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),
@@ -91,10 +92,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     admin,
     (data.campaign_influencers ?? []).map((ci: { influencer?: { id?: string } | null }) => ci.influencer?.id).filter((id: string | undefined): id is string => Boolean(id))
   )
-  const campaignInfluencersWithPlan = (data.campaign_influencers ?? []).map((ci: { influencer?: Record<string, unknown> | null }) => ({
-    ...ci,
-    influencer: ci.influencer ? { ...ci.influencer, is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) } : null,
-  }))
+  const campaignInfluencersWithPlan = await withOfficialInfluencerLocation(
+    admin,
+    (data.campaign_influencers ?? []).map((ci: { influencer?: Record<string, unknown> | null }) => ({
+      ...ci,
+      influencer: ci.influencer ? { ...ci.influencer, is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) } : null,
+    })),
+  )
 
   return NextResponse.json({
     data: {

@@ -33,6 +33,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       start_date, end_date, budget_total, currency, hashtags, platforms,
       deliverable_templates, application_deadline, applications_closed_at, max_influencers, application_questions,
       campaign_benefits,
+      location:locations(id, name, address, level, type, is_private, is_active),
       brand:brands!brand_id (id, name, logo_url, website),
       campaign_brands (id, brand:brands!brand_id (id, name, instagram))
     `)
@@ -135,7 +136,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // de ocultar el booking completo.
   const { data: eventBooking } = await admin
     .from('bookings')
-    .select('id, starts_at, ends_at, location, location_details')
+    .select('id, starts_at, ends_at, location, location_id, location_details, physical_location:locations(id, name, address, level, type, is_private, is_active)')
     .eq('campaign_id', params.id)
     .is('influencer_id', null)
     .order('starts_at', { ascending: true })
@@ -152,7 +153,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     campaign.metadata && typeof campaign.metadata === 'object' && !Array.isArray(campaign.metadata)
       ? campaign.metadata as Record<string, unknown>
       : {}
-  const fallbackLocation = typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null
+  const fallbackLocation = campaign.location?.address ?? campaign.location?.name ?? (typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null)
   // Redacción campo por campo del lugar: el NOMBRE del lugar y la comuna
   // (bookings.location_details.venue_name / .commune — campos ya existentes,
   // distintos de la dirección) se muestran antes de aceptar para que la
@@ -169,7 +170,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // confirmar" cuando en realidad la marca ya la cargó.
   const publicLocationDetails = eventBooking
     ? {
-        venue_name: typeof bookingDetails?.venue_name === 'string' ? bookingDetails.venue_name : undefined,
+        venue_name: eventBooking.physical_location?.name ?? (typeof bookingDetails?.venue_name === 'string' ? bookingDetails.venue_name : undefined),
         commune: typeof bookingDetails?.commune === 'string' ? bookingDetails.commune : undefined,
         address_hidden: !!eventBooking.location,
       }
@@ -179,7 +180,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id: isAccepted ? eventBooking.id : null,
         starts_at: eventBooking.starts_at,
         ends_at: eventBooking.ends_at,
-        location: isAccepted ? eventBooking.location : null,
+        location: isAccepted ? (eventBooking.physical_location?.address ?? eventBooking.location) : null,
         location_details: isAccepted ? eventBooking.location_details : publicLocationDetails,
       }
     : (isAccepted && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)

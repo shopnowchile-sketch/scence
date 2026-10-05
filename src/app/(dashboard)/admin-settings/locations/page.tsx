@@ -271,6 +271,7 @@ export default function AdminSettingsLocationsPage() {
   const [results, setResults] = useState<SearchRow[] | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
   const [toggling, setToggling] = useState<string | null>(null)
+  const [quality, setQuality] = useState<Record<string, number> | null>(null)
 
   const inactiveParam = showInactive ? '&include_inactive=1' : ''
 
@@ -288,6 +289,12 @@ export default function AdminSettingsLocationsPage() {
   }, [inactiveParam])
 
   useEffect(() => { loadRoot() }, [loadRoot])
+
+  useEffect(() => {
+    api<{ data: Record<string, number> }>('/api/locations/data-quality')
+      .then(j => setQuality(j.data))
+      .catch(() => setQuality(null))
+  }, [nodes.length])
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults(null); return }
@@ -471,6 +478,26 @@ export default function AdminSettingsLocationsPage() {
   return (
     <div className="max-w-4xl">
       {modal && <LocationModal state={modal} onClose={() => setModal(null)} onSaved={refreshTree} />}
+
+      {quality && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-3">
+          {[
+            ['Campañas con Location', quality.campaigns_with_location_id],
+            ['Campañas sin Location', quality.campaigns_without_location_id],
+            ['Locations físicas', quality.physical_locations],
+            ['Duplicados potenciales', quality.potential_duplicate_location_groups],
+            ['Sin dirección', quality.locations_without_address],
+            ['Sin comuna', quality.locations_without_commune],
+            ['Usadas por varias marcas', quality.locations_used_by_multiple_brands],
+            ['Bookings huérfanos', quality.bookings_without_location_but_with_location_data],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-xl border border-gray-100 bg-white px-3 py-2.5">
+              <div className="text-[10px] uppercase tracking-wide text-gray-400">{label}</div>
+              <div className="mt-1 text-lg font-bold text-gray-900 tabular-nums">{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="card overflow-visible">
         <div className="px-5 py-4 border-b border-gray-100 space-y-3">

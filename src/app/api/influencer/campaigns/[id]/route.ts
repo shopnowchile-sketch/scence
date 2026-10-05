@@ -169,9 +169,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // address_hidden distingue "todavía no hay dirección cargada" de "hay
   // dirección pero es privada hasta aprobar", para no mostrar "Lugar por
   // confirmar" cuando en realidad la marca ya la cargó.
+  const canonicalBookingLocation = eventBooking && Array.isArray(eventBooking.physical_location) ? eventBooking.physical_location[0] : eventBooking?.physical_location
   const publicLocationDetails = eventBooking
     ? {
-        venue_name: eventBooking.physical_location?.name ?? (typeof bookingDetails?.venue_name === 'string' ? bookingDetails.venue_name : undefined),
+        venue_name: canonicalBookingLocation?.name ?? (typeof bookingDetails?.venue_name === 'string' ? bookingDetails.venue_name : undefined),
         commune: typeof bookingDetails?.commune === 'string' ? bookingDetails.commune : undefined,
         address_hidden: !!eventBooking.location,
       }
@@ -181,7 +182,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id: isAccepted ? eventBooking.id : null,
         starts_at: eventBooking.starts_at,
         ends_at: eventBooking.ends_at,
-        location: isAccepted ? (eventBooking.physical_location?.address ?? eventBooking.location) : null,
+        location: isAccepted ? (canonicalBookingLocation?.address ?? eventBooking.location) : null,
         location_details: isAccepted ? eventBooking.location_details : publicLocationDetails,
       }
     : (isAccepted && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)

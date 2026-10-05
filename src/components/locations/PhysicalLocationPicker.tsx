@@ -139,9 +139,6 @@ export function PhysicalLocationPicker({ value, onChange, disabled = false }: Pr
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'No se pudo crear el lugar')
       const created = json.location as Node
-      const country = countries.find(x => x.id === countryId)?.name
-      const region = regions.find(x => x.id === regionId)?.name
-      const commune = communes.find(x => x.id === communeId)?.name
       onChange({
         locationId: created.id,
         locationDisplay: [created.name, [commune, region, country].filter(Boolean).join(' · '), created.address]

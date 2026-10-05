@@ -11,6 +11,7 @@ export interface ScanInfluencer {
   instagram_username: string | null
   followers: number
   commune: string | null
+  region: string | null
   location_id: string | null
   address: string | null
   categories: string[] | null
@@ -45,6 +46,29 @@ export interface DataQualityReport {
   duplicatesByMixed: number
   communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
+  geography: GeographyRegion[]
+}
+
+export interface GeographyInfluencer {
+  id: string
+  display_name: string | null
+  email: string | null
+  instagram_username: string | null
+  followers: number
+  is_active: boolean
+  address: string | null
+}
+
+export interface GeographyCommune {
+  label: string
+  count: number
+  influencers: GeographyInfluencer[]
+}
+
+export interface GeographyRegion {
+  label: string
+  count: number
+  communes: GeographyCommune[]
 }
 
 function normUrl(url: string | null): string | null {
@@ -122,6 +146,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         instagram_username: ig?.username ?? null,
         followers: totalFollowers,
         commune: null,
+        region: null,
         location_id: (inf as { location_id?: string | null }).location_id ?? null,
         address: (inf as { address?: string | null }).address ?? null,
         categories: (inf as { categories?: string[] | null }).categories ?? null,
@@ -137,6 +162,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     ...inf,
     location_id: inf.location_id ?? null,
     commune: inf.location_id ? (locationDisplayById.get(inf.location_id)?.commune ?? null) : null,
+    region: inf.location_id ? (locationDisplayById.get(inf.location_id)?.region ?? null) : null,
   }))
 }
 
@@ -287,6 +313,35 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
   const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna oficial')
   const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
 
+  const regionMap = new Map<string, { count: number; communes: Map<string, GeographyCommune> }>()
+  for (const inf of scan) {
+    const region = inf.region?.trim() || 'Sin región oficial'
+    const commune = inf.commune?.trim() || 'Sin comuna oficial'
+    if (!regionMap.has(region)) regionMap.set(region, { count: 0, communes: new Map() })
+    const regionEntry = regionMap.get(region)!
+    regionEntry.count++
+    if (!regionEntry.communes.has(commune)) regionEntry.communes.set(commune, { label: commune, count: 0, influencers: [] })
+    const communeEntry = regionEntry.communes.get(commune)!
+    communeEntry.count++
+    communeEntry.influencers.push({
+      id: inf.id,
+      display_name: inf.display_name,
+      email: inf.email,
+      instagram_username: inf.instagram_username,
+      followers: inf.followers,
+      is_active: inf.is_active,
+      address: inf.address,
+    })
+  }
+
+  const geography: GeographyRegion[] = Array.from(regionMap.entries())
+    .map(([label, entry]) => ({
+      label,
+      count: entry.count,
+      communes: Array.from(entry.communes.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'es-CL')),
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'es-CL'))
+
   return {
     total: scan.length,
     active,
@@ -303,6 +358,7 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     duplicatesByMixed: byMixed,
     communeRanking,
     nicheRanking,
+    geography,
   }
 }
 

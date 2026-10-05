@@ -50,6 +50,7 @@ export interface DataQualityReport {
   duplicatesByMixed: number
   nicheRanking: RankingItem[]
   geography: GeographyCountry[]
+  unassignedGeography: number
 }
 
 export interface GeographyInfluencer {
@@ -389,6 +390,7 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     .sort((a,b) => b.count-a.count || a.label.localeCompare(b.label, 'es-CL'))
 
   const geography = sortGeo(Array.from(countryMap.values()))
+  const unassignedGeography = scan.filter(i => i.locationAncestors.length === 0).length
 
   return {
     total: scan.length,
@@ -406,6 +408,7 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     duplicatesByMixed: byMixed,
     nicheRanking,
     geography,
+    unassignedGeography,
   }
 }
 export { normUrl, normHandle, normEmail }

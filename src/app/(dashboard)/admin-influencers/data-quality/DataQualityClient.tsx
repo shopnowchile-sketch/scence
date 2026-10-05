@@ -27,12 +27,12 @@ interface Report {
   duplicatesByInstagram: number
   duplicatesByMixed: number
   nicheRanking: RankingItem[]
-  geography: GeographyRegion[]
+  geography: GeographyCountry[]
 }
 
 interface GeographyInfluencer { id: string; display_name: string | null; email: string | null; instagram_username: string | null; followers: number; is_active: boolean; address: string | null }
-interface GeographyCommune { label: string; count: number; influencers: GeographyInfluencer[] }
-interface GeographyRegion { label: string; count: number; communes: GeographyCommune[] }
+interface GeographyNode { id: string; label: string; level: 'country' | 'region' | 'city' | 'commune'; count: number; children: GeographyNode[]; influencers: GeographyInfluencer[] }
+type GeographyCountry = GeographyNode
 
 interface RankingItem {
   value: string | null
@@ -122,8 +122,9 @@ export function DataQualityClient() {
   const [busy, setBusy] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
   const [mergingAll, setMergingAll] = useState(false)
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
-  const [selectedCommune, setSelectedCommune] = useState<string | null>(null)
+  const [selectedArea, setSelectedArea] = useState<string | null>(null)
   const [mergeAllProgress, setMergeAllProgress] = useState<{ done: number; total: number } | null>(null)
   const [keepChoice, setKeepChoice] = useState<Record<string, string>>({})
   const { isAdmin } = useIsAdmin()
@@ -442,146 +443,98 @@ export function DataQualityClient() {
             </div>
           )}
 
-          {/* Geografía: región → comuna → influencers */}
+          {/* Geografía: País → Región → Comuna/Ciudad → Influencers */}
           {report && (
             <div className="card p-5">
-              <div className="flex items-center justify-between mb-5">
-                <div><h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Distribución geográfica</h3><p className="text-xs text-gray-400 mt-1">{!selectedRegion ? 'Influencers por región · selecciona una región para ver sus comunas' : selectedCommune ? 'Detalle de influencers de la comuna seleccionada' : 'Influencers por comuna · selecciona una comuna para ver el detalle'}</p></div>
-                {selectedRegion && <button onClick={() => { setSelectedRegion(null); setSelectedCommune(null) }} className="text-xs font-semibold text-violet-600 hover:underline">← Regiones</button>}
-              </div>
-              {!selectedRegion && <div className="h-[320px] w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={report.geography} margin={{ top: 8, right: 12, left: 0, bottom: 55 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={75} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} /><Bar dataKey="count" name="Influencers" fill="#7c3aed" radius={[6, 6, 0, 0]} cursor="pointer" onClick={(entry) => setSelectedRegion(String(entry.label))} /></BarChart></ResponsiveContainer></div>}
-              {selectedRegion && !selectedCommune && (() => { const region = report.geography.find(r => r.label === selectedRegion); if (!region) return null; return <div><div className="flex items-center gap-2 mb-4"><span className="text-lg font-bold text-gray-900">{region.label}</span><span className="text-sm text-gray-400">· {region.count.toLocaleString()} influencers</span></div><div className="h-[320px] w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={region.communes} margin={{ top: 8, right: 12, left: 0, bottom: 55 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={75} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} /><Bar dataKey="count" name="Influencers" fill="#2563eb" radius={[6, 6, 0, 0]} cursor="pointer" onClick={(entry) => setSelectedCommune(String(entry.label))} /></BarChart></ResponsiveContainer></div></div> })()}
-              {selectedRegion && selectedCommune && (() => { const region = report.geography.find(r => r.label === selectedRegion); const commune = region?.communes.find(c => c.label === selectedCommune); if (!commune) return null; return <div><button onClick={() => setSelectedCommune(null)} className="text-sm text-violet-600 hover:underline mb-4">← {region?.label}</button><div className="mb-4"><h4 className="text-lg font-bold text-gray-900">{commune.label}</h4><p className="text-xs text-gray-400">{commune.count.toLocaleString()} influencer{commune.count === 1 ? '' : 's'}</p></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead><tbody>{commune.influencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody></table></div></div> })()}
-            </div>
-          )}
-
-{/* Ranking por comuna / nicho */}
-          {report && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <RankingList title="Ranking por nicho" items={report.nicheRanking} paramName="niche" />
-            </div>
-          )}
-
-          {!isAdmin && (
-            <div className="card p-4 flex items-center gap-3 border-amber-200 bg-amber-50/40 text-sm text-amber-700">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              Solo administradores pueden combinar o eliminar registros permanentemente. Tienes vista de solo lectura.
-            </div>
-          )}
-
-          {/* Acción: pedir a las influencers con Instagram/comuna/dirección incompletos que
-              actualicen su perfil. Instagram, comuna y dirección son obligatorios para
-              entrar al portal (ProfileCompletionGate). El conteo de la tarjeta de abajo es
-              solo "sin Instagram" (viene del report), pero el envío real usa dry-run del
-              endpoint, que también detecta a quienes tienen Instagram y les falta comuna o
-              dirección — por eso no se oculta el botón cuando withoutInstagram es 0. */}
-          {isAdmin && report && (
-            <div className="card p-5 flex items-center justify-between border-amber-200 bg-amber-50/40">
-              <div className="flex items-center gap-3">
-                <Instagram className="h-5 w-5 text-amber-500" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / comuna / dirección)</p>
-                  <p className="text-xs text-gray-500">
-                    {report.withoutInstagram} sin Instagram · {report.withoutCommune} sin comuna · {report.withoutAddress} sin dirección ·{' '}
-                    <strong>{report.missingAnyRequired} con algún dato obligatorio faltante</strong>. Los tres son obligatorios para usar el portal.
-                  </p>
-                </div>
-              </div>
-              <div className="flex-shrink-0 text-xs font-semibold text-amber-700 border border-amber-200 bg-white rounded-lg px-3 py-2">
-                Recordatorios masivos desactivados
-              </div>
-            </div>
-          )}
-
-          {isAdmin && (
-            <div className="card p-5 flex items-center justify-between border-violet-200 bg-violet-50/40">
-              <div className="flex items-center gap-3">
-                <Mail className="h-5 w-5 text-violet-600" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Cuentas recuperadas sin email de acceso</p>
-                  <p className="text-xs text-gray-500">Envía un nuevo link solo a las influencers que fueron reparadas tras quedar huérfanas.</p>
-                </div>
-              </div>
-              <button onClick={handleSendRecoveredAccess} disabled={busy === 'recovery-access'}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                {busy === 'recovery-access' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar emails de acceso
-              </button>
-            </div>
-          )}
-
-          {/* Duplicados */}
-          <div id="duplicados-detectados" className="space-y-3 scroll-mt-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
-                Duplicados detectados ({groups.length} grupo{groups.length !== 1 ? 's' : ''})
-              </h3>
-              {isAdmin && groups.length > 1 && (
-                <button onClick={handleMergeAll} disabled={mergingAll || busy !== null}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                  {mergingAll
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <GitMerge className="h-3.5 w-3.5" />}
-                  {mergingAll && mergeAllProgress
-                    ? `Combinando… (${mergeAllProgress.done}/${mergeAllProgress.total})`
-                    : `Combinar todos (${groups.length})`}
-                </button>
-              )}
-            </div>
-            {groups.length === 0 ? (
-              <div className="card p-8 text-center">
-                <ShieldCheck className="h-10 w-10 text-emerald-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500 font-medium">Sin duplicados. Base limpia ✅</p>
-              </div>
-            ) : groups.map(g => (
-              <div key={g.key} className="card p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="badge badge-gray text-[11px]">{TYPE_LABELS[g.type]}</span>
-                    <span className="text-sm font-semibold text-gray-700 truncate max-w-xs">{g.value}</span>
-                    <span className="text-xs text-gray-400">· {g.influencers.length} registros</span>
-                  </div>
-                  {isAdmin && (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => handleMerge(g)} disabled={busy === g.key}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 rounded-lg border border-violet-200 hover:bg-violet-50 disabled:opacity-50">
-                        {busy === g.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />}
-                        Combinar
-                      </button>
-                      <button onClick={() => handleDeleteDuplicates(g)} disabled={busy === g.key}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 rounded-lg border border-red-200 hover:bg-red-50 disabled:opacity-50">
-                        <Trash2 className="h-3.5 w-3.5" /> Eliminar duplicados
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {g.influencers.map(inf => (
-                    <label key={inf.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <input type="radio" name={`keep-${g.key}`} checked={keepChoice[g.key] === inf.id}
-                        onChange={() => setKeepChoice(p => ({ ...p, [g.key]: inf.id }))}
-                        className="text-violet-600" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Link href={`/admin-influencers/${inf.id}`} target="_blank"
-                            className="text-sm font-medium text-gray-900 hover:text-violet-700 truncate">
-                            {inf.display_name ?? '(sin nombre)'}
-                          </Link>
-                          {!inf.is_active && <span className="badge badge-gray text-[10px]">Inactivo</span>}
-                          {keepChoice[g.key] === inf.id && <span className="badge badge-green text-[10px]">Conservar</span>}
-                        </div>
-                        <div className="text-xs text-gray-400 truncate">
-                          {inf.email ?? 'sin email'} · {inf.instagram_username ? `@${inf.instagram_username}` : 'sin IG'} · {formatFollowers(inf.followers)} followers
-                        </div>
+              {(() => {
+                const country = selectedCountry ? report.geography.find(n => n.id === selectedCountry) : null
+                const region = country && selectedRegion ? country.children.find(n => n.id === selectedRegion) : null
+                const area = region && selectedArea ? region.children.find(n => n.id === selectedArea) : null
+                const currentChildren = !country ? report.geography : !region ? country!.children : !area ? region!.children : []
+                const currentTitle = !country ? 'País' : !region ? country.label : !area ? region.label : area.label
+                const currentCount = !country ? report.total : !region ? country.count : !area ? region.count : area.count
+                const levelLabel = !country ? 'países' : !region ? 'regiones' : !area ? 'comunas / ciudades' : 'influencers'
+                const goCountry = () => { setSelectedCountry(null); setSelectedRegion(null); setSelectedArea(null) }
+                const goRegion = () => { setSelectedRegion(null); setSelectedArea(null) }
+                const goArea = () => setSelectedArea(null)
+                return (
+                  <>
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Distribución geográfica</h3>
+                        <p className="text-xs text-gray-400 mt-1">País → Región → Comuna / Ciudad → Influencers · fuente única: locations</p>
                       </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
+                      {(country || region || area) && (
+                        <div className="flex items-center gap-1 text-xs font-semibold text-violet-600">
+                          <button onClick={goCountry} className="hover:underline">Países</button>
+                          {country && <><span className="text-gray-300">/</span><button onClick={goRegion} className="hover:underline">{country.label}</button></>}
+                          {region && <><span className="text-gray-300">/</span><button onClick={goArea} className="hover:underline">{region.label}</button></>}
+                          {area && <><span className="text-gray-300">/</span><span className="text-gray-500">{area.label}</span></>}
+                        </div>
+                      )}
+                    </div>
+                    {!area ? (
+                      <>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-lg font-bold text-gray-900">{currentTitle}</span>
+                          <span className="text-sm text-gray-400">· {currentCount.toLocaleString()} influencers · {levelLabel}</span>
+                        </div>
+                        {currentChildren.length === 0 ? (
+                          <div className="py-10 text-center text-sm text-gray-400">Sin datos geográficos canónicos en este nivel.</div>
+                        ) : (
+                          <div className="h-[320px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={currentChildren} margin={{ top: 8, right: 12, left: 0, bottom: 55 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={75} />
+                                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                                <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
+                                <Bar dataKey="count" name="Influencers" fill="#7c3aed" radius={[6, 6, 0, 0]} cursor="pointer"
+                                  onClick={(entry) => {
+                                    const id = String(entry.id)
+                                    if (!country) setSelectedCountry(id)
+                                    else if (!region) setSelectedRegion(id)
+                                    else setSelectedArea(id)
+                                  }} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2 mb-4">
+                          <span className="text-lg font-bold text-gray-900">{area.label}</span>
+                          <span className="text-sm text-gray-400">· {area.count.toLocaleString()} influencers</span>
+                        </div>
+                        {area.children.length > 0 && (
+                          <div className="mb-5">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Comunas de {area.label}</p>
+                            <div className="h-[260px] w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={area.children} margin={{ top: 8, right: 12, left: 0, bottom: 55 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                  <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={75} />
+                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                                  <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
+                                  <Bar dataKey="count" name="Influencers" fill="#2563eb" radius={[6, 6, 0, 0]} cursor="pointer" onClick={(entry) => setSelectedArea(String(entry.id))} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        )}
+                        {area.influencers.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead>
+                              <tbody>{area.influencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody>
+                            </table>
+                          </div>
+                        ) : <div className="py-8 text-center text-sm text-gray-400">No hay influencers asignadas directamente a este nodo.</div>}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          )}
+

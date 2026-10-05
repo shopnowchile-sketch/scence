@@ -105,11 +105,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
       : null,
   }))
 
+  const canonicalLocation = Array.isArray(data.location) ? data.location[0] : data.location
+
   return NextResponse.json({
     data: {
       ...data,
+      location: canonicalLocation ?? null,
       campaign_influencers: campaignInfluencersWithPlan,
-      address: data.location?.address ?? (typeof metadata.address === 'string' ? metadata.address : null),
+      address: canonicalLocation?.address ?? (typeof metadata.address === 'string' ? metadata.address : null),
       // Misma agenda que el detalle admin: una campaña de varios días tiene
       // múltiples bookings de campaña, no un rango sintético.
       event_booking: eventBookings?.[0] ?? null,

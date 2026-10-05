@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeLocationsAdmin } from '@/lib/locations-server'
 import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { resolvePhysicalLocation } from '@/lib/resolvePhysicalLocation'
 import {
   LOCATION_COLUMNS, LOCATION_LEVELS, PLACE_TYPES, isUuid, locationDbError, toCoord,
   type BreadcrumbItem, type LocationLevel, type LocationRow,
@@ -99,6 +100,36 @@ export async function POST(req: NextRequest) {
     // Dueño de tenant del place: la org de plataforma del admin que lo crea.
     const orgId = await getOrgId(user.id, user.user_metadata, admin)
     if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+
+    // Manual place creation is legacy/admin maintenance. Preflight through the
+    // canonical resolver so an equivalent physical address cannot become a duplicate.
+    let commune: string | null = null
+    let region: string | null = null
+    let country: string | null = null
+    if (body.parent_id) {
+      const { data: breadcrumb } = await admin.rpc('location_breadcrumb', { p_id: body.parent_id })
+      for (const item of Array.isArray(breadcrumb) ? breadcrumb : []) {
+        if (item.level === 'commune') commune = item.name
+        if (item.level === 'region') region = item.name
+        if (item.level === 'country') country = item.name
+      }
+    }
+    const preflight = await resolvePhysicalLocation(admin, {
+      venueName: name,
+      address: typeof body.address === 'string' ? body.address : null,
+      commune,
+      region,
+      country,
+      organizationId: orgId,
+      createIfMissing: false,
+    })
+    if (preflight.matchType === 'existing') {
+      return NextResponse.json({ error: 'Ya existe una Location física equivalente. Reutiliza la Location existente.', locationId: preflight.locationId }, { status: 409 })
+    }
+    if (preflight.matchType === 'ambiguous') {
+      return NextResponse.json({ error: 'La nueva Location coincide con más de un lugar existente. No se creó ningún duplicado.' }, { status: 409 })
+    }
+
     insert = {
       ...base,
       organization_id:     orgId,

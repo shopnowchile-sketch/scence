@@ -2010,13 +2010,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return metadata?.asset_type === 'campaign_cover'
   })
   const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
-  type CampaignEventBooking = { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { venue_name?: string; instructions?: string; commune?: string } | null }
+  type CampaignEventBooking = { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_id?: string | null; location_details?: { venue_name?: string; instructions?: string; commune?: string } | null }
   const eventBookings = (c as unknown as {
     event_bookings?: CampaignEventBooking[]
     event_booking?: { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { instructions?: string; commune?: string } | null } | null
   }).event_bookings ?? []
   const eventBooking = eventBookings[0] ?? (c as unknown as { event_booking?: CampaignEventBooking | null }).event_booking ?? null
-  const eventLocation = eventBooking?.location || c.address || null
+  const canonicalCampaignLocation = (c as unknown as { location?: { name?: string | null; address?: string | null } | null }).location ?? null
+  const eventLocation = canonicalCampaignLocation?.address || canonicalCampaignLocation?.name || eventBooking?.location || c.address || null
   const eventVenueName = eventBooking?.location_details?.venue_name?.trim() || null
   const eventCommune = eventBooking?.location_details?.commune?.trim() || null
   const eventInstructions = eventBooking?.location_details?.instructions?.trim() || null
@@ -2254,6 +2255,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   async function saveLocation() {
     setLocationEditSaving(true)
     try {
+      const selectedBrandLocation = brandLocations.find((l, idx) => String(l.id ?? idx) === locationPickerId)
+      if (selectedBrandLocation?.is_sensitive || selectedBrandLocation?.location_type === 'home') {
+        throw new Error('No puedes usar una ubicación privada de influencer como lugar comercial.')
+      }
+
       const address = locationEditForm.address.trim()
       const locationDetails = {
         ...(eventBooking?.location_details ?? {}),
@@ -2261,22 +2267,47 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         commune: locationEditForm.commune.trim() || null,
         instructions: locationEditForm.instructions.trim() || null,
       }
-      // Todos los días del mismo evento comparten la misma ubicación.
+
+      const resolveResponse = await fetch('/api/locations/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          venueName: locationEditForm.venueName.trim() || null,
+          address: address || null,
+          commune: locationEditForm.commune.trim() || null,
+          country: 'Chile',
+        }),
+      })
+      const resolved = await resolveResponse.json().catch(() => ({}))
+      if (!resolveResponse.ok || !resolved.locationId) {
+        throw new Error(resolved.error ?? 'No se pudo resolver la Location')
+      }
+
+      // Todos los días del mismo evento comparten la misma Location canónica.
       for (const booking of eventBookings) {
         if (!booking.id) continue
         const response = await fetch('/api/bookings', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            id: booking.id, title: c.name, description: c.description ?? '',
-            location: address || null, location_details: locationDetails,
-            starts_at: booking.starts_at ?? undefined, ends_at: booking.ends_at ?? undefined,
+            id: booking.id,
+            title: c.name,
+            description: c.description ?? '',
+            location_id: resolved.locationId,
+            location: address || null,
+            location_details: locationDetails,
+            starts_at: booking.starts_at ?? undefined,
+            ends_at: booking.ends_at ?? undefined,
             timezone: 'America/Santiago',
           }),
         })
         const json = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(json.error ?? 'No se pudo actualizar la ubicación')
       }
-      await patchCampaign.mutateAsync({ address: address || null })
+
+      await patchCampaign.mutateAsync({
+        location_id: resolved.locationId,
+        address: address || null,
+      })
       await refetch()
       setLocationEditOpen(false)
       toast.success('Ubicación actualizada')

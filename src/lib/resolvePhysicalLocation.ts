@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { isUuid } from '@/lib/locations'
+import { isUuid } from './locations'
 
 export type PhysicalLocationDetails = {
   country?: string

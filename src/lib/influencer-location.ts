@@ -9,7 +9,7 @@ export type OfficialInfluencerLocation = {
   label: string | null
 }
 
-type LocationNode = {
+export type LocationNode = {
   id: string
   parent_id: string | null
   level: 'country' | 'region' | 'city' | 'commune'
@@ -17,22 +17,30 @@ type LocationNode = {
   is_active: boolean
 }
 
-export async function getOfficialLocationDisplayMap(
-  admin: SupabaseClient
-): Promise<Map<string, OfficialInfluencerLocation>> {
-  const { data: locations, error } = await fetchAllRows(
+/**
+ * Única lectura del catálogo locations (sin 'place'), ordenada y completa:
+ * pagina hasta el final, sin tope silencioso. Incluye inactivas para que
+ * Data Quality pueda distinguir ubicaciones inactivas de huérfanas.
+ */
+export async function loadLocationRows(admin: SupabaseClient): Promise<LocationNode[]> {
+  const { data, error } = await fetchAllRows<LocationNode>(
     (from, to) => admin
       .from('locations')
       .select('id, parent_id, level, name, is_active')
-      .eq('is_active', true)
       .neq('level', 'place')
+      .order('id', { ascending: true })
       .range(from, to),
-    { maxRows: 5000 }
+    { maxRows: Number.POSITIVE_INFINITY }
   )
-
   if (error) throw error
+  return data
+}
 
-  const rows = (locations ?? []) as LocationNode[]
+/** Mapa id → nombres derivados, solo con ubicaciones activas (comportamiento oficial). */
+export function buildOfficialLocationDisplayMap(
+  allRows: LocationNode[]
+): Map<string, OfficialInfluencerLocation> {
+  const rows = allRows.filter(row => row.is_active)
   const byId = new Map(rows.map(row => [row.id, row]))
   const result = new Map<string, OfficialInfluencerLocation>()
 
@@ -63,6 +71,12 @@ export async function getOfficialLocationDisplayMap(
   }
 
   return result
+}
+
+export async function getOfficialLocationDisplayMap(
+  admin: SupabaseClient
+): Promise<Map<string, OfficialInfluencerLocation>> {
+  return buildOfficialLocationDisplayMap(await loadLocationRows(admin))
 }
 
 /**

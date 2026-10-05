@@ -1,5 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
+import { loadLocationRows, type LocationNode } from '@/lib/influencer-location'
+
+/**
+ * Estado de la ubicación canónica (influencers.location_id → locations):
+ * - ok: location_id resuelve a una ubicación activa con toda su cadena activa.
+ * - missing: location_id IS NULL → "Sin ubicación".
+ * - orphan: location_id (o un ancestro) no existe en locations.
+ * - inactive: la ubicación o un ancestro está inactivo.
+ * Nunca se usa country/city/commune legacy como respaldo.
+ */
+export type LocationStatus = 'ok' | 'missing' | 'orphan' | 'inactive'
 
 export interface ScanInfluencer {
   id: string
@@ -12,8 +22,29 @@ export interface ScanInfluencer {
   followers: number
   commune: string | null
   location_id: string | null
+  location_status: LocationStatus
+  /** Cadena de locations desde la raíz (país) hasta location_id; vacía si status ≠ ok. */
+  location_path: GeographyNode[]
   address: string | null
   categories: string[] | null
+}
+
+export interface GeographyNode {
+  id: string
+  parent_id: string | null
+  name: string
+  level: LocationNode['level']
+}
+
+export interface GeographyInfluencer {
+  id: string
+  display_name: string | null
+  email: string | null
+  instagram_username: string | null
+  followers: number
+  is_active: boolean
+  location_status: LocationStatus
+  location_path: string[]
 }
 
 export interface RankingItem {
@@ -35,7 +66,9 @@ export interface DataQualityReport {
   inactive: number
   withoutInstagram: number
   withInstagram: number
-  withoutCommune: number
+  withoutLocation: number
+  orphanLocation: number
+  inactiveLocation: number
   withoutAddress: number
   missingAnyRequired: number
   duplicateGroups: number
@@ -43,8 +76,10 @@ export interface DataQualityReport {
   duplicatesByEmail: number
   duplicatesByInstagram: number
   duplicatesByMixed: number
-  communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
+  /** Nodos de locations usados por alguna influencer (y sus ancestros). */
+  geographyNodes: GeographyNode[]
+  geographyInfluencers: GeographyInfluencer[]
 }
 
 function normUrl(url: string | null): string | null {
@@ -123,6 +158,8 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         followers: totalFollowers,
         commune: null,
         location_id: (inf as { location_id?: string | null }).location_id ?? null,
+        location_status: 'missing',
+        location_path: [],
         address: (inf as { address?: string | null }).address ?? null,
         categories: (inf as { categories?: string[] | null }).categories ?? null,
       })
@@ -132,12 +169,36 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     from += PAGE
   }
 
-  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
-  return all.map(inf => ({
-    ...inf,
-    location_id: inf.location_id ?? null,
-    commune: inf.location_id ? (locationDisplayById.get(inf.location_id)?.commune ?? null) : null,
-  }))
+  const locationsById = new Map((await loadLocationRows(admin)).map(row => [row.id, row]))
+  return all.map(inf => {
+    const resolved = resolveLocation(inf.location_id, locationsById)
+    return { ...inf, ...resolved }
+  })
+}
+
+function resolveLocation(
+  locationId: string | null,
+  locationsById: Map<string, LocationNode>,
+): Pick<ScanInfluencer, 'commune' | 'location_status' | 'location_path'> {
+  if (!locationId) return { commune: null, location_status: 'missing', location_path: [] }
+
+  const path: GeographyNode[] = []
+  const visited = new Set<string>()
+  let currentId: string | null = locationId
+  while (currentId) {
+    const node = locationsById.get(currentId)
+    if (!node || visited.has(currentId)) return { commune: null, location_status: 'orphan', location_path: [] }
+    if (!node.is_active) return { commune: null, location_status: 'inactive', location_path: [] }
+    visited.add(currentId)
+    path.unshift({ id: node.id, parent_id: node.parent_id, name: node.name, level: node.level })
+    currentId = node.parent_id
+  }
+
+  return {
+    commune: path.find(node => node.level === 'commune')?.name ?? null,
+    location_status: 'ok',
+    location_path: path,
+  }
 }
 
 function mergeOverlappingGroups(rawGroups: DuplicateGroup[]): DuplicateGroup[] {
@@ -267,12 +328,19 @@ function buildRanking(
 }
 
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
+  const usedNodes = new Map<string, GeographyNode>()
+  for (const inf of scan) {
+    for (const node of inf.location_path) usedNodes.set(node.id, node)
+  }
+
   const active = scan.filter(i => i.is_active).length
   const withInstagram = scan.filter(i => extractInstagramHandle(i.instagram_url, i.instagram_username)).length
-  const withoutCommune = scan.filter(i => !i.commune || !i.commune.trim()).length
+  const withoutLocation = scan.filter(i => i.location_status === 'missing').length
+  const orphanLocation = scan.filter(i => i.location_status === 'orphan').length
+  const inactiveLocation = scan.filter(i => i.location_status === 'inactive').length
   const withoutAddress = scan.filter(i => !i.address || !i.address.trim()).length
   const missingAnyRequired = scan.filter(i =>
-    !extractInstagramHandle(i.instagram_url, i.instagram_username) || !i.commune?.trim() || !i.address?.trim()
+    !extractInstagramHandle(i.instagram_url, i.instagram_username) || i.location_status !== 'ok' || !i.address?.trim()
   ).length
 
   const dupRecordIds = new Set<string>()
@@ -284,7 +352,6 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     else byMixed += g.influencers.length - 1
   }
 
-  const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna oficial')
   const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
 
   return {
@@ -293,7 +360,9 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     inactive: scan.length - active,
     withoutInstagram: scan.length - withInstagram,
     withInstagram,
-    withoutCommune,
+    withoutLocation,
+    orphanLocation,
+    inactiveLocation,
     withoutAddress,
     missingAnyRequired,
     duplicateGroups: groups.length,
@@ -301,8 +370,18 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     duplicatesByEmail: byEmail,
     duplicatesByInstagram: byInstagram,
     duplicatesByMixed: byMixed,
-    communeRanking,
     nicheRanking,
+    geographyNodes: Array.from(usedNodes.values()),
+    geographyInfluencers: scan.map(i => ({
+      id: i.id,
+      display_name: i.display_name,
+      email: i.email,
+      instagram_username: extractInstagramHandle(i.instagram_url, i.instagram_username),
+      followers: i.followers,
+      is_active: i.is_active,
+      location_status: i.location_status,
+      location_path: i.location_path.map(node => node.id),
+    })),
   }
 }
 

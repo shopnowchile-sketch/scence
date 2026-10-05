@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import {
   ChevronLeft, Loader2, RefreshCw, AlertTriangle, Trash2, GitMerge,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { formatFollowers } from '@/lib/utils'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 
@@ -17,7 +18,9 @@ interface Report {
   inactive: number
   withoutInstagram: number
   withInstagram: number
-  withoutCommune: number
+  withoutLocation: number
+  orphanLocation: number
+  inactiveLocation: number
   withoutAddress: number
   missingAnyRequired: number
   duplicateGroups: number
@@ -25,8 +28,29 @@ interface Report {
   duplicatesByEmail: number
   duplicatesByInstagram: number
   duplicatesByMixed: number
-  communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
+  geographyNodes: GeographyNode[]
+  geographyInfluencers: GeographyInfluencer[]
+}
+
+type LocationStatus = 'ok' | 'missing' | 'orphan' | 'inactive'
+
+interface GeographyNode {
+  id: string
+  parent_id: string | null
+  name: string
+  level: 'country' | 'region' | 'city' | 'commune'
+}
+
+interface GeographyInfluencer {
+  id: string
+  display_name: string | null
+  email: string | null
+  instagram_username: string | null
+  followers: number
+  is_active: boolean
+  location_status: LocationStatus
+  location_path: string[]
 }
 
 interface RankingItem {
@@ -84,13 +108,13 @@ function StatCard({ icon: Icon, label, value, tone = 'violet', href }: {
   return <div className="card p-4">{content}</div>
 }
 
-// Ranking por comuna / nicho (pedido Pri 2026-07-13): lista simple ordenada
+// Ranking por nicho (pedido Pri 2026-07-13): lista simple ordenada
 // de mayor a menor, cada fila clickeable hacia /admin-influencers con el
-// filtro correspondiente. "Sin comuna"/"Sin nicho" usa el sentinel __none__
+// filtro correspondiente. "Sin nicho" usa el sentinel __none__
 // en la URL — InfluencersClient lo resuelve client-side (mismo patrón que
 // "Sin Instagram"), ya que no hay filtro server-side de "IS NULL".
 function RankingList({ title, items, paramName }: {
-  title: string; items: RankingItem[]; paramName: 'commune' | 'niche'
+  title: string; items: RankingItem[]; paramName: 'niche'
 }) {
   return (
     <div className="card p-5">
@@ -109,6 +133,150 @@ function RankingList({ title, items, paramName }: {
           </Link>
         ))}
       </div>
+    </div>
+  )
+}
+
+const LEVEL_LABELS: Record<GeographyNode['level'], string> = {
+  country: 'País', region: 'Región', city: 'Ciudad', commune: 'Comuna',
+}
+const UNASSIGNED_LABELS: Record<Exclude<LocationStatus, 'ok'>, string> = {
+  missing: 'Sin ubicación', orphan: 'Ubicación huérfana', inactive: 'Ubicación inactiva',
+}
+const PAGE_SIZE = 50
+
+// Distribución geográfica: País → Región → Comuna/Ciudad → Influencers.
+// Fuente única: influencers.location_id → locations (resuelto en el servidor
+// por loadScan). Las influencers sin ubicación válida nunca se asignan a un
+// nodo: se cuentan aparte (sin ubicación / huérfana / inactiva).
+function GeographyDrilldown({ nodes, influencers }: { nodes: GeographyNode[]; influencers: GeographyInfluencer[] }) {
+  const [path, setPath] = useState<string[]>([])
+  const [unassigned, setUnassigned] = useState<Exclude<LocationStatus, 'ok'> | null>(null)
+  const [visible, setVisible] = useState(PAGE_SIZE)
+
+  const { byId, childrenOf, subtreeCount } = useMemo(() => {
+    const byId = new Map(nodes.map(n => [n.id, n]))
+    const childrenOf = new Map<string | null, GeographyNode[]>()
+    for (const n of nodes) {
+      const key = n.parent_id && byId.has(n.parent_id) ? n.parent_id : null
+      childrenOf.set(key, [...(childrenOf.get(key) ?? []), n])
+    }
+    const subtreeCount = new Map<string, number>()
+    for (const inf of influencers) for (const id of inf.location_path) subtreeCount.set(id, (subtreeCount.get(id) ?? 0) + 1)
+    return { byId, childrenOf, subtreeCount }
+  }, [nodes, influencers])
+
+  const unassignedCounts = useMemo(() => {
+    const c = { missing: 0, orphan: 0, inactive: 0 }
+    for (const inf of influencers) if (inf.location_status !== 'ok') c[inf.location_status]++
+    return c
+  }, [influencers])
+
+  const currentId = path[path.length - 1] ?? null
+  const current = currentId ? byId.get(currentId) ?? null : null
+  const children = (childrenOf.get(currentId) ?? [])
+    .map(n => ({ id: n.id, name: n.name, level: n.level, count: subtreeCount.get(n.id) ?? 0 }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'es-CL'))
+  const childLevel = children[0]?.level
+
+  // Detalle: en una hoja, todo su subárbol; en un nodo intermedio, solo las
+  // asignadas directamente a ese nivel (ej. "Chile" sin región).
+  const rows = unassigned
+    ? influencers.filter(i => i.location_status === unassigned)
+    : current
+      ? influencers.filter(i => children.length === 0 ? i.location_path.includes(current.id) : i.location_path[i.location_path.length - 1] === current.id)
+      : []
+
+  const goTo = (next: string[]) => { setPath(next); setUnassigned(null); setVisible(PAGE_SIZE) }
+  const showUnassigned = (status: Exclude<LocationStatus, 'ok'>) => { setPath([]); setUnassigned(status); setVisible(PAGE_SIZE) }
+
+  return (
+    <div className="card p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Distribución geográfica</h3>
+          <div className="flex items-center gap-1 text-xs font-semibold text-violet-600 flex-wrap mt-1">
+            <button onClick={() => goTo([])} className="hover:underline">Todas</button>
+            {path.map((id, idx) => (
+              <span key={id} className="flex items-center gap-1">
+                <span className="text-gray-300">/</span>
+                <button onClick={() => goTo(path.slice(0, idx + 1))} className="hover:underline">{byId.get(id)?.name}</button>
+              </span>
+            ))}
+            {unassigned && <span className="text-gray-500"><span className="text-gray-300">/ </span>{UNASSIGNED_LABELS[unassigned]}</span>}
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {(Object.keys(UNASSIGNED_LABELS) as Array<Exclude<LocationStatus, 'ok'>>).map(status => (
+            <button key={status} onClick={() => showUnassigned(status)} disabled={unassignedCounts[status] === 0}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40 ${unassigned === status ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              {UNASSIGNED_LABELS[status]} · {unassignedCounts[status].toLocaleString()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!unassigned && (current?.level === 'commune' || current?.level === 'city') && (
+        <Link href={`/admin-influencers?commune=${encodeURIComponent(current.name)}`} className="text-xs font-semibold text-violet-600 hover:underline">
+          Ver {current.name} en Influencers →
+        </Link>
+      )}
+
+      {!unassigned && children.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-400 mb-2">
+            {childLevel ? LEVEL_LABELS[childLevel] : ''} · {current ? `${current.name} · ` : ''}{(current ? subtreeCount.get(current.id) ?? 0 : children.reduce((t, c) => t + c.count, 0)).toLocaleString()} influencers con ubicación · clic para bajar de nivel
+          </p>
+          <div style={{ height: Math.max(120, children.length * 26 + 20) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={children} layout="vertical" margin={{ top: 0, right: 24, left: 8, bottom: 0 }}>
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11 }} interval={0} />
+                <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
+                <Bar dataKey="count" fill="#7c3aed" radius={[0, 4, 4, 0]} cursor="pointer"
+                  onClick={(entry: { id?: string }) => entry?.id && goTo([...path, entry.id])} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+            {unassigned
+              ? `${UNASSIGNED_LABELS[unassigned]} · ${rows.length.toLocaleString()}`
+              : children.length === 0
+                ? `Influencers en ${current?.name} · ${rows.length.toLocaleString()}`
+                : `Asignadas directamente a ${current?.name} (sin nivel inferior) · ${rows.length.toLocaleString()}`}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-400 border-b">
+                  <th className="pb-2 pr-3">Influencer</th><th className="pb-2 pr-3">Instagram</th><th className="pb-2 pr-3">Followers</th><th className="pb-2 pr-3">Email</th><th className="pb-2">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, visible).map(inf => (
+                  <tr key={inf.id} className="border-b last:border-0">
+                    <td className="py-2 pr-3"><Link href={`/admin-influencers/${inf.id}`} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td>
+                    <td className="py-2 pr-3 text-gray-500">{inf.instagram_username ? `@${inf.instagram_username}` : '—'}</td>
+                    <td className="py-2 pr-3 text-gray-500">{formatFollowers(inf.followers)}</td>
+                    <td className="py-2 pr-3 text-gray-500">{inf.email || '—'}</td>
+                    <td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {rows.length > visible && (
+            <button onClick={() => setVisible(v => v + PAGE_SIZE)} className="mt-2 text-xs font-semibold text-violet-600 hover:underline">
+              Ver más ({(rows.length - visible).toLocaleString()} restantes)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -439,10 +607,12 @@ export function DataQualityClient() {
             </div>
           )}
 
-          {/* Ranking por comuna / nicho */}
+          {/* Geografía (locations) + ranking por nicho */}
           {report && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <RankingList title="Ranking por comuna oficial" items={report.communeRanking} paramName="commune" />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <GeographyDrilldown nodes={report.geographyNodes} influencers={report.geographyInfluencers} />
+              </div>
               <RankingList title="Ranking por nicho" items={report.nicheRanking} paramName="niche" />
             </div>
           )}
@@ -465,9 +635,9 @@ export function DataQualityClient() {
               <div className="flex items-center gap-3">
                 <Instagram className="h-5 w-5 text-amber-500" />
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / comuna / dirección)</p>
+                  <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / ubicación / dirección)</p>
                   <p className="text-xs text-gray-500">
-                    {report.withoutInstagram} sin Instagram · {report.withoutCommune} sin comuna · {report.withoutAddress} sin dirección ·{' '}
+                    {report.withoutInstagram} sin Instagram · {report.withoutLocation + report.orphanLocation + report.inactiveLocation} sin ubicación válida · {report.withoutAddress} sin dirección ·{' '}
                     <strong>{report.missingAnyRequired} con algún dato obligatorio faltante</strong>. Los tres son obligatorios para usar el portal.
                   </p>
                 </div>

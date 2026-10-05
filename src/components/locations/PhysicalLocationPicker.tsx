@@ -20,7 +20,7 @@ type Node = Pick<LocationRow, 'id' | 'name' | 'level' | 'parent_id' | 'address' 
 type SearchNode = Node & { breadcrumb?: { id: string; name: string; level: string }[] }
 
 async function getLocations(params = ''): Promise<SearchNode[]> {
-  const res = await fetch('/api/locations' + params)
+  const res = await fetch('/api/locations/physical' + params)
   const json = await res.json()
   if (!res.ok) throw new Error(json.error ?? 'No se pudieron cargar las ubicaciones')
   return json.data ?? []
@@ -122,20 +122,23 @@ export function PhysicalLocationPicker({ value, onChange, disabled = false }: Pr
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/locations', {
+      const commune = communes.find(x => x.id === communeId)?.name
+      const region = regions.find(x => x.id === regionId)?.name
+      const country = countries.find(x => x.id === countryId)?.name
+      const res = await fetch('/api/locations/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: placeName.trim(),
-          level: 'place',
-          parent_id: communeId,
-          type: 'event',
+          venueName: placeName.trim(),
           address: address.trim(),
+          commune,
+          region,
+          country,
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'No se pudo crear el lugar')
-      const created = json.data as Node
+      const created = json.location as Node
       const country = countries.find(x => x.id === countryId)?.name
       const region = regions.find(x => x.id === regionId)?.name
       const commune = communes.find(x => x.id === communeId)?.name

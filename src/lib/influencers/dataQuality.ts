@@ -16,21 +16,12 @@ export interface ScanInfluencer {
   categories: string[] | null
 }
 
-// Ranking por comuna / nicho (pedido Pri 2026-07-13): value=null representa
-// "Sin comuna oficial" / "Sin nicho" — se incluye como una fila más del ranking (no
-// aparte), así el orden de mayor a menor queda consistente entre ambos casos.
 export interface RankingItem {
   value: string | null
   label: string
   count: number
 }
 
-// FIX (2026-07-13, pedido Pri): antes 'instagram_url' e 'instagram' eran DOS
-// criterios de duplicado separados que nunca se comparaban entre sí — un
-// mismo perfil guardado como URL en una fila y como username en otra nunca
-// se detectaba como duplicado. Ahora hay un solo tipo 'instagram' (ver
-// extractInstagramHandle). 'mixed' = un grupo fusionado que comparte
-// influencers detectados por más de un criterio (ver mergeOverlappingGroups).
 export interface DuplicateGroup {
   key: string
   type: 'email' | 'instagram' | 'mixed'
@@ -46,8 +37,6 @@ export interface DataQualityReport {
   withInstagram: number
   withoutCommune: number
   withoutAddress: number
-  // Con Instagram Y comuna Y dirección — el resto le falta al menos uno de
-  // los 3 datos obligatorios para usar el portal (ver ProfileCompletionGate).
   missingAnyRequired: number
   duplicateGroups: number
   duplicateRecords: number
@@ -78,10 +67,6 @@ function normEmail(e: string | null): string | null {
   return v || null
 }
 
-// Unifica instagram_url e instagram_username en UN solo identificador
-// normalizado (pedido Pri #1). Prioriza el username explícito; si no hay,
-// extrae el primer segmento de path de la URL (con o sin dominio
-// instagram.com), le quita @ / query string / slash final.
 function extractInstagramHandle(url: string | null, username: string | null): string | null {
   const fromUsername = normHandle(username)
   if (fromUsername) return fromUsername
@@ -92,7 +77,6 @@ function extractInstagramHandle(url: string | null, username: string | null): st
   const stripped = u.replace(/^https?:\/\//, '').replace(/[?#].*$/, '').replace(/\/+$/, '')
   const domainMatch = stripped.match(/^(?:www\.)?instagram\.com\/([^/]+)/)
   if (domainMatch) return normHandle(domainMatch[1])
-  // A bare handle is valid; an arbitrary URL from another platform is not.
   if (/^(?:https?:\/\/|www\.)/i.test(u)) return null
   const raw = stripped.replace(/^\/+/, '').split('/')[0]
   return normHandle(raw)
@@ -113,13 +97,6 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         social_profiles:influencer_social_profiles ( platform, profile_url, username, followers )
       `)
       .eq('organization_id', orgId)
-      // Desempate estable por id: con imports masivos, cientos de filas
-      // comparten el mismo created_at (una sola sentencia INSERT evalúa
-      // now() una vez para todas sus filas). Ordenar solo por created_at
-      // hace que la paginación por range() sea inestable con tantos
-      // empates — la misma fila puede aparecer en dos páginas seguidas,
-      // generando un "duplicado" fantasma (mismo id dos veces) que rompe
-      // el merge (keepId y su único mergeId terminan siendo el mismo id).
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1)
@@ -128,14 +105,12 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     if (!data || data.length === 0) break
 
     for (const inf of data) {
-      if (seenIds.has(inf.id)) continue // red de seguridad extra contra el mismo id repetido
+      if (seenIds.has(inf.id)) continue
       seenIds.add(inf.id)
       const profiles = (inf.social_profiles ?? []) as Array<{
         platform: string; profile_url: string | null; username: string | null; followers: number | null
       }>
       const ig = profiles.find(p => p.platform === 'instagram')
-      // Data Quality's follower metric is specifically Instagram followers.
-      // Never sum TikTok/YouTube/etc. into the Instagram value.
       const totalFollowers = ig?.followers ?? 0
       all.push({
         id: inf.id,
@@ -160,17 +135,11 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
   const locationDisplayById = await getOfficialLocationDisplayMap(admin)
   return all.map(inf => ({
     ...inf,
-    location_id: (inf as ScanInfluencer).location_id ?? null,
+    location_id: inf.location_id ?? null,
     commune: inf.location_id ? (locationDisplayById.get(inf.location_id)?.commune ?? null) : null,
   }))
 }
 
-/**
- * Fusiona grupos de duplicados superpuestos (pedido Pri #2): si A coincide
- * con B por email y B con C por Instagram, el resultado es UN solo grupo
- * A+B+C, no dos grupos separados que comparten a B. Union-Find simple sobre
- * ids de influencer.
- */
 function mergeOverlappingGroups(rawGroups: DuplicateGroup[]): DuplicateGroup[] {
   const parent = new Map<string, string>()
 
@@ -221,11 +190,6 @@ function mergeOverlappingGroups(rawGroups: DuplicateGroup[]): DuplicateGroup[] {
   }))
 }
 
-/**
- * Agrupa duplicados por email e Instagram (URL o username unificados en un
- * solo criterio — ver extractInstagramHandle), y fusiona grupos que
- * comparten algún influencer entre sí (ver mergeOverlappingGroups).
- */
 export function findDuplicates(scan: ScanInfluencer[]): DuplicateGroup[] {
   const rawGroups: DuplicateGroup[] = []
 
@@ -252,31 +216,54 @@ export function findDuplicates(scan: ScanInfluencer[]): DuplicateGroup[] {
   return mergeOverlappingGroups(rawGroups)
 }
 
-/**
- * Ranking genérico de mayor a menor por un campo con 0..N valores por
- * influencer (comuna = 1 valor, categorías/nicho = array). "Sin <label>" se
- * agrega como una fila más y entra en el mismo orden desc. Pri: "no contar
- * dos veces al mismo influencer" — se dedupean valores repetidos dentro del
- * mismo influencer antes de sumar (p.ej. la misma categoría dos veces en su
- * array), así cada influencer aporta como máximo 1 al conteo de un mismo valor.
- */
+function normalizeRankingKey(value: string): string {
+  return value
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('es-CL')
+}
+
 function buildRanking(
   scan: ScanInfluencer[],
   getValues: (i: ScanInfluencer) => (string | null)[],
   noneLabel: string,
 ): RankingItem[] {
-  const counts = new Map<string, number>()
+  const counts = new Map<string, { label: string; count: number }>()
   let none = 0
+
   for (const inf of scan) {
     const values = Array.from(new Set(
-      getValues(inf).map(v => v?.trim()).filter((v): v is string => Boolean(v))
+      getValues(inf)
+        .map(v => v?.normalize('NFC').replace(/\s+/g, ' ').trim())
+        .filter((v): v is string => Boolean(v))
     ))
-    if (values.length === 0) { none++; continue }
-    for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1)
+
+    if (values.length === 0) {
+      none++
+      continue
+    }
+
+    for (const value of values) {
+      const key = normalizeRankingKey(value)
+      const existing = counts.get(key)
+      counts.set(key, {
+        // Geography comes from locations, so the first label is already the
+        // official catalog spelling (e.g. "Las Condes", never "Las condes").
+        label: existing?.label ?? value,
+        count: (existing?.count ?? 0) + 1,
+      })
+    }
   }
-  const items: RankingItem[] = Array.from(counts.entries()).map(([value, count]) => ({ value, label: value, count }))
+
+  const items: RankingItem[] = Array.from(counts.values()).map(({ label, count }) => ({
+    value: label,
+    label,
+    count,
+  }))
+
   items.push({ value: null, label: noneLabel, count: none })
-  return items.sort((a, b) => b.count - a.count)
+  return items.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'es-CL'))
 }
 
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {

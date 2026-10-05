@@ -26,7 +26,6 @@ export interface ScanInfluencer {
   /** Cadena de locations desde la raíz (país) hasta location_id; vacía si status ≠ ok. */
   location_path: GeographyNode[]
   address: string | null
-  categories: string[] | null
 }
 
 export interface GeographyNode {
@@ -41,10 +40,15 @@ export interface GeographyCountNode extends GeographyNode {
   direct: number
 }
 
-export interface RankingItem {
-  value: string | null
-  label: string
-  count: number
+/** Fila mínima para los listados del drilldown (sin email ni datos de contacto). */
+export interface GeographyInfluencer {
+  id: string
+  display_name: string | null
+  instagram_username: string | null
+  is_active: boolean
+  location_status: LocationStatus
+  /** location_id solo si la ubicación es válida; null en cualquier otro caso. */
+  location_id: string | null
 }
 
 export interface DuplicateGroup {
@@ -70,13 +74,13 @@ export interface DataQualityReport {
   duplicatesByEmail: number
   duplicatesByInstagram: number
   duplicatesByMixed: number
-  nicheRanking: RankingItem[]
   /**
    * Nodos de locations con influencers (y sus ancestros), con conteo directo.
    * Los totales por país/región/comuna se derivan sumando el subárbol.
    * Solo incluye ubicaciones válidas (status ok); el resto se cuenta aparte.
    */
   geographyNodes: GeographyCountNode[]
+  geographyInfluencers: GeographyInfluencer[]
 }
 
 function normUrl(url: string | null): string | null {
@@ -125,7 +129,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     const { data, error } = await admin
       .from('influencers')
       .select(`
-        id, display_name, email, is_active, created_at, location_id, address, categories,
+        id, display_name, email, is_active, created_at, location_id, address,
         social_profiles:influencer_social_profiles ( platform, profile_url, username, followers )
       `)
       .eq('organization_id', orgId)
@@ -158,7 +162,6 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         location_status: 'missing',
         location_path: [],
         address: (inf as { address?: string | null }).address ?? null,
-        categories: (inf as { categories?: string[] | null }).categories ?? null,
       })
     }
 
@@ -274,56 +277,6 @@ export function findDuplicates(scan: ScanInfluencer[]): DuplicateGroup[] {
   return mergeOverlappingGroups(rawGroups)
 }
 
-function normalizeRankingKey(value: string): string {
-  return value
-    .normalize('NFC')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLocaleLowerCase('es-CL')
-}
-
-function buildRanking(
-  scan: ScanInfluencer[],
-  getValues: (i: ScanInfluencer) => (string | null)[],
-  noneLabel: string,
-): RankingItem[] {
-  const counts = new Map<string, { label: string; count: number }>()
-  let none = 0
-
-  for (const inf of scan) {
-    const values = Array.from(new Set(
-      getValues(inf)
-        .map(v => v?.normalize('NFC').replace(/\s+/g, ' ').trim())
-        .filter((v): v is string => Boolean(v))
-    ))
-
-    if (values.length === 0) {
-      none++
-      continue
-    }
-
-    for (const value of values) {
-      const key = normalizeRankingKey(value)
-      const existing = counts.get(key)
-      counts.set(key, {
-        // Geography comes from locations, so the first label is already the
-        // official catalog spelling (e.g. "Las Condes", never "Las condes").
-        label: existing?.label ?? value,
-        count: (existing?.count ?? 0) + 1,
-      })
-    }
-  }
-
-  const items: RankingItem[] = Array.from(counts.values()).map(({ label, count }) => ({
-    value: label,
-    label,
-    count,
-  }))
-
-  items.push({ value: null, label: noneLabel, count: none })
-  return items.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'es-CL'))
-}
-
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
   const usedNodes = new Map<string, GeographyCountNode>()
   for (const inf of scan) {
@@ -353,8 +306,6 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     else byMixed += g.influencers.length - 1
   }
 
-  const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
-
   return {
     total: scan.length,
     active,
@@ -371,8 +322,15 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     duplicatesByEmail: byEmail,
     duplicatesByInstagram: byInstagram,
     duplicatesByMixed: byMixed,
-    nicheRanking,
     geographyNodes: Array.from(usedNodes.values()),
+    geographyInfluencers: scan.map(i => ({
+      id: i.id,
+      display_name: i.display_name,
+      instagram_username: extractInstagramHandle(i.instagram_url, i.instagram_username),
+      is_active: i.is_active,
+      location_status: i.location_status,
+      location_id: i.location_status === 'ok' ? i.location_id : null,
+    })),
   }
 }
 

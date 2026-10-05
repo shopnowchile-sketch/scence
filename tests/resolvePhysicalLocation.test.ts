@@ -83,6 +83,22 @@ test('same address resolves to the same Location', async () => {
   assert.equal(result.matchType, 'ambiguous')
 })
 
+test('street abbreviation and shortened street name resolve the same physical address', async () => {
+  const rows = baseRows().map(row => row.id === PLACE_ID ? {
+    ...row,
+    address: 'Avenida Presidente Kennedy 5741',
+    name: 'Limitless',
+  } : row)
+  const result = await resolvePhysicalLocation(mockAdmin(rows), {
+    address: 'Kennedy 5741, Las Condes',
+    commune: 'Las Condes',
+    region: 'Región Metropolitana',
+    country: 'Chile',
+    organizationId: ORG_ID,
+  })
+  assert.deepEqual(result, { locationId: PLACE_ID, matchType: 'existing' })
+})
+
 test('same address with case and whitespace differences resolves existing', async () => {
   const result = await resolvePhysicalLocation(mockAdmin(baseRows()), {
     address: '  av. PRESIDENTE   RIESCO 5330, LOCAL 104 ',

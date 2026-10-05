@@ -74,9 +74,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   // Plan interno efectivo individual de la marca.
-  const org_plan = brand.organization_id
-    ? await resolveBrandPlan(admin, brand.organization_id, brand.id)
-    : 'basic'
+  const org_plan = await resolveBrandPlan(admin, brand.id)
 
   // Influencers agregadas/asignadas directamente a esta marca vía brand_influencers
   // (además de las que vienen por campañas, que el cliente resuelve aparte).
@@ -412,9 +410,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  const org_plan = data.organization_id
-    ? await resolveBrandPlan(admin, data.organization_id, data.id)
-    : 'basic'
+  const org_plan = await resolveBrandPlan(admin, data.id)
 
   return NextResponse.json({ data: { ...data, org_plan } })
 }

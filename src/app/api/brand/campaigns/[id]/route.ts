@@ -267,7 +267,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  const orgPlan = await resolveBrandPlan(admin, campaignBase.organization_id, brand.id)
+  // Plan de la MARCA (su propia org), nunca el de la org de la campaña:
+  // muchas campañas viven en la org de la agencia.
+  const orgPlan = await resolveBrandPlan(admin, brand.id)
   const limits = getPlanLimits(orgPlan)
 
   const nextVisibility =

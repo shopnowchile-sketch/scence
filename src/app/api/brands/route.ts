@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
-import { PLAN_TIERS } from '@/lib/plan-limits'
+import { resolveBrandPlanAccessMany } from '@/lib/plan-limits'
 
 // ── GET /api/brands ───────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -73,22 +73,17 @@ export async function GET(req: NextRequest) {
   const brandIds = brands.map(b => b.id)
   const ownerUserIds = brands.map(b => b.user_id).filter((id): id is string => !!id)
 
-  const organizationIds = Array.from(new Set(brands.map(b => b.organization_id).filter((id): id is string => Boolean(id))))
-
-  const [memberResult, subscriptionResult, organizationResult] = await Promise.all([
+  const [memberResult, planAccessByBrand] = await Promise.all([
     brandIds.length > 0
       ? admin.from('brand_members').select('brand_id, user_id').in('brand_id', brandIds).not('user_id', 'is', null)
       : Promise.resolve({ data: [] as Array<{ brand_id: string; user_id: string }> }),
-    organizationIds.length > 0
-      ? admin.from('subscriptions')
-        .select('organization_id, created_at, plan:subscription_plans(tier)')
-        .in('organization_id', organizationIds)
-        .in('status', ['active', 'trialing'])
-        .order('created_at', { ascending: false })
-      : Promise.resolve({ data: [] }),
-    organizationIds.length > 0
-      ? admin.from('organizations').select('id, subscription_plan').in('id', organizationIds)
-      : Promise.resolve({ data: [] }),
+    // Plan desde la fuente única (override administrativo → suscripción de
+    // marca activa → basic), una sola lectura para toda la lista.
+    resolveBrandPlanAccessMany(admin, brands.map(b => ({
+      id: b.id,
+      organization_id: b.organization_id ?? null,
+      subscription_plan_override: b.subscription_plan_override,
+    }))),
   ])
   const memberRows = memberResult.data ?? []
 
@@ -123,18 +118,6 @@ export async function GET(req: NextRequest) {
     authPage++
   }
 
-  const planByOrganization = new Map<string, string>()
-  for (const subscription of subscriptionResult.data ?? []) {
-    if (planByOrganization.has(subscription.organization_id)) continue
-    const tier = (subscription.plan as { tier?: string } | null)?.tier
-    if (tier) planByOrganization.set(subscription.organization_id, tier)
-  }
-  for (const organization of organizationResult.data ?? []) {
-    if (!planByOrganization.has(organization.id)) {
-      planByOrganization.set(organization.id, organization.subscription_plan ?? 'basic')
-    }
-  }
-
   function mostRecentLastSeen(userIds: string[]): string | null {
     let best: string | null = null
     for (const uid of userIds) {
@@ -157,9 +140,7 @@ export async function GET(req: NextRequest) {
       account_created_at: b.user_id
         ? (accountCreatedMap[b.user_id] ?? b.created_at ?? null)
         : (b.created_at ?? null),
-      org_plan: typeof b.subscription_plan_override === 'string' && (PLAN_TIERS as readonly string[]).includes(b.subscription_plan_override)
-        ? b.subscription_plan_override
-        : (b.organization_id ? planByOrganization.get(b.organization_id) ?? 'basic' : 'basic'),
+      org_plan: planAccessByBrand.get(b.id)?.plan ?? 'basic',
     }
   }))
 

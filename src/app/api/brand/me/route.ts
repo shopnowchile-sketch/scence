@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { resolveBrandPlan } from '@/lib/plan-limits'
+import { resolveBrandPlanAccess } from '@/lib/plan-limits'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 
 const BRAND_FIELDS = `
@@ -9,7 +9,7 @@ const BRAND_FIELDS = `
   address_street, address_number, address_city, address_region, address_country,
   address_place_id, address_lat, address_lng,
   address2_street, address2_number, address2_city, address2_region, address2_country,
-  organization_id, user_id, status, subscription_plan_override
+  organization_id, user_id, status
 `
 
 // FIX (2026-07-10, multiusuario por marca): antes resolvía la marca solo por
@@ -42,24 +42,14 @@ export async function GET() {
 
   if (error || !data) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  // Un override administrativo es un acceso comercial explícito: permite
-  // trabajar sin una suscripción de pago (ej. marca invitada por canje).
-  // Las marcas sin override siguen requiriendo una suscripción activa.
-  const [orgPlan, activeSubscription] = await Promise.all([
-    resolveBrandPlan(admin, data.organization_id, data.id),
-    admin
-      .from('subscriptions')
-      .select('id')
-      .eq('organization_id', data.organization_id)
-      .in('status', ['active', 'trialing'])
-      .limit(1)
-      .maybeSingle(),
-  ])
+  // Plan y acceso desde la fuente única: override administrativo o
+  // suscripción de MARCA activa (nunca una de influencer).
+  const planAccess = await resolveBrandPlanAccess(admin, data.id)
   return NextResponse.json({
     data: {
       ...data,
-      org_plan: orgPlan,
-      has_active_subscription: Boolean(activeSubscription.data) || Boolean(data.subscription_plan_override),
+      org_plan: planAccess.plan,
+      has_active_subscription: planAccess.hasActiveAccess,
       member_role: access.role,
       is_owner: access.isOwner,
     },

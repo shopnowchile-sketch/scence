@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { parseInfluencerReference, payPalPaidThrough } from '@/lib/influencer-paypal'
+import { isInfluencerSubscription } from '@/lib/plan-limits'
 
 const STATUS_MAP: Record<string, string> = { ACTIVE: 'active', APPROVAL_PENDING: 'incomplete', SUSPENDED: 'past_due', CANCELLED: 'canceled', EXPIRED: 'canceled' }
 function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
@@ -193,13 +194,22 @@ export async function POST(request: NextRequest) {
   if (!detailsResponse.ok || !ref) return NextResponse.json({ received: true })
   const status = STATUS_MAP[subscription.status] ?? 'incomplete', start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString(), end = subscription.billing_info?.next_billing_time ?? start
   const admin = createAdminClient()
-  const { data: existing } = await admin.from('subscriptions').select('id').eq('paypal_subscription_id', id).maybeSingle()
-  const row = { organization_id: ref.organizationId, plan_id: ref.planId, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, canceled_at: status === 'canceled' ? new Date().toISOString() : null, updated_at: new Date().toISOString() }
+  const { data: existing, error: existingError } = await admin.from('subscriptions').select('id, organization_id, metadata').eq('paypal_subscription_id', id).maybeSingle()
+  if (existingError) return NextResponse.json({ error: 'Unable to read subscription' }, { status: 500 })
+  // Un evento de marca nunca modifica la fila de otra organización ni de una influencer.
+  if (existing && (existing.organization_id !== ref.organizationId || isInfluencerSubscription(existing.metadata))) {
+    console.error('[paypal/webhook] suscripción de marca no coincide con la fila existente; no se modifica', { id })
+    return NextResponse.json({ received: true })
+  }
+  // El plan pagado vive en la suscripción: al pasar a canceled/past_due deja de
+  // dar acceso (resolveBrandPlanAccess). El override administrativo no se toca.
+  const metadata = { ...((existing?.metadata as Record<string, unknown> | null) ?? {}), account_type: 'brand' }
+  const row = { organization_id: ref.organizationId, plan_id: ref.planId, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: status === 'canceled' ? new Date().toISOString() : null, updated_at: new Date().toISOString() }
   const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)
   if (error) return NextResponse.json({ error: 'Unable to sync subscription' }, { status: 500 })
-  await admin.from('organizations').update({ subscription_plan: status === 'active' ? ref.tier : 'basic' }).eq('id', ref.organizationId)
   if (status === 'active') {
-    await admin.from('brands').update({ status: 'approved' }).eq('organization_id', ref.organizationId).eq('status', 'suspended')
+    const { error: brandError } = await admin.from('brands').update({ status: 'approved' }).eq('organization_id', ref.organizationId).eq('status', 'suspended')
+    if (brandError) return NextResponse.json({ error: 'Unable to reactivate brand' }, { status: 500 })
   }
   return NextResponse.json({ received: true })
 }

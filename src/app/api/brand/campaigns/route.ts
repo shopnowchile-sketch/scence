@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
 
   const { data: brand } = await admin
     .from('brands')
-    .select('id, organization_id, status, subscription_plan_override')
+    .select('id, organization_id, status')
     .eq('id', access.brandId)
     .single()
 

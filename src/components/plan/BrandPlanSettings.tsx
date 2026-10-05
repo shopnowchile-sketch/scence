@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation'
 import { Check, RefreshCw, Sparkles, Clock, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { PLAN_LIMITS, getPlanTier, formatPriceCLP, type PlanTier } from '@/lib/plan-limits'
+import { PLAN_LIMITS, BRAND_PLAN_USD_PRICING, getPlanTier, formatPriceCLP, type PlanTier } from '@/lib/plan-limits'
 
 const PLAN_DEFS: Array<{
   tier: PlanTier
@@ -65,11 +65,6 @@ const PLAN_DEFS: Array<{
   },
 ]
 
-const PAYPAL_USD_PRICES: Record<PlanTier, { launch: number; regular: number }> = {
-  basic: { launch: 79, regular: 106.65 },
-  growth: { launch: 279, regular: 376.65 },
-  pro: { launch: 749, regular: 1011.15 },
-}
 
 export function BrandPlanSettings() {
   const router = useRouter()
@@ -265,11 +260,11 @@ export function BrandPlanSettings() {
                     disabled={checkoutLoading?.tier === tier}
                     className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl border border-[#0070ba]/25 text-[#003087] hover:bg-[#f5f9ff] transition-colors disabled:opacity-60"
                   >
-                    {checkoutLoading?.tier === tier && checkoutLoading.provider === 'paypal' ? 'Abriendo PayPal…' : `PayPal · US$${PAYPAL_USD_PRICES[tier].launch}/mes`}
+                    {checkoutLoading?.tier === tier && checkoutLoading.provider === 'paypal' ? 'Abriendo PayPal…' : `PayPal · US$${BRAND_PLAN_USD_PRICING[tier].launch}/mes`}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                   <p className="text-[11px] leading-4 text-center text-gray-400 -mt-0.5">
-                    Precio lanzamiento por 3 meses. Luego US${PAYPAL_USD_PRICES[tier].regular.toFixed(2)}/mes.
+                    Precio lanzamiento por 3 meses. Luego US${BRAND_PLAN_USD_PRICING[tier].regular.toFixed(2)}/mes.
                   </p>
                 </div>
               )}

@@ -326,7 +326,6 @@ function buildRanking(
 }
 
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
-export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
   const active = scan.filter(i => i.is_active).length
   const withInstagram = scan.filter(i => extractInstagramHandle(i.instagram_url, i.instagram_username)).length
   // A valid commune means the canonical location itself is a commune.

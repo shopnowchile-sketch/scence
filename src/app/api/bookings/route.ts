@@ -300,7 +300,7 @@ export async function PUT(req: NextRequest) {
     }
     try {
       const resolved = await resolvePhysicalLocation(admin, {
-        locationId: typeof location_id === 'string' ? location_id : campaignLocationId,
+        locationId: typeof location_id === 'string' ? location_id : (location === undefined && location_details === undefined ? campaignLocationId : null),
         venueName: typeof location_details?.venue_name === 'string' ? location_details.venue_name : null,
         address: typeof location === 'string' ? location : null,
         commune: typeof location_details?.commune === 'string' ? location_details.commune : null,

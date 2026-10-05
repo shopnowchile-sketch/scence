@@ -38,12 +38,16 @@ test('sin fecha límite → no expira', () => {
   assert.equal(isAttendanceExpirable({ ...base, due_date: null }, NOW), false)
 })
 
-test('el cron nunca escribe campaign_influencers.status (invariante 16.1)', () => {
+test('el cron nunca escribe campaign_influencers (invariante 16.1)', () => {
+  // Vencer la confirmación de asistencia solo rechaza ese entregable, no la
+  // participación. El cron no escribe campaign_influencers directamente (si
+  // cierra postulaciones lo hace vía el helper compartido de
+  // campaign-applications), así que nunca toca campaign_influencers.status.
   const src = readFileSync(new URL('../src/app/api/cron/expire-attendance-confirmations/route.ts', import.meta.url), 'utf8')
-  const update = src.slice(src.indexOf(".from('campaign_influencers').update("))
-  const block = update.slice(0, update.indexOf('})'))
-  assert.doesNotMatch(block, /^\s*status\s*:/m)
-  assert.match(block, /application_status: 'rejected'/)
+  assert.doesNotMatch(src, /from\(\s*['"]campaign_influencers['"]\s*\)\s*\.\s*(update|upsert|insert|delete)\s*\(/)
+  assert.doesNotMatch(src, /application_status\s*:/)
+  // El entregable de asistencia vencido sí se rechaza.
+  assert.match(src, /from\('campaign_deliverables'\)\.update\(\{\s*status: 'rejected'/)
 })
 
 test('el cron excluye campañas cerradas en la query y en código', () => {

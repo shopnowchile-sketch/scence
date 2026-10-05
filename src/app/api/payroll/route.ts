@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
 
   // Insert items — schema uses gross_amount/net_amount, not amount
   if (itemsArr.length > 0) {
-    await admin.from('payroll_items').insert(
+    const { error: itemsErr } = await admin.from('payroll_items').insert(
       itemsArr.map(item => ({
         payroll_run_id: run.id,
         influencer_id:  item.influencer_id,
@@ -142,6 +142,13 @@ export async function POST(request: NextRequest) {
         status:         'pending',
       }))
     )
+    if (itemsErr) {
+      // Sin ítems la nómina queda con un total que no coincide: se revierte.
+      console.error('[POST /api/payroll] items', itemsErr)
+      const { error: rollbackErr } = await admin.from('payroll_runs').delete().eq('id', run.id)
+      if (rollbackErr) console.error('[POST /api/payroll] rollback run', rollbackErr)
+      return NextResponse.json({ error: itemsErr.message }, { status: 500 })
+    }
   }
 
   const { data: runData } = await admin
@@ -175,13 +182,22 @@ export async function PATCH(request: NextRequest) {
   const now = new Date().toISOString()
   const admin = createAdminClient()
 
+  // Organización y permiso obligatorios; la nómina debe pertenecer a esa org.
   const orgIdPatch = await getOrgId(user.id, user.user_metadata, admin)
-  if (orgIdPatch) {
-    const { isAdmin: isAdminPatch, role: rolePatch } = await getUserRole(user.id, orgIdPatch, admin)
-    if (!isAdminPatch && rolePatch !== 'finance') {
-      return NextResponse.json({ error: 'No tienes permisos para modificar nóminas' }, { status: 403 })
-    }
+  if (!orgIdPatch) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+  const { isAdmin: isAdminPatch, role: rolePatch } = await getUserRole(user.id, orgIdPatch, admin)
+  if (!isAdminPatch && rolePatch !== 'finance') {
+    return NextResponse.json({ error: 'No tienes permisos para modificar nóminas' }, { status: 403 })
   }
+
+  const { data: existingRun, error: existingRunErr } = await admin
+    .from('payroll_runs')
+    .select('id')
+    .eq('id', run_id)
+    .eq('organization_id', orgIdPatch)
+    .maybeSingle()
+  if (existingRunErr) return NextResponse.json({ error: existingRunErr.message }, { status: 500 })
+  if (!existingRun) return NextResponse.json({ error: 'Nómina no encontrada' }, { status: 404 })
 
   const update: Record<string, unknown> = { updated_at: now }
 
@@ -197,12 +213,18 @@ export async function PATCH(request: NextRequest) {
       break
     case 'complete':
       update.status = 'paid'   // payroll_status enum: pending|approved|processing|paid|failed
-      // Mark all items as paid
-      await admin
-        .from('payroll_items')
-        .update({ status: 'paid', paid_at: now })
-        .eq('payroll_run_id', run_id)
-        .eq('status', 'pending')
+      // Mark all items as paid — antes de marcar la nómina; si falla, no se toca la nómina.
+      {
+        const { error: itemsPaidErr } = await admin
+          .from('payroll_items')
+          .update({ status: 'paid', paid_at: now })
+          .eq('payroll_run_id', run_id)
+          .eq('status', 'pending')
+        if (itemsPaidErr) {
+          console.error('[PATCH /api/payroll] items paid', itemsPaidErr)
+          return NextResponse.json({ error: itemsPaidErr.message }, { status: 500 })
+        }
+      }
       break
     case 'cancel':
       update.status = 'failed'  // closest valid enum value for cancellation
@@ -215,6 +237,7 @@ export async function PATCH(request: NextRequest) {
     .from('payroll_runs')
     .update(update)
     .eq('id', run_id)
+    .eq('organization_id', orgIdPatch)
     .select(`*, items:payroll_items(*, influencer:influencers(id, display_name, avatar_url))`)
     .single()
 

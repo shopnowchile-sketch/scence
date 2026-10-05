@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { acceptCampaignApplication } from '@/lib/campaign-applications'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
+import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
 
 type Params = { params: { id: string } }
 
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const campaignMetadata = campaign.metadata && typeof campaign.metadata === 'object' && !Array.isArray(campaign.metadata)
     ? campaign.metadata as Record<string, unknown>
     : {}
-  const accessMode = campaignMetadata.access_mode === 'invitation' ? 'invitation' : campaign.visibility === 'private' ? 'private_pro' : 'public'
+  const accessMode = isInvitationOnlyCampaign(campaignMetadata) ? 'invitation' : campaign.visibility === 'private' ? 'private_pro' : 'public'
 
   if (accessMode === 'invitation') {
     return NextResponse.json({ error: 'Esta campaña es solo por invitación.', code: 'INVITATION_ONLY' }, { status: 403 })
@@ -238,13 +239,17 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     )
   }
 
-  await admin
+  const { error: deleteError } = await admin
     .from('campaign_influencers')
     .delete()
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .eq('application_status', 'pending')
     .eq('origin', 'application')
+  if (deleteError) {
+    console.error('[DELETE /api/influencer/campaigns/[id]/apply]', deleteError)
+    return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

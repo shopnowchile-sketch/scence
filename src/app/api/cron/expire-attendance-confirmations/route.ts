@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getCampaignDateKey, isAttendanceExpirable } from '@/lib/attendance-state'
+import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 
 // Corre a diario. Una falta de respuesta no deja cupos bloqueados indefinidamente.
 export async function GET(request: NextRequest) {
@@ -18,6 +19,20 @@ export async function GET(request: NextRequest) {
     .lt('end_date', today)
     .select('id')
   if (campaignsError) return NextResponse.json({ error: campaignsError.message }, { status: 500 })
+
+  // Campaña completada = sus postulaciones pendientes se cierran (mismo cierre
+  // que el cron de fecha límite, sin emails). No bloquea el resto del cron.
+  let applicationsClosed = 0
+  let applicationsCloseError: string | null = null
+  const completedIds = (completedCampaigns ?? []).map(campaign => campaign.id as string)
+  if (completedIds.length) {
+    const closed = await closePendingCampaignApplications(admin, { campaignIds: completedIds, note: AUTO_CLOSE_NOTES.campaignClosed, now: now.toISOString() })
+    if (closed.ok) applicationsClosed = closed.rejected
+    else {
+      applicationsCloseError = closed.error
+      console.error('[cron expire-attendance-confirmations] close pending applications failed:', closed.error)
+    }
+  }
 
   // Solo campañas abiertas: las completed/canceled (incluida la que se acaba de
   // completar arriba) quedan fuera — su historia ya la definió el admin.
@@ -54,5 +69,5 @@ export async function GET(request: NextRequest) {
   // participación y solo debe cambiar por una decisión explícita de gestión.
   const released = 0
 
-  return NextResponse.json({ ok: true, released, campaigns_completed: completedCampaigns?.length ?? 0 })
+  return NextResponse.json({ ok: true, released, campaigns_completed: completedCampaigns?.length ?? 0, applications_closed: applicationsClosed, applications_close_error: applicationsCloseError })
 }

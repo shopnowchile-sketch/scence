@@ -88,13 +88,15 @@ export async function acceptCampaignApplication(
   // solo la primera petición que cambia pending -> accepted continúa con los
   // efectos secundarios. Un reintento o dos aprobaciones simultáneas no pueden
   // volver a crear entregables ni enviar otro correo.
+  // `status` no se escribe (CLAUDE 16.1): application_status es la fuente de verdad.
+  const acceptedAt = new Date().toISOString()
   const { data: acceptedApplication, error: updateError } = await admin
     .from('campaign_influencers')
     .update({
       application_status: 'accepted',
-      status: 'active',
       fee: agreedFee ?? app.fee ?? null,
-      updated_at: new Date().toISOString(),
+      accepted_at: acceptedAt,
+      updated_at: acceptedAt,
     })
     .eq('id', applicationId)
     .eq('campaign_id', campaignId)
@@ -235,9 +237,10 @@ export async function rejectCampaignApplications(
     return { ok: false, error: 'Solo se pueden gestionar postulaciones pendientes', status: 422 }
   }
 
+  const rejectedAt = new Date().toISOString()
   const { data: rejected, error: updateError } = await admin
     .from('campaign_influencers')
-    .update({ application_status: 'rejected', updated_at: new Date().toISOString() })
+    .update({ application_status: 'rejected', rejected_at: rejectedAt, updated_at: rejectedAt })
     .eq('campaign_id', params.campaignId)
     .eq('application_status', 'pending')
     .in('id', applicationIds)
@@ -250,6 +253,40 @@ export async function rejectCampaignApplications(
   }
 
   return { ok: true, rejectedIds }
+}
+
+export const AUTO_CLOSE_NOTES = {
+  deadline: 'Postulación cerrada automáticamente al vencer la fecha límite.',
+  campaignClosed: 'Postulación cerrada automáticamente: la campaña finalizó.',
+} as const
+
+/**
+ * Cierre automático de postulaciones pendientes (origin='application') de una
+ * o varias campañas: pasan a 'rejected' con nota, sin borrar historial y sin
+ * emails. Fuente única para el cron de fecha límite y para completar/cancelar
+ * una campaña. UPDATE por filtro (no por lista de ids) para no depender del
+ * tope de filas de un SELECT previo.
+ */
+export async function closePendingCampaignApplications(
+  admin: SupabaseClient,
+  params: { campaignIds: string[]; note: string; now?: string }
+): Promise<{ ok: true; rejected: number } | { ok: false; error: string }> {
+  const campaignIds = Array.from(new Set(params.campaignIds.filter(Boolean)))
+  if (campaignIds.length === 0) return { ok: true, rejected: 0 }
+  const now = params.now ?? new Date().toISOString()
+
+  const { count, error } = await admin
+    .from('campaign_influencers')
+    .update(
+      { application_status: 'rejected', notes: params.note, rejected_at: now, updated_at: now },
+      { count: 'exact' },
+    )
+    .in('campaign_id', campaignIds)
+    .eq('application_status', 'pending')
+    .eq('origin', 'application')
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, rejected: count ?? 0 }
 }
 
 

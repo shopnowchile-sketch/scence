@@ -4083,34 +4083,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         )}
                         {ciVisibleColumns.status && (
                         <td className="px-4 py-3">
-                          <select
-                            onClick={(e) => e.stopPropagation()}
-                            value={ci.status ?? 'draft'}
-                            onChange={async e => {
-                              try {
-                                await fetch(`/api/campaigns/${id}/influencers`, {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ influencer_id: inf.id, status: e.target.value }),
-                                })
-                                void refetch()
-                              } catch { /* non-fatal */ }
-                            }}
-                            className={cn('text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 outline-none cursor-pointer',
-                              ci.status === 'active'           ? 'bg-emerald-100 text-emerald-700' :
-                              ci.status === 'completed'         ? 'bg-blue-100 text-blue-700' :
-                              ci.status === 'canceled'          ? 'bg-red-100 text-red-700' :
-                              ci.status === 'pending_approval'  ? 'bg-amber-100 text-amber-700' :
-                              'bg-gray-100 text-gray-600'
-                            )}
-                          >
-                            <option value="draft">Por confirmar</option>
-                            <option value="pending_approval">En revisión</option>
-                            <option value="active">Activo</option>
-                            <option value="paused">Pausado</option>
-                            <option value="completed">Completado</option>
-                            <option value="canceled">Cancelado</option>
-                          </select>
+                          {/* Solo lectura: application_status es la fuente de verdad (CLAUDE 16.1).
+                              El antiguo selector escribía campaign_influencers.status, sin efecto. */}
+                          <span className={cn('text-[11px] font-semibold rounded-full px-2 py-0.5',
+                            ci.application_status === 'accepted' ? 'bg-emerald-100 text-emerald-700' :
+                            ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' :
+                            'bg-amber-100 text-amber-700'
+                          )}>
+                            {ci.application_status === 'accepted' ? 'Aceptada' : ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
+                          </span>
                         </td>
                         )}
                         <td className="px-4 py-3">

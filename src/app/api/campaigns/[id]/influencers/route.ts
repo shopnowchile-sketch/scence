@@ -65,7 +65,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'influencer.manage'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const auth = await authorizeCampaignBrandAction(user.id, params.id, 'influencer.manage')
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {
@@ -115,10 +116,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         influencer_id,
         fee: fee ?? null,
         notes: notes ?? null,
-        // `status` usa el enum campaign_status (no acepta 'pending'): la
-        // invitación fallaba siempre. Pendientes quedan con el default
-        // ('draft'), igual que las postulaciones. Fuente de verdad: application_status.
-        ...(invite ? {} : { status: 'active' }),
+        // `status` no se escribe (CLAUDE 16.1): queda en su default y la
+        // fuente de verdad de la participación es application_status.
         application_status: invite ? 'pending' : 'accepted',
         origin: invite ? 'invitation' : 'invitation',
         ...(invite ? {} : { accepted_at: new Date().toISOString() }),
@@ -261,6 +260,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     console.error('[POST /api/campaigns/[id]/influencers] email notification failed (non-fatal):', emailErr)
   }
 
+  // El email de la influencer se usa arriba para notificar; solo se devuelve
+  // al admin de plataforma, nunca a una marca.
+  if (!auth.isPlatformAdmin && data?.influencer) {
+    const { email: _email, ...influencerWithoutEmail } = data.influencer as Record<string, unknown>
+    return NextResponse.json({ data: { ...data, influencer: influencerWithoutEmail } }, { status: 201 })
+  }
+
   return NextResponse.json({ data }, { status: 201 })
 }
 
@@ -340,14 +346,20 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   return NextResponse.json({ success: true })
 }
 
-// ── PATCH /api/campaigns/[id]/influencers — update status/fee ─────────────────
+// Campos de la relación editables por PATCH genérico. application_status,
+// status, campaign_id, influencer_id, origin, etc. nunca se aceptan aquí: la
+// aprobación/rechazo pasa por acceptCampaignApplication / rejectCampaignApplications.
+const PATCHABLE_RELATION_FIELDS = new Set(['fee', 'notes'])
+
+// ── PATCH /api/campaigns/[id]/influencers — asistencia manual / fee / notas ───
 export async function PATCH(request: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (!(await authorizeCampaignBrandAction(user.id, params.id, 'influencer.manage'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const auth = await authorizeCampaignBrandAction(user.id, params.id, 'influencer.manage')
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try {
@@ -428,7 +440,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const { data: relation, error: relationError } = await admin.from('campaign_influencers')
-      .select('id, application_status, status, metadata')
+      .select('id, application_status, metadata')
       .eq('campaign_id', params.id)
       .eq('influencer_id', influencer_id as string)
       .maybeSingle()
@@ -461,7 +473,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const { removal_reason: _removalReason, removal_message: _removalMessage, ...preservedMetadata } = metadata
       const { error: reinstateError } = await admin.from('campaign_influencers').update({
         application_status: 'accepted',
-        status: 'active',
         metadata: { ...preservedMetadata, attendance_reinstated_at: now, attendance_reinstated_by: user.id },
         updated_at: now,
       }).eq('id', relation.id)
@@ -476,7 +487,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       if (reinstated) {
         await admin.from('campaign_influencers').update({
           application_status: relation.application_status,
-          status: relation.status,
           metadata,
           updated_at: now,
         }).eq('id', relation.id)
@@ -485,6 +495,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     return NextResponse.json({ data: { influencer_id, attendance_action } })
+  }
+
+  const disallowedFields = Object.keys(updates).filter(key => !PATCHABLE_RELATION_FIELDS.has(key))
+  if (disallowedFields.length > 0) {
+    return NextResponse.json({ error: `Campos no editables: ${disallowedFields.join(', ')}` }, { status: 422 })
+  }
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'No se recibieron cambios para actualizar' }, { status: 422 })
   }
 
   const { data, error } = await admin
@@ -498,47 +516,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (error) {
     console.error('[PATCH /api/campaigns/[id]/influencers]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // ── Auto-assign deliverables when approving an application ──────────────────
-  // If transitioning from 'applied' to 'active', copy campaign's deliverable_templates
-  if (updates.status === 'active') {
-    try {
-      // Check if influencer already has deliverables in this campaign
-      const { data: existingDelivs } = await admin
-        .from('campaign_deliverables')
-        .select('id')
-        .eq('campaign_id', params.id)
-        .eq('influencer_id', influencer_id as string)
-        .limit(1)
-
-      if (!existingDelivs?.length) {
-        // Get campaign deliverable_templates
-        const { data: camp } = await admin
-          .from('campaigns')
-          .select('deliverable_templates, organization_id')
-          .eq('id', params.id)
-          .single()
-
-        const templates = (camp?.deliverable_templates as Array<Record<string, unknown>>) ?? []
-
-        if (templates.length > 0) {
-          await admin.from('campaign_deliverables').insert(
-            expandDeliverableTemplates(templates as DeliverableTemplateInput[]).map(t => ({
-              campaign_id: params.id,
-              influencer_id: influencer_id as string,
-              organization_id: camp!.organization_id,
-              ...t,
-              status: 'pending',
-              progress: 0,
-            }))
-          )
-        }
-      }
-    } catch (e) {
-      console.error('[PATCH influencers] auto-assign deliverables failed:', e)
-      // Non-fatal — don't fail the PATCH
-    }
   }
 
   return NextResponse.json({ data })

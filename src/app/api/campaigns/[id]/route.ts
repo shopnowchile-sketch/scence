@@ -9,8 +9,21 @@ import {
   normalizeDeliverableTemplates,
   syncCampaignDeliverablesFromTemplates,
 } from '@/lib/campaign-deliverables-sync'
+import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
+import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
 
 type Params = { params: { id: string } }
+
+// Campos que una marca puede editar vía PATCH /api/campaigns/[id]: los de
+// contenido que también acepta /api/brand/campaigns/[id], sin status,
+// visibility ni max_influencers (esos pasan por la ruta de marca, que aplica
+// los límites del plan) y nunca ownership.
+const BRAND_PATCH_FIELDS = new Set([
+  'name', 'description', 'type', 'platforms', 'start_date', 'end_date',
+  'budget_total', 'commission_rate', 'currency', 'hashtags', 'social_tags',
+  'deliverable_templates', 'approval_required', 'application_deadline',
+  'brief_url', 'metadata',
+])
 
 // La activación anuncia la campaña a todo el roster en lotes. Con el default de
 // Vercel el PATCH se cortaba antes de terminar de enviar (fix 2026-09-06).
@@ -371,7 +384,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
   // propia campaña vía PATCH, aunque el formulario ya no muestre ese campo.
   if (access?.isBrand) {
-    delete fields.brand_id
     // Esta ruta es una alternativa a /api/brand/campaigns/[id]. Bloquear aquí
     // evita que una marca active una campaña manipulando la petición directa.
     if (action === 'activate' || fields.status === 'active') {
@@ -380,6 +392,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         { status: 403 },
       )
     }
+    // El portal de marca usa /api/brand/campaigns/[id] (límites de plan).
+    // Aquí la marca solo puede editar contenido: nunca estado, visibilidad,
+    // cupos ni ownership (brand_id, organization_id, created_by_brand_id).
+    if (action !== undefined && action !== 'close_applications' && action !== 'reopen_applications') {
+      return NextResponse.json({ error: 'Usa el portal de marca para cambiar el estado de la campaña' }, { status: 403 })
+    }
+    for (const key of Object.keys(fields)) {
+      if (!BRAND_PATCH_FIELDS.has(key)) delete fields[key]
+    }
+  } else {
+    // Admin: el ownership de tenant no se reasigna por PATCH (la UI no lo envía).
+    delete fields.organization_id
+    delete fields.created_by_brand_id
   }
 
   // Handle named actions
@@ -519,40 +544,61 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     ])
   }
 
+  // Campaña completada/cancelada: sus postulaciones pendientes se cierran
+  // (mismo cierre que el cron de fecha límite, sin emails). No bloquea.
+  if (data && (data.status === 'completed' || data.status === 'canceled') && 'status' in fields) {
+    const closed = await closePendingCampaignApplications(admin, { campaignIds: [params.id], note: AUTO_CLOSE_NOTES.campaignClosed })
+    if (!closed.ok) console.error('[PATCH /api/campaigns/[id]] close pending applications failed:', closed.error)
+  }
+
   // ── Auto-generate draft invoice when campaign is completed ────────────────
+  // No bloquea el cambio de estado. Idempotente: si ya existe la factura
+  // automática de esta campaña (metadata.auto_generated), no se crea otra.
   if (action === 'complete' && data && orgId) {
     try {
-      const campaign = data as Record<string, unknown>
-      // Build invoice number: INV-{year}-{random 4 digits}
-      const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
-      const budgetTotal   = (campaign.budget_total as number) ?? 0
-      const taxRate       = 0   // 0% default; user can edit
-      const taxAmount     = budgetTotal * taxRate
-      const total         = budgetTotal + taxAmount
+      const { data: existingAutoInvoice, error: existingInvoiceError } = await admin
+        .from('invoices')
+        .select('id')
+        .eq('campaign_id', params.id)
+        .eq('metadata->>auto_generated', 'true')
+        .limit(1)
+        .maybeSingle()
 
-      await admin.from('invoices').insert({
-        organization_id: orgId,
-        campaign_id:     params.id,
-        brand_id:        (campaign.brand_id as string) ?? null,
-        invoice_number:  invoiceNumber,
-        status:          'draft',
-        subtotal:        budgetTotal,
-        tax_rate:        taxRate,
-        tax_amount:      taxAmount,
-        discount_amount: 0,
-        total,
-        currency:        (campaign.currency as string) ?? 'CLP',
-        issue_date:      new Date().toISOString().split('T')[0],
-        due_date:        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        issued_by:       user.id,
-        notes:           `Factura generada automáticamente al completar campaña "${campaign.name as string}".`,
-        metadata: {
-          campaign_name:   campaign.name,
-          auto_generated:  true,
-        },
-      })
+      if (existingInvoiceError) {
+        console.error('[auto-invoice] lookup failed:', existingInvoiceError)
+      } else if (!existingAutoInvoice) {
+        const campaign = data as Record<string, unknown>
+        // Build invoice number: INV-{year}-{random 4 digits}
+        const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+        const budgetTotal   = (campaign.budget_total as number) ?? 0
+        const taxRate       = 0   // 0% default; user can edit
+        const taxAmount     = budgetTotal * taxRate
+        const total         = budgetTotal + taxAmount
+
+        const { error: invoiceError } = await admin.from('invoices').insert({
+          organization_id: orgId,
+          campaign_id:     params.id,
+          brand_id:        (campaign.brand_id as string) ?? null,
+          invoice_number:  invoiceNumber,
+          status:          'draft',
+          subtotal:        budgetTotal,
+          tax_rate:        taxRate,
+          tax_amount:      taxAmount,
+          discount_amount: 0,
+          total,
+          currency:        (campaign.currency as string) ?? 'CLP',
+          issue_date:      new Date().toISOString().split('T')[0],
+          due_date:        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          issued_by:       user.id,
+          notes:           `Factura generada automáticamente al completar campaña "${campaign.name as string}".`,
+          metadata: {
+            campaign_name:   campaign.name,
+            auto_generated:  true,
+          },
+        })
+        if (invoiceError) console.error('[auto-invoice] insert failed on campaign complete:', invoiceError)
+      }
     } catch (e) {
-      // Non-fatal — invoice creation failure should not block campaign completion
       console.error('[auto-invoice] failed to create invoice on campaign complete:', e)
     }
   }
@@ -560,29 +606,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   return NextResponse.json({ data, deliverables_sync: deliverablesSync })
 }
 
-function normalizeCampaignBenefits(value: unknown) {
-  if (!Array.isArray(value)) return []
-  const types = new Set(['product', 'experience', 'meal', 'ticket', 'gift_card', 'service', 'sales_commission', 'other'])
-  const rules = new Set(['deliverables_completed', 'sales_target', 'attendance', 'accepted', 'manual', 'raffle'])
-  return value.flatMap(raw => {
-    if (!raw || typeof raw !== 'object') return []
-    const benefit = raw as Record<string, unknown>
-    const benefitType = String(benefit.benefit_type ?? '')
-    const activationRule = String(benefit.activation_rule ?? '')
-    const description = String(benefit.description ?? '').trim()
-    if (!types.has(benefitType) || !rules.has(activationRule) || !description) return []
-    return [{
-      benefit_type: benefitType,
-      description,
-      quantity: Math.max(1, Math.trunc(Number(benefit.quantity) || 1)),
-      estimated_value: benefit.estimated_value == null ? null : Math.max(0, Number(benefit.estimated_value) || 0),
-      commission_rate: benefitType === 'sales_commission' ? Math.min(100, Math.max(0, Number(benefit.commission_rate) || 0)) : null,
-      currency: typeof benefit.currency === 'string' ? benefit.currency : 'CLP',
-      activation_rule: activationRule,
-      sales_target: activationRule === 'sales_target' ? Math.max(1, Math.trunc(Number(benefit.sales_target) || 1)) : null,
-    }]
-  })
-}
 
 // ── DELETE /api/campaigns/[id] ────────────────────────────────────────────────
 // ?hard=1 → borrado permanente (solo admin/super_admin/owner). Sin ese
@@ -652,6 +675,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     console.error('[DELETE /api/campaigns/[id]]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Cancelar = cerrar postulaciones pendientes (sin emails). No bloquea.
+  const closed = await closePendingCampaignApplications(admin, { campaignIds: [params.id], note: AUTO_CLOSE_NOTES.campaignClosed })
+  if (!closed.ok) console.error('[DELETE /api/campaigns/[id]] close pending applications failed:', closed.error)
 
   return NextResponse.json({ success: true })
 }

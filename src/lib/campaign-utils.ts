@@ -2,8 +2,6 @@
 // Used by admin, brand, and influencer portals.
 // Single source of truth for status configs, formatters, and types.
 
-import { isDeliverableComplete } from './deliverable-status'
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type CampaignMode = 'admin' | 'brand' | 'influencer'
@@ -74,28 +72,12 @@ export const CAMPAIGN_STATUS: Record<string, { label: string; color: string }> =
   canceled:         { label: 'Cancelada',  color: 'bg-red-100 text-red-500' },
 }
 
-export const DELIVERABLE_STATUS: Record<DeliverableStatus, { label: string; color: string }> = {
-  pending:   { label: 'Pendiente',   color: 'bg-amber-100 text-amber-700' },
-  in_review: { label: 'En revisión', color: 'bg-blue-100 text-blue-700' },
-  approved:  { label: 'Aprobado',    color: 'bg-green-100 text-green-700' },
-  rejected:  { label: 'Rechazado',   color: 'bg-red-100 text-red-500' },
-  published: { label: 'Publicado',   color: 'bg-violet-100 text-violet-700' },
-}
-
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 export function fmtDate(iso: string | null | undefined, opts?: Intl.DateTimeFormatOptions) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('es-CL', opts ?? {
     day: 'numeric', month: 'short', year: 'numeric',
-  })
-}
-
-export function fmtDateTime(iso: string | null | undefined) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('es-CL', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
   })
 }
 
@@ -106,9 +88,27 @@ export function fmtMoney(n: number | null | undefined, currency = 'CLP') {
   }).format(n)
 }
 
-export function deliverableProgress(deliverables: CampaignDeliverable[]) {
-  const total = deliverables.length
-  const done  = deliverables.filter(isDeliverableComplete).length
-  const pct   = total > 0 ? Math.round((done / total) * 100) : 0
-  return { total, done, pct }
+// Única normalización de campaigns.campaign_benefits (admin y marca, crear y editar).
+export function normalizeCampaignBenefits(value: unknown) {
+  if (!Array.isArray(value)) return []
+  const types = new Set(['product', 'experience', 'meal', 'ticket', 'gift_card', 'service', 'sales_commission', 'other'])
+  const rules = new Set(['deliverables_completed', 'sales_target', 'attendance', 'accepted', 'manual', 'raffle'])
+  return value.flatMap(raw => {
+    if (!raw || typeof raw !== 'object') return []
+    const benefit = raw as Record<string, unknown>
+    const benefitType = String(benefit.benefit_type ?? '')
+    const activationRule = String(benefit.activation_rule ?? '')
+    const description = String(benefit.description ?? '').trim()
+    if (!types.has(benefitType) || !rules.has(activationRule) || !description) return []
+    return [{
+      benefit_type: benefitType,
+      description,
+      quantity: Math.max(1, Math.trunc(Number(benefit.quantity) || 1)),
+      estimated_value: benefit.estimated_value == null ? null : Math.max(0, Number(benefit.estimated_value) || 0),
+      commission_rate: benefitType === 'sales_commission' ? Math.min(100, Math.max(0, Number(benefit.commission_rate) || 0)) : null,
+      currency: typeof benefit.currency === 'string' ? benefit.currency : 'CLP',
+      activation_rule: activationRule,
+      sales_target: activationRule === 'sales_target' ? Math.max(1, Math.trunc(Number(benefit.sales_target) || 1)) : null,
+    }]
+  })
 }

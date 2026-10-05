@@ -463,7 +463,6 @@ export function DataQualityClient() {
 {/* Ranking por comuna / nicho */}
           {report && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <RankingList title="Ranking por comuna oficial" items={report.communeRanking} paramName="commune" />
               <RankingList title="Ranking por nicho" items={report.nicheRanking} paramName="niche" />
             </div>
           )}

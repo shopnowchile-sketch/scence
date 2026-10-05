@@ -1,5 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
+import { loadLocationRows, type LocationNode } from '@/lib/influencer-location'
+
+/**
+ * Estado de la ubicación canónica (influencers.location_id → locations):
+ * - ok: location_id resuelve a una ubicación activa con toda su cadena activa.
+ * - missing: location_id IS NULL → "Sin ubicación".
+ * - orphan: location_id (o un ancestro) no existe en locations.
+ * - inactive: la ubicación o un ancestro está inactivo.
+ * Nunca se usa country/city/commune legacy como respaldo.
+ */
+export type LocationStatus = 'ok' | 'missing' | 'orphan' | 'inactive'
 
 export interface ScanInfluencer {
   id: string
@@ -10,16 +20,40 @@ export interface ScanInfluencer {
   instagram_url: string | null
   instagram_username: string | null
   followers: number
-  commune: string | null
   location_id: string | null
+  location_status: LocationStatus
+  /** Cadena de locations desde la raíz (país) hasta location_id; vacía si status ≠ ok. */
+  location_path: GeographyNode[]
   address: string | null
-  categories: string[] | null
 }
 
-export interface RankingItem {
-  value: string | null
-  label: string
-  count: number
+export interface GeographyNode {
+  id: string
+  parent_id: string | null
+  name: string
+  level: LocationNode['level']
+}
+
+/** Nodo usado por alguna influencer; `direct` = influencers cuyo location_id es este nodo. */
+export interface GeographyCountNode extends GeographyNode {
+  direct: number
+}
+
+/** Fila mínima para los listados del drilldown (sin email ni datos de contacto). */
+export interface GeographyInfluencer {
+  id: string
+  display_name: string | null
+  instagram_username: string | null
+  is_active: boolean
+  location_status: LocationStatus
+  /** location_id solo si la ubicación es válida; null en cualquier otro caso. */
+  location_id: string | null
+  /**
+   * Solo presentación, nunca se escribe: si no tiene Instagram pero su nombre
+   * es "@usuario", 'conflict' = ese usuario ya es el Instagram de otra ficha;
+   * 'pending' = no está en ninguna otra ficha. null en cualquier otro caso.
+   */
+  instagram_hint: 'conflict' | 'pending' | null
 }
 
 export interface DuplicateGroup {
@@ -30,21 +64,14 @@ export interface DuplicateGroup {
 }
 
 export interface DataQualityReport {
-  total: number
-  active: number
-  inactive: number
-  withoutInstagram: number
-  withInstagram: number
-  withoutCommune: number
-  withoutAddress: number
-  missingAnyRequired: number
-  duplicateGroups: number
-  duplicateRecords: number
-  duplicatesByEmail: number
-  duplicatesByInstagram: number
-  duplicatesByMixed: number
-  communeRanking: RankingItem[]
-  nicheRanking: RankingItem[]
+  /**
+   * Nodos de locations con influencers (y sus ancestros), con conteo directo.
+   * Los totales por país/región/comuna se derivan sumando el subárbol.
+   * Solo incluye ubicaciones válidas (status ok); el resto va en
+   * geographyInfluencers con su location_status.
+   */
+  geographyNodes: GeographyCountNode[]
+  geographyInfluencers: GeographyInfluencer[]
 }
 
 function normUrl(url: string | null): string | null {
@@ -93,7 +120,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     const { data, error } = await admin
       .from('influencers')
       .select(`
-        id, display_name, email, is_active, created_at, location_id, address, categories,
+        id, display_name, email, is_active, created_at, location_id, address,
         social_profiles:influencer_social_profiles ( platform, profile_url, username, followers )
       `)
       .eq('organization_id', orgId)
@@ -121,10 +148,10 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
         instagram_url: ig?.profile_url ?? null,
         instagram_username: ig?.username ?? null,
         followers: totalFollowers,
-        commune: null,
         location_id: (inf as { location_id?: string | null }).location_id ?? null,
+        location_status: 'missing',
+        location_path: [],
         address: (inf as { address?: string | null }).address ?? null,
-        categories: (inf as { categories?: string[] | null }).categories ?? null,
       })
     }
 
@@ -132,12 +159,35 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     from += PAGE
   }
 
-  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
-  return all.map(inf => ({
-    ...inf,
-    location_id: inf.location_id ?? null,
-    commune: inf.location_id ? (locationDisplayById.get(inf.location_id)?.commune ?? null) : null,
-  }))
+  const locationsById = new Map((await loadLocationRows(admin)).map(row => [row.id, row]))
+  return all.map(inf => {
+    const resolved = resolveLocation(inf.location_id, locationsById)
+    return { ...inf, ...resolved }
+  })
+}
+
+function resolveLocation(
+  locationId: string | null,
+  locationsById: Map<string, LocationNode>,
+): Pick<ScanInfluencer, 'location_status' | 'location_path'> {
+  if (!locationId) return { location_status: 'missing', location_path: [] }
+
+  const path: GeographyNode[] = []
+  const visited = new Set<string>()
+  let currentId: string | null = locationId
+  while (currentId) {
+    const node = locationsById.get(currentId)
+    if (!node || visited.has(currentId)) return { location_status: 'orphan', location_path: [] }
+    if (!node.is_active) return { location_status: 'inactive', location_path: [] }
+    visited.add(currentId)
+    path.unshift({ id: node.id, parent_id: node.parent_id, name: node.name, level: node.level })
+    currentId = node.parent_id
+  }
+
+  return {
+    location_status: 'ok',
+    location_path: path,
+  }
 }
 
 function mergeOverlappingGroups(rawGroups: DuplicateGroup[]): DuplicateGroup[] {
@@ -216,93 +266,41 @@ export function findDuplicates(scan: ScanInfluencer[]): DuplicateGroup[] {
   return mergeOverlappingGroups(rawGroups)
 }
 
-function normalizeRankingKey(value: string): string {
-  return value
-    .normalize('NFC')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLocaleLowerCase('es-CL')
-}
-
-function buildRanking(
-  scan: ScanInfluencer[],
-  getValues: (i: ScanInfluencer) => (string | null)[],
-  noneLabel: string,
-): RankingItem[] {
-  const counts = new Map<string, { label: string; count: number }>()
-  let none = 0
-
+/** Vista geográfica de Data Quality: se calcula en cada request, no se guarda. */
+export function buildReport(scan: ScanInfluencer[]): DataQualityReport {
+  const usedNodes = new Map<string, GeographyCountNode>()
   for (const inf of scan) {
-    const values = Array.from(new Set(
-      getValues(inf)
-        .map(v => v?.normalize('NFC').replace(/\s+/g, ' ').trim())
-        .filter((v): v is string => Boolean(v))
-    ))
-
-    if (values.length === 0) {
-      none++
-      continue
-    }
-
-    for (const value of values) {
-      const key = normalizeRankingKey(value)
-      const existing = counts.get(key)
-      counts.set(key, {
-        // Geography comes from locations, so the first label is already the
-        // official catalog spelling (e.g. "Las Condes", never "Las condes").
-        label: existing?.label ?? value,
-        count: (existing?.count ?? 0) + 1,
-      })
-    }
+    inf.location_path.forEach((node, idx) => {
+      const entry = usedNodes.get(node.id) ?? { ...node, direct: 0 }
+      if (idx === inf.location_path.length - 1) entry.direct++
+      usedNodes.set(node.id, entry)
+    })
   }
 
-  const items: RankingItem[] = Array.from(counts.values()).map(({ label, count }) => ({
-    value: label,
-    label,
-    count,
-  }))
-
-  items.push({ value: null, label: noneLabel, count: none })
-  return items.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'es-CL'))
-}
-
-export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
-  const active = scan.filter(i => i.is_active).length
-  const withInstagram = scan.filter(i => extractInstagramHandle(i.instagram_url, i.instagram_username)).length
-  const withoutCommune = scan.filter(i => !i.commune || !i.commune.trim()).length
-  const withoutAddress = scan.filter(i => !i.address || !i.address.trim()).length
-  const missingAnyRequired = scan.filter(i =>
-    !extractInstagramHandle(i.instagram_url, i.instagram_username) || !i.commune?.trim() || !i.address?.trim()
-  ).length
-
-  const dupRecordIds = new Set<string>()
-  let byEmail = 0, byInstagram = 0, byMixed = 0
-  for (const g of groups) {
-    g.influencers.forEach(i => dupRecordIds.add(i.id))
-    if (g.type === 'email') byEmail += g.influencers.length - 1
-    else if (g.type === 'instagram') byInstagram += g.influencers.length - 1
-    else byMixed += g.influencers.length - 1
+  const instagramOwner = new Map<string, string>()
+  for (const inf of scan) {
+    const handle = extractInstagramHandle(inf.instagram_url, inf.instagram_username)
+    if (handle && !instagramOwner.has(handle)) instagramOwner.set(handle, inf.id)
   }
-
-  const communeRanking = buildRanking(scan, i => [i.commune], 'Sin comuna oficial')
-  const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
+  const instagramHint = (inf: ScanInfluencer): GeographyInfluencer['instagram_hint'] => {
+    if (extractInstagramHandle(inf.instagram_url, inf.instagram_username)) return null
+    const fromName = /^@/.test(inf.display_name?.trim() ?? '') ? normHandle(inf.display_name) : null
+    if (!fromName) return null
+    const owner = instagramOwner.get(fromName)
+    return owner && owner !== inf.id ? 'conflict' : 'pending'
+  }
 
   return {
-    total: scan.length,
-    active,
-    inactive: scan.length - active,
-    withoutInstagram: scan.length - withInstagram,
-    withInstagram,
-    withoutCommune,
-    withoutAddress,
-    missingAnyRequired,
-    duplicateGroups: groups.length,
-    duplicateRecords: dupRecordIds.size,
-    duplicatesByEmail: byEmail,
-    duplicatesByInstagram: byInstagram,
-    duplicatesByMixed: byMixed,
-    communeRanking,
-    nicheRanking,
+    geographyNodes: Array.from(usedNodes.values()),
+    geographyInfluencers: scan.map(i => ({
+      id: i.id,
+      display_name: i.display_name,
+      instagram_username: extractInstagramHandle(i.instagram_url, i.instagram_username),
+      is_active: i.is_active,
+      location_status: i.location_status,
+      location_id: i.location_status === 'ok' ? i.location_id : null,
+      instagram_hint: instagramHint(i),
+    })),
   }
 }
 

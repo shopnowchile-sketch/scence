@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       *,
       items:payroll_items (
         *,
-        influencer:influencers (id, display_name, avatar_url, city, country)
+        influencer:influencers (id, display_name, avatar_url)
       )
     `, { count: 'exact' })
     .order('created_at', { ascending: false })

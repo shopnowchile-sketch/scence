@@ -4,6 +4,7 @@ import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
+import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { cancelInfluencerPayPalAtPeriodEnd, persistInfluencerProCancellation } from '@/lib/influencer-paypal'
 
@@ -350,7 +351,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
     .eq('id', params.id)
     .single()
 
-  return NextResponse.json({ data: fresh ?? data })
+  // Geografía de la respuesta: location_id → locations, nunca columnas legacy.
+  const responseRow = (fresh ?? data) as ({ location_id?: string | null } & Record<string, unknown>) | null
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+  return NextResponse.json({ data: responseRow ? withOfficialInfluencerLocation(responseRow, locationDisplayById) : responseRow })
 }
 
 // ── PATCH /api/influencers/[id] — partial update ──────────────────────────────

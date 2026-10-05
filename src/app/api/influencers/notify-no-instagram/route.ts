@@ -39,15 +39,13 @@ export async function POST(req: NextRequest) {
     const scan = await loadScan(admin, orgId)
     const missingInstagram = scan.filter(i => i.is_active !== false && !i.instagram_url && !i.instagram_username && i.email)
 
-    // Geography is canonical: commune must be derived from location_id.
-    // Do not read the legacy influencers.commune column here.
-    // loadScan() already resolves location_id through the official hierarchy
-    // and is fully paginated, so this avoids a second scan and prevents the
-    // reminder count from drifting away from the Data Quality report.
+    // Ubicación canónica: location_id → locations, resuelta por loadScan()
+    // (mismo criterio que el reporte de Data Quality y que /apply). Falta
+    // ubicación si location_id es null, huérfano o inactivo.
     const missingAddressOrCommune = scan.filter(
       i => i.is_active !== false
         && i.email
-        && (!i.address?.trim() || !i.commune?.trim())
+        && (!i.address?.trim() || i.location_status !== 'ok')
     )
 
     const targetsById = new Map<string, { id: string; display_name: string | null; email: string }>()

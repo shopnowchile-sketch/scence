@@ -1,26 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
-import { loadScan, findDuplicates, buildReport } from '@/lib/influencers/dataQuality'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { loadScan, buildReport } from '@/lib/influencers/dataQuality'
 
 // Nunca cachear (ver nota en /api/influencers/duplicates/route.ts).
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// GET /api/influencers/data-quality — métricas de calidad de datos del roster
+// GET /api/influencers/data-quality — vista geográfica del roster (location_id → locations)
 export async function GET(_req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  // Expone email/Instagram/ubicación de todo el roster: solo admin de plataforma.
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
   try {
     const scan = await loadScan(admin, orgId)
-    const groups = findDuplicates(scan)
-    return NextResponse.json({ report: buildReport(scan, groups) })
+    return NextResponse.json({ report: buildReport(scan) })
   } catch (e) {
     console.error('[GET data-quality]', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error' }, { status: 500 })

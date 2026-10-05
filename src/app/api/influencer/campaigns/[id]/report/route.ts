@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data: influencer } = await admin
     .from('influencers')
     .select(`
-      id, display_name, avatar_url, email, phone, city, country,
+      id, display_name, avatar_url, email, phone,
       influencer_social_profiles (platform, username, followers, engagement_rate)
     `)
     .eq('user_id', user.id)

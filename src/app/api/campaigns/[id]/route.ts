@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
@@ -72,7 +73,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, fee, status, notes, application_status, origin, metadata,
         influencer:influencers (
-          id, display_name, email, avatar_url, city, country, commune, categories, rating,
+          id, display_name, email, avatar_url, location_id, categories, rating,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),
@@ -113,9 +114,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     admin,
     (data.campaign_influencers ?? []).map((ci: { influencer?: { id?: string } | null }) => ci.influencer?.id).filter((id: string | undefined): id is string => Boolean(id))
   )
-  const campaignInfluencersWithPlan = (data.campaign_influencers ?? []).map((ci: { influencer?: Record<string, unknown> | null }) => ({
+  // Geografía: solo location_id → locations (nunca columnas legacy).
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+  const campaignInfluencersWithPlan = (data.campaign_influencers ?? []).map((ci: { influencer?: (Record<string, unknown> & { location_id?: string | null }) | null }) => ({
     ...ci,
-    influencer: ci.influencer ? { ...ci.influencer, is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) } : null,
+    influencer: ci.influencer
+      ? { ...withOfficialInfluencerLocation(ci.influencer, locationDisplayById), is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) }
+      : null,
   }))
 
   const campaignMetadata =

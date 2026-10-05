@@ -57,6 +57,8 @@ export interface Influencer {
   email: string | null
   phone: string | null
   whatsapp: string | null
+  // country/city/commune: SOLO valores derivados de location_id → locations
+  // (overlay de la API). Nunca leer ni escribir las columnas legacy.
   country: string | null
   city: string | null
   commune: string | null
@@ -444,8 +446,9 @@ export interface InfluencerFilters {
   // followers/engagement_rate quedan en el tipo por compatibilidad con la UI histórica,
   // pero /api/influencers no puede ordenar por ellos (viven en el join
   // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
-  // Columnas que sí ordenan de verdad server-side: display_name, rating, commune,
-  // city, country, is_verified, created_at, updated_at. 'plan' tampoco es columna
+  // Columnas que sí ordenan de verdad server-side: display_name, rating,
+  // is_verified, created_at, updated_at. commune/city/country se ordenan en
+  // memoria con location_id → locations (no son columnas de orden). 'plan' tampoco es columna
   // directa — mismo tratamiento server-side que followers/engagement_rate.
   sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at' | 'plan'
   sortOrder: 'asc' | 'desc'

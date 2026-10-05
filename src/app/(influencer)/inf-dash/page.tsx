@@ -66,7 +66,7 @@ type InfluencerProfile = {
   avatar_url: string | null
   email: string | null
   address?: string | null
-  commune?: string | null
+  location_id?: string | null
   birth_date?: string | null
   influencer_social_profiles?: SocialProfile[]
 }
@@ -89,7 +89,7 @@ function missingProfileItems(profile: InfluencerProfile | null): MissingProfileI
   )
   if (!hasInstagram) missing.push({ label: 'Instagram', section: 'redes' })
   if (!profile.address?.trim()) missing.push({ label: 'Dirección', section: 'ubicacion' })
-  if (!profile.commune?.trim()) missing.push({ label: 'Comuna', section: 'ubicacion' })
+  if (!profile.location_id?.trim()) missing.push({ label: 'Comuna', section: 'ubicacion' })
   if (!profile.birth_date?.trim()) missing.push({ label: 'Fecha de nacimiento', section: 'personal' })
   return missing
 }

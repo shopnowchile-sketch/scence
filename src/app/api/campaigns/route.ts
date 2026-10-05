@@ -4,6 +4,7 @@ import { getOrgId, getUserRole, isPlatformAdmin, resolveBrandAccess } from '@/li
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
+import { PhysicalLocationError, resolvePhysicalLocation } from '@/lib/resolvePhysicalLocation'
 
 type CampaignMetricRow = {
   campaign_id: string
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
   let query = summary
     ? admin.from('campaigns').select('id, status, budget_total, budget_spent').limit(5000)
     : admin.from('campaigns')
-      .select('*, brand:brands!brand_id(id, name, logo_url)', { count: 'exact' })
+      .select('*, brand:brands!brand_id(id, name, logo_url), location:locations(id, name, address, level, type, is_private, is_active)', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range((page - 1) * limit, page * limit - 1)
 
@@ -286,6 +287,13 @@ export async function POST(request: NextRequest) {
     application_deadline,
     max_influencers,
     metadata: incomingMetadata,
+    location_id,
+    venue_name,
+    address,
+    commune,
+    city,
+    region,
+    country,
   } = body as Record<string, unknown>
 
   // Validate required fields
@@ -302,6 +310,29 @@ export async function POST(request: NextRequest) {
 
   if (!orgId) {
     return NextResponse.json({ error: 'Organización no encontrada. Recarga la página.' }, { status: 400 })
+  }
+
+  let canonicalLocationId: string | null = typeof location_id === 'string' ? location_id : null
+  const hasPhysicalHints = [address, venue_name, commune, city, region].some(value => typeof value === 'string' && value.trim() !== '')
+  if (canonicalLocationId || hasPhysicalHints) {
+    try {
+      const resolved = await resolvePhysicalLocation(admin, {
+        locationId: canonicalLocationId,
+        venueName: typeof venue_name === 'string' ? venue_name : null,
+        address: typeof address === 'string' ? address : null,
+        commune: typeof commune === 'string' ? commune : null,
+        city: typeof city === 'string' ? city : null,
+        region: typeof region === 'string' ? region : null,
+        country: typeof country === 'string' ? country : null,
+        organizationId: orgId,
+      })
+      if (resolved.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+      if (resolved.matchType === 'insufficient_data') return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+      canonicalLocationId = resolved.locationId
+    } catch (error) {
+      if (error instanceof PhysicalLocationError) return NextResponse.json({ error: error.message }, { status: error.status })
+      throw error
+    }
   }
 
   const { data, error } = await admin
@@ -327,6 +358,7 @@ export async function POST(request: NextRequest) {
       tags: tags ?? [],
       brief_url: brief_url ?? null,
       brand_id: brand_id ?? null,
+      location_id: canonicalLocationId,
       commission_rate: commission_rate ?? null,
       metadata: {
         ...(incomingMetadata && typeof incomingMetadata === 'object' && !Array.isArray(incomingMetadata) ? incomingMetadata as Record<string, unknown> : {}),

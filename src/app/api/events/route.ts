@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     campaign_id,
     image_url,
     status = 'draft',
-  } = body as Record<string, unknown>
+  } = body
 
   if (!name || typeof name !== 'string' || name.trim() === '') {
     return NextResponse.json({ error: 'name is required' }, { status: 422 })
@@ -89,13 +89,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'event_date is required' }, { status: 422 })
   }
 
+  const locationId = typeof location_id === 'string' ? location_id : null
+  const legacyLocation = typeof location === 'string' ? location : null
+  const isVirtual = is_virtual === true
+
   let resolvedLocation
   try {
     resolvedLocation = await resolvePhysicalLocation(admin, {
-      locationId: location_id ?? null,
-      location: location ?? null,
+      locationId,
+      location: legacyLocation,
       locationDetails: null,
-      isVirtual: is_virtual === true,
+      isVirtual,
     })
   } catch (error) {
     if (error instanceof PhysicalLocationError) {
@@ -111,17 +115,17 @@ export async function POST(request: NextRequest) {
     .from('events')
     .insert({
       organization_id: orgId,
-      campaign_id: campaign_id ?? null,
-      name: (name as string).trim(),
-      description: description ?? null,
+      campaign_id: typeof campaign_id === 'string' ? campaign_id : null,
+      name: name.trim(),
+      description: typeof description === 'string' ? description : null,
       event_date,
       location: canonicalLocation,
       location_id: canonicalLocationId,
-      is_virtual,
-      virtual_link: virtual_link ?? null,
-      capacity: capacity ?? null,
-      status,
-      image_url: image_url ?? null,
+      is_virtual: isVirtual,
+      virtual_link: typeof virtual_link === 'string' ? virtual_link : null,
+      capacity: typeof capacity === 'number' ? capacity : null,
+      status: typeof status === 'string' ? status : 'draft',
+      image_url: typeof image_url === 'string' ? image_url : null,
     })
     .select()
     .single()

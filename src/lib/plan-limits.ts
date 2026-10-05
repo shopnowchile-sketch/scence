@@ -157,20 +157,6 @@ export const PLAN_ERROR_CODES = {
   INFLUENCER_BASE:  'PLAN_LIMIT_INFLUENCER_BASE',
 } as const
 
-/**
- * Regla centralizada: ¿este plan puede ver TODA la base de influencers SCENCE
- * (marketplace/catálogo completo) o solo las relacionadas a sus campañas?
- * Solo Pro puede ver la base completa. Basic y Growth ven únicamente su roster y postulantes.
- */
-export function canViewFullInfluencerBase(orgPlan: string | null | undefined): boolean {
-  return getPlanLimits(orgPlan).can_view_full_influencer_base
-}
-
-export function fullInfluencerBaseMessage(orgPlan: string | null | undefined): string {
-  const limits = getPlanLimits(orgPlan)
-  return `Tu plan ${limits.label} no incluye el catálogo completo de influencers. Publica una campaña pública para recibir postulaciones, o sube a Pro para explorar toda la base e invitar directamente.`
-}
-
 // ── Mensajes de error estandarizados ─────────────────────────────────────────
 
 export function campaignLimitMessage(orgPlan: string | null | undefined): string {

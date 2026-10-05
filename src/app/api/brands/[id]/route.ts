@@ -3,17 +3,11 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-
-async function requirePlatformAdmin(user: { id: string; user_metadata: Record<string, unknown> }, admin: ReturnType<typeof createAdminClient>) {
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const role = orgId ? await getUserRole(user.id, orgId, admin) : null
-  return Boolean(role?.isAdmin)
-}
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
@@ -21,7 +15,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!await requirePlatformAdmin(user, admin)) {
+  if (!await isPlatformAdmin(user.id, admin)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -105,7 +99,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!await requirePlatformAdmin(user, admin)) {
+  if (!await isPlatformAdmin(user.id, admin)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -154,9 +148,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (newEmail && (newEmail !== previousEmailNormalized || !currentBrand.user_id)) {
       // Cambio real de correo o reparación de owner → gate de super_admin.
       // FIX (2026-09-06): este gate leía profiles.role, una tabla distinta a la
-      // que usa requirePlatformAdmin (organization_members) unas líneas más
+      // que usa isPlatformAdmin (organization_members) unas líneas más
       // arriba en esta misma ruta. Ahora ambos usan la misma fuente canónica.
-      if (!await requirePlatformAdmin(user, admin)) {
+      if (!await isPlatformAdmin(user.id, admin)) {
         return NextResponse.json(
           { error: 'Solo un super_admin puede cambiar el correo del owner de una marca' },
           { status: 403 },
@@ -431,7 +425,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!await requirePlatformAdmin(user, admin)) {
+  if (!await isPlatformAdmin(user.id, admin)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

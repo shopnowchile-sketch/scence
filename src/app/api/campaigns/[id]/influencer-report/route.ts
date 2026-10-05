@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       id, display_name, avatar_url, email, phone,
       influencer_social_profiles (platform, username, followers, engagement_rate)
     `).eq('id', influencer_id).single(),
-    admin.from('campaign_influencers').select('fee, currency, status, notes')
+    admin.from('campaign_influencers').select('fee, currency, notes')
       .eq('campaign_id', params.id).eq('influencer_id', influencer_id).single(),
   ])
 

@@ -341,46 +341,6 @@ export function campaignApplicationApprovedEmail({
 </html>`
 }
 
-export function campaignNewApplicationEmail({
-  recipientName,
-  influencerName,
-  campaignName,
-  message,
-  reviewUrl,
-}: {
-  recipientName: string
-  influencerName: string
-  campaignName: string
-  message?: string | null
-  reviewUrl: string
-}): string {
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Nueva postulación</title></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:32px 0">
-  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
-    <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:32px;text-align:center">
-      <div style="font-size:36px">📥</div>
-    </div>
-    <div style="padding:32px">
-      <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">Hola ${recipientName}</h1>
-      <p style="color:#6b7280;font-size:15px;line-height:1.6;margin:0 0 24px">
-        <strong style="color:#111827">${influencerName}</strong> se postuló a tu campaña
-        <strong style="color:#7c3aed">${campaignName}</strong>. Revisa su perfil y acéptala o recházala.
-      </p>
-      ${message ? `<div style="background:#f3f4f6;border-radius:10px;padding:16px;margin-bottom:24px;font-size:14px;color:#374151;line-height:1.6"><em>"${message}"</em></div>` : ''}
-      <a href="${reviewUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px">
-        Revisar postulación →
-      </a>
-    </div>
-    <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
-      <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence</p>
-    </div>
-  </div>
-</body>
-</html>`
-}
-
 export function campaignOpenAvailableEmail({
   influencerName,
   campaignName,
@@ -682,10 +642,6 @@ export function attendanceReminderEmail({
 }): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
   return `<!doctype html><html><body style="margin:0;background:#f7f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1f2937"><div style="max-width:540px;margin:32px auto;background:#fff;border-radius:18px;overflow:hidden"><div style="padding:28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff"><div style="font-size:28px">✋</div><b style="font-size:20px">Confirma tu asistencia</b></div><div style="padding:28px"><p>Hola ${influencerName},</p><p>Te necesitamos para confirmar si asistirás a <b>${campaignName}</b>.</p>${message ? `<div style="padding:14px;border-radius:10px;background:#f5f3ff">${message}</div>` : ''}<p><b>Fecha límite:</b> ${dueDate}</p><p style="padding:12px;border-radius:10px;background:#fff7ed;color:#9a3412"><b>Importante:</b> si no confirmas dentro del plazo, tu cupo se liberará para poder invitar a otra creadora.</p><a href="${actionUrl || `${appUrl}/inf-campaign/${campaignId}`}" style="display:block;padding:14px;border-radius:10px;background:#7c3aed;color:#fff;text-align:center;font-weight:700;text-decoration:none">${buttonLabel}</a><p style="font-size:12px;color:#6b7280">Responde Sí, asistiré o No podré asistir. Tu respuesta ayuda a organizar la experiencia.</p></div></div></body></html>`
-}
-
-export function attendanceClosedEmail({ influencerName }: { influencerName: string }): string {
-  return `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7fb;margin:0;padding:32px;color:#1f2937"><div style="max-width:540px;margin:auto;background:#fff;border-radius:18px;padding:28px"><p>Hola ${influencerName},</p><p>Lo sentimos, no confirmaste tu asistencia antes de la fecha límite y los cupos se cerraron.</p></div></body></html>`
 }
 
 export function campaignCustomMessageEmail({

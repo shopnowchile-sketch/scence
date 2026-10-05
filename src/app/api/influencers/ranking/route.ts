@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
     fetchAllRows(
       (from, to) => admin
         .from('campaign_influencers')
-        .select('id, influencer_id, status, campaign:campaigns(name)')
+        .select('id, influencer_id, campaign:campaigns(name)')
         .range(from, to),
       { maxRows: 5000 }
     ),
@@ -110,7 +110,6 @@ export async function GET(req: NextRequest) {
   const campaignInfluencers = (campaignInfluencersRaw ?? []).map(ci => ({
     id: ci.id,
     influencer_id: ci.influencer_id,
-    status: ci.status,
     campaign_name: (ci.campaign as { name?: string | null } | null)?.name ?? null,
   }))
 

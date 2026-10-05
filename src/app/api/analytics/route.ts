@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     // Influencer stats — top by campaigns (scoped by org via campaign join)
     admin.from('campaign_influencers')
       .select(`
-        influencer_id, fee, status,
+        influencer_id, fee,
         influencer:influencers (id, display_name, avatar_url,
           influencer_social_profiles (platform, followers, engagement_rate, is_primary)),
         campaign:campaigns!inner (organization_id)

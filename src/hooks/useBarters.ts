@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import type { Barter, BarterStatus, CreateBarterInput } from '@/types'
+import type { Barter } from '@/types'
 
 const key = (campaignId: string) => ['barters', campaignId] as const
 
@@ -15,30 +15,6 @@ export function useCampaignBarters(campaignId: string) {
       const json = await res.json()
       return json.data as Barter[]
     },
-  })
-}
-
-// ── Crear canje ───────────────────────────────────────────────────────────────
-export function useCreateBarter(campaignId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: CreateBarterInput) => {
-      const res = await fetch(`/api/campaigns/${campaignId}/barters`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? 'Error al crear canje')
-      }
-      return (await res.json()).data as Barter
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: key(campaignId) })
-      toast.success('Canje creado ✓')
-    },
-    onError: (e: Error) => toast.error(e.message),
   })
 }
 
@@ -64,12 +40,9 @@ export function useInitializeCampaignBarters(campaignId: string) {
   })
 }
 
-// ── Avanzar estado / editar ───────────────────────────────────────────────────
+// ── Editar canje ───────────────────────────────────────────────────
 interface BarterActionInput {
   barter_id: string
-  status?: BarterStatus
-  note?: string
-  evidence_url?: string
   patch?: Record<string, unknown>
 }
 
@@ -107,28 +80,5 @@ export function useBulkBenefitStatus(campaignId: string) {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: key(campaignId) }),
     onError: (error: Error) => toast.error(error.message),
-  })
-}
-
-// ── Eliminar canje ────────────────────────────────────────────────────────────
-export function useDeleteBarter(campaignId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (barterId: string) => {
-      const res = await fetch(
-        `/api/campaigns/${campaignId}/barters?barter_id=${barterId}`,
-        { method: 'DELETE' }
-      )
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? 'Error al eliminar canje')
-      }
-      return res.json()
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: key(campaignId) })
-      toast.success('Canje eliminado')
-    },
-    onError: (e: Error) => toast.error(e.message),
   })
 }

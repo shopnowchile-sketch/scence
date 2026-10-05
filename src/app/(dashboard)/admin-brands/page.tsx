@@ -86,7 +86,7 @@ interface BrandInfluencer {
   id: string
   display_name: string
   avatar_url: string | null
-  status: string
+  application_status: 'pending' | 'accepted' | 'rejected'
   campaign_name: string
 }
 
@@ -173,7 +173,7 @@ export default function BrandsPage() {
             id: ci.influencer.id,
             display_name: ci.influencer.display_name,
             avatar_url: ci.influencer.avatar_url,
-            status: ci.status,
+            application_status: ci.application_status,
             campaign_name: r.campaign_name,
           })
         }
@@ -788,10 +788,10 @@ export default function BrandsPage() {
                         <p className="text-[10px] text-gray-400 truncate">{inf.campaign_name}</p>
                       </div>
                       <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0',
-                        inf.status === 'active' ? 'bg-green-100 text-green-700' :
-                        inf.status === 'applied' ? 'bg-amber-100 text-amber-700' :
+                        inf.application_status === 'accepted' ? 'bg-green-100 text-green-700' :
+                        inf.application_status === 'pending' ? 'bg-amber-100 text-amber-700' :
                         'bg-gray-100 text-gray-500')}>
-                        {inf.status === 'applied' ? '⏳ Solicitud' : inf.status === 'active' ? '✓ Activo' : inf.status}
+                        {inf.application_status === 'pending' ? '⏳ Solicitud' : inf.application_status === 'accepted' ? '✓ Activo' : 'Rechazada'}
                       </span>
                     </a>
                   ))}

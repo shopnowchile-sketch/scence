@@ -20,6 +20,7 @@ interface GeographyInfluencer {
   is_active: boolean
   location_status: LocationStatus
   location_id: string | null
+  instagram_hint: 'conflict' | 'pending' | null
 }
 
 interface GeographyNode {
@@ -81,7 +82,12 @@ function InfluencerList({ rows, showStatus }: { rows: GeographyInfluencer[]; sho
             <Link href={`/admin-influencers/${inf.id}`} className="flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg hover:bg-violet-50/60">
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-gray-900 truncate">{inf.display_name || '(sin nombre)'}</span>
-                <span className="block text-xs text-gray-400 truncate">{inf.instagram_username ? `@${inf.instagram_username}` : 'sin Instagram'}</span>
+                <span className={`block text-xs truncate ${inf.instagram_hint ? 'text-amber-600' : 'text-gray-400'}`}>
+                  {inf.instagram_username ? `@${inf.instagram_username}`
+                    : inf.instagram_hint === 'conflict' ? 'Instagram coincide con otra ficha'
+                    : inf.instagram_hint === 'pending' ? 'Instagram pendiente de resolver'
+                    : 'sin Instagram'}
+                </span>
               </span>
               <span className="flex items-center gap-2 flex-shrink-0">
                 {showStatus && inf.location_status !== 'ok' && <span className="badge badge-gray text-[10px]">{STATUS_LABELS[inf.location_status]}</span>}

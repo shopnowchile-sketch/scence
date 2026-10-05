@@ -48,6 +48,12 @@ export interface GeographyInfluencer {
   location_status: LocationStatus
   /** location_id solo si la ubicación es válida; null en cualquier otro caso. */
   location_id: string | null
+  /**
+   * Solo presentación, nunca se escribe: si no tiene Instagram pero su nombre
+   * es "@usuario", 'conflict' = ese usuario ya es el Instagram de otra ficha;
+   * 'pending' = no está en ninguna otra ficha. null en cualquier otro caso.
+   */
+  instagram_hint: 'conflict' | 'pending' | null
 }
 
 export interface DuplicateGroup {
@@ -271,6 +277,19 @@ export function buildReport(scan: ScanInfluencer[]): DataQualityReport {
     })
   }
 
+  const instagramOwner = new Map<string, string>()
+  for (const inf of scan) {
+    const handle = extractInstagramHandle(inf.instagram_url, inf.instagram_username)
+    if (handle && !instagramOwner.has(handle)) instagramOwner.set(handle, inf.id)
+  }
+  const instagramHint = (inf: ScanInfluencer): GeographyInfluencer['instagram_hint'] => {
+    if (extractInstagramHandle(inf.instagram_url, inf.instagram_username)) return null
+    const fromName = /^@/.test(inf.display_name?.trim() ?? '') ? normHandle(inf.display_name) : null
+    if (!fromName) return null
+    const owner = instagramOwner.get(fromName)
+    return owner && owner !== inf.id ? 'conflict' : 'pending'
+  }
+
   return {
     geographyNodes: Array.from(usedNodes.values()),
     geographyInfluencers: scan.map(i => ({
@@ -280,6 +299,7 @@ export function buildReport(scan: ScanInfluencer[]): DataQualityReport {
       is_active: i.is_active,
       location_status: i.location_status,
       location_id: i.location_status === 'ok' ? i.location_id : null,
+      instagram_hint: instagramHint(i),
     })),
   }
 }

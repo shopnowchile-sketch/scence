@@ -5,6 +5,7 @@ import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
+import { PhysicalLocationError, resolvePhysicalLocation } from '@/lib/resolvePhysicalLocation'
 
 // GET /api/brand-campaigns — campañas de la marca autenticada
 // Acepta los mismos filtros que /api/campaigns (status/type/platform/visibility/search)
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
   let query = admin
     .from('campaigns')
     .select(`
-      id, name, description, type, status, visibility, application_deadline,
+      id, name, description, type, status, visibility, application_deadline, location_id,
       max_influencers, start_date, end_date, created_at,
       budget_total, currency, hashtags, platforms,
       campaign_influencers (
@@ -152,6 +153,12 @@ export async function POST(req: NextRequest) {
     deliverable_templates?: DeliverableTemplateInput[]
     application_questions?: string[]
     campaign_benefits?: unknown[]
+    location_id?: string | null
+    venue_name?: string | null
+    commune?: string | null
+    city?: string | null
+    region?: string | null
+    country?: string | null
   }
 
   try { body = await req.json() } catch {
@@ -161,8 +168,31 @@ export async function POST(req: NextRequest) {
   const { name, type, visibility, description, start_date, end_date,
           budget_total, application_deadline, max_influencers,
           hashtags, social_tags, platforms, address, brief_url, metadata, deliverable_templates,
-          application_questions } = body
+          application_questions, location_id, venue_name, commune, city, region, country } = body
   const campaignBenefits = normalizeCampaignBenefits(body.campaign_benefits)
+
+  let canonicalLocationId: string | null = typeof location_id === 'string' ? location_id : null
+  const hasPhysicalHints = [address, venue_name, commune, city, region].some(value => typeof value === 'string' && value.trim() !== '')
+  if (canonicalLocationId || hasPhysicalHints) {
+    try {
+      const resolved = await resolvePhysicalLocation(admin, {
+        locationId: canonicalLocationId,
+        venueName: venue_name ?? null,
+        address: address ?? null,
+        commune: commune ?? null,
+        city: city ?? null,
+        region: region ?? null,
+        country: country ?? null,
+        organizationId: brand.organization_id,
+      })
+      if (resolved.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+      if (resolved.matchType === 'insufficient_data') return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+      canonicalLocationId = resolved.locationId
+    } catch (error) {
+      if (error instanceof PhysicalLocationError) return NextResponse.json({ error: error.message }, { status: error.status })
+      throw error
+    }
+  }
 
   if (!name?.trim()) return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
   if (!type) return NextResponse.json({ error: 'El tipo es requerido' }, { status: 422 })
@@ -175,6 +205,7 @@ export async function POST(req: NextRequest) {
     .insert({
       organization_id:      brand.organization_id,
       brand_id:             brand.id,
+      location_id:          canonicalLocationId,
       created_by_brand_id:  brand.id,
       created_by:           user.id,
       name:                 name.trim(),

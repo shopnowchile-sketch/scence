@@ -8,6 +8,12 @@ import type { LocationRow } from '@/lib/locations'
 export type PhysicalLocationValue = {
   locationId: string | null
   locationDisplay: string | null
+  venueName?: string | null
+  address?: string | null
+  commune?: string | null
+  city?: string | null
+  region?: string | null
+  country?: string | null
 }
 
 type Props = {
@@ -28,7 +34,7 @@ async function getLocations(params = ''): Promise<SearchNode[]> {
 
 export function PhysicalLocationPicker({ value, onChange, disabled = false }: Props) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Node[]>([])
+  const [results, setResults] = useState<SearchNode[]>([])
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -102,13 +108,24 @@ export function PhysicalLocationPicker({ value, onChange, disabled = false }: Pr
   )
 
   function selectPlace(place: SearchNode) {
-    const geography = (place.breadcrumb ?? [])
+    const breadcrumb = place.breadcrumb ?? []
+    const geography = breadcrumb
       .filter(item => item.level !== 'place')
       .map(item => item.name)
       .join(' · ')
+    const commune = breadcrumb.find(item => item.level === 'commune')?.name ?? null
+    const city = breadcrumb.find(item => item.level === 'city')?.name ?? null
+    const region = breadcrumb.find(item => item.level === 'region')?.name ?? null
+    const country = breadcrumb.find(item => item.level === 'country')?.name ?? null
     onChange({
       locationId: place.id,
       locationDisplay: [place.name, geography, place.address].filter(Boolean).join(' — '),
+      venueName: place.name,
+      address: place.address,
+      commune,
+      city,
+      region,
+      country,
     })
     setQuery('')
     setResults([])
@@ -143,6 +160,11 @@ export function PhysicalLocationPicker({ value, onChange, disabled = false }: Pr
         locationId: created.id,
         locationDisplay: [created.name, [commune, region, country].filter(Boolean).join(' · '), created.address]
           .filter(Boolean).join(' — '),
+        venueName: created.name,
+        address: created.address,
+        commune,
+        region,
+        country,
       })
       setCreating(false)
       setOpen(false)

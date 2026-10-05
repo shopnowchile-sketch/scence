@@ -18,6 +18,7 @@ type LocationRow = {
   campaign_count?: number
   booking_count?: number
   event_count?: number
+  breadcrumb?: Array<{ id: string; name: string; level: string }>
 }
 
 export async function GET(req: NextRequest) {
@@ -103,21 +104,22 @@ export async function GET(req: NextRequest) {
   for (const row of eventRows ?? []) if (row.location_id) eventCount.set(row.location_id, (eventCount.get(row.location_id) ?? 0) + 1)
 
   function geographyFor(id: string) {
-    const names: string[] = []
+    const items: Array<{ id: string; name: string; level: string }> = []
     const seen = new Set<string>()
     let current = geoById.get(id)
     while (current && current.parent_id && !seen.has(current.id)) {
       seen.add(current.id)
       current = geoById.get(current.parent_id)
-      if (current) names.unshift(current.name)
+      if (current) items.unshift({ id: current.id, name: current.name, level: current.level })
     }
-    return names.join(' · ')
+    return items
   }
 
   rows = rows.map(row => ({
     ...row,
     brand: row.brand_id ? { id: row.brand_id, name: brandById.get(row.brand_id) ?? 'Sin marca' } : null,
-    geography: geographyFor(row.id),
+    geography: geographyFor(row.id).map(item => item.name).join(' · '),
+    breadcrumb: geographyFor(row.id),
     campaign_count: campaignCount.get(row.id) ?? 0,
     booking_count: bookingCount.get(row.id) ?? 0,
     event_count: eventCount.get(row.id) ?? 0,

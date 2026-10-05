@@ -192,19 +192,27 @@ export async function POST(request: NextRequest) {
   }
   const ref = reference(subscription?.custom_id)
   if (!detailsResponse.ok || !ref) return NextResponse.json({ received: true })
-  const status = STATUS_MAP[subscription.status] ?? 'incomplete', start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString(), end = subscription.billing_info?.next_billing_time ?? start
+  const status = STATUS_MAP[subscription.status] ?? 'incomplete', start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString()
   const admin = createAdminClient()
-  const { data: existing, error: existingError } = await admin.from('subscriptions').select('id, organization_id, metadata').eq('paypal_subscription_id', id).maybeSingle()
+  const { data: existing, error: existingError } = await admin.from('subscriptions').select('id, organization_id, metadata, current_period_end, canceled_at').eq('paypal_subscription_id', id).maybeSingle()
   if (existingError) return NextResponse.json({ error: 'Unable to read subscription' }, { status: 500 })
   // Un evento de marca nunca modifica la fila de otra organización ni de una influencer.
   if (existing && (existing.organization_id !== ref.organizationId || isInfluencerSubscription(existing.metadata))) {
     console.error('[paypal/webhook] suscripción de marca no coincide con la fila existente; no se modifica', { id })
     return NextResponse.json({ received: true })
   }
-  // El plan pagado vive en la suscripción: al pasar a canceled/past_due deja de
-  // dar acceso (resolveBrandPlanAccess). El override administrativo no se toca.
+  // El plan pagado vive en la suscripción (resolveBrandPlanAccess): cancelar =
+  // no renovar; el acceso sigue hasta current_period_end. Una cancelación NUNCA
+  // retrocede el fin del período (PayPal no informa next_billing_time al
+  // cancelar). past_due no da acceso. El override administrativo no se toca.
+  const reportedEnd = payPalPaidThrough(subscription) ?? start
+  const storedEnd = existing?.current_period_end ? Date.parse(existing.current_period_end) : NaN
+  const end = status === 'canceled' && Number.isFinite(storedEnd) && storedEnd > Date.parse(reportedEnd)
+    ? new Date(storedEnd).toISOString()
+    : reportedEnd
   const metadata = { ...((existing?.metadata as Record<string, unknown> | null) ?? {}), account_type: 'brand' }
-  const row = { organization_id: ref.organizationId, plan_id: ref.planId, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: status === 'canceled' ? new Date().toISOString() : null, updated_at: new Date().toISOString() }
+  const canceledAt = status === 'canceled' ? (existing?.canceled_at ?? new Date().toISOString()) : null
+  const row = { organization_id: ref.organizationId, plan_id: ref.planId, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: canceledAt, updated_at: new Date().toISOString() }
   const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)
   if (error) return NextResponse.json({ error: 'Unable to sync subscription' }, { status: 500 })
   if (status === 'active') {

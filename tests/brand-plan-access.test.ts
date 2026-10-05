@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
+  brandSubscriptionGrantsAccess,
   computeBrandPlanAccess,
   isInfluencerSubscription,
   normalizePlanOverride,
@@ -53,7 +54,8 @@ test('una suscripción de influencer se reconoce como tal', () => {
 
 test('la lectura de suscripciones de marca descarta las de influencer (fuente única)', () => {
   const source = readFileSync(new URL('../src/lib/plan-limits.ts', import.meta.url), 'utf8')
-  assert.match(source, /if \(isInfluencerSubscription\(row\.metadata\)\) continue/)
+  assert.match(source, /if \(!brandSubscriptionGrantsAccess\(row, now\)\) continue/)
+  assert.match(source, /if \(isInfluencerSubscription\(subscription\.metadata\)\) return false/)
   // Sin fallback a organizations.subscription_plan.
   assert.doesNotMatch(source, /from\('organizations'\)/)
 })
@@ -70,4 +72,54 @@ test('el PATCH de campaña de marca resuelve el plan por la marca, no por la org
   const source = readFileSync(new URL('../src/app/api/brand/campaigns/[id]/route.ts', import.meta.url), 'utf8')
   assert.match(source, /resolveBrandPlan\(admin, brand\.id\)/)
   assert.doesNotMatch(source, /campaignBase\.organization_id, brand\.id/)
+})
+
+// ── Acceso por estado de la suscripción de marca (cancelar = no renovar) ──
+const NOW = Date.parse('2026-10-05T12:00:00Z')
+const sub = (status: string, periodEnd: string | null, metadata: unknown = { account_type: 'brand' }): BrandSubscriptionRow => ({
+  id: 's', organization_id: 'o', status, created_at: '2026-09-01', current_period_end: periodEnd,
+  paypal_subscription_id: 'I-Y', metadata, plan: { tier: 'growth' },
+})
+
+test('active → acceso', () => {
+  assert.equal(computeBrandPlanAccess(null, sub('active', '2026-09-01T00:00:00Z'), NOW).hasActiveAccess, true)
+})
+
+test('trialing → acceso', () => {
+  assert.equal(computeBrandPlanAccess(null, sub('trialing', null), NOW).hasActiveAccess, true)
+})
+
+test('canceled con período vigente → acceso hasta current_period_end', () => {
+  const access = computeBrandPlanAccess(null, sub('canceled', '2026-10-20T00:00:00Z'), NOW)
+  assert.equal(access.hasActiveAccess, true)
+  assert.equal(access.plan, 'growth')
+})
+
+test('canceled con período vencido → sin acceso', () => {
+  const access = computeBrandPlanAccess(null, sub('canceled', '2026-10-01T00:00:00Z'), NOW)
+  assert.equal(access.hasActiveAccess, false)
+  assert.equal(access.plan, 'basic')
+})
+
+test('past_due (suspendida) → sin acceso aunque el período no haya vencido', () => {
+  assert.equal(computeBrandPlanAccess(null, sub('past_due', '2026-10-20T00:00:00Z'), NOW).hasActiveAccess, false)
+})
+
+test('override → acceso aunque la suscripción haya vencido', () => {
+  const access = computeBrandPlanAccess('pro', sub('canceled', '2026-10-01T00:00:00Z'), NOW)
+  assert.equal(access.hasActiveAccess, true)
+  assert.equal(access.plan, 'pro')
+})
+
+test('suscripción de influencer → nunca da acceso Brand, ni activa', () => {
+  const influencer = { account_type: 'influencer', influencer_id: 'i1' }
+  assert.equal(brandSubscriptionGrantsAccess(sub('active', null, influencer), NOW), false)
+  assert.equal(computeBrandPlanAccess(null, sub('active', null, influencer), NOW).hasActiveAccess, false)
+})
+
+test('webhook de marca no retrocede el fin del período al cancelar', () => {
+  const source = readFileSync(new URL('../src/app/api/paypal/webhook/route.ts', import.meta.url), 'utf8')
+  const brandBranch = source.slice(source.indexOf('const ref = reference('))
+  assert.match(brandBranch, /payPalPaidThrough\(subscription\)/)
+  assert.match(brandBranch, /storedEnd > Date\.parse\(reportedEnd\)/)
 })

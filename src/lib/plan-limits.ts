@@ -107,11 +107,13 @@ export const BRAND_PLAN_USD_PRICING = {
 //
 // Regla:
 //   1. brands.subscription_plan_override = plan otorgado MANUALMENTE por un admin.
-//   2. Suscripción active/trialing de MARCA en la organización de la marca.
+//   2. Suscripción de MARCA de la organización de la marca que da acceso:
+//      active/trialing, o canceled con current_period_end futuro (cancelar =
+//      no renovar; el período pagado se respeta, igual que Influencer Pro).
 //      Una suscripción de influencer (metadata.account_type = 'influencer')
 //      jamás cuenta, aunque comparta organización o fila de subscription_plans.
 //   3. basic.
-// Acceso activo al portal = override administrativo o suscripción de marca activa.
+// Acceso activo al portal = override administrativo o suscripción de marca que da acceso.
 
 type SubscriptionMetadata = { account_type?: unknown } | null | undefined
 
@@ -143,8 +145,25 @@ export type BrandPlanAccess = {
   hasActiveAccess: boolean
 }
 
-/** Regla pura: override → suscripción de marca activa → basic. */
-export function computeBrandPlanAccess(override: unknown, activeBrandSubscription: BrandSubscriptionRow | null): BrandPlanAccess {
+/**
+ * ¿Esta suscripción de marca da acceso hoy? active/trialing siempre; canceled
+ * solo mientras dure el período pagado. past_due/incomplete nunca.
+ * (Misma regla que grantsPro de Influencer Pro, sin compartir código.)
+ */
+export function brandSubscriptionGrantsAccess(
+  subscription: Pick<BrandSubscriptionRow, 'status' | 'current_period_end' | 'metadata'>,
+  now: number = Date.now(),
+): boolean {
+  if (isInfluencerSubscription(subscription.metadata)) return false
+  if (subscription.status === 'active' || subscription.status === 'trialing') return true
+  return subscription.status === 'canceled'
+    && Boolean(subscription.current_period_end)
+    && new Date(subscription.current_period_end as string).getTime() > now
+}
+
+/** Regla pura: override → suscripción de marca que da acceso → basic. */
+export function computeBrandPlanAccess(override: unknown, brandSubscription: BrandSubscriptionRow | null, now: number = Date.now()): BrandPlanAccess {
+  const activeBrandSubscription = brandSubscription && brandSubscriptionGrantsAccess(brandSubscription, now) ? brandSubscription : null
   const manual = normalizePlanOverride(override)
   if (manual) {
     return { plan: manual, source: 'override', override: manual, subscription: activeBrandSubscription, hasActiveAccess: true }
@@ -157,20 +176,27 @@ export function computeBrandPlanAccess(override: unknown, activeBrandSubscriptio
 
 const BRAND_SUBSCRIPTION_SELECT = 'id, organization_id, status, created_at, current_period_end, paypal_subscription_id, metadata, plan:subscription_plans(tier)'
 
-/** Suscripciones de MARCA activas/trialing por organización (la más reciente primero). */
-async function loadActiveBrandSubscriptions(admin: SupabaseClient, organizationIds: string[]) {
+/**
+ * Suscripción de MARCA que da acceso, por organización. Prioridad: una
+ * active/trialing (la más reciente); si no hay, una canceled con período vigente.
+ */
+async function loadAccessGrantingBrandSubscriptions(admin: SupabaseClient, organizationIds: string[]) {
   const byOrganization = new Map<string, BrandSubscriptionRow>()
   if (organizationIds.length === 0) return byOrganization
   const { data, error } = await admin
     .from('subscriptions')
     .select(BRAND_SUBSCRIPTION_SELECT)
     .in('organization_id', organizationIds)
-    .in('status', ['active', 'trialing'])
+    .in('status', ['active', 'trialing', 'canceled'])
     .order('created_at', { ascending: false })
   if (error) throw new Error(`No se pudo leer la suscripción de la marca: ${error.message}`)
+  const now = Date.now()
   for (const row of (data ?? []) as unknown as BrandSubscriptionRow[]) {
-    if (isInfluencerSubscription(row.metadata)) continue
-    if (!byOrganization.has(row.organization_id)) byOrganization.set(row.organization_id, row)
+    if (!brandSubscriptionGrantsAccess(row, now)) continue
+    const current = byOrganization.get(row.organization_id)
+    const isRenewing = row.status === 'active' || row.status === 'trialing'
+    const currentIsRenewing = current?.status === 'active' || current?.status === 'trialing'
+    if (!current || (isRenewing && !currentIsRenewing)) byOrganization.set(row.organization_id, row)
   }
   return byOrganization
 }
@@ -180,7 +206,7 @@ type BrandPlanInput = { id: string; organization_id: string | null; subscription
 /** Plan y acceso de varias marcas (una sola lectura de suscripciones). */
 export async function resolveBrandPlanAccessMany(admin: SupabaseClient, brands: BrandPlanInput[]) {
   const organizationIds = Array.from(new Set(brands.map(b => b.organization_id).filter((id): id is string => Boolean(id))))
-  const subscriptions = await loadActiveBrandSubscriptions(admin, organizationIds)
+  const subscriptions = await loadAccessGrantingBrandSubscriptions(admin, organizationIds)
   return new Map(brands.map(b => [
     b.id,
     computeBrandPlanAccess(b.subscription_plan_override, b.organization_id ? subscriptions.get(b.organization_id) ?? null : null),

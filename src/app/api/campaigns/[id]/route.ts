@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
+import { withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import {
   DeliverableTemplateSyncError,
   normalizeDeliverableTemplates,
@@ -72,7 +73,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, fee, status, notes, application_status, origin, metadata,
         influencer:influencers (
-          id, display_name, email, avatar_url, city, country, commune, categories, rating,
+          id, display_name, email, avatar_url, location_id, categories, rating,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),
@@ -113,10 +114,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     admin,
     (data.campaign_influencers ?? []).map((ci: { influencer?: { id?: string } | null }) => ci.influencer?.id).filter((id: string | undefined): id is string => Boolean(id))
   )
-  const campaignInfluencersWithPlan = (data.campaign_influencers ?? []).map((ci: { influencer?: Record<string, unknown> | null }) => ({
-    ...ci,
-    influencer: ci.influencer ? { ...ci.influencer, is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) } : null,
-  }))
+  const campaignInfluencersWithPlan = await withOfficialInfluencerLocation(
+    admin,
+    (data.campaign_influencers ?? []).map((ci: { influencer?: Record<string, unknown> | null }) => ({
+      ...ci,
+      influencer: ci.influencer ? { ...ci.influencer, is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) } : null,
+    })),
+  )
 
   const campaignMetadata =
     data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)

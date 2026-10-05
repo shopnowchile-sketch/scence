@@ -272,6 +272,7 @@ export default function AdminSettingsLocationsPage() {
   const [modal, setModal] = useState<ModalState | null>(null)
   const [toggling, setToggling] = useState<string | null>(null)
   const [quality, setQuality] = useState<Record<string, number> | null>(null)
+  const [masterLocations, setMasterLocations] = useState<Array<Record<string, unknown>>>([])
 
   const inactiveParam = showInactive ? '&include_inactive=1' : ''
 
@@ -295,6 +296,15 @@ export default function AdminSettingsLocationsPage() {
       .then(j => setQuality(j.data))
       .catch(() => setQuality(null))
   }, [nodes.length])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      api<{ data: Array<Record<string, unknown>> }>('/api/locations/physical' + (query.trim() ? '?q=' + encodeURIComponent(query.trim()) : ''))
+        .then(j => setMasterLocations(j.data))
+        .catch(() => setMasterLocations([]))
+    }, 200)
+    return () => window.clearTimeout(timer)
+  }, [query])
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults(null); return }
@@ -478,6 +488,42 @@ export default function AdminSettingsLocationsPage() {
   return (
     <div className="max-w-4xl">
       {modal && <LocationModal state={modal} onClose={() => setModal(null)} onSaved={refreshTree} />}
+
+      <div className="card mb-3 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <h4 className="text-sm font-bold text-gray-900">Locations Master</h4>
+          <p className="text-xs text-gray-400 mt-0.5">Una sola Location física maestra, aunque sea utilizada por varias marcas.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 text-gray-400">
+              <tr>
+                <th className="px-4 py-2 text-left font-semibold">Lugar</th>
+                <th className="px-4 py-2 text-left font-semibold">Dirección</th>
+                <th className="px-4 py-2 text-left font-semibold">Geografía</th>
+                <th className="px-4 py-2 text-left font-semibold">Marca</th>
+                <th className="px-4 py-2 text-right font-semibold">Camp.</th>
+                <th className="px-4 py-2 text-right font-semibold">Bookings</th>
+                <th className="px-4 py-2 text-right font-semibold">Events</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {masterLocations.slice(0, 100).map(location => (
+                <tr key={String(location.id)} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5 font-semibold text-gray-900">{String(location.name ?? '—')}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{String(location.address ?? 'Sin dirección')}</td>
+                  <td className="px-4 py-2.5 text-gray-500">{String(location.geography ?? '—')}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{String((location.brand as { name?: string } | null)?.name ?? 'Compartida / sin marca')}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{Number(location.campaign_count ?? 0)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{Number(location.booking_count ?? 0)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{Number(location.event_count ?? 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {masterLocations.length === 0 && <div className="p-6 text-center text-xs text-gray-400">No hay Locations físicas visibles.</div>}
+        </div>
+      </div>
 
       {quality && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-3">

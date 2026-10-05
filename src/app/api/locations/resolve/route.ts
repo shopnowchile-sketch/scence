@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { PhysicalLocationError, resolvePhysicalLocation, type PhysicalLocationInput } from '@/lib/resolvePhysicalLocation'
 
 export async function POST(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null) as Partial<PhysicalLocationInput> | null
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
 
-  const organizationId = platformAdmin ? await import('@/lib/supabase/ensureOrg').then(m => m.getOrgId(user.id, user.user_metadata, admin)) : brand?.organizationId ?? null
+  const organizationId = platformAdmin ? await getOrgId(user.id, user.user_metadata, admin) : brand?.organizationId ?? null
   if (!organizationId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
   try {

@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { announceCampaignReopened, announceCampaignToInfluencers, resolvePendingCampaignAnnouncement, resolveReopenedCampaignAnnouncement, sendCampaignAnnouncementPreview, sendCampaignReopenedPreview } from '@/lib/campaign-notifications'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
 // El envío recorre todo el roster en lotes de 100 (resend.batch.send). Con el
 // default de Vercel se cortaba a mitad de camino y dejaba influencers sin aviso.
 export const maxDuration = 300
-
-async function requireAdmin(userId: string, userMetadata: unknown, admin: ReturnType<typeof createAdminClient>) {
-  // Autorización por organization_members (fuente canónica), nunca profiles.role.
-  const orgId = await getOrgId(userId, userMetadata as Record<string, unknown>, admin)
-  const { isAdmin } = orgId ? await getUserRole(userId, orgId, admin) : { isAdmin: false }
-  return isAdmin
-}
 
 // GET /api/campaigns/[id]/notify-influencers
 // Cuántas influencers quedan por avisar. El detalle de campaña lo usa para
@@ -26,7 +19,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await requireAdmin(user.id, user.user_metadata, admin))) {
+  if (!(await isPlatformAdmin(user.id, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -54,7 +47,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  if (!(await requireAdmin(user.id, user.user_metadata, admin))) {
+  if (!(await isPlatformAdmin(user.id, admin))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

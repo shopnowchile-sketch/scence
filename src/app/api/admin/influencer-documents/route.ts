@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
 const BUCKET = 'influencer-private-documents'
 
@@ -9,9 +9,9 @@ async function requireAdmin() {
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   const admin = createAdminClient()
+  if (!(await isPlatformAdmin(user.id, admin))) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  // Org de plataforma: getOrgId prioriza la membresía super_admin.
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  if (!isAdmin) return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   return { admin, orgId }
 }
 

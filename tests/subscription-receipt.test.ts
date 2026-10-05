@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { generateSubscriptionReceiptPdf } from '../src/lib/subscription-receipt-pdf'
+import { generateSubscriptionReceiptPdf } from '../src/lib/subscription-receipt-pdf.ts'
 
 test('SCENCE Pro receipt preserves the recorded amount and currency', () => {
   const pdf = generateSubscriptionReceiptPdf({
@@ -19,7 +19,8 @@ test('SCENCE Pro receipt preserves the recorded amount and currency', () => {
 
   assert.ok(pdf.byteLength > 1000)
   const text = new TextDecoder().decode(pdf)
-  assert.match(text, /8\.60/)
+  // El monto se formatea en es-CL (coma decimal): 8.60 USD → US$8,60.
+  assert.match(text, /US\$8,60/)
   assert.match(text, /USD/)
   assert.match(text, /6DB157598L534553F/)
   assert.doesNotMatch(text, /descuento/i)

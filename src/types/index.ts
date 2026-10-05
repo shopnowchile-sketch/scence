@@ -101,7 +101,7 @@ export interface Influencer {
 export interface CampaignInfluencerJoin {
   id: string
   fee: number | null
-  status: string | null
+  application_status: 'pending' | 'accepted' | 'rejected' | null
   created_at: string | null
   campaign: {
     id: string
@@ -271,12 +271,6 @@ export function getInfluencerTier(followers: number): InfluencerTier {
   return 'mega'
 }
 
-export function formatFollowers(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
-  return n.toString()
-}
-
 // ── CAMPAIGN ───────────────────────────────────────────
 export interface Campaign {
   id: string
@@ -421,10 +415,6 @@ export interface CampaignFilters {
   dateTo: string
 }
 
-export const DEFAULT_CAMPAIGN_FILTERS: CampaignFilters = {
-  search: '', status: '', type: '', platform: '', visibility: '', brandId: '', dateFrom: '', dateTo: '',
-}
-
 export interface InfluencerFilters {
   search: string
   platforms: SocialPlatform[]
@@ -509,15 +499,6 @@ export type BarterBenefitType =
   | 'sales_commission'
   | 'other'
 
-export const BARTER_SIMPLE_STATUS_CONFIG: Record<
-  BarterSimpleStatus,
-  { label: string; badge: string }
-> = {
-  pending:   { label: 'Pendiente',    badge: 'badge-orange' },
-  completed: { label: 'Canje enviado', badge: 'badge-green' },
-  problem:   { label: 'Con problema', badge: 'badge-red' },
-}
-
 export const BARTER_BENEFIT_TYPE_CONFIG: Record<BarterBenefitType, string> = {
   product: 'Producto',
   experience: 'Experiencia',
@@ -553,31 +534,6 @@ export type BarterStatus =
   | 'contenido_publicado'
   | 'cerrado'
   | 'con_problema'
-
-/** Flujo lineal del canje. `con_problema` es un estado lateral (no parte del flujo). */
-export const BARTER_FLOW: BarterStatus[] = [
-  'pactado',
-  'pendiente_envio',
-  'enviado',
-  'recibido',
-  'contenido_pendiente',
-  'contenido_publicado',
-  'cerrado',
-]
-
-export const BARTER_STATUS_CONFIG: Record<
-  BarterStatus,
-  { label: string; short: string; color: string; badge: string }
-> = {
-  pactado:             { label: 'Pactado',             short: 'Pactado',     color: 'violet',  badge: 'badge-gray' },
-  pendiente_envio:     { label: 'Pendiente de envío',  short: 'Por enviar',  color: 'amber',   badge: 'badge-orange' },
-  enviado:             { label: 'Enviado',             short: 'Enviado',     color: 'blue',    badge: 'badge-blue' },
-  recibido:            { label: 'Recibido',            short: 'Recibido',    color: 'cyan',    badge: 'badge-blue' },
-  contenido_pendiente: { label: 'Contenido pendiente', short: 'Contenido',   color: 'amber',   badge: 'badge-orange' },
-  contenido_publicado: { label: 'Contenido publicado', short: 'Publicado',   color: 'emerald', badge: 'badge-green' },
-  cerrado:             { label: 'Cerrado',             short: 'Cerrado',     color: 'emerald', badge: 'badge-green' },
-  con_problema:        { label: 'Con problema',        short: 'Problema',    color: 'red',     badge: 'badge-red' },
-}
 
 export interface BarterStatusHistoryEntry {
   id: string
@@ -626,27 +582,6 @@ export interface Barter {
   brand?: { id: string; name: string; logo_url: string | null } | null
   responsible?: { id: string; full_name: string | null } | null
   history?: BarterStatusHistoryEntry[]
-}
-
-export interface CreateBarterInput {
-  influencer_id: string
-  item: string
-  brand_id?: string | null
-  campaign_influencer_id?: string | null
-  description?: string | null
-  estimated_value?: number | null
-  currency?: Currency
-  agreed_date?: string | null
-  responsible_id?: string | null
-  notes?: string | null
-  benefits?: Array<{
-    benefit_type: BarterBenefitType
-    description?: string | null
-    fixed_value?: number | null
-    currency?: Currency
-    commission_rate?: number | null
-    affiliate_link_id?: string | null
-  }>
 }
 
 // ── AFFILIATES / COMMISSIONS ───────────────────────────

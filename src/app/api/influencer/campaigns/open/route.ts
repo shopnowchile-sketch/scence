@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { getCampaignDateKey } from '@/lib/attendance-state'
 import { isInfluencerPro } from '@/lib/influencer-pro'
+import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
 
 // GET /api/influencer/campaigns/open
 // Returns active campaigns the influencer is NOT yet part of (open to apply)
@@ -58,7 +59,7 @@ export async function GET() {
   let query = admin
     .from('campaigns')
     .select(`
-      id, name, status, description, type, start_date, end_date, visibility, created_by,
+      id, name, status, description, type, start_date, end_date, visibility, created_by, metadata,
       application_deadline, applications_closed_at, max_influencers, campaign_benefits,
       brand:brands!brand_id (id, name, logo_url, instagram),
       campaign_influencers (id, application_status)
@@ -93,7 +94,16 @@ export async function GET() {
       (influencerCreators ?? []).map(r => r.user_id).filter(Boolean) as string[]
     )
   }
-  const marketplaceRows = (data ?? []).filter(c => !influencerCreatorIds.has(c.created_by as string))
+  // Solo por invitación (mismo criterio que /apply → INVITATION_ONLY): no se
+  // listan en el marketplace porque nadie puede postular por su cuenta. Se
+  // mantienen solo para quien ya tiene una fila pendiente en esa campaña
+  // (invitada), igual que hasta ahora; una invitación rechazada no la reabre.
+  const pendingRowIds = new Set(
+    (myRows ?? []).filter(r => r.application_status === 'pending').map(r => r.campaign_id as string)
+  )
+  const marketplaceRows = (data ?? [])
+    .filter(c => !influencerCreatorIds.has(c.created_by as string))
+    .filter(c => !isInvitationOnlyCampaign(c.metadata) || pendingRowIds.has(c.id as string))
 
   // Fecha del evento para el contador de días de la tarjeta. Solo se lee
   // `starts_at` del booking de campaña (influencer_id null) — la MISMA fecha
@@ -129,7 +139,8 @@ export async function GET() {
       return !c.max_influencers || accepted < c.max_influencers
     })
     .map(c => {
-      const { created_by: _createdBy, ...rest } = c
+      // metadata solo se lee para el filtro de invitación: no viaja al cliente.
+      const { created_by: _createdBy, metadata: _metadata, ...rest } = c
       return {
         ...rest,
         accepted_count: (c.campaign_influencers ?? []).filter(

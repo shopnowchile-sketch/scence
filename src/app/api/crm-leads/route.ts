@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
+import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
 
 // Módulo CRM — aislado, no toca brands/influencers/campaigns.
 // Solo super_admin / brand_manager (mismo criterio que useIsAdmin / Sidebar admin).
@@ -77,7 +78,8 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url)
-  const search = searchParams.get('search')?.trim() ?? ''
+  // Se interpola en .or() de PostgREST: se limpia antes (sin inyección de filtros).
+  const search = sanitizeSearchTerm(searchParams.get('search'))
   const qualification = searchParams.get('qualification') ?? ''
   const region = searchParams.get('region') ?? ''
   const source = searchParams.get('source') ?? ''

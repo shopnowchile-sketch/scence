@@ -98,32 +98,3 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
     sendUpdates: 'all',
   })
 }
-
-// ── LIST EVENTS ────────────────────────────────────────
-export async function listCalendarEvents(
-  timeMin: Date,
-  timeMax: Date
-): Promise<GoogleCalendarEvent[]> {
-  const calendar = getCalendar()
-
-  const { data } = await calendar.events.list({
-    calendarId: SCENCE_CALENDAR_ID,
-    timeMin: timeMin.toISOString(),
-    timeMax: timeMax.toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 250,
-  })
-
-  return (data.items ?? []) as GoogleCalendarEvent[]
-}
-
-// ── GET EVENT ──────────────────────────────────────────
-export async function getCalendarEvent(eventId: string): Promise<GoogleCalendarEvent> {
-  const calendar = getCalendar()
-  const { data } = await calendar.events.get({
-    calendarId: SCENCE_CALENDAR_ID,
-    eventId,
-  })
-  return data as GoogleCalendarEvent
-}

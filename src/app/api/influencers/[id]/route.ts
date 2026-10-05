@@ -3,7 +3,7 @@ import { planSocialProfileChanges } from '@/lib/instagram/social-profiles'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
-import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
+import { hardDeleteInfluencers, InfluencerHasProError } from '@/lib/influencers/hardDelete'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { cancelInfluencerPayPalAtPeriodEnd, persistInfluencerProCancellation } from '@/lib/influencer-paypal'
@@ -107,7 +107,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data: campaignInfluencers } = await admin
     .from('campaign_influencers')
     .select(`
-      id, fee, status, created_at,
+      id, fee, application_status, created_at,
       campaign:campaigns (id, name, status, start_date, end_date, type, platforms)
     `)
     .eq('influencer_id', params.id)
@@ -446,6 +446,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       }
       return NextResponse.json({ success: true, deleted: result.deleted, hard: true, childErrors: result.childErrors })
     } catch (e) {
+      if (e instanceof InfluencerHasProError) return NextResponse.json({ error: e.message, pro_ids: e.proIds }, { status: 409 })
       console.error('[DELETE hard /api/influencers/[id]]', e)
       return NextResponse.json({ error: e instanceof Error ? e.message : 'Error al borrar' }, { status: 500 })
     }

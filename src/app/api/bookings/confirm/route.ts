@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
     <div style="font-size:48px;margin-bottom:16px">${action === 'confirm' ? '✅' : '😔'}</div>
     <p style="font-size:18px;font-weight:700;color:#111827;margin:0 0 12px">${action === 'confirm' ? '¡Participación confirmada!' : 'Gracias por avisarnos'}</p>
     <p style="font-size:15px;color:#6b7280;line-height:1.6;margin:0 0 24px">${message}</p>
-    <a href="${APP_URL}/influencer/dashboard"
+    <a href="${APP_URL}/inf-dash"
       style="display:inline-block;background:#7c3aed;color:#fff;font-size:14px;font-weight:600;text-decoration:none;border-radius:10px;padding:12px 24px">
       Ir a mi portal →
     </a>

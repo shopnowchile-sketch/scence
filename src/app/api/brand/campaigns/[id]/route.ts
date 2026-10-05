@@ -15,6 +15,8 @@ import {
   syncCampaignDeliverablesFromTemplates,
 } from '@/lib/campaign-deliverables-sync'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
+import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
+import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
 
 type Params = { params: { id: string } }
 
@@ -160,12 +162,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'application_deadline',
     'max_influencers',
     'brief_url',
+    'campaign_benefits',
   ]
 
   const updates: Record<string, unknown> = {}
 
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+
+  // Beneficios del canje: misma normalización que al crear (antes se descartaban en silencio).
+  if ('campaign_benefits' in updates) {
+    updates.campaign_benefits = normalizeCampaignBenefits(updates.campaign_benefits)
   }
 
   if ('deliverable_templates' in updates) {
@@ -354,6 +362,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
     console.error('[PATCH /api/brand/campaigns/[id]]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Al completar/cancelar, las postulaciones pendientes se cierran (sin emails).
+  // No bloquea el cambio de estado ya aplicado.
+  if ((data?.status === 'completed' || data?.status === 'canceled') && campaignBase.status !== data.status) {
+    const closed = await closePendingCampaignApplications(admin, { campaignIds: [params.id], note: AUTO_CLOSE_NOTES.campaignClosed })
+    if (!closed.ok) console.error('[PATCH /api/brand/campaigns/[id]] close pending applications failed:', closed.error)
   }
 
 

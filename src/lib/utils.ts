@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 /** Escapa texto para interpolarlo en HTML (emails y páginas server-rendered). */
@@ -34,10 +34,6 @@ export function formatDatetime(date: string | Date): string {
   return format(new Date(date), "d MMM yyyy 'a las' HH:mm", { locale: es })
 }
 
-export function timeAgo(date: string | Date): string {
-  return formatDistanceToNow(new Date(date), { addSuffix: true, locale: es })
-}
-
 export function formatFollowers(n: number | null | undefined): string {
   // FIX (bug visto en vivo, 2026-07-13): influencers sin sync de followers
   // traen `null` desde la base (influencer_social_profiles.followers) y
@@ -52,15 +48,6 @@ export function formatFollowers(n: number | null | undefined): string {
   return num.toString()
 }
 
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
-
 export function getInitials(name: string): string {
   return name
     .split(' ')
@@ -68,13 +55,6 @@ export function getInitials(name: string): string {
     .map(w => w[0])
     .join('')
     .toUpperCase()
-}
-
-/** Construye la URL de embed de Google Maps para una dirección */
-export function buildGoogleMapsEmbedUrl(address: string): string {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-  const q = encodeURIComponent(address)
-  return `https://www.google.com/maps/embed/v1/place?key=${key}&q=${q}&language=es`
 }
 
 /** Construye el link de navegación de Google Maps */

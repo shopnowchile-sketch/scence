@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { renderDocument } from '@/lib/document-templates'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
@@ -12,9 +12,7 @@ async function requireAdmin() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { user: null, admin: null, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const role = orgId ? await getUserRole(user.id, orgId, admin) : null
-  if (!role?.isAdmin) return { user: null, admin: null, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  if (!(await isPlatformAdmin(user.id, admin))) return { user: null, admin: null, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   return { user, admin, response: null }
 }
 

@@ -351,10 +351,7 @@ function BenefitTrackingLine({ benefit, benefitIndex, barter, action, selected, 
 }
 
 function getSimpleStatus(barter: Barter): BarterSimpleStatus {
-  if (barter.simple_status) return barter.simple_status
-  if (barter.status === 'cerrado' || barter.status === 'enviado') return 'completed'
-  if (barter.status === 'con_problema') return 'problem'
-  return 'pending'
+  return barter.simple_status ?? 'pending'
 }
 
 function getBenefitTracking(barter: Barter, benefitIndex: number) {

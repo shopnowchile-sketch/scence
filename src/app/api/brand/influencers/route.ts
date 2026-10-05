@@ -5,6 +5,7 @@ import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
+import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
 
 // GET /api/brand/influencers
 // Marca ve influencers relacionadas a SUS campañas/asignaciones.
@@ -44,7 +45,8 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const scope    = searchParams.get('scope') ?? ''
-  const search   = searchParams.get('search')
+  // Se interpola en .or()/.ilike() de PostgREST: se limpia antes (sin inyección de filtros).
+  const search   = sanitizeSearchTerm(searchParams.get('search')) || null
   const platform = searchParams.get('platform')
   const category = searchParams.get('category')
   const country  = searchParams.get('country')

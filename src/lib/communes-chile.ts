@@ -105,7 +105,7 @@ export const COMUNAS_CHILE: string[] = [
 // Clave de comparación: sin espacios extra, sin mayúsculas, sin tildes/diéresis.
 // No usamos la extensión `unaccent` de Postgres (no está instalada en el
 // proyecto) — toda la normalización se hace en código, en JS.
-export function communeKey(raw: string | null | undefined): string {
+function communeKey(raw: string | null | undefined): string {
   return String(raw ?? '')
     .trim()
     .replace(/\s+/g, ' ')
@@ -117,16 +117,6 @@ export function communeKey(raw: string | null | undefined): string {
 const OFFICIAL_BY_KEY = new Map<string, string>(
   COMUNAS_CHILE.map(name => [communeKey(name), name])
 )
-
-// Si `raw` matchea (ignorando mayúsculas/tildes/espacios) una comuna oficial,
-// devuelve el nombre oficial con formato correcto. Si no matchea nada
-// (ej. es una región, una ciudad de otro país, o tiene un typo real), devuelve
-// null — no se inventa ni se fuerza un valor.
-export function matchOfficialCommune(raw: string | null | undefined): string | null {
-  const key = communeKey(raw)
-  if (!key) return null
-  return OFFICIAL_BY_KEY.get(key) ?? null
-}
 
 export type CommuneGroup = { label: string; variants: string[] }
 

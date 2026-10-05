@@ -27,9 +27,12 @@ export async function GET() {
     .select('campaign_id').in('campaign_id', campaignIds).contains('metadata', { asset_type: 'sponsor_brief' }) : { data: [] }
   const campaignsWithBrief = new Set((sponsorBriefs ?? []).map(row => row.campaign_id))
   return NextResponse.json({ data: (campaigns ?? []).flatMap(c => {
-    const config = opportunity(c.metadata)
+    // metadata de campañas de OTRAS marcas (dirección, WhatsApp, links, etc.)
+    // no se entrega: solo la oferta sponsor (collaboration_opportunity).
+    const { metadata, ...publicCampaign } = c
+    const config = opportunity(metadata)
     if (!config?.enabled) return []
-    return [{ ...c, collaboration_opportunity: config, application_status: applicationByCampaign.get(c.id) ?? null, has_sponsor_brief: campaignsWithBrief.has(c.id) }]
+    return [{ ...publicCampaign, collaboration_opportunity: config, application_status: applicationByCampaign.get(c.id) ?? null, has_sponsor_brief: campaignsWithBrief.has(c.id) }]
   }) })
 }
 

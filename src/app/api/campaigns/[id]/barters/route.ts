@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { BARTER_STATUS_CONFIG, type BarterStatus } from '@/types'
 import type { BrandPermission } from '@/lib/supabase/ensureOrg'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 
 type Params = { params: { id: string } }
-
-const VALID_STATUSES: BarterStatus[] = [
-  'pactado', 'pendiente_envio', 'enviado', 'recibido',
-  'contenido_pendiente', 'contenido_publicado', 'cerrado', 'con_problema',
-]
 
 const SELECT = `
   *,
@@ -223,11 +217,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { barter_id, status, note, evidence_url, patch, benefit_id, benefit_patch, bulk_benefit_updates } = body as {
+  const { barter_id, patch, benefit_id, benefit_patch, bulk_benefit_updates } = body as {
     barter_id?: string
-    status?: BarterStatus
-    note?: string
-    evidence_url?: string
     patch?: Record<string, unknown>  // edición de campos no-status
     benefit_id?: string
     benefit_patch?: Record<string, unknown>
@@ -307,7 +298,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Verificar que el canje pertenece a esta campaña
   const { data: existing, error: exErr } = await admin
     .from('barters')
-    .select('id, campaign_id, status, item, responsible_id, influencer_id')
+    .select('id')
     .eq('id', barter_id)
     .eq('campaign_id', params.id)
     .single()
@@ -316,40 +307,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Canje no encontrado en esta campaña' }, { status: 404 })
   }
 
-  // ── A) Cambio de estado vía RPC atómico (registra historial con actor + nota) ─
-  if (status) {
-    if (!VALID_STATUSES.includes(status)) {
-      return NextResponse.json({ error: `Estado inválido: ${status}` }, { status: 422 })
-    }
-
-    const { error: rpcErr } = await admin.rpc('advance_barter_status', {
-      p_barter_id:    barter_id,
-      p_status:       status,
-      p_actor:        user.id,
-      p_note:         note ?? null,
-      p_evidence_url: evidence_url ?? null,
-    })
-
-    if (rpcErr) {
-      console.error('[PATCH barters · rpc]', rpcErr)
-      return NextResponse.json({ error: rpcErr.message }, { status: 500 })
-    }
-
-    // Notificar al responsable del cambio de estado
-    if (existing.status !== status) {
-      const isProblem = status === 'con_problema'
-      await notifyResponsible(admin, {
-        responsibleId: existing.responsible_id,
-        actorId:       user.id,
-        barterId:      barter_id,
-        campaignId:    params.id,
-        title:         isProblem ? '⚠️ Canje con problema' : 'Canje actualizado',
-        body:          `${existing.item} → ${BARTER_STATUS_CONFIG[status]?.label ?? status}`,
-      })
-    }
-  }
-
-  // ── B) Edición de otros campos (no dispara historial) ─────────────────────────
+  // ── Edición de campos (estado vía simple_status / benefit_tracking) ──────────
   if (patch && Object.keys(patch).length > 0) {
     if ('simple_status' in patch && !['pending', 'completed', 'problem'].includes(String(patch.simple_status))) {
       return NextResponse.json({ error: 'Estado simple inválido' }, { status: 422 })

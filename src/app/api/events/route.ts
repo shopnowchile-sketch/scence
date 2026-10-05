@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       locationId: location_id ?? null,
       location: location ?? null,
       locationDetails: null,
-      isVirtual: is_virtual ?? false,
+      isVirtual: is_virtual === true,
     })
   } catch (error) {
     if (error instanceof PhysicalLocationError) {

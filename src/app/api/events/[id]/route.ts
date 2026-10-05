@@ -83,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           ? (await admin.from('campaigns').select('location_id').eq('id', current.data.campaign_id).maybeSingle()).data?.location_id ?? null
           : null
         const resolved = await resolvePhysicalLocation(admin, {
-          locationId: requestedLocationId ?? inherited ?? null,
+          locationId: requestedLocationId ?? (location === undefined ? inherited : null),
           venueName: null,
           address: typeof location === 'string' ? location : null,
           organizationId: orgId,

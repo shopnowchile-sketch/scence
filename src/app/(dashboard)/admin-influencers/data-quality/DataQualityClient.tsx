@@ -28,6 +28,7 @@ interface Report {
   duplicatesByMixed: number
   nicheRanking: RankingItem[]
   geography: GeographyCountry[]
+  unassignedGeography: number
 }
 
 interface GeographyInfluencer { id: string; display_name: string | null; email: string | null; instagram_username: string | null; followers: number; is_active: boolean; address: string | null }
@@ -459,6 +460,8 @@ export function DataQualityClient() {
                 const isLeaf = Boolean(current && current.children.length === 0)
                 const currentTitle = current?.label ?? 'País'
                 const currentCount = current?.count ?? report.total
+                const directInfluencers = current?.influencers ?? []
+                const hasUnassigned = selectedGeoPath.length === 0 && report.unassignedGeography > 0
                 const goTo = (index: number) => setSelectedGeoPath(selectedGeoPath.slice(0, index))
                 return (
                   <>
@@ -504,10 +507,23 @@ export function DataQualityClient() {
                           </ResponsiveContainer>
                         </div>
                       )
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead>
-                          <tbody>{current.influencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody></table>
+                    ) : null}
+
+                    {directInfluencers.length > 0 && (
+                      <div className="mt-5">
+                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                          Influencers asignadas directamente a {currentTitle} · {directInfluencers.length}
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead>
+                            <tbody>{directInfluencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody></table>
+                          </div>
+                        </div>
+                    )}
+
+                    {hasUnassigned && (
+                      <div className="mt-5 p-4 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-800">
+                        Hay <strong>{report.unassignedGeography.toLocaleString()}</strong> influencers sin ubicación canónica. No se mezclan con País/Región/Comuna para no falsear los gráficos.
                       </div>
                     )}
                   </>

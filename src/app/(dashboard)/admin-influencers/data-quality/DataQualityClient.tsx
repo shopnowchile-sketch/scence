@@ -1,26 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import {
-  ChevronLeft, ChevronRight, Loader2, RefreshCw, AlertTriangle, Trash2, GitMerge,
-  Instagram, Mail, ShieldCheck, Zap, Send,
-} from 'lucide-react'
-import { toast } from 'sonner'
-import { useQueryClient } from '@tanstack/react-query'
+import { ChevronLeft, ChevronRight, Loader2, AlertTriangle } from 'lucide-react'
 import { BarChart, Bar, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { formatFollowers } from '@/lib/utils'
-import { useIsAdmin } from '@/hooks/useIsAdmin'
 
 interface Report {
-  total: number
-  withoutInstagram: number
-  withoutLocation: number
-  orphanLocation: number
-  inactiveLocation: number
-  withoutAddress: number
-  missingAnyRequired: number
   geographyNodes: GeographyCountNode[]
   geographyInfluencers: GeographyInfluencer[]
 }
@@ -45,28 +31,6 @@ interface GeographyNode {
 
 interface GeographyCountNode extends GeographyNode {
   direct: number
-}
-
-interface ScanInfluencer {
-  id: string
-  display_name: string | null
-  email: string | null
-  is_active: boolean
-  created_at: string | null
-  instagram_url: string | null
-  instagram_username: string | null
-  followers: number
-}
-
-interface DuplicateGroup {
-  key: string
-  type: 'email' | 'instagram' | 'mixed'
-  value: string
-  influencers: ScanInfluencer[]
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  email: 'Email', instagram: 'Instagram', mixed: 'Email + Instagram',
 }
 
 const BAR_COLOR = '#7c3aed'
@@ -253,405 +217,37 @@ function GeographyDrilldown({ nodes, influencers }: { nodes: GeographyCountNode[
 }
 
 export function DataQualityClient() {
-  const qc = useQueryClient()
   const [report, setReport] = useState<Report | null>(null)
-  const [groups, setGroups] = useState<DuplicateGroup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<string | null>(null)
-  const [syncingAll, setSyncingAll] = useState(false)
-  const [mergingAll, setMergingAll] = useState(false)
-  const [mergeAllProgress, setMergeAllProgress] = useState<{ done: number; total: number } | null>(null)
-  const [keepChoice, setKeepChoice] = useState<Record<string, string>>({})
-  const { isAdmin } = useIsAdmin()
+  const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [rq, dq] = await Promise.all([
-        fetch('/api/influencers/data-quality', { cache: 'no-store' }).then(r => r.json()),
-        fetch('/api/influencers/duplicates', { cache: 'no-store' }).then(r => r.json()),
-      ])
-      if (rq.report) setReport(rq.report)
-      if (dq.groups) {
-        setGroups(dq.groups)
-        // default keep = el de más followers en cada grupo
-        const defaults: Record<string, string> = {}
-        for (const g of dq.groups as DuplicateGroup[]) {
-          const best = [...g.influencers].sort((a, b) => b.followers - a.followers)[0]
-          defaults[g.key] = best.id
-        }
-        setKeepChoice(defaults)
-      }
-    } catch {
-      toast.error('Error cargando data quality')
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    fetch('/api/influencers/data-quality', { cache: 'no-store' })
+      .then(async r => {
+        const body = await r.json()
+        if (!r.ok || !body.report) throw new Error(body.error ?? 'Error cargando Data Quality')
+        setReport(body.report)
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Error cargando Data Quality'))
   }, [])
-
-  useEffect(() => { load() }, [load])
-
-  // Fallback: si por lo que sea keepChoice[g.key] no está seteado (carrera de
-  // estado, doble click antes de que cargue, etc.), NUNCA saltar el grupo en
-  // silencio — se recalcula el mismo default que usa load() (más followers).
-  // Pri: "que nunca se equivoque". Sin este fallback, un keepChoice vacío
-  // hacía que "Combinar todos" reportara "0 combinados" sin error visible.
-  function resolveKeepId(g: DuplicateGroup): string | undefined {
-    return keepChoice[g.key] ?? [...g.influencers].sort((a, b) => b.followers - a.followers)[0]?.id
-  }
-
-  async function handleMerge(g: DuplicateGroup) {
-    const keepId = resolveKeepId(g)
-    if (!keepId) return
-    const mergeIds = g.influencers.filter(i => i.id !== keepId).map(i => i.id)
-    if (!confirm(`Combinar ${mergeIds.length} duplicado(s) en el registro seleccionado y eliminar permanentemente el resto. ¿Continuar?`)) return
-    setBusy(g.key)
-    try {
-      const r = await fetch('/api/influencers/merge', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keepId, mergeIds }),
-      })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error)
-      toast.success(`Combinados ${j.merged} · eliminados ${j.deleted}`)
-      await load()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al combinar')
-    } finally { setBusy(null) }
-  }
-
-  // Combina TODOS los grupos detectados de una sola pasada, usando el "Conservar"
-  // ya preseleccionado en cada grupo (por defecto: el de más followers). Pri:
-  // "necesito poder hacer un merge de todas las niñas de una pasada, no uno por
-  // uno". Reutiliza el mismo endpoint /api/influencers/merge que ya combinaba
-  // un grupo completo en 1 llamada — antes solo faltaba encadenar los grupos.
-  // Un solo confirm() al inicio, no uno por grupo. Sigue de largo si un grupo
-  // individual falla (se reporta al final) para no trabar el resto.
-  async function handleMergeAll() {
-    if (groups.length === 0) return
-    const totalDuplicates = groups.reduce((s, g) => s + (g.influencers.length - 1), 0)
-    if (!confirm(
-      `Combinar los ${groups.length} grupos detectados (${totalDuplicates} registro(s) duplicado(s) en total).\n\n` +
-      `Se conserva el registro marcado "Conservar" en cada grupo y se elimina permanentemente el resto. ¿Continuar?`
-    )) return
-
-    setMergingAll(true)
-    setMergeAllProgress({ done: 0, total: groups.length })
-    let okCount = 0
-    let mergedRecords = 0
-    let alreadyResolved = 0
-    const failed: string[] = []
-
-    // Un mismo par duplicado puede aparecer en varios grupos a la vez (p.ej.
-    // coincide por email Y por Instagram) → 2-3 "grupos" distintos apuntan a
-    // los mismos ids. Si el primero ya los combina/borra, un grupo posterior
-    // no debe operar sobre ids que ya no existen (404 / keeper equivocado).
-    // consumedIds trackea qué ids ya se resolvieron en esta misma pasada.
-    const consumedIds = new Set<string>()
-
-    for (const g of groups) {
-      const alive = g.influencers.filter(i => !consumedIds.has(i.id))
-      if (alive.length < 2) {
-        // Ya resuelto por un grupo anterior en esta misma pasada (no es un error).
-        alreadyResolved++
-        setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
-        continue
-      }
-      let keepId = keepChoice[g.key]
-      if (!keepId || !alive.some(i => i.id === keepId)) {
-        // La selección original ya no está viva (o no hay selección) — recalcular
-        // sobre los ids que SÍ siguen vivos, nunca dejar el grupo sin resolver.
-        keepId = [...alive].sort((a, b) => b.followers - a.followers)[0]?.id
-      }
-      const mergeIds = alive.filter(i => i.id !== keepId).map(i => i.id)
-      if (!keepId || mergeIds.length === 0) {
-        failed.push(`${g.value}: no se pudo determinar el registro a conservar`)
-        setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
-        continue
-      }
-      try {
-        const r = await fetch('/api/influencers/merge', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keepId, mergeIds }),
-        })
-        const j = await r.json()
-        if (!r.ok) throw new Error(j.error)
-        okCount++
-        mergedRecords += j.merged ?? mergeIds.length
-        mergeIds.forEach(id => consumedIds.add(id))
-      } catch (e) {
-        failed.push(`${g.value}: ${e instanceof Error ? e.message : 'error'}`)
-      }
-      setMergeAllProgress(p => p ? { ...p, done: p.done + 1 } : p)
-    }
-
-    const resolvedNote = alreadyResolved > 0 ? ` · ${alreadyResolved} ya resuelto(s) por otro grupo` : ''
-    if (failed.length === 0) {
-      toast.success(`${okCount} grupo(s) combinados · ${mergedRecords} duplicado(s) eliminados${resolvedNote}`)
-    } else {
-      toast.error(`${okCount} grupo(s) combinados, ${failed.length} fallaron${resolvedNote}. Ver consola.`)
-      console.error('[merge-all] grupos fallidos:', failed)
-    }
-    setMergingAll(false)
-    setMergeAllProgress(null)
-    await load()
-  }
-
-  async function handleDeleteDuplicates(g: DuplicateGroup) {
-    const keepId = resolveKeepId(g)
-    const ids = g.influencers.filter(i => i.id !== keepId).map(i => i.id)
-    if (!ids.length) return
-    if (!confirm(`Eliminar permanentemente ${ids.length} duplicado(s), conservando solo el registro seleccionado. Esta acción no se puede deshacer. ¿Continuar?`)) return
-    setBusy(g.key)
-    try {
-      const r = await fetch('/api/influencers/bulk-delete', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, hard: true }),
-      })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error)
-      toast.success(`${j.deleted} duplicado(s) eliminados`)
-      await load()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al eliminar')
-    } finally { setBusy(null) }
-  }
-
-  // Antes eliminaba permanentemente a las influencers sin Instagram. Pri pidió
-  // cambiarlo: en vez de borrar, mandarles un email pidiendo que completen
-  // Instagram y/o dirección en su perfil (la mayoría sí tiene cuenta y puede
-  // hacerlo desde /inf-profile). El endpoint de borrado sigue existiendo por
-  // si se necesita en otro flujo, pero este botón ya no lo llama.
-  async function handleNotifyNoInstagram() {
-    setBusy('no-instagram')
-    try {
-      const dry = await fetch('/api/influencers/notify-no-instagram', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: true }),
-      }).then(r => r.json())
-      if (!dry.count) { toast.info('No hay influencers con Instagram, comuna o dirección pendientes'); setBusy(null); return }
-      if (!confirm(`Enviar email a ${dry.count} influencer(s) pidiendo que completen Instagram/comuna/dirección en su perfil. ¿Continuar?`)) { setBusy(null); return }
-      const r = await fetch('/api/influencers/notify-no-instagram', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false }),
-      })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error)
-      toast.success(`Email enviado a ${j.sent} influencer(s)${j.failed ? ` · ${j.failed} fallaron` : ''}`)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error')
-    } finally { setBusy(null) }
-  }
-
-  async function handleSendRecoveredAccess() {
-    setBusy('recovery-access')
-    try {
-      const dry = await fetch('/api/influencers/send-recovery-access', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: true }),
-      }).then(r => r.json())
-      if (!dry.count) { toast.info('No hay accesos de cuentas recuperadas pendientes de envío'); return }
-      if (!confirm(`Enviar el email de acceso a ${dry.count} influencer(s) recuperada(s)? Solo se enviará a estas cuentas; no a toda la base.`)) return
-      const response = await fetch('/api/influencers/send-recovery-access', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dryRun: false }),
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? 'No se pudieron enviar los accesos')
-      toast.success(`Acceso enviado a ${result.sent} influencer(s)${result.failed ? ` · ${result.failed} fallaron` : ''}`)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error al enviar accesos')
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function handleSyncAllInstagram() {
-    setSyncingAll(true)
-    try {
-      // Procesa un lote de la cola (nunca sincronizados y más antiguos primero)
-      // con Meta Business Discovery. El resto lo toma el lote programado.
-      toast.info('Sincronizando un lote con Instagram… puede tardar hasta 4 min', { id: 'sync-progress' })
-      const res = await fetch('/api/influencers/sync-instagram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const result = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(result.error ?? 'Error al sincronizar')
-
-      const msg = `✅ ${result.synced ?? 0} actualizados · ${result.not_found ?? 0} no sincronizables · ${result.failed ?? 0} con error · ${result.remaining ?? 0} en cola`
-      toast.success(msg, { id: 'sync-progress', duration: 8000 })
-      if (result.stopped) toast.warning(`Lote detenido: ${result.stopped}`)
-      if (result.errors?.length) console.warn('[instagram-followers] detalle:', result.errors)
-      // Invalidar TODOS los caches de influencers (lista + detail)
-      await qc.invalidateQueries({ queryKey: ['influencers'] })  // useInfluencersList
-      await qc.invalidateQueries({ queryKey: ['influencer'] })   // useInfluencer (detail)
-      // Signal para useInfluencers (manual fetch hook) — fuerza refetch en la lista
-      window.dispatchEvent(new CustomEvent('influencers-synced'))
-      await load()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al sincronizar Instagram')
-    } finally {
-      setSyncingAll(false)
-    }
-  }
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <Link href="/admin-influencers" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
-            <ChevronLeft className="h-4 w-4" /> Influencers
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight mt-1">Data Quality</h1>
-          <p className="text-sm text-gray-500">Limpieza de base antes de importar · Instagram es el identificador principal</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleSyncAllInstagram} disabled={syncingAll || loading}
-            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white text-sm font-semibold rounded-lg hover:bg-pink-700 disabled:opacity-50">
-            {syncingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-            Sincronizar Instagram
-          </button>
-          <button onClick={load} disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Re-escanear
-          </button>
-        </div>
+      <div>
+        <Link href="/admin-influencers" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+          <ChevronLeft className="h-4 w-4" /> Influencers
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight mt-1">Data Quality</h1>
+        <p className="text-sm text-gray-500">Ubicación de las influencers según locations · País → Región → Comuna</p>
       </div>
 
-      {loading && !report ? (
+      {error ? (
+        <div className="card p-6 text-sm text-red-600">{error}</div>
+      ) : !report ? (
         <div className="card p-12 flex items-center justify-center">
           <Loader2 className="h-8 w-8 text-violet-400 animate-spin" />
         </div>
       ) : (
-        <>
-          {report && <GeographyDrilldown nodes={report.geographyNodes} influencers={report.geographyInfluencers} />}
-
-          {!isAdmin && (
-            <div className="card p-4 flex items-center gap-3 border-amber-200 bg-amber-50/40 text-sm text-amber-700">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              Solo administradores pueden combinar o eliminar registros permanentemente. Tienes vista de solo lectura.
-            </div>
-          )}
-
-          {/* Acción: pedir a las influencers con Instagram/comuna/dirección incompletos que
-              actualicen su perfil. Instagram, comuna y dirección son obligatorios para
-              entrar al portal (ProfileCompletionGate). El conteo de la tarjeta de abajo es
-              solo "sin Instagram" (viene del report), pero el envío real usa dry-run del
-              endpoint, que también detecta a quienes tienen Instagram y les falta comuna o
-              dirección — por eso no se oculta el botón cuando withoutInstagram es 0. */}
-          {isAdmin && report && (
-            <div className="card p-5 flex items-center justify-between border-amber-200 bg-amber-50/40">
-              <div className="flex items-center gap-3">
-                <Instagram className="h-5 w-5 text-amber-500" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Perfiles incompletos (Instagram / ubicación / dirección)</p>
-                  <p className="text-xs text-gray-500">
-                    {report.withoutInstagram} sin Instagram · {(report.withoutLocation + report.orphanLocation + report.inactiveLocation).toLocaleString('es-CL')} sin ubicación válida · {report.withoutAddress} sin dirección ·{' '}
-                    <strong>{report.missingAnyRequired} con algún dato obligatorio faltante</strong>. Los tres son obligatorios para usar el portal.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleNotifyNoInstagram}
-                disabled={busy === 'no-instagram'}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 disabled:opacity-50 flex-shrink-0"
-              >
-                {busy === 'no-instagram'
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Send className="h-4 w-4" />}
-                Enviar recordatorio
-              </button>
-            </div>
-          )}
-
-          {isAdmin && (
-            <div className="card p-5 flex items-center justify-between border-violet-200 bg-violet-50/40">
-              <div className="flex items-center gap-3">
-                <Mail className="h-5 w-5 text-violet-600" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Cuentas recuperadas sin email de acceso</p>
-                  <p className="text-xs text-gray-500">Envía un nuevo link solo a las influencers que fueron reparadas tras quedar huérfanas.</p>
-                </div>
-              </div>
-              <button onClick={handleSendRecoveredAccess} disabled={busy === 'recovery-access'}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                {busy === 'recovery-access' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar emails de acceso
-              </button>
-            </div>
-          )}
-
-          {/* Duplicados */}
-          <div id="duplicados-detectados" className="space-y-3 scroll-mt-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
-                Duplicados detectados ({groups.length} grupo{groups.length !== 1 ? 's' : ''})
-              </h3>
-              {isAdmin && groups.length > 1 && (
-                <button onClick={handleMergeAll} disabled={mergingAll || busy !== null}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                  {mergingAll
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <GitMerge className="h-3.5 w-3.5" />}
-                  {mergingAll && mergeAllProgress
-                    ? `Combinando… (${mergeAllProgress.done}/${mergeAllProgress.total})`
-                    : `Combinar todos (${groups.length})`}
-                </button>
-              )}
-            </div>
-            {groups.length === 0 ? (
-              <div className="card p-8 text-center">
-                <ShieldCheck className="h-10 w-10 text-emerald-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500 font-medium">Sin duplicados. Base limpia ✅</p>
-              </div>
-            ) : groups.map(g => (
-              <div key={g.key} className="card p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="badge badge-gray text-[11px]">{TYPE_LABELS[g.type]}</span>
-                    <span className="text-sm font-semibold text-gray-700 truncate max-w-xs">{g.value}</span>
-                    <span className="text-xs text-gray-400">· {g.influencers.length} registros</span>
-                  </div>
-                  {isAdmin && (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => handleMerge(g)} disabled={busy === g.key}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-violet-700 rounded-lg border border-violet-200 hover:bg-violet-50 disabled:opacity-50">
-                        {busy === g.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />}
-                        Combinar
-                      </button>
-                      <button onClick={() => handleDeleteDuplicates(g)} disabled={busy === g.key}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 rounded-lg border border-red-200 hover:bg-red-50 disabled:opacity-50">
-                        <Trash2 className="h-3.5 w-3.5" /> Eliminar duplicados
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {g.influencers.map(inf => (
-                    <label key={inf.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <input type="radio" name={`keep-${g.key}`} checked={keepChoice[g.key] === inf.id}
-                        onChange={() => setKeepChoice(p => ({ ...p, [g.key]: inf.id }))}
-                        className="text-violet-600" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Link href={`/admin-influencers/${inf.id}`} target="_blank"
-                            className="text-sm font-medium text-gray-900 hover:text-violet-700 truncate">
-                            {inf.display_name ?? '(sin nombre)'}
-                          </Link>
-                          {!inf.is_active && <span className="badge badge-gray text-[10px]">Inactivo</span>}
-                          {keepChoice[g.key] === inf.id && <span className="badge badge-green text-[10px]">Conservar</span>}
-                        </div>
-                        <div className="text-xs text-gray-400 truncate">
-                          {inf.email ?? 'sin email'} · {inf.instagram_username ? `@${inf.instagram_username}` : 'sin IG'} · {formatFollowers(inf.followers)} followers
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
+        <GeographyDrilldown nodes={report.geographyNodes} influencers={report.geographyInfluencers} />
       )}
     </div>
   )

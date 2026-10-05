@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
   let query = admin
     .from('bookings')
-    .select(`*, influencer:influencers (id, display_name, avatar_url), campaign:campaigns (id, name)`)
+    .select(`*, influencer:influencers (id, display_name, avatar_url), campaign:campaigns (id, name, location_id), location:locations (id, name, address, level, type, is_private, is_active)`)
     .eq('organization_id', orgId)
     .order('starts_at', { ascending: true })
     .limit(limit)
@@ -138,13 +138,26 @@ export async function POST(req: NextRequest) {
     if (existingBooking) return NextResponse.json(existingBooking, { status: 200 })
   }
 
+  let inheritedCampaignLocationId: string | null = null
+  if (campaign_id && !location_id && !is_virtual) {
+    const { data: campaign } = await admin
+      .from('campaigns')
+      .select('location_id')
+      .eq('id', campaign_id)
+      .maybeSingle()
+    inheritedCampaignLocationId = campaign?.location_id ?? null
+  }
+
   let resolvedLocation
   try {
     resolvedLocation = await resolvePhysicalLocation(admin, {
-      locationId: location_id ?? null,
-      location: location ?? null,
-      locationDetails: location_details ?? null,
-      isVirtual: is_virtual ?? false,
+      locationId: location_id ?? inheritedCampaignLocationId ?? null,
+      venueName: typeof location_details?.venue_name === 'string' ? location_details.venue_name : null,
+      address: location ?? null,
+      commune: typeof location_details?.commune === 'string' ? location_details.commune : null,
+      region: typeof location_details?.region === 'string' ? location_details.region : null,
+      country: typeof location_details?.country === 'string' ? location_details.country : null,
+      organizationId: campaignOrgId,
     })
   } catch (error) {
     if (error instanceof PhysicalLocationError) {
@@ -245,12 +258,12 @@ export async function PUT(req: NextRequest) {
   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
 
   const body = await req.json()
-  const { id, title, description, location, starts_at, ends_at, timezone, ...rest } = body
+  const { id, title, description, location, location_id, location_details, starts_at, ends_at, timezone, ...rest } = body
 
   // Obtain existing to get gcal ID
   const { data: existing } = await admin
     .from('bookings')
-    .select('calendar_event_id, campaign_id, organization_id')
+    .select('calendar_event_id, campaign_id, organization_id, location_id, location_details, location, is_virtual')
     .eq('id', id)
     .maybeSingle()
 
@@ -259,6 +272,39 @@ export async function PUT(req: NextRequest) {
     ? await resolveCampaignWriteOrg(admin, user, existing.campaign_id, orgId)
     : (existing.organization_id === orgId ? orgId : null)
   if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para editar este evento' }, { status: 403 })
+
+  let canonicalLocationId = existing.location_id ?? null
+  let canonicalLocation = typeof location === 'string' ? location : existing.location ?? null
+  if (Object.prototype.hasOwnProperty.call(body, 'location_id') || location !== undefined || location_details !== undefined) {
+    let campaignLocationId: string | null = null
+    if (existing.campaign_id && !location_id && !existing.is_virtual) {
+      const { data: campaign } = await admin.from('campaigns').select('location_id').eq('id', existing.campaign_id).maybeSingle()
+      campaignLocationId = campaign?.location_id ?? null
+    }
+    try {
+      const resolved = await resolvePhysicalLocation(admin, {
+        locationId: typeof location_id === 'string' ? location_id : campaignLocationId,
+        venueName: typeof location_details?.venue_name === 'string' ? location_details.venue_name : null,
+        address: typeof location === 'string' ? location : null,
+        commune: typeof location_details?.commune === 'string' ? location_details.commune : null,
+        region: typeof location_details?.region === 'string' ? location_details.region : null,
+        country: typeof location_details?.country === 'string' ? location_details.country : null,
+        organizationId: writeOrgId,
+      })
+      if (resolved.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+      if (resolved.matchType === 'insufficient_data' && !existing.is_virtual) return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+      canonicalLocationId = resolved.locationId
+      if (canonicalLocationId) {
+        const { data: canonical } = await admin.from('locations').select('name, address').eq('id', canonicalLocationId).single()
+        canonicalLocation = canonical?.address ?? canonical?.name ?? canonicalLocation
+      } else if (existing.is_virtual) {
+        canonicalLocation = null
+      }
+    } catch (error) {
+      if (error instanceof PhysicalLocationError) return NextResponse.json({ error: error.message }, { status: error.status })
+      throw error
+    }
+  }
 
   if (existing?.calendar_event_id) {
     try {
@@ -275,7 +321,7 @@ export async function PUT(req: NextRequest) {
 
   const { data, error } = await admin
     .from('bookings')
-    .update({ title, description, location, starts_at, ends_at, ...rest, updated_at: new Date().toISOString() })
+    .update({ title, description, location: canonicalLocation, location_id: canonicalLocationId, location_details: location_details ?? existing.location_details ?? null, starts_at, ends_at, ...rest, updated_at: new Date().toISOString() })
     .eq('id', id)
     .eq('organization_id', writeOrgId)
     .select('*')

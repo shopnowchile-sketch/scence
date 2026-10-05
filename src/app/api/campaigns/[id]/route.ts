@@ -143,10 +143,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ? data.metadata as Record<string, unknown>
       : {}
   // La dirección creada para la campaña es el fallback cuando todavía no hay booking.
+  const canonicalLocation = Array.isArray(data.location) ? data.location[0] : data.location
   const campaignWithEvent = {
     ...data,
+    location: canonicalLocation ?? null,
     campaign_influencers: campaignInfluencersWithPlan,
-    address: data.location?.address ?? (typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null),
+    address: canonicalLocation?.address ?? (typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null),
     event_booking: eventBooking ?? null,
     // Una campaña de varios días usa varios bookings de campaña. Se mantiene
     // event_booking para consumidores existentes y se expone la agenda completa

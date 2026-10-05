@@ -89,27 +89,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'event_date is required' }, { status: 422 })
   }
 
-  const locationId = typeof location_id === 'string' ? location_id : null
+  const requestedLocationId = typeof location_id === 'string' ? location_id : null
   const legacyLocation = typeof location === 'string' ? location : null
   const isVirtual = is_virtual === true
 
-  let resolvedLocation
-  try {
-    resolvedLocation = await resolvePhysicalLocation(admin, {
-      locationId,
-      location: legacyLocation,
-      locationDetails: null,
-      isVirtual,
-    })
-  } catch (error) {
-    if (error instanceof PhysicalLocationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    throw error
-  }
+  let canonicalLocationId: string | null = null
+  let canonicalLocation: string | null = null
 
-  const canonicalLocation = resolvedLocation.locationDisplay
-  const canonicalLocationId = resolvedLocation.locationId
+  if (!isVirtual) {
+    let inheritedLocationId: string | null = null
+    if (campaign_id && !requestedLocationId) {
+      const { data: campaign } = await admin.from('campaigns').select('location_id').eq('id', campaign_id).maybeSingle()
+      inheritedLocationId = campaign?.location_id ?? null
+    }
+
+    try {
+      const resolvedLocation = await resolvePhysicalLocation(admin, {
+        locationId: requestedLocationId ?? inheritedLocationId,
+        venueName: null,
+        address: legacyLocation,
+        organizationId: orgId,
+      })
+      if (resolvedLocation.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })
+      if (resolvedLocation.matchType === 'insufficient_data' && (requestedLocationId || inheritedLocationId || legacyLocation?.trim())) {
+        return NextResponse.json({ error: 'Faltan datos suficientes para identificar la ubicación física.' }, { status: 422 })
+      }
+      canonicalLocationId = resolvedLocation.locationId
+      if (canonicalLocationId) {
+        const { data: canonical } = await admin.from('locations').select('name, address').eq('id', canonicalLocationId).single()
+        canonicalLocation = canonical?.address ?? canonical?.name ?? null
+      }
+    } catch (error) {
+      if (error instanceof PhysicalLocationError) return NextResponse.json({ error: error.message }, { status: error.status })
+      throw error
+    }
+  }
 
   const { data, error } = await admin
     .from('events')

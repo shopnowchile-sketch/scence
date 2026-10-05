@@ -4,6 +4,7 @@ import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 
 // GET /api/brand/influencers
 // Marca ve influencers relacionadas a SUS campañas/asignaciones.
@@ -52,6 +53,18 @@ export async function GET(req: NextRequest) {
   // variantes crudas de la misma comuna separadas por coma (ver
   // /api/brand/influencers/communes + src/lib/communes-chile.ts).
   const communeList = commune ? commune.split(',').map(s => s.trim()).filter(Boolean) : []
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+  const normalizeLocationName = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  const countryLocationIds = country
+    ? Array.from(locationDisplayById.entries())
+        .filter(([, location]) => normalizeLocationName(location.country ?? '') === normalizeLocationName(country))
+        .map(([id]) => id)
+    : []
+  const communeLocationIds = communeList
+    .map(name => Array.from(locationDisplayById.entries())
+      .find(([, location]) => normalizeLocationName(location.commune ?? '') === normalizeLocationName(name))?.[0])
+    .filter((id): id is string => Boolean(id))
+  const requestedLocationIds = communeList.length ? communeLocationIds : country ? countryLocationIds : []
   const verified = searchParams.get('verified')
   const isActive = searchParams.get('is_active')
   const rawSort  = searchParams.get('sort_by') ?? 'created_at'
@@ -61,6 +74,7 @@ export async function GET(req: NextRequest) {
   const summaryOnly = searchParams.get('summary') === '1'
 
   const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
+  const isLocationSort = rawSort === 'country' || rawSort === 'city' || rawSort === 'commune'
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
   // La marca nunca ve el catálogo global: solo creadoras que ya fueron
@@ -117,17 +131,25 @@ export async function GET(req: NextRequest) {
     const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
       (from, to) => {
         let q = admin.from('influencers').select(`
-          id, display_name, city, commune, categories, is_verified,
+          id, display_name, location_id, categories, is_verified,
           social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
         `).range(from, to)
         if (restrictedInfluencerIds) q = q.in('id', restrictedInfluencerIds)
-        if (country) q = q.eq('country', country)
-        if (communeList.length === 1) q = q.eq('commune', communeList[0])
-        else if (communeList.length > 1) q = q.in('commune', communeList)
+        if (requestedLocationIds.length === 0 && (country || communeList.length)) q = q.in('location_id', ['00000000-0000-0000-0000-000000000000'])
+        else if (requestedLocationIds.length === 1) q = q.eq('location_id', requestedLocationIds[0])
+        else if (requestedLocationIds.length > 1) q = q.in('location_id', requestedLocationIds)
         if (verified === 'true') q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
         if (isActive === 'true') q = q.eq('is_active', true)
-        if (search) q = q.or(`display_name.ilike.%${search}%,city.ilike.%${search}%,commune.ilike.%${search}%`)
+        if (search) {
+          const locationSearchIds = Array.from(locationDisplayById.entries())
+            .filter(([, location]) => [location.country, location.region, location.city, location.commune]
+              .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false))
+            .map(([id]) => id)
+          q = locationSearchIds.length
+            ? q.or(`display_name.ilike.%${search}%,location_id.in.(${locationSearchIds.join(',')})`)
+            : q.ilike('display_name', `%${search}%`)
+        }
         if (category) q = q.contains('categories', [category])
         return q
       },
@@ -177,9 +199,7 @@ export async function GET(req: NextRequest) {
       display_name,
       bio,
       avatar_url,
-      country,
-      city,
-      commune,
+      location_id,
       categories,
       tags,
       is_verified,
@@ -199,18 +219,23 @@ export async function GET(req: NextRequest) {
     query = query.in('id', restrictedInfluencerIds)
   }
 
-  query = query
-    .order(sortBy, { ascending: sortDir })
-    .range((page - 1) * limit, page * limit - 1)
+  if (!isLocationSort) query = query.order(sortBy, { ascending: sortDir }).range((page - 1) * limit, page * limit - 1)
 
-  if (country) query = query.eq('country', country)
-  if (communeList.length === 1) query = query.eq('commune', communeList[0])
-  else if (communeList.length > 1) query = query.in('commune', communeList)
+  if (requestedLocationIds.length === 0 && (country || communeList.length)) query = query.in('location_id', ['00000000-0000-0000-0000-000000000000'])
+  else if (requestedLocationIds.length === 1) query = query.eq('location_id', requestedLocationIds[0])
+  else if (requestedLocationIds.length > 1) query = query.in('location_id', requestedLocationIds)
   if (verified === 'true') query = query.eq('is_verified', true)
   if (isActive === 'false') query = query.eq('is_active', false)
   if (isActive === 'true') query = query.eq('is_active', true)
   if (search) {
-    query = query.or(`display_name.ilike.%${search}%,city.ilike.%${search}%`)
+    const locationSearchIds = Array.from(locationDisplayById.entries())
+      .filter(([, location]) => [location.country, location.region, location.city, location.commune]
+        .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false))
+      .map(([id]) => id)
+    const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
+    query = locationSearchIds.length
+      ? query.or(`display_name.ilike.%${search}%${locationOr}`)
+      : query.ilike('display_name', `%${search}%`)
   }
   if (category) {
     query = query.contains('categories', [category])
@@ -223,18 +248,41 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const filtered = platform
+  let filtered = platform
     ? (data ?? []).filter(inf =>
         (inf.social_profiles as Array<{ platform: string }> | undefined)
           ?.some(sp => sp.platform === platform)
       )
     : (data ?? [])
+
+  if (isLocationSort) {
+    const key = sortBy as 'country' | 'city' | 'commune'
+    filtered = [...filtered].sort((a, b) => {
+      const av = a.location_id ? (locationDisplayById.get(a.location_id)?.[key] ?? '') : ''
+      const bv = b.location_id ? (locationDisplayById.get(b.location_id)?.[key] ?? '') : ''
+      const cmp = av.localeCompare(bv, 'es')
+      return sortDir ? cmp : -cmp
+    })
+    filtered = filtered.slice((page - 1) * limit, page * limit)
+  }
+
   const proStatuses = await getInfluencerProStatuses(admin, filtered.map(inf => inf.id))
-  const withPlans = filtered.map(inf => { const pro_source = proStatuses.get(inf.id) ?? 'free'; return { ...inf, is_pro: pro_source !== 'free', pro_source } })
+  const withPlans = filtered.map(inf => {
+    const location = inf.location_id ? locationDisplayById.get(inf.location_id) : undefined
+    const pro_source = proStatuses.get(inf.id) ?? 'free'
+    return {
+      ...inf,
+      country: location?.country ?? null,
+      city: location?.city ?? null,
+      commune: location?.commune ?? null,
+      is_pro: pro_source !== 'free',
+      pro_source,
+    }
+  })
 
   return NextResponse.json({
     data: withPlans,
-    total: count ?? filtered.length,
+    total: count ?? (isLocationSort ? (data ?? []).length : filtered.length),
     page,
     limit,
     full_access: false,
@@ -287,7 +335,7 @@ export async function POST(req: NextRequest) {
 
   // organization_id / brand_id: NUNCA se aceptan del body, aunque vengan.
   const {
-    display_name, email, phone, bio, avatar_url, city, commune, birth_date, country,
+    display_name, email, phone, bio, avatar_url, location_id, birth_date,
     address, address_lat, address_lng, categories, tags,
     is_verified = false, is_active = true,
     social_profiles = [], rate_cards = [], notes, first_name, last_name,
@@ -298,6 +346,15 @@ export async function POST(req: NextRequest) {
   }
   if (!email || typeof email !== 'string' || !email.trim()) {
     return NextResponse.json({ error: 'El email es requerido' }, { status: 422 })
+  }
+
+  let canonicalLocationId: string | null = null
+  if (typeof location_id === 'string' && location_id.trim()) {
+    const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+    if (!locationDisplayById.has(location_id.trim())) {
+      return NextResponse.json({ error: 'La ubicación seleccionada no es válida.' }, { status: 422 })
+    }
+    canonicalLocationId = location_id.trim()
   }
 
   // Instagram es obligatorio y debe quedar realmente guardado como social profile.
@@ -374,8 +431,8 @@ export async function POST(req: NextRequest) {
       organization_id: brand.organization_id, // ← forzado server-side, nunca del body
       display_name: (display_name as string).trim(),
       email: emailNorm, phone: phone ?? null, bio: bio ?? null,
-      avatar_url: avatar_url ?? null, city: city ?? null, commune: commune ?? null,
-      birth_date: birth_date ?? null, country: country ?? null,
+      avatar_url: avatar_url ?? null, location_id: canonicalLocationId,
+      birth_date: birth_date ?? null,
       address: address ?? null, address_lat: address_lat ?? null, address_lng: address_lng ?? null,
       categories: categories ?? [], tags: tags ?? [],
       is_verified, is_active, notes: notes ?? null,

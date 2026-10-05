@@ -39,35 +39,24 @@ export async function POST(req: NextRequest) {
     const scan = await loadScan(admin, orgId)
     const missingInstagram = scan.filter(i => i.is_active !== false && !i.instagram_url && !i.instagram_username && i.email)
 
-    // FIX (2026-07-05): esta query no tenía paginación — con 1741 influencers,
-    // Supabase corta silenciosamente a ~1000 filas por defecto (mismo límite
-    // documentado en loadScan/dataQuality.ts). Sin esto, el conteo real de
-    // "sin comuna/dirección" se subestimaba (655 en vez de 1257 reales,
-    // verificado por SQL) y el subconjunto afectado no era determinístico.
-    // Mismo patrón PAGE=1000 + loop que ya usa loadScan arriba.
-    const PAGE = 1000
-    let from = 0
-    const addrRows: Array<{ id: string; display_name: string | null; email: string | null; address: string | null; commune: string | null; is_active: boolean | null }> = []
-    for (;;) {
-      const { data, error } = await admin
-        .from('influencers')
-        .select('id, display_name, email, address, commune, is_active')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: true })
-        .range(from, from + PAGE - 1)
-      if (error) throw new Error(error.message)
-      if (!data || data.length === 0) break
-      addrRows.push(...data)
-      if (data.length < PAGE) break
-      from += PAGE
-    }
-    const missingAddressOrCommune = addrRows.filter(
-      r => r.is_active !== false && r.email && (!r.address || !String(r.address).trim() || !r.commune || !String(r.commune).trim())
+    // Geography is canonical: commune must be derived from location_id.
+    // Do not read the legacy influencers.commune column here.
+    // loadScan() already resolves location_id through the official hierarchy
+    // and is fully paginated, so this avoids a second scan and prevents the
+    // reminder count from drifting away from the Data Quality report.
+    const missingAddressOrCommune = scan.filter(
+      i => i.is_active !== false
+        && i.email
+        && (!i.address?.trim() || !i.commune?.trim())
     )
 
-    const targetsById = new Map<string, { id: string; display_name: string | null; email: string | null }>()
-    for (const i of missingInstagram) targetsById.set(i.id, { id: i.id, display_name: i.display_name, email: i.email })
-    for (const r of missingAddressOrCommune) targetsById.set(r.id, { id: r.id, display_name: r.display_name, email: r.email })
+    const targetsById = new Map<string, { id: string; display_name: string | null; email: string }>()
+    for (const i of missingInstagram) {
+      targetsById.set(i.id, { id: i.id, display_name: i.display_name, email: i.email as string })
+    }
+    for (const r of missingAddressOrCommune) {
+      targetsById.set(r.id, { id: r.id, display_name: r.display_name, email: r.email as string })
+    }
     const targets = Array.from(targetsById.values())
 
     if (body.dryRun) {

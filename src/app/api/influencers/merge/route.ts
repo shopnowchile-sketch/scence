@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   // 1. Cargar registros (scope org)
   const { data: infs, error: loadErr } = await admin
     .from('influencers')
-    .select('id, email, phone, city, country, bio, categories, avatar_url, notes')
+    .select('id, email, phone, location_id, bio, categories, avatar_url, notes')
     .eq('organization_id', orgId)
     .in('id', allIds)
   if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 })
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Rellenar campos vacíos del keep con datos de los merges
   const patch: Record<string, unknown> = {}
-  const fields = ['email', 'phone', 'city', 'country', 'bio', 'avatar_url', 'notes'] as const
+  const fields = ['email', 'phone', 'location_id', 'bio', 'avatar_url', 'notes'] as const
   for (const f of fields) {
     if (!keep[f]) {
       const donor = merges.find(m => m[f])

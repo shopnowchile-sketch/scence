@@ -6,6 +6,7 @@ import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { buildManualAttendanceUpdate, type ManualAttendanceAction } from '@/lib/manual-attendance'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { ensureEventAttendanceDeliverable } from '@/lib/campaign-applications'
+import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -26,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       *,
       influencer:influencers (
-        id, display_name, avatar_url, city, country, is_verified,
+        id, display_name, avatar_url, location_id, is_verified,
         influencer_social_profiles (platform, username, followers, engagement_rate),
         influencer_rate_cards (deliverable_type, base_rate, currency)
       )
@@ -39,11 +40,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
   const proIds = await getInfluencerProIds(admin, (data ?? []).map(row => row.influencer?.id).filter((id): id is string => Boolean(id)))
-  const withPlans = (data ?? []).map(row => ({
-    ...row,
-    influencer: row.influencer ? { ...row.influencer, is_pro: proIds.has(row.influencer.id) } : null,
-  }))
+  const withPlans = (data ?? []).map(row => {
+    const location = row.influencer?.location_id ? locationDisplayById.get(row.influencer.location_id) : undefined
+    return {
+      ...row,
+      influencer: row.influencer ? {
+        ...row.influencer,
+        country: location?.country ?? null,
+        city: location?.city ?? null,
+        commune: location?.commune ?? null,
+        is_pro: proIds.has(row.influencer.id),
+      } : null,
+    }
+  })
   return NextResponse.json({ data: withPlans })
 }
 
@@ -117,7 +128,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .select(`
       *,
       influencer:influencers (
-        id, display_name, avatar_url, city, country, email,
+        id, display_name, avatar_url, location_id, email,
         influencer_social_profiles (platform, username, followers, engagement_rate)
       )
     `)
@@ -126,6 +137,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (error) {
     console.error('[POST /api/campaigns/[id]/influencers]', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
+  if (data?.influencer?.location_id) {
+    const location = locationDisplayById.get(data.influencer.location_id)
+    data.influencer = {
+      ...data.influencer,
+      country: location?.country ?? null,
+      city: location?.city ?? null,
+      commune: location?.commune ?? null,
+    }
   }
 
   // Plantillas de la campaña, leídas una sola vez: se reutilizan abajo para

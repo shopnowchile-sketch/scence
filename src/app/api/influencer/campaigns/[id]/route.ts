@@ -153,7 +153,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     campaign.metadata && typeof campaign.metadata === 'object' && !Array.isArray(campaign.metadata)
       ? campaign.metadata as Record<string, unknown>
       : {}
-  const fallbackLocation = campaign.location?.address ?? campaign.location?.name ?? (typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null)
+  const canonicalCampaignLocation = Array.isArray(campaign.location) ? campaign.location[0] : campaign.location
+  const fallbackLocation = canonicalCampaignLocation?.address ?? canonicalCampaignLocation?.name ?? (typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null)
   // Redacción campo por campo del lugar: el NOMBRE del lugar y la comuna
   // (bookings.location_details.venue_name / .commune — campos ya existentes,
   // distintos de la dirección) se muestran antes de aceptar para que la

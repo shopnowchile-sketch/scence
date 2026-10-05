@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
   }
 
   const requestedLocationId = typeof location_id === 'string' ? location_id : null
+  const locationDetails = location_details && typeof location_details === 'object' && !Array.isArray(location_details) ? location_details as Record<string, unknown> : null
   const legacyLocation = typeof location === 'string' ? location : null
   const isVirtual = is_virtual === true
 
@@ -112,12 +113,12 @@ export async function POST(request: NextRequest) {
     try {
       const resolvedLocation = await resolvePhysicalLocation(admin, {
         locationId: requestedLocationId ?? inheritedLocationId,
-        venueName: typeof venue_name === 'string' ? venue_name : (typeof location_details?.venue_name === 'string' ? location_details.venue_name : null),
+        venueName: typeof venue_name === 'string' ? venue_name : (typeof locationDetails?.venue_name === 'string' ? locationDetails.venue_name : null),
         address: legacyLocation,
-        commune: typeof commune === 'string' ? commune : (typeof location_details?.commune === 'string' ? location_details.commune : null),
+        commune: typeof commune === 'string' ? commune : (typeof locationDetails?.commune === 'string' ? locationDetails.commune : null),
         city: typeof city === 'string' ? city : null,
-        region: typeof region === 'string' ? region : (typeof location_details?.region === 'string' ? location_details.region : null),
-        country: typeof country === 'string' ? country : (typeof location_details?.country === 'string' ? location_details.country : null),
+        region: typeof region === 'string' ? region : (typeof locationDetails?.region === 'string' ? locationDetails.region : null),
+        country: typeof country === 'string' ? country : (typeof locationDetails?.country === 'string' ? locationDetails.country : null),
         organizationId: orgId,
       })
       if (resolvedLocation.matchType === 'ambiguous') return NextResponse.json({ error: 'La ubicación coincide con más de un lugar. Selecciona una Location existente.' }, { status: 409 })

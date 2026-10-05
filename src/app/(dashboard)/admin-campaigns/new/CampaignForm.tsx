@@ -11,6 +11,7 @@ import {
   Target, Calendar, FileText, Sparkles, Plus, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PhysicalLocationPicker, type PhysicalLocationValue } from '@/components/locations/PhysicalLocationPicker'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
 import { DeliverableTemplateBuilder, DELIVERABLE_TYPES, CAMPAIGN_DELIVERABLE_DEFAULTS } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
@@ -73,6 +74,7 @@ const schema = z.object({
   visibility: z.enum(['private', 'open']).default('open'),
   access_mode: z.enum(['public', 'private_pro', 'invitation']).default('public'),
   address: z.string().max(300).optional(),
+  location_id: z.string().uuid().nullable().optional(),
   commune: z.string().max(120).optional(), region: z.string().max(120).optional(), country: z.string().max(120).default('Chile'),
   whatsapp_group_url: z.string().optional(), application_questions: z.array(z.string()).optional(),
   application_deadline: z.string().optional(), max_influencers: z.number().int().min(1).optional(),
@@ -260,11 +262,13 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin', campaignType }: StepProps & {
+function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin', campaignType, physicalLocation, setPhysicalLocation }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
   setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>>
   venueName: string
   setVenueName: (value: string) => void
+  physicalLocation: PhysicalLocationValue
+  setPhysicalLocation: (value: PhysicalLocationValue) => void
   arrivalInstructions: string
   setArrivalInstructions: (value: string) => void
   setRemovedEventBookingIds: React.Dispatch<React.SetStateAction<string[]>>
@@ -296,17 +300,12 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
           <span className="text-[11px] text-gray-400 shrink-0">Información del evento</span>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del lugar <span className="font-normal text-gray-400">(visible al aceptar)</span></label>
-          <input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full !py-2" placeholder="Ej. Centro Parque" />
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Calle y número <span className="font-normal text-gray-400">(al aceptar)</span></label><input {...register('address')} className="input-base w-full !py-2" placeholder="Av. Presidente Riesco 5335" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Comuna <span className="font-normal text-gray-400">(visible al postular)</span></label><input {...register('commune')} className="input-base w-full !py-2" placeholder="Las Condes" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Región <span className="font-normal text-gray-400">(no visible)</span></label><input {...register('region')} className="input-base w-full !py-2" placeholder="Metropolitana" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">País <span className="font-normal text-gray-400">(al postular)</span></label><input {...register('country')} className="input-base w-full !py-2" placeholder="Chile" /></div>
-        </div>
+        <PhysicalLocationPicker
+          value={physicalLocation}
+          onChange={value => {
+            setPhysicalLocation(value)
+          }}
+        />
 
         <div className="border-t border-gray-200 pt-3">
           <div className="flex items-center justify-between gap-3 mb-2">
@@ -421,6 +420,7 @@ export function CampaignForm({
   const [removedEventBookingIds, setRemovedEventBookingIds] = useState<string[]>([])
   const [venueName, setVenueName] = useState('')
   const [arrivalInstructions, setArrivalInstructions] = useState('')
+  const [physicalLocation, setPhysicalLocation] = useState<PhysicalLocationValue>({ locationId: null, locationDisplay: null })
 
   const { register, control, handleSubmit, getValues, setValue, trigger, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -430,7 +430,7 @@ export function CampaignForm({
       approval_required: true,
       platforms: [],
       hashtags: [], social_tags: ['@influencers.snc'], tags: [], deliverable_templates: [], campaign_benefits: [],
-      brand_id: '', visibility: 'open', access_mode: 'public', address: '', commune: '', region: '', country: 'Chile', whatsapp_group_url: '', application_questions: [],
+      brand_id: '', visibility: 'open', access_mode: 'public', address: '', location_id: null, commune: '', region: '', country: 'Chile', whatsapp_group_url: '', application_questions: [],
       application_deadline: '', max_influencers: undefined, event_date: '', approval_submission_url: '', reference_url: '',
       brief_url: '', collaborator_ids: [],
     },
@@ -699,7 +699,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-3">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} physicalLocation={physicalLocation} setPhysicalLocation={value => { setPhysicalLocation(value); setValue('location_id', value.locationId) }} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
         </div>
 
         {/* Navigation */}

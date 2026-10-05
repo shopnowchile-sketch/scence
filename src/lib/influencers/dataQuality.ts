@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
 export interface ScanInfluencer {
   id: string
@@ -15,6 +16,9 @@ export interface ScanInfluencer {
   location_id: string | null
   address: string | null
   categories: string[] | null
+  locationLevel: 'country' | 'region' | 'city' | 'commune' | null
+  locationName: string | null
+  locationAncestors: Array<{ id: string; level: 'country' | 'region' | 'city' | 'commune'; name: string }>
 }
 
 export interface RankingItem {
@@ -45,8 +49,7 @@ export interface DataQualityReport {
   duplicatesByInstagram: number
   duplicatesByMixed: number
   nicheRanking: RankingItem[]
-  geography: GeographyRegion[]
-  geography: GeographyRegion[]
+  geography: GeographyCountry[]
 }
 
 export interface GeographyInfluencer {
@@ -59,17 +62,16 @@ export interface GeographyInfluencer {
   address: string | null
 }
 
-export interface GeographyCommune {
+export interface GeographyNode {
+  id: string
   label: string
+  level: 'country' | 'region' | 'city' | 'commune'
   count: number
+  children: GeographyNode[]
   influencers: GeographyInfluencer[]
 }
 
-export interface GeographyRegion {
-  label: string
-  count: number
-  communes: GeographyCommune[]
-}
+export type GeographyCountry = GeographyNode
 
 function normUrl(url: string | null): string | null {
   if (!url) return null
@@ -157,13 +159,44 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     from += PAGE
   }
 
-  const locationDisplayById = await getOfficialLocationDisplayMap(admin)
-  return all.map(inf => ({
-    ...inf,
-    location_id: inf.location_id ?? null,
-    commune: inf.location_id ? (locationDisplayById.get(inf.location_id)?.commune ?? null) : null,
-    region: inf.location_id ? (locationDisplayById.get(inf.location_id)?.region ?? null) : null,
-  }))
+  const [locationDisplayById, locationRowsResult] = await Promise.all([
+    getOfficialLocationDisplayMap(admin),
+    fetchAllRows(
+      (from, to) => admin.from('locations')
+        .select('id, parent_id, level, name, is_active')
+        .eq('is_active', true)
+        .neq('level', 'place')
+        .range(from, to),
+      { maxRows: 5000 },
+    ),
+  ])
+  if (locationRowsResult.error) throw locationRowsResult.error
+
+  type LocationNode = { id: string; parent_id: string | null; level: 'country' | 'region' | 'city' | 'commune'; name: string; is_active: boolean }
+  const locationById = new Map<string, LocationNode>((locationRowsResult.data ?? []) as LocationNode[]).entries()
+  const locationMap = new Map<string, LocationNode>(locationById)
+
+  return all.map(inf => {
+    const path: LocationNode[] = []
+    let current = inf.location_id ? locationMap.get(inf.location_id) : undefined
+    const visited = new Set<string>()
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id)
+      path.push(current)
+      current = current.parent_id ? locationMap.get(current.parent_id) : undefined
+    }
+    path.reverse()
+    const display = inf.location_id ? locationDisplayById.get(inf.location_id) : undefined
+    return {
+      ...inf,
+      location_id: inf.location_id ?? null,
+      commune: display?.commune ?? null,
+      region: display?.region ?? null,
+      locationLevel: path[path.length - 1]?.level ?? null,
+      locationName: path[path.length - 1]?.name ?? null,
+      locationAncestors: path.map(node => ({ id: node.id, level: node.level, name: node.name })),
+    }
+  })
 }
 
 function mergeOverlappingGroups(rawGroups: DuplicateGroup[]): DuplicateGroup[] {
@@ -293,6 +326,7 @@ function buildRanking(
 }
 
 export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
+export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): DataQualityReport {
   const active = scan.filter(i => i.is_active).length
   const withInstagram = scan.filter(i => extractInstagramHandle(i.instagram_url, i.instagram_username)).length
   // A valid commune means the canonical location itself is a commune.
@@ -314,34 +348,38 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
 
   const nicheRanking = buildRanking(scan, i => i.categories ?? [], 'Sin nicho')
 
-  const regionMap = new Map<string, { count: number; communes: Map<string, GeographyCommune> }>()
+  const countryMap = new Map<string, GeographyNode>()
+  const influencerForGeo = (inf: ScanInfluencer): GeographyInfluencer => ({
+    id: inf.id, display_name: inf.display_name, email: inf.email,
+    instagram_username: inf.instagram_username, followers: inf.followers,
+    is_active: inf.is_active, address: inf.address,
+  })
+
   for (const inf of scan) {
-    const region = inf.region?.trim() || 'Sin región oficial'
-    const commune = inf.commune?.trim() || 'Sin comuna oficial'
-    if (!regionMap.has(region)) regionMap.set(region, { count: 0, communes: new Map() })
-    const regionEntry = regionMap.get(region)!
-    regionEntry.count++
-    if (!regionEntry.communes.has(commune)) regionEntry.communes.set(commune, { label: commune, count: 0, influencers: [] })
-    const communeEntry = regionEntry.communes.get(commune)!
-    communeEntry.count++
-    communeEntry.influencers.push({
-      id: inf.id,
-      display_name: inf.display_name,
-      email: inf.email,
-      instagram_username: inf.instagram_username,
-      followers: inf.followers,
-      is_active: inf.is_active,
-      address: inf.address,
-    })
+    const path = inf.locationAncestors
+    if (!path.length) continue
+    let currentMap = countryMap
+    let currentNode: GeographyNode | undefined
+    for (const ancestor of path) {
+      let node = currentMap.get(ancestor.id)
+      if (!node) {
+        node = { id: ancestor.id, label: ancestor.name, level: ancestor.level, count: 0, children: [], influencers: [] }
+        currentMap.set(ancestor.id, node)
+      }
+      node.count++
+      if (ancestor.id === path[path.length - 1].id) node.influencers.push(influencerForGeo(inf))
+      currentNode = node
+      currentMap = new Map(node.children.map(child => [child.id, child]))
+      // Keep the Map-backed children in sync after inserts.
+      if (currentMap.size !== node.children.length) node.children = Array.from(currentMap.values())
+    }
   }
 
-  const geography: GeographyRegion[] = Array.from(regionMap.entries())
-    .map(([label, entry]) => ({
-      label,
-      count: entry.count,
-      communes: Array.from(entry.communes.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'es-CL')),
-    }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'es-CL'))
+  const sortGeo = (nodes: GeographyNode[]): GeographyNode[] => nodes
+    .map(node => ({ ...node, children: sortGeo(node.children), influencers: [...node.influencers].sort((a,b) => b.followers-a.followers || (a.display_name ?? '').localeCompare(b.display_name ?? '', 'es-CL')) }))
+    .sort((a,b) => b.count-a.count || a.label.localeCompare(b.label, 'es-CL'))
+
+  const geography = sortGeo(Array.from(countryMap.values()))
 
   return {
     total: scan.length,
@@ -361,5 +399,4 @@ export function buildReport(scan: ScanInfluencer[], groups: DuplicateGroup[]): D
     geography,
   }
 }
-
 export { normUrl, normHandle, normEmail }

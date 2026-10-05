@@ -17,8 +17,9 @@ type Props = {
 }
 
 type Node = Pick<LocationRow, 'id' | 'name' | 'level' | 'parent_id' | 'address' | 'type'>
+type SearchNode = Node & { breadcrumb?: { id: string; name: string; level: string }[] }
 
-async function getLocations(params = ''): Promise<Node[]> {
+async function getLocations(params = ''): Promise<SearchNode[]> {
   const res = await fetch('/api/locations' + params)
   const json = await res.json()
   if (!res.ok) throw new Error(json.error ?? 'No se pudieron cargar las ubicaciones')
@@ -100,10 +101,14 @@ export function PhysicalLocationPicker({ value, onChange, disabled = false }: Pr
     [countryId, regionId, communeId, placeName, address],
   )
 
-  function selectPlace(place: Node) {
+  function selectPlace(place: SearchNode) {
+    const geography = (place.breadcrumb ?? [])
+      .filter(item => item.level !== 'place')
+      .map(item => item.name)
+      .join(' · ')
     onChange({
       locationId: place.id,
-      locationDisplay: [place.name, place.address].filter(Boolean).join(' — '),
+      locationDisplay: [place.name, geography, place.address].filter(Boolean).join(' — '),
     })
     setQuery('')
     setResults([])

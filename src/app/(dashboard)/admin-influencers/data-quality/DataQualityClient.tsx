@@ -26,7 +26,6 @@ interface Report {
   duplicatesByEmail: number
   duplicatesByInstagram: number
   duplicatesByMixed: number
-  communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
   geography: GeographyRegion[]
 }
@@ -90,13 +89,9 @@ function StatCard({ icon: Icon, label, value, tone = 'violet', href }: {
   return <div className="card p-4">{content}</div>
 }
 
-// Ranking por comuna / nicho (pedido Pri 2026-07-13): lista simple ordenada
-// de mayor a menor, cada fila clickeable hacia /admin-influencers con el
-// filtro correspondiente. "Sin comuna"/"Sin nicho" usa el sentinel __none__
-// en la URL — InfluencersClient lo resuelve client-side (mismo patrón que
-// "Sin Instagram"), ya que no hay filtro server-side de "IS NULL".
+// Ranking de nichos: se mantiene como resumen secundario; la geografía se explora arriba por Región → Comuna → Influencer.
 function RankingList({ title, items, paramName }: {
-  title: string; items: RankingItem[]; paramName: 'commune' | 'niche'
+  title: string; items: RankingItem[]; paramName: 'niche'
 }) {
   return (
     <div className="card p-5">

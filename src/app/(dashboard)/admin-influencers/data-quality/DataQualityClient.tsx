@@ -27,7 +27,12 @@ interface Report {
   duplicatesByMixed: number
   communeRanking: RankingItem[]
   nicheRanking: RankingItem[]
+  geography: GeographyRegion[]
 }
+
+interface GeographyInfluencer { id: string; display_name: string | null; email: string | null; instagram_username: string | null; followers: number; is_active: boolean; address: string | null }
+interface GeographyCommune { label: string; count: number; influencers: GeographyInfluencer[] }
+interface GeographyRegion { label: string; count: number; communes: GeographyCommune[] }
 
 interface RankingItem {
   value: string | null
@@ -121,6 +126,8 @@ export function DataQualityClient() {
   const [busy, setBusy] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
   const [mergingAll, setMergingAll] = useState(false)
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
+  const [selectedCommune, setSelectedCommune] = useState<string | null>(null)
   const [mergeAllProgress, setMergeAllProgress] = useState<{ done: number; total: number } | null>(null)
   const [keepChoice, setKeepChoice] = useState<Record<string, string>>({})
   const { isAdmin } = useIsAdmin()
@@ -439,7 +446,24 @@ export function DataQualityClient() {
             </div>
           )}
 
-          {/* Ranking por comuna / nicho */}
+          {/* Geografía: región → comuna → influencers */}
+{report && (
+  <div className="card p-5">
+    <div className="flex items-center justify-between mb-4">
+      <div><h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Distribución geográfica</h3><p className="text-xs text-gray-400 mt-1">Haz clic en una región, luego en una comuna para ver las influencers.</p></div>
+      {(selectedRegion || selectedCommune) && <button onClick={() => { setSelectedRegion(null); setSelectedCommune(null) }} className="text-xs font-semibold text-violet-600 hover:underline">Ver todas las regiones</button>}
+    </div>
+    {!selectedRegion ? (
+      <div className="space-y-2">{report.geography.map(region => { const max = report.geography[0]?.count || 1; return <button key={region.label} onClick={() => { setSelectedRegion(region.label); setSelectedCommune(null) }} className="w-full text-left group"><div className="flex items-center justify-between text-sm mb-1"><span className="font-medium text-gray-700 group-hover:text-violet-700">{region.label}</span><span className="font-bold text-gray-900">{region.count.toLocaleString()}</span></div><div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-violet-500 rounded-full" style={{ width: Math.max(3, (region.count / max) * 100) + '%' }} /></div></button> })}</div>
+    ) : (() => {
+      const region = report.geography.find(r => r.label === selectedRegion); if (!region) return null; const max = region.communes[0]?.count || 1;
+      if (selectedCommune) { const commune = region.communes.find(c => c.label === selectedCommune); if (!commune) return null; return <div><button onClick={() => setSelectedCommune(null)} className="text-sm text-violet-600 hover:underline mb-4">← {region.label}</button><div className="flex items-center justify-between mb-4"><div><h4 className="text-lg font-bold text-gray-900">{commune.label}</h4><p className="text-xs text-gray-400">{commune.count} influencer{commune.count === 1 ? '' : 's'}</p></div></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead><tbody>{commune.influencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody></table></div></div> }
+      return <div><button onClick={() => setSelectedRegion(null)} className="text-sm text-violet-600 hover:underline mb-4">← Todas las regiones</button><h4 className="text-lg font-bold text-gray-900 mb-4">{region.label} <span className="text-sm font-normal text-gray-400">· {region.count}</span></h4><div className="space-y-2">{region.communes.map(commune => <button key={commune.label} onClick={() => setSelectedCommune(commune.label)} className="w-full text-left group"><div className="flex items-center justify-between text-sm mb-1"><span className="font-medium text-gray-700 group-hover:text-violet-700">{commune.label}</span><span className="font-bold text-gray-900">{commune.count}</span></div><div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{ width: Math.max(3, (commune.count / max) * 100) + '%' }} /></div></button>)}</div></div>
+    })()}
+  </div>
+)}
+
+{/* Ranking por comuna / nicho */}
           {report && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <RankingList title="Ranking por comuna oficial" items={report.communeRanking} paramName="commune" />

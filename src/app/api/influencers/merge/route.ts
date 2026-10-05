@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
-import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
+import { assertNoProInfluencers, hardDeleteInfluencers, InfluencerHasProError } from '@/lib/influencers/hardDelete'
 
 // POST /api/influencers/merge
 // body: { keepId: string, mergeIds: string[] }
@@ -32,6 +32,16 @@ export async function POST(req: NextRequest) {
   }
 
   const allIds = [keepId, ...mergeIds]
+
+  // 0. Los registros a fusionar se borran al final: si alguno tiene Pro, se
+  // rechaza ANTES de mover datos (no dejar el merge a medias).
+  try {
+    await assertNoProInfluencers(admin, mergeIds)
+  } catch (e) {
+    if (e instanceof InfluencerHasProError) return NextResponse.json({ error: `${e.message} Conserva ese registro como principal.`, pro_ids: e.proIds }, { status: 409 })
+    console.error('[POST merge] pro check', e)
+    return NextResponse.json({ error: 'No se pudo verificar el Plan Pro.' }, { status: 500 })
+  }
 
   // 1. Cargar registros (scope org)
   const { data: infs, error: loadErr } = await admin

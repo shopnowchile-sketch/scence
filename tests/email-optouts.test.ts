@@ -319,9 +319,19 @@ describe('12 · El webhook existente sigue intacto', () => {
     assert.ok(code.includes('received: true'))
   })
 
-  test('el bloqueo se evalúa DESPUÉS de registrar el evento', () => {
-    assert.ok(code.indexOf("from('crm_email_events')") < code.indexOf('const decision = classifyResendEvent'),
-      'el evento debe quedar registrado aunque el bloqueo falle')
+  test('el bloqueo se registra DESPUÉS de registrar el evento', () => {
+    // La clasificación se hace temprano (para saltar eventos no-CRM, fix
+    // 2026-09-28), pero el opt-out se escribe recién después de insertar el
+    // evento: el evento queda registrado aunque el bloqueo falle.
+    const insertEvent = code.indexOf("from('crm_email_events').insert(")
+    const recordBlock = code.indexOf('recordOptOut(admin')
+    assert.ok(insertEvent > -1 && recordBlock > -1)
+    assert.ok(insertEvent < recordBlock, 'el evento debe quedar registrado aunque el bloqueo falle')
+  })
+
+  test('los eventos de bloqueo nunca se saltan por no ser CRM', () => {
+    assert.match(code, /if \(audienceTag\(data\.tags\) !== 'crm' && !decision\.block\) \{/,
+      'rebotes/quejas/supresiones deben procesarse siempre')
   })
 })
 

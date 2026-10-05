@@ -384,7 +384,7 @@ Aplica a todas las rutas excepto assets estáticos.
 | DT-04 | `useSearchParams` en `/brand/influencers` usa `window.location` (no compatible con SSR puro) | Media |
 | DT-05 | Emails Resend no se envían en flujo de invitación marca→influencer | Media |
 | DT-06 | No hay logging estructurado (solo `console.error`) | Baja |
-| DT-07 | `MIGRATIONS_*.sql` files en raíz del repo — deberían estar en `supabase/migrations/` | Baja |
+| DT-07 | ~~`MIGRATIONS_*.sql` files en raíz del repo~~ — resuelto 2026-10-05: eran scripts one-off; se eliminaron (quedan en el historial de git). Las migraciones viven en `supabase/migrations/` | Baja |
 | DT-08 | Varios API routes no validan body con Zod (validación manual) | Baja |
 
 ---

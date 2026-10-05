@@ -53,6 +53,9 @@ export async function notifyContactOfSupportReply(input: {
   const { error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: input.contactEmail,
+    // Respuesta a una marca: declarar la audiencia (CLAUDE.md 16.10). A una
+    // influencer se envía sin tag (audiencia por defecto).
+    ...(input.portal === 'brand' ? { tags: [emailAudience('brand')] } : {}),
     reply_to: SUPPORT_EMAIL,
     subject: `[Soporte Scence] Respondimos tu ticket: ${input.ticketTitle}`,
     html: emailShell('Tienes una nueva respuesta', content, portalUrl, 'Ver conversación'),

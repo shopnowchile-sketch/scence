@@ -529,8 +529,14 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
     .eq('user_id', userId)
     .eq('is_active', true)
     .in('role', ['brand_manager', 'member', 'finance'])
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
 
-  for (const membership of orgMemberships ?? []) {
+  // Determinista para usuarios con varias marcas: primero las membresías con
+  // brand_id explícito, luego la más antigua (sort estable sobre created_at).
+  const memberships = [...(orgMemberships ?? [])].sort((a, b) => Number(!a.brand_id) - Number(!b.brand_id))
+
+  for (const membership of memberships) {
     let brandQuery = admin
       .from('brands')
       .select('id, organization_id')

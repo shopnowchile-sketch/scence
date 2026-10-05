@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
     })
   ))
 
-  const sent = results.filter(result => result.status === 'fulfilled').length
+  // Resend no lanza ante errores de API: devuelve { error } (CLAUDE.md 16.8).
+  const sent = results.filter(result => result.status === 'fulfilled' && !result.value.error).length
   const failed = results.length - sent
   return NextResponse.json({ ok: true, sent, failed, total: valid.length })
 }

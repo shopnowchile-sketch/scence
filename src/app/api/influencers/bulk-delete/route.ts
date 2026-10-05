@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
-import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
+import { hardDeleteInfluencers, InfluencerHasProError } from '@/lib/influencers/hardDelete'
 
 // POST /api/influencers/bulk-delete
 // body: { ids: string[], hard?: boolean }
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
       childErrors: result.childErrors,
     })
   } catch (e) {
+    if (e instanceof InfluencerHasProError) return NextResponse.json({ error: e.message, pro_ids: e.proIds }, { status: 409 })
     console.error('[POST bulk-delete]', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error al borrar' }, { status: 500 })
   }

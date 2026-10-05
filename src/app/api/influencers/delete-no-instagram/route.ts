@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { loadScan } from '@/lib/influencers/dataQuality'
-import { hardDeleteInfluencers } from '@/lib/influencers/hardDelete'
+import { hardDeleteInfluencers, InfluencerHasProError } from '@/lib/influencers/hardDelete'
 
 // POST /api/influencers/delete-no-instagram
 // body: { dryRun?: boolean }
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
     const result = await hardDeleteInfluencers(admin, orgId, ids)
     return NextResponse.json({ success: true, deleted: result.deleted, childErrors: result.childErrors })
   } catch (e) {
+    if (e instanceof InfluencerHasProError) return NextResponse.json({ error: e.message, pro_ids: e.proIds }, { status: 409 })
     console.error('[POST delete-no-instagram]', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error' }, { status: 500 })
   }

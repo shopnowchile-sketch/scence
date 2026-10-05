@@ -73,6 +73,32 @@ export function normalizePhysicalText(value: unknown): string {
     .trim()
 }
 
+function physicalAddressMatch(left: string | null | undefined, right: string | null | undefined) {
+  const a = normalizePhysicalText(left)
+  const b = normalizePhysicalText(right)
+  if (!a || !b) return false
+  if (a === b) return true
+
+  // Units (oficina/local/depto) are part of the physical identity. Do not
+  // collapse two different units just because the street number is equal.
+  if (/\b(oficina|local|depto)\b/.test(a) || /\b(oficina|local|depto)\b/.test(b)) {
+    return false
+  }
+
+  const generic = new Set(['avenida', 'calle', 'pasaje', 'camino', 'ruta', 'presidente'])
+  const tokenize = (value: string) => value.split(' ').filter(Boolean)
+  const aTokens = tokenize(a)
+  const bTokens = tokenize(b)
+  const aNumbers = aTokens.filter(token => /^\\d+$/.test(token))
+  const bNumbers = bTokens.filter(token => /^\\d+$/.test(token))
+  if (!aNumbers.length || !bNumbers.length || aNumbers[0] !== bNumbers[0]) return false
+
+  const aStreet = aTokens.filter(token => !/^\\d+$/.test(token) && !generic.has(token))
+  const bStreet = bTokens.filter(token => !/^\\d+$/.test(token) && !generic.has(token))
+  const subset = (small: string[], large: string[]) => small.every(token => large.includes(token))
+  return subset(aStreet, bStreet) || subset(bStreet, aStreet)
+}
+
 function sameProvidedValue(input: string | null | undefined, stored: string | null | undefined, normalize = normalizeGeography) {
   if (!input?.trim()) return true
   if (!stored?.trim()) return false
@@ -185,7 +211,7 @@ export async function resolvePhysicalLocation(
   }
 
   if (addressKey) {
-    const addressCandidates = places.filter(place => normalizePhysicalText(place.address) === addressKey)
+    const addressCandidates = places.filter(place => physicalAddressMatch(place.address, input.address))
     if (addressCandidates.length > 0) {
       const compatibleCandidates = addressCandidates.filter(place => compatible(place, input))
       if (compatibleCandidates.length === 1) {
@@ -244,7 +270,7 @@ export async function resolvePhysicalLocation(
   const retryPlaces = retryRows
     .filter(row => row.level === 'place' && !row.is_private && row.type !== 'influencer_home')
     .map(place => contextForNode(place, new Map(retryRows.map(row => [row.id, row]))))
-    .filter(place => normalizePhysicalText(place.address) === addressKey)
+    .filter(place => physicalAddressMatch(place.address, input.address))
     .filter(place => compatible(place, input))
 
   if (retryPlaces.length === 1) {

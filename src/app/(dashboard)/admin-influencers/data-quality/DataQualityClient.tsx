@@ -122,9 +122,7 @@ export function DataQualityClient() {
   const [busy, setBusy] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
   const [mergingAll, setMergingAll] = useState(false)
-  const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
-  const [selectedArea, setSelectedArea] = useState<string | null>(null)
+  const [selectedGeoPath, setSelectedGeoPath] = useState<string[]>([])
   const [mergeAllProgress, setMergeAllProgress] = useState<{ done: number; total: number } | null>(null)
   const [keepChoice, setKeepChoice] = useState<Record<string, string>>({})
   const { isAdmin } = useIsAdmin()
@@ -447,16 +445,21 @@ export function DataQualityClient() {
           {report && (
             <div className="card p-5">
               {(() => {
-                const country = selectedCountry ? report.geography.find(n => n.id === selectedCountry) : null
-                const region = country && selectedRegion ? country.children.find(n => n.id === selectedRegion) : null
-                const area = region && selectedArea ? region.children.find(n => n.id === selectedArea) : null
-                const currentChildren = !country ? report.geography : !region ? country!.children : !area ? region!.children : []
-                const currentTitle = !country ? 'País' : !region ? country.label : !area ? region.label : area.label
-                const currentCount = !country ? report.total : !region ? country.count : !area ? region.count : area.count
-                const levelLabel = !country ? 'países' : !region ? 'regiones' : !area ? 'comunas / ciudades' : 'influencers'
-                const goCountry = () => { setSelectedCountry(null); setSelectedRegion(null); setSelectedArea(null) }
-                const goRegion = () => { setSelectedRegion(null); setSelectedArea(null) }
-                const goArea = () => setSelectedArea(null)
+                const findPath = (nodes: GeographyNode[], ids: string[]): GeographyNode | null => {
+                  if (!ids.length) return null
+                  for (const node of nodes) {
+                    if (node.id !== ids[0]) continue
+                    if (ids.length === 1) return node
+                    return findPath(node.children, ids.slice(1))
+                  }
+                  return null
+                }
+                const current = findPath(report.geography, selectedGeoPath)
+                const currentChildren = current?.children ?? report.geography
+                const isLeaf = Boolean(current && current.children.length === 0)
+                const currentTitle = current?.label ?? 'País'
+                const currentCount = current?.count ?? report.total
+                const goTo = (index: number) => setSelectedGeoPath(selectedGeoPath.slice(0, index))
                 return (
                   <>
                     <div className="flex items-start justify-between mb-4">
@@ -464,72 +467,47 @@ export function DataQualityClient() {
                         <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Distribución geográfica</h3>
                         <p className="text-xs text-gray-400 mt-1">País → Región → Comuna / Ciudad → Influencers · fuente única: locations</p>
                       </div>
-                      {(country || region || area) && (
-                        <div className="flex items-center gap-1 text-xs font-semibold text-violet-600">
-                          <button onClick={goCountry} className="hover:underline">Países</button>
-                          {country && <><span className="text-gray-300">/</span><button onClick={goRegion} className="hover:underline">{country.label}</button></>}
-                          {region && <><span className="text-gray-300">/</span><button onClick={goArea} className="hover:underline">{region.label}</button></>}
-                          {area && <><span className="text-gray-300">/</span><span className="text-gray-500">{area.label}</span></>}
+                      {selectedGeoPath.length > 0 && (
+                        <div className="flex items-center gap-1 text-xs font-semibold text-violet-600 flex-wrap justify-end">
+                          <button onClick={() => goTo(0)} className="hover:underline">Países</button>
+                          {(() => {
+                            const labels: string[] = []
+                            let nodes = report.geography
+                            selectedGeoPath.forEach((id, index) => {
+                              const node = nodes.find(n => n.id === id)
+                              if (!node) return
+                              labels.push(node.label)
+                              nodes = node.children
+                            })
+                            return labels.map((label, index) => <span key={index} className="flex items-center gap-1"><span className="text-gray-300">/</span><button onClick={() => goTo(index + 1)} className={index === labels.length - 1 ? 'text-gray-500' : 'hover:underline'}>{label}</button></span>)
+                          })()}
                         </div>
                       )}
                     </div>
-                    {!area ? (
-                      <>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-lg font-bold text-gray-900">{currentTitle}</span>
-                          <span className="text-sm text-gray-400">· {currentCount.toLocaleString()} influencers · {levelLabel}</span>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-lg font-bold text-gray-900">{currentTitle}</span>
+                      <span className="text-sm text-gray-400">· {currentCount.toLocaleString()} influencers</span>
+                    </div>
+                    {!isLeaf ? (
+                      currentChildren.length === 0 ? (
+                        <div className="py-10 text-center text-sm text-gray-400">Sin datos geográficos canónicos en este nivel.</div>
+                      ) : (
+                        <div className="h-[340px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={currentChildren} margin={{ top: 8, right: 12, left: 0, bottom: 65 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={85} />
+                              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                              <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
+                              <Bar dataKey="count" name="Influencers" fill="#7c3aed" radius={[6, 6, 0, 0]} cursor="pointer" onClick={(entry) => setSelectedGeoPath([...selectedGeoPath, String(entry.id)])} />
+                            </BarChart>
+                          </ResponsiveContainer>
                         </div>
-                        {currentChildren.length === 0 ? (
-                          <div className="py-10 text-center text-sm text-gray-400">Sin datos geográficos canónicos en este nivel.</div>
-                        ) : (
-                          <div className="h-[320px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={currentChildren} margin={{ top: 8, right: 12, left: 0, bottom: 55 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={75} />
-                                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                                <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
-                                <Bar dataKey="count" name="Influencers" fill="#7c3aed" radius={[6, 6, 0, 0]} cursor="pointer"
-                                  onClick={(entry) => {
-                                    const id = String(entry.id)
-                                    if (!country) setSelectedCountry(id)
-                                    else if (!region) setSelectedRegion(id)
-                                    else setSelectedArea(id)
-                                  }} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-                      </>
+                      )
                     ) : (
-                      <div>
-                        <div className="flex items-center gap-2 mb-4">
-                          <span className="text-lg font-bold text-gray-900">{area.label}</span>
-                          <span className="text-sm text-gray-400">· {area.count.toLocaleString()} influencers</span>
-                        </div>
-                        {area.children.length > 0 && (
-                          <div className="mb-5">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Comunas de {area.label}</p>
-                            <div className="h-[260px] w-full">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={area.children} margin={{ top: 8, right: 12, left: 0, bottom: 55 }}>
-                                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                  <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={75} />
-                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                                  <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Influencers']} />
-                                  <Bar dataKey="count" name="Influencers" fill="#2563eb" radius={[6, 6, 0, 0]} cursor="pointer" onClick={(entry) => setSelectedArea(String(entry.id))} />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          </div>
-                        )}
-                        {area.influencers.length > 0 ? (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead>
-                              <tbody>{area.influencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody>
-                            </table>
-                          </div>
-                        ) : <div className="py-8 text-center text-sm text-gray-400">No hay influencers asignadas directamente a este nodo.</div>}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm"><thead><tr className="text-left text-xs text-gray-400 border-b"><th className="pb-2">Influencer</th><th className="pb-2">Instagram</th><th className="pb-2">Followers</th><th className="pb-2">Email</th><th className="pb-2">Estado</th></tr></thead>
+                          <tbody>{current.influencers.map(inf => <tr key={inf.id} className="border-b last:border-0"><td className="py-2"><Link href={'/admin-influencers/' + inf.id} target="_blank" className="font-medium text-gray-800 hover:text-violet-700">{inf.display_name || '(sin nombre)'}</Link></td><td className="py-2 text-gray-500">{inf.instagram_username ? '@' + inf.instagram_username : '—'}</td><td className="py-2 text-gray-500">{formatFollowers(inf.followers)}</td><td className="py-2 text-gray-500">{inf.email || '—'}</td><td className="py-2">{inf.is_active ? <span className="badge badge-green text-[10px]">Activa</span> : <span className="badge badge-gray text-[10px]">Inactiva</span>}</td></tr>)}</tbody></table>
                       </div>
                     )}
                   </>

@@ -4,6 +4,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
+import { getInfluencerCampaignHistory, type InfluencerCampaignHistory } from '@/lib/influencer-campaign-history'
 import {
   DeliverableTemplateSyncError,
   normalizeDeliverableTemplates,
@@ -123,10 +124,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Plan (Free/Pro) del influencer que postulo/fue asignado — mismo helper que
   // ya usan /api/campaigns/[id]/influencers y /api/brand/campaigns/[id]/applications,
   // no se duplica logica de subscriptions aca.
-  const campaignInfluencerProIds = await getInfluencerProIds(
-    admin,
-    (data.campaign_influencers ?? []).map((ci: { influencer?: { id?: string } | null }) => ci.influencer?.id).filter((id: string | undefined): id is string => Boolean(id))
-  )
+  const campaignInfluencerIds: string[] = (data.campaign_influencers ?? []).map((ci: { influencer?: { id?: string } | null }) => ci.influencer?.id).filter((id: string | undefined): id is string => Boolean(id))
+  const campaignInfluencerProIds = await getInfluencerProIds(admin, campaignInfluencerIds)
+  // Historial de participaciones (solo admin: es información cruzada de otras
+  // marcas/campañas y no debe llegar al portal de Marca). Si falla, el detalle
+  // carga igual sin la columna.
+  let historyByInfluencer: Map<string, InfluencerCampaignHistory> | null = null
+  if (isAdmin) {
+    try {
+      historyByInfluencer = await getInfluencerCampaignHistory(admin, campaignInfluencerIds, params.id)
+    } catch (historyError) {
+      console.error('[GET /api/campaigns/[id]] history', historyError)
+    }
+  }
   // Geografía: solo location_id → locations (nunca columnas legacy).
   const locationDisplayById = await getOfficialLocationDisplayMap(admin)
   const campaignInfluencersWithPlan = (data.campaign_influencers ?? []).map((ci: { influencer?: (Record<string, unknown> & { location_id?: string | null }) | null }) => ({
@@ -134,6 +144,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     influencer: ci.influencer
       ? { ...withOfficialInfluencerLocation(ci.influencer, locationDisplayById), is_pro: campaignInfluencerProIds.has(ci.influencer.id as string) }
       : null,
+    ...(historyByInfluencer && ci.influencer ? { history: historyByInfluencer.get(ci.influencer.id as string) ?? null } : {}),
   }))
 
   const campaignMetadata =

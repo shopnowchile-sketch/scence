@@ -4,7 +4,14 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+const SRC = new URL('../../src/', import.meta.url)
+
 export async function resolve(specifier, context, nextResolve) {
+  // Alias '@/…' de tsconfig → src/… (igual que Next). Solo módulos .ts locales.
+  if (specifier.startsWith('@/')) {
+    const candidate = new URL(`${specifier.slice(2)}.ts`, SRC)
+    if (existsSync(fileURLToPath(candidate))) return nextResolve(candidate.href, context)
+  }
   const isRelative = specifier.startsWith('./') || specifier.startsWith('../')
   if (isRelative && !/\.[cm]?[jt]sx?$/.test(specifier) && context.parentURL) {
     const candidate = new URL(`${specifier}.ts`, context.parentURL)

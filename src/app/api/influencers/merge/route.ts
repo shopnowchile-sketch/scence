@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   // 0. Los registros a fusionar se borran al final: si alguno tiene Pro, se
   // rechaza ANTES de mover datos (no dejar el merge a medias).
   try {
-    await assertNoProInfluencers(admin, mergeIds)
+    await assertNoProInfluencers(admin, mergeIds, 'billing')
   } catch (e) {
     if (e instanceof InfluencerHasProError) return NextResponse.json({ error: `${e.message} Conserva ese registro como principal.`, pro_ids: e.proIds }, { status: 409 })
     console.error('[POST merge] pro check', e)
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Eliminar permanentemente los merges (limpia hijos sobrantes)
-  const result = await hardDeleteInfluencers(admin, orgId, mergeIds)
+  const result = await hardDeleteInfluencers(admin, orgId, mergeIds, 'billing')
 
   return NextResponse.json({
     success: true,

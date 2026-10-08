@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { roleHasBrandPermission, type BrandPermission } from '@/lib/brand-permissions'
+import { reconcileOrphanProSubscriptions } from '@/lib/influencer-pro'
 export type { BrandPermission } from '@/lib/brand-permissions'
 
 export type OrgRole = 'super_admin' | 'brand_manager' | 'member' | 'finance' | 'influencer'
@@ -366,6 +367,17 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
     }
     console.error('[ensureInfluencerRow] failed to create influencer row:', error.message)
     return null
+  }
+
+  // Ficha nueva para un usuario que ya existía: si su ficha anterior fue
+  // borrada teniendo Pro pagado, la suscripción vuelve a esta ficha
+  // (identidad estable = user_id). Best-effort: nunca bloquea el login.
+  if (influencer) {
+    try {
+      await reconcileOrphanProSubscriptions(admin, { id: influencer.id, user_id: user.id })
+    } catch (reconcileError) {
+      console.error('[ensureInfluencerRow] no se pudo reconciliar el Plan Pro:', reconcileError)
+    }
   }
 
   return influencer

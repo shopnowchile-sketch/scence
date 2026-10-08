@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { parseInfluencerReference, payPalPaidThrough } from '@/lib/influencer-paypal'
+import { buildInfluencerSubscriptionRow, parseInfluencerReference, payPalPaidThrough, PAYPAL_SUBSCRIPTION_STATUS_MAP, type PayPalSubscriptionSnapshot } from '@/lib/influencer-paypal'
 import { isInfluencerSubscription } from '@/lib/plan-limits'
 
-const STATUS_MAP: Record<string, string> = { ACTIVE: 'active', APPROVAL_PENDING: 'incomplete', SUSPENDED: 'past_due', CANCELLED: 'canceled', EXPIRED: 'canceled' }
+const STATUS_MAP = PAYPAL_SUBSCRIPTION_STATUS_MAP
 function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
 async function token() {
   const id = process.env.PAYPAL_CLIENT_ID, secret = process.env.PAYPAL_CLIENT_SECRET
@@ -35,7 +35,7 @@ function receiptLink(resource: PayPalSale) {
   return resource.links?.find((link) => link.rel === 'self')?.href ?? null
 }
 
-async function recordSaleCompleted(resource: PayPalSale) {
+async function recordSaleCompleted(resource: PayPalSale, accessToken: string) {
   const paypalSubscriptionId = resource.billing_agreement_id
   const saleId = resource.id
   // Un cobro de suscripción trae billing_agreement_id = id de la suscripción.
@@ -71,16 +71,33 @@ async function recordSaleCompleted(resource: PayPalSale) {
     return NextResponse.json({ received: true })
   }
 
-  const influencerId = (subscription.metadata as { influencer_id?: string } | null)?.influencer_id ?? null
+  const linkedInfluencerId = (subscription.metadata as { influencer_id?: string } | null)?.influencer_id ?? null
+  // subscription_payments.influencer_id tiene FK a influencers: si la ficha ya
+  // no existe, el insert fallaba (23503), la ruta respondía 500 y PayPal
+  // reintentaba sin fin: el cobro nunca quedaba registrado. Se registra el
+  // pago igual (sin vínculo) y queda rastro para re-vincular.
+  let influencerId = linkedInfluencerId
+  if (linkedInfluencerId) {
+    const { data: linked, error: linkedError } = await admin.from('influencers').select('id').eq('id', linkedInfluencerId).maybeSingle()
+    if (linkedError) {
+      console.error('[paypal/webhook] lookup de influencer falló', linkedError.message)
+      return NextResponse.json({ error: 'Unable to record payment' }, { status: 500 })
+    }
+    if (!linked) {
+      console.error('[paypal/webhook] INFLUENCER_PRO_ORPHAN: cobro de una suscripción Pro sin ficha; se registra sin vínculo', { paypalSubscriptionId, saleId, linkedInfluencerId })
+      influencerId = null
+    }
+  }
+  const isInfluencerPayment = Boolean(linkedInfluencerId)
   const row = {
     subscription_id: subscription.id,
     organization_id: subscription.organization_id,
     influencer_id: influencerId,
-    payer_type: influencerId ? 'influencer' : 'brand',
+    payer_type: isInfluencerPayment ? 'influencer' : 'brand',
     gateway: 'paypal',
     gateway_payment_id: saleId,
     payment_method: 'paypal',
-    concept: influencerId ? 'Suscripción SCENCE Pro' : 'Suscripción SCENCE — plan de marca',
+    concept: isInfluencerPayment ? 'Suscripción SCENCE Pro' : 'Suscripción SCENCE — plan de marca',
     amount,
     currency,
     status: 'completed',
@@ -102,6 +119,22 @@ async function recordSaleCompleted(resource: PayPalSale) {
   if (error) {
     console.error('[paypal/webhook] no se pudo registrar el pago', error.message)
     return NextResponse.json({ error: 'Unable to record payment' }, { status: 500 })
+  }
+
+  // Influencer Pro: un cobro (alta o renovación) también re-sincroniza la
+  // suscripción con PayPal. PayPal no siempre manda BILLING.SUBSCRIPTION.* al
+  // renovar, y sin esto current_period_end quedaba en la fecha del cobro
+  // anterior (caso real: renovación del 06-10 sin adelantar el período).
+  if (isInfluencerPayment) {
+    const detailsResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(paypalSubscriptionId)}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' })
+    const details = await detailsResponse.json().catch(() => null)
+    if (!detailsResponse.ok || !details) {
+      // El pago ya quedó registrado (idempotente): el reintento solo re-sincroniza.
+      console.error('[paypal/webhook] cobro registrado pero no se pudo leer la suscripción en PayPal; se pide reintento', { paypalSubscriptionId, saleId })
+      return NextResponse.json({ error: 'Unable to read PayPal subscription' }, { status: 502 })
+    }
+    const result = await syncInfluencerSubscription(paypalSubscriptionId, details)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 500 })
   }
   return NextResponse.json({ received: true })
 }
@@ -127,6 +160,87 @@ async function recordSaleRefunded(resource: PayPalSale) {
   return NextResponse.json({ received: true })
 }
 
+// ── Influencer Pro: sincronización con PayPal ────────────────────────────────
+// Una sola función para BILLING.SUBSCRIPTION.* y PAYMENT.SALE.COMPLETED. Lee el
+// estado ACTUAL en PayPal (no el payload del evento): duplicados, eventos
+// atrasados y fuera de orden convergen a la misma fila (ver
+// buildInfluencerSubscriptionRow). Devuelve ok:false solo ante errores de base,
+// para que la ruta responda 500 y PayPal reintente.
+async function syncInfluencerSubscription(
+  paypalSubscriptionId: string,
+  details: PayPalSubscriptionSnapshot & { custom_id?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const influencerRef = parseInfluencerReference(details.custom_id)
+  if (!influencerRef) return { ok: true }
+  const admin = createAdminClient()
+  const [referenced, planResult, existingResult] = await Promise.all([
+    admin.from('influencers').select('id, organization_id, user_id').eq('id', influencerRef.influencerId).maybeSingle(),
+    admin.from('subscription_plans').select('id').eq('tier', 'pro').eq('is_active', true).maybeSingle(),
+    admin.from('subscriptions').select('id, metadata, current_period_end, canceled_at').eq('paypal_subscription_id', paypalSubscriptionId).maybeSingle(),
+  ])
+  const lookupError = referenced.error ?? planResult.error ?? existingResult.error
+  if (lookupError) {
+    console.error('[paypal/webhook] lookup falló; se pide reintento', { paypalSubscriptionId, error: lookupError.message })
+    return { ok: false, error: 'Unable to read influencer subscription' }
+  }
+  const existing = existingResult.data
+  // El custom_id de PayPal queda fijo al crear la suscripción. Si esa ficha ya
+  // no existe (fusionada, borrada y re-vinculada), manda la influencer que la
+  // fila de SCENCE tiene en metadata.influencer_id (fuente de verdad del Pro).
+  // Último respaldo: identidad estable. Si la ficha se borró y el usuario
+  // tiene una ficha nueva, la suscripción se re-vincula a esa ficha
+  // (buildInfluencerSubscriptionRow deja relinked_from).
+  const linkedMetadata = existing?.metadata as { influencer_id?: string; user_id?: string } | null
+  const linkedInfluencerId = linkedMetadata?.influencer_id
+  // Orden: ficha vinculada en SCENCE (fuente de verdad) → ficha del custom_id
+  // → ficha actual del mismo usuario.
+  let influencer = referenced.data
+  if (linkedInfluencerId && linkedInfluencerId !== influencerRef.influencerId) {
+    const linked = await admin.from('influencers').select('id, organization_id, user_id').eq('id', linkedInfluencerId).maybeSingle()
+    if (linked.error) return { ok: false, error: 'Unable to read linked influencer' }
+    influencer = linked.data ?? influencer
+  }
+  if (!influencer && linkedMetadata?.user_id) {
+    const byUser = await admin.from('influencers').select('id, organization_id, user_id').eq('user_id', linkedMetadata.user_id).maybeSingle()
+    if (byUser.error) return { ok: false, error: 'Unable to read influencer by user' }
+    influencer = byUser.data
+  }
+  if (!planResult.data) {
+    console.error('[paypal/webhook] no hay plan pro activo en subscription_plans', { paypalSubscriptionId })
+    return { ok: false, error: 'Pro plan is not configured' }
+  }
+  if (!influencer?.organization_id) {
+    // Suscripción pagada sin ficha: NO se inventa un vínculo, pero queda rastro.
+    // Reintentar no lo resuelve; se corrige re-vinculando metadata.influencer_id.
+    console.error('[paypal/webhook] INFLUENCER_PRO_ORPHAN: la suscripción no tiene ficha de influencer; no se sincroniza', {
+      paypalSubscriptionId, customIdInfluencer: influencerRef.influencerId, linkedInfluencerId: linkedInfluencerId ?? null, paypalStatus: details.status ?? null,
+    })
+    return { ok: true }
+  }
+  const row = buildInfluencerSubscriptionRow({
+    details, paypalSubscriptionId, existing: existing ?? null,
+    influencer: { id: influencer.id, organization_id: influencer.organization_id, user_id: influencer.user_id },
+    planId: planResult.data.id, campaignId: influencerRef.campaignId,
+  })
+  const { error } = existing
+    ? await admin.from('subscriptions').update(row).eq('id', existing.id)
+    : await admin.from('subscriptions').insert(row)
+  if (error) {
+    console.error('[paypal/webhook] no se pudo guardar la suscripción Pro', { paypalSubscriptionId, error: error.message })
+    return { ok: false, error: 'Unable to sync influencer subscription' }
+  }
+  // Re-vínculo a una ficha nueva: los cobros que quedaron sin ficha vuelven a ella.
+  if (existing && linkedInfluencerId && linkedInfluencerId !== influencer.id) {
+    console.info('[paypal/webhook] suscripción Pro re-vinculada', { paypalSubscriptionId, from: linkedInfluencerId, to: influencer.id })
+    const { error: paymentsError } = await admin.from('subscription_payments')
+      .update({ influencer_id: influencer.id, updated_at: new Date().toISOString() })
+      .eq('subscription_id', existing.id)
+      .is('influencer_id', null)
+    if (paymentsError) return { ok: false, error: 'Unable to relink payments' }
+  }
+  return { ok: true }
+}
+
 function reference(value?: string) { const [organizationId, planId, tier] = (value ?? '').split(':'); return organizationId && planId && tier ? { organizationId, planId, tier } : null }
 export async function POST(request: NextRequest) {
   const event = await request.json().catch(() => null)
@@ -143,52 +257,22 @@ export async function POST(request: NextRequest) {
   const verified = await verification.json().catch(() => null)
   if (!verification.ok || verified?.verification_status !== 'SUCCESS') return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   const eventType = String(event.event_type ?? '')
-  if (eventType === 'PAYMENT.SALE.COMPLETED') return recordSaleCompleted((event.resource ?? {}) as PayPalSale)
+  if (eventType === 'PAYMENT.SALE.COMPLETED') return recordSaleCompleted((event.resource ?? {}) as PayPalSale, accessToken)
   if (eventType === 'PAYMENT.SALE.REFUNDED') return recordSaleRefunded((event.resource ?? {}) as PayPalSale)
   if (!eventType.startsWith('BILLING.SUBSCRIPTION.')) return NextResponse.json({ received: true })
   const id = String(event.resource?.id ?? '')
   if (!id) return NextResponse.json({ received: true })
   const detailsResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' })
   const subscription = await detailsResponse.json().catch(() => null)
-  const influencerRef = parseInfluencerReference(subscription?.custom_id)
-  if (detailsResponse.ok && influencerRef) {
-    const admin = createAdminClient()
-    const [{ data: referencedInfluencer }, { data: plan }, { data: existing }] = await Promise.all([
-      admin.from('influencers').select('id, organization_id').eq('id', influencerRef.influencerId).maybeSingle(),
-      admin.from('subscription_plans').select('id').eq('tier', 'pro').eq('is_active', true).maybeSingle(),
-      admin.from('subscriptions').select('id, metadata, current_period_end, canceled_at').eq('paypal_subscription_id', id).maybeSingle(),
-    ])
-    // El custom_id de PayPal queda fijo al crear la suscripción. Si esa ficha
-    // ya no existe (p. ej. fusionada con otra), manda la influencer que la fila
-    // de SCENCE tiene vinculada en metadata.influencer_id (fuente de verdad del Pro).
-    const linkedInfluencerId = (existing?.metadata as { influencer_id?: string } | null)?.influencer_id
-    const influencer = referencedInfluencer
-      ?? (linkedInfluencerId && linkedInfluencerId !== influencerRef.influencerId
-        ? (await admin.from('influencers').select('id, organization_id').eq('id', linkedInfluencerId).maybeSingle()).data
-        : null)
-    if (!influencer?.organization_id || !plan) return NextResponse.json({ received: true })
-    const status = STATUS_MAP[subscription.status] ?? 'incomplete'
-    const start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString()
-    // Fin del período pagado. En CANCELLED/EXPIRED PayPal ya no informa
-    // next_billing_time: antes se caía a `start` (fecha pasada) y la influencer
-    // perdía Pro de inmediato aunque hubiera pagado el mes. Regla: una
-    // cancelación NUNCA retrocede `current_period_end`; se conserva la mayor
-    // entre la guardada y la que informa PayPal (último pago + 1 mes).
-    const reportedEnd = payPalPaidThrough(subscription) ?? start
-    const storedEnd = existing?.current_period_end ? Date.parse(existing.current_period_end) : NaN
-    const end = status === 'canceled' && Number.isFinite(storedEnd) && storedEnd > Date.parse(reportedEnd)
-      ? new Date(storedEnd).toISOString()
-      : reportedEnd
-    const baseMetadata = existing?.metadata ?? { account_type: 'influencer', influencer_id: influencer.id, campaign_commitments: influencerRef.campaignId ? [influencerRef.campaignId] : [] }
-    // Cancelación hecha directo en PayPal: se marca igual que la hecha en SCENCE.
-    const metadata = status === 'canceled'
-      ? { ...(baseMetadata as Record<string, unknown>), cancel_at_period_end: true, paid_through: end }
-      : baseMetadata
-    const canceledAt = status === 'canceled' ? (existing?.canceled_at ?? new Date().toISOString()) : null
-    const row = { organization_id: influencer.organization_id, plan_id: plan.id, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: canceledAt, updated_at: new Date().toISOString() }
-    const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)
-    if (error) return NextResponse.json({ error: 'Unable to sync influencer subscription' }, { status: 500 })
-    return NextResponse.json({ received: true })
+  // Sin el estado real de PayPal no se puede sincronizar: 502 para que PayPal
+  // reintente. Antes respondía 200 y el evento se perdía en silencio.
+  if (!detailsResponse.ok || !subscription) {
+    console.error('[paypal/webhook] no se pudo leer la suscripción en PayPal; se pide reintento', { id, eventType, status: detailsResponse.status })
+    return NextResponse.json({ error: 'Unable to read PayPal subscription' }, { status: 502 })
+  }
+  if (parseInfluencerReference(subscription.custom_id)) {
+    const result = await syncInfluencerSubscription(id, subscription as PayPalSubscriptionSnapshot & { custom_id?: string })
+    return result.ok ? NextResponse.json({ received: true }) : NextResponse.json({ error: result.error }, { status: 500 })
   }
   const ref = reference(subscription?.custom_id)
   if (!detailsResponse.ok || !ref) return NextResponse.json({ received: true })

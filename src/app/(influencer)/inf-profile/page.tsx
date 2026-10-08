@@ -156,7 +156,8 @@ export default function ProfilePage() {
   const [profile,   setProfile]   = useState<InfluencerProfile | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [payments,  setPayments]  = useState<{ pending: Payment[]; completed: Payment[] }>({ pending: [], completed: [] })
-  const [isPro,     setIsPro]     = useState(false)
+  // null = aún no se sabe (cargando o error): nunca se muestra "Gratis" por un error.
+  const [isPro,     setIsPro]     = useState<boolean | null>(null)
   const [loading,   setLoading]   = useState(true)
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
@@ -180,7 +181,7 @@ export default function ProfilePage() {
       setProfile(meData.data)
       setCampaigns(campData.data ?? [])
       setPayments({ pending: payData.pending ?? [], completed: payData.completed ?? [] })
-      setIsPro(billingRes.ok && billingData.is_pro === true)
+      setIsPro(billingRes.ok && typeof billingData.is_pro === 'boolean' ? billingData.is_pro : null)
     } catch { toast.error('Error cargando perfil') }
     setLoading(false)
   }, [])
@@ -377,9 +378,11 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold text-gray-900">{profile.display_name}</h2>
-                  <button type="button" onClick={() => setActiveTab('plan')} className={cn('rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide transition hover:ring-2 hover:ring-violet-200', isPro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600')}>
-                    {isPro ? 'PLAN PRO' : 'PLAN GRATIS'}
-                  </button>
+                  {isPro !== null && (
+                    <button type="button" onClick={() => setActiveTab('plan')} className={cn('rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide transition hover:ring-2 hover:ring-violet-200', isPro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600')}>
+                      {isPro ? 'PLAN PRO' : 'PLAN GRATIS'}
+                    </button>
+                  )}
                 </div>
                 {primarySocial && primarySocialUrl && <a href={primarySocialUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-600 hover:underline">Instagram: @{primarySocial.username.replace(/^@/, '')}<ExternalLink className="h-3.5 w-3.5" /></a>}
               </div>

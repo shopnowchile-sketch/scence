@@ -1,4 +1,4 @@
-import { isInfluencerProCancellationScheduled } from '@/lib/influencer-paypal'
+import { influencerSubscriptionGrantsPro, isInfluencerProCancellationScheduled, selectOrphanSubscriptionsToRelink } from '@/lib/influencer-paypal'
 
 type SupabaseAdmin = ReturnType<typeof import('@/lib/supabase/server').createAdminClient>
 
@@ -8,12 +8,8 @@ type SubscriptionState = {
   metadata: { influencer_id?: string } | null
 }
 
-function grantsPro(subscription: SubscriptionState): boolean {
-  if (subscription.status === 'active' || subscription.status === 'trialing') return true
-  return subscription.status === 'canceled'
-    && Boolean(subscription.current_period_end)
-    && new Date(subscription.current_period_end as string).getTime() > Date.now()
-}
+// Regla única (active/trialing, o canceled con período vigente): ver influencerSubscriptionGrantsPro.
+const grantsPro = (subscription: SubscriptionState) => influencerSubscriptionGrantsPro(subscription)
 
 export async function getInfluencerProIds(admin: SupabaseAdmin, influencerIds: string[]): Promise<Set<string>> {
   const statuses = await getInfluencerProStatuses(admin, influencerIds)
@@ -100,4 +96,54 @@ export async function getInfluencerProSubscriptionDetails(admin: SupabaseAdmin, 
 
 export async function isInfluencerPro(admin: SupabaseAdmin, influencerId: string): Promise<boolean> {
   return (await getInfluencerProIds(admin, [influencerId])).has(influencerId)
+}
+
+/**
+ * Re-vincula a la ficha actual las suscripciones Pro del mismo usuario cuya
+ * ficha original ya no existe (borrada y recreada). Identidad estable:
+ * `subscriptions.metadata.user_id` = `influencers.user_id` (auth).
+ *
+ * Seguro por construcción: solo toca filas del mismo usuario y solo si la
+ * ficha a la que apuntan no existe (selectOrphanSubscriptionsToRelink). Los
+ * pagos de esas suscripciones que quedaron sin vínculo (FK SET NULL) se
+ * re-vinculan también. Idempotente. Devuelve cuántas suscripciones movió.
+ */
+export async function reconcileOrphanProSubscriptions(
+  admin: SupabaseAdmin,
+  influencer: { id: string; user_id: string | null },
+): Promise<number> {
+  if (!influencer.user_id) return 0
+  const { data: rows, error } = await admin
+    .from('subscriptions')
+    .select('id, metadata')
+    .eq('metadata->>user_id', influencer.user_id)
+  if (error) throw error
+  if (!rows?.length) return 0
+
+  const linkedIds = Array.from(new Set(rows
+    .map(row => (row.metadata as { influencer_id?: string } | null)?.influencer_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)))
+  const { data: existing, error: existingError } = linkedIds.length
+    ? await admin.from('influencers').select('id').in('id', linkedIds)
+    : { data: [], error: null }
+  if (existingError) throw existingError
+
+  const toRelink = selectOrphanSubscriptionsToRelink(rows, new Set((existing ?? []).map(row => row.id)), influencer.id)
+  const now = new Date().toISOString()
+  for (const id of toRelink) {
+    const row = rows.find(candidate => candidate.id === id)!
+    const metadata = (row.metadata ?? {}) as Record<string, unknown>
+    const { error: updateError } = await admin.from('subscriptions').update({
+      metadata: { ...metadata, influencer_id: influencer.id, relinked_from: metadata.influencer_id, relinked_at: now },
+      updated_at: now,
+    }).eq('id', id).eq('metadata->>influencer_id', String(metadata.influencer_id))
+    if (updateError) throw updateError
+    const { error: paymentsError } = await admin.from('subscription_payments')
+      .update({ influencer_id: influencer.id, updated_at: now })
+      .eq('subscription_id', id)
+      .is('influencer_id', null)
+    if (paymentsError) throw paymentsError
+    console.info('[influencer-pro] suscripción Pro re-vinculada a la ficha actual', { subscriptionId: id, from: metadata.influencer_id, to: influencer.id })
+  }
+  return toRelink.length
 }

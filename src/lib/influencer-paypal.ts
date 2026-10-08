@@ -125,3 +125,127 @@ export function isInfluencerProCancellationScheduled(subscription: { status?: st
   const metadata = (subscription.metadata ?? {}) as { cancel_at_period_end?: boolean }
   return subscription.status === 'canceled' || metadata.cancel_at_period_end === true
 }
+
+// ── Fuente única del estado Pro pagado ───────────────────────────────────────
+
+/**
+ * ¿Esta fila de `subscriptions` da Pro? Regla de negocio única:
+ * active/trialing = Pro; canceled conserva Pro hasta current_period_end.
+ * past_due / incomplete / canceled vencida = no Pro.
+ * La usan getInfluencerProStatuses (lib/influencer-pro.ts) y /api/influencer/billing.
+ */
+export function influencerSubscriptionGrantsPro(
+  subscription: { status?: string | null; current_period_end?: string | null },
+  now: number = Date.now(),
+): boolean {
+  if (subscription.status === 'active' || subscription.status === 'trialing') return true
+  return subscription.status === 'canceled'
+    && Boolean(subscription.current_period_end)
+    && new Date(subscription.current_period_end as string).getTime() > now
+}
+
+export const PAYPAL_SUBSCRIPTION_STATUS_MAP: Record<string, string> = {
+  ACTIVE: 'active',
+  APPROVAL_PENDING: 'incomplete',
+  APPROVED: 'incomplete',
+  SUSPENDED: 'past_due',
+  CANCELLED: 'canceled',
+  EXPIRED: 'canceled',
+}
+
+export type PayPalSubscriptionSnapshot = PayPalSubscriptionDetails & {
+  start_time?: string
+  create_time?: string
+  subscriber?: { payer_id?: string }
+}
+
+export type StoredInfluencerSubscription = {
+  id: string
+  metadata: unknown
+  current_period_end: string | null
+  canceled_at: string | null
+}
+
+/**
+ * Construye la fila de `subscriptions` de una influencer a partir del estado
+ * ACTUAL de la suscripción en PayPal (GET /v1/billing/subscriptions/:id), nunca
+ * del payload del evento. Por eso un webhook duplicado, atrasado o fuera de
+ * orden produce siempre la misma fila: la de PayPal hoy.
+ *
+ * Garantías:
+ * - `current_period_end` nunca retrocede: se conserva la mayor entre la guardada
+ *   y la que informa PayPal (una renovación la adelanta; nada la atrasa).
+ * - La metadata existente se conserva (vínculo, cancelación programada,
+ *   relinked_from…); solo se agregan las marcas de cancelación cuando aplica.
+ * - `metadata.influencer_id` lo decide quien llama (la ficha resuelta).
+ */
+export function buildInfluencerSubscriptionRow(input: {
+  details: PayPalSubscriptionSnapshot
+  paypalSubscriptionId: string
+  existing: StoredInfluencerSubscription | null
+  /** Ficha resuelta. `user_id` = identidad estable (auth): sobrevive a que la ficha se borre y se recree. */
+  influencer: { id: string; organization_id: string; user_id?: string | null }
+  planId: string
+  campaignId: string | null
+  now?: Date
+}) {
+  const now = input.now ?? new Date()
+  const status = PAYPAL_SUBSCRIPTION_STATUS_MAP[String(input.details.status ?? '').toUpperCase()] ?? 'incomplete'
+  const start = input.details.start_time ?? input.details.create_time ?? now.toISOString()
+  const reportedEnd = payPalPaidThrough(input.details) ?? start
+  const storedEnd = input.existing?.current_period_end ? Date.parse(input.existing.current_period_end) : NaN
+  const end = Number.isFinite(storedEnd) && storedEnd > Date.parse(reportedEnd)
+    ? new Date(storedEnd).toISOString()
+    : new Date(reportedEnd).toISOString()
+
+  const existingMetadata = (input.existing?.metadata ?? null) as Record<string, unknown> | null
+  const identity: Record<string, unknown> = { account_type: 'influencer', influencer_id: input.influencer.id }
+  if (input.influencer.user_id) identity.user_id = input.influencer.user_id
+  const previousInfluencerId = typeof existingMetadata?.influencer_id === 'string' ? existingMetadata.influencer_id : null
+  // Re-vínculo (la ficha anterior ya no existe): queda trazado.
+  if (previousInfluencerId && previousInfluencerId !== input.influencer.id) {
+    identity.relinked_from = previousInfluencerId
+    identity.relinked_at = now.toISOString()
+  }
+  const baseMetadata: Record<string, unknown> = existingMetadata
+    ? { ...existingMetadata, ...identity }
+    : { ...identity, campaign_commitments: input.campaignId ? [input.campaignId] : [] }
+  // Cancelación hecha directo en PayPal: se marca igual que la hecha en SCENCE.
+  const metadata = status === 'canceled'
+    ? { ...baseMetadata, cancel_at_period_end: true, paid_through: end }
+    : baseMetadata
+
+  return {
+    organization_id: input.influencer.organization_id,
+    plan_id: input.planId,
+    status,
+    current_period_start: start,
+    current_period_end: end,
+    paypal_subscription_id: input.paypalSubscriptionId,
+    paypal_payer_id: input.details.subscriber?.payer_id ?? null,
+    metadata,
+    canceled_at: status === 'canceled' ? (input.existing?.canceled_at ?? now.toISOString()) : null,
+    updated_at: now.toISOString(),
+  }
+}
+
+/**
+ * Reconciliación segura de suscripciones Pro huérfanas (identidad estable = usuario).
+ * Recibe las suscripciones del MISMO usuario (metadata.user_id) y devuelve las que
+ * deben re-vincularse a la ficha actual: solo las que apuntan a una ficha que ya
+ * no existe. Nunca mueve una suscripción cuya ficha sigue existiendo.
+ */
+export function selectOrphanSubscriptionsToRelink(
+  subscriptions: Array<{ id: string; metadata: unknown }>,
+  existingInfluencerIds: ReadonlySet<string>,
+  targetInfluencerId: string,
+): string[] {
+  return subscriptions
+    .filter(row => {
+      const linked = (row.metadata as { influencer_id?: unknown } | null)?.influencer_id
+      if (typeof linked !== 'string' || !linked) return false
+      if (linked === targetInfluencerId) return false
+      return !existingInfluencerIds.has(linked)
+    })
+    .map(row => row.id)
+}

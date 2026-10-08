@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasActiveCampaignCommitment } from '@/lib/influencer-pro-commitment'
-import { isInfluencerPro } from '@/lib/influencer-pro'
-import { isInfluencerProCancellationScheduled } from '@/lib/influencer-paypal'
+import { isInfluencerPro, reconcileOrphanProSubscriptions } from '@/lib/influencer-pro'
+import { influencerSubscriptionGrantsPro, isInfluencerProCancellationScheduled } from '@/lib/influencer-paypal'
 
 export async function GET() {
   const supabase = createServerClient()
@@ -10,17 +10,31 @@ export async function GET() {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: influencer } = await admin.from('influencers').select('id, is_active').eq('user_id', user.id).maybeSingle()
+  const { data: influencer } = await admin.from('influencers').select('id, user_id, is_active').eq('user_id', user.id).maybeSingle()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
 
-  const { data: subscriptions, error } = await admin.from('subscriptions')
+  const loadSubscriptions = () => admin.from('subscriptions')
     .select('id, status, current_period_end, started_paying_at, canceled_at, paypal_subscription_id, metadata, plan:subscription_plans(name, tier)')
     .eq('metadata->>influencer_id', influencer.id)
     .order('created_at', { ascending: false })
-    .limit(1)
+    .limit(20)
+  let { data: subscriptions, error } = await loadSubscriptions()
   if (error) return NextResponse.json({ error: 'No se pudo consultar tu plan.' }, { status: 500 })
+  // Sin suscripción en esta ficha: si el usuario pagó con una ficha anterior
+  // (borrada y recreada), se re-vincula aquí mismo (identidad = user_id).
+  if (!subscriptions?.length) {
+    try {
+      if (await reconcileOrphanProSubscriptions(admin, influencer)) ({ data: subscriptions, error } = await loadSubscriptions())
+    } catch (reconcileError) {
+      console.error('[GET /api/influencer/billing] reconciliación Pro:', reconcileError)
+      return NextResponse.json({ error: 'No se pudo consultar tu plan.' }, { status: 500 })
+    }
+    if (error) return NextResponse.json({ error: 'No se pudo consultar tu plan.' }, { status: 500 })
+  }
 
-  const subscription = subscriptions?.[0] ?? null
+  // La que da Pro manda sobre la más reciente: un checkout abandonado
+  // (incomplete) no debe tapar la suscripción pagada en la pantalla del plan.
+  const subscription = subscriptions?.find(row => influencerSubscriptionGrantsPro(row)) ?? subscriptions?.[0] ?? null
   if (!subscription) return NextResponse.json({ subscription: null, commitment: null, can_cancel: false, cancel_at_period_end: false, paid_through: null, is_pro: false, account_active: influencer.is_active, started_paying_at: null, payments: [], total_paid: 0 })
 
   const { data: payments, error: paymentsError } = await admin

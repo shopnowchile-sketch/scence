@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Plus, Upload, Users, TrendingUp, Globe, ChevronLeft, ChevronRight, ShieldCheck, Trash2, X, Loader2, UserPlus, Mail, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useInfluencers } from '@/hooks/useInfluencers'
+import { idsForBulkAction, toggleAllVisible } from '@/lib/influencers/selection'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { InfluencerFilters } from '@/components/influencers/InfluencerFilters'
 import { InfluencerTable } from '@/components/influencers/InfluencerTable'
@@ -117,16 +118,14 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     })
   }
   function toggleAll() {
-    setSelectedIds(prev => {
-      const allOnPage = influencers.every(i => prev.has(i.id))
-      if (allOnPage) return new Set()
-      return new Set(influencers.map(i => i.id))
-    })
+    // Solo lo VISIBLE (ver lib/influencers/selection.ts, incidente 2026-10-04).
+    setSelectedIds(prev => toggleAllVisible(prev, visibleInfluencers.map(i => i.id)))
   }
   function clearSelection() { setSelectedIds(new Set()) }
 
   async function bulkDelete(hard: boolean) {
-    const ids = Array.from(selectedIds)
+    // Nunca se borra/desactiva algo que no está a la vista.
+    const ids = idsForBulkAction(selectedIds, visibleInfluencers.map(inf => inf.id))
     if (!ids.length) return
     const verb = hard ? 'eliminar permanentemente' : 'desactivar'
     if (!confirm(`¿${hard ? 'Eliminar permanentemente' : 'Desactivar'} ${ids.length} influencer(s)? ${hard ? 'Esta acción no se puede deshacer.' : ''}`)) return
@@ -147,7 +146,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
   }
 
   async function sendProFollowup() {
-    const ids = Array.from(selectedIds)
+    const ids = idsForBulkAction(selectedIds, visibleInfluencers.map(inf => inf.id))
     if (!ids.length) return
     setSendingProFollowup(true)
     try {
@@ -170,7 +169,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
 
   async function assignSelectedToBrand() {
     if (!assignToBrand) return
-    const ids = Array.from(selectedIds)
+    const ids = idsForBulkAction(selectedIds, visibleInfluencers.map(inf => inf.id))
     if (!ids.length) return
     setAssigning(true)
     try {
@@ -246,7 +245,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
         </div>
         <div className="flex items-center gap-2">
           {!isBrandPortal && proAttemptParam && (
-            <button type="button" onClick={() => setSelectedIds(new Set(influencers.map(inf => inf.id)))} className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 text-sm font-semibold rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors">
+            <button type="button" onClick={() => setSelectedIds(new Set(visibleInfluencers.map(inf => inf.id)))} className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 text-sm font-semibold rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors">
               <ShoppingCart className="h-4 w-4" /> {total} intentaron Pro
             </button>
           )}

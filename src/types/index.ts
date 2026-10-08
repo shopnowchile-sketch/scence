@@ -185,6 +185,8 @@ export interface CampaignInfluencerDetail {
   origin?: string | null
   notes: string | null
   metadata?: Record<string, unknown> | null // stores last_reminder_sent_at, etc.
+  // Solo admin (GET /api/campaigns/[id]): historial previo, excluye esta campaña.
+  history?: { applications: number; selected: number; participations: number; contents: number } | null
   influencer: {
     id: string
     display_name: string

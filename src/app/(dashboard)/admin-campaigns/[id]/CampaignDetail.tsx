@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
-  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter, BookOpen, Info,
+  ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter, BookOpen, Info, Sparkles,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -37,7 +37,7 @@ import { GenerateContractModal } from '@/components/campaigns/GenerateContractMo
 // ── Orden de la tabla de postulaciones pendientes ──────────────────────────
 // Un solo header activo a la vez (como cualquier tabla ordenable). 'pro' es el
 // header "Influencer" — ordena PRO primero por defecto.
-type PendingSortKey = 'pro' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee'
+type PendingSortKey = 'pro' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee' | 'participations'
 function pendingSortValue(ci: CampaignInfluencerDetail, key: PendingSortKey): number | string {
   const inf = ci.influencer
   const primarySP = inf?.influencer_social_profiles?.[0]
@@ -48,7 +48,25 @@ function pendingSortValue(ci: CampaignInfluencerDetail, key: PendingSortKey): nu
     case 'rating': return inf?.rating ?? 0
     case 'commune': return (inf?.commune ?? inf?.city ?? '').toLowerCase()
     case 'fee': return ci.fee ?? 0
+    // Sin historial (no cargó) va al final cuando se prioriza menos participaciones.
+    case 'participations': return ci.history?.participations ?? Number.MAX_SAFE_INTEGER
   }
+}
+// Selector global de orden. Mismo estado (pendingSortKey/pendingSortDir) que
+// los encabezados ordenables: un solo sistema de orden.
+const PENDING_SORT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Orden: predeterminado' },
+  { value: 'participations:asc', label: '✨ Priorizar menos participaciones' },
+  { value: 'participations:desc', label: 'Más participaciones' },
+  { value: 'pro:desc', label: 'PRO primero' },
+  { value: 'followers:desc', label: 'Más seguidores' },
+  { value: 'engagement:desc', label: 'Más engagement' },
+  { value: 'rating:desc', label: 'Mejor rating' },
+  { value: 'commune:asc', label: 'Comuna A-Z' },
+  { value: 'fee:asc', label: 'Menor fee' },
+]
+const PENDING_SORT_LABELS: Record<PendingSortKey, string> = {
+  pro: 'PRO', followers: 'Seguidores', engagement: 'Engagement', rating: 'Rating', commune: 'Comuna', fee: 'Fee', participations: 'Participaciones',
 }
 function PendingSortableHeader({ label, sortKey, activeKey, direction, onSort, title, align }: {
   label: string
@@ -108,23 +126,43 @@ const GRADIENTS = [
 type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'contracts' | 'history'
 const VALID_TABS: Tab[] = ['overview', 'influencers', 'deliverables', 'barters', 'assets', 'locations', 'billing', 'contracts', 'history']
 
-// ── Columnas toggleables de la tabla del tab Influencers (mismo patrón que
-// admin-brands/page.tsx: Influencer y Acciones quedan siempre fijas). ────────
-type CiColumnKey = 'platform' | 'categories' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee' | 'deliverables' | 'progress' | 'status'
-const CI_COLUMNS: Array<{ key: CiColumnKey; label: string }> = [
-  { key: 'platform',     label: 'Plataforma' },
-  { key: 'categories',   label: 'Categorías' },
-  { key: 'followers',    label: 'Seguidores' },
-  { key: 'engagement',   label: 'Engagement' },
-  { key: 'rating',       label: 'Rating' },
-  { key: 'commune',      label: 'Comuna' },
-  { key: 'fee',          label: 'Fee' },
-  { key: 'deliverables', label: 'Deliverables' },
-  { key: 'progress',     label: 'Progreso' },
-  { key: 'status',       label: 'Estado' },
-]
+// ── Columnas toggleables de las tablas del tab Influencers ─────────────────
+// Fuente única por tabla: la lista ordenada de keys define, en este orden, el
+// menú de columnas, los encabezados y las celdas. Influencer y Acciones quedan
+// siempre fijas. Header y celda salen del mismo map → no pueden desalinearse.
+type CiColumnKey = 'participations' | 'status' | 'platform' | 'categories' | 'followers' | 'engagement' | 'rating' | 'commune' | 'fee' | 'deliverables' | 'progress'
+const CI_COLUMN_LABELS: Record<CiColumnKey, string> = {
+  participations: 'Participaciones',
+  status: 'Estado',
+  platform: 'Plataforma',
+  categories: 'Categorías',
+  followers: 'Seguidores',
+  engagement: 'Engagement',
+  rating: 'Rating',
+  commune: 'Comuna',
+  fee: 'Fee',
+  deliverables: 'Deliverables',
+  progress: 'Progreso',
+}
+// Aprobadas: con entregables; sin historial de participaciones.
+type ApprovedColumnKey = Exclude<CiColumnKey, 'participations'>
+const APPROVED_COLUMN_KEYS: ApprovedColumnKey[] = ['platform', 'categories', 'followers', 'engagement', 'rating', 'commune', 'fee', 'deliverables', 'progress', 'status']
+// Postulantes: aún no tienen entregables; participaciones solo para admin.
+type PendingColumnKey = Exclude<CiColumnKey, 'deliverables' | 'progress'>
+const PENDING_COLUMN_KEYS: PendingColumnKey[] = ['participations', 'status', 'platform', 'categories', 'followers', 'engagement', 'rating', 'commune', 'fee']
+// Columnas cuyo encabezado ordena la lista (mismo estado que el selector de orden).
+const PENDING_COLUMN_SORT: Partial<Record<PendingColumnKey, PendingSortKey>> = {
+  participations: 'participations', followers: 'followers', engagement: 'engagement', rating: 'rating', commune: 'commune', fee: 'fee',
+}
 const DEFAULT_CI_COLUMNS: Record<CiColumnKey, boolean> =
-  Object.fromEntries(CI_COLUMNS.map(c => [c.key, true])) as Record<CiColumnKey, boolean>
+  Object.fromEntries(Object.keys(CI_COLUMN_LABELS).map(key => [key, true])) as Record<CiColumnKey, boolean>
+// localStorage puede traer un objeto viejo sin keys nuevas: se completa con defaults.
+function withColumnDefaults(saved: Partial<Record<CiColumnKey, boolean>> | null | undefined): Record<CiColumnKey, boolean> {
+  return { ...DEFAULT_CI_COLUMNS, ...(saved ?? {}) }
+}
+function columnMenu<K extends CiColumnKey>(keys: K[]): Array<{ key: K; label: string }> {
+  return keys.map(key => ({ key, label: CI_COLUMN_LABELS[key] }))
+}
 
 // ── Deliverable content — tipo + link + rating + estado, todo en 1 línea. ────
 // Rediseño pedido por Pri: antes cada card mostraba el título completo (a
@@ -1357,11 +1395,13 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [pendingVisibleColumns, setPendingVisibleColumns] = useLocalStorageState<Record<CiColumnKey, boolean>>(
     'scence:campaign-detail:pending-influencers:visibleColumns', DEFAULT_CI_COLUMNS
   )
+  const approvedVisible = withColumnDefaults(ciVisibleColumns)
+  const pendingVisible = withColumnDefaults(pendingVisibleColumns)
   function toggleCiColumn(key: CiColumnKey) {
-    setCiVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
+    setCiVisibleColumns(prev => { const current = withColumnDefaults(prev); return { ...current, [key]: !current[key] } })
   }
   function togglePendingColumn(key: CiColumnKey) {
-    setPendingVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
+    setPendingVisibleColumns(prev => { const current = withColumnDefaults(prev); return { ...current, [key]: !current[key] } })
   }
   const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set())
   const [showCampaignEmailModal, setShowCampaignEmailModal] = useState(false)
@@ -1444,7 +1484,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         setPendingSortDir(previousDir => (previousDir === 'desc' ? 'asc' : 'desc'))
         return key
       }
-      setPendingSortDir(key === 'commune' ? 'asc' : 'desc')
+      setPendingSortDir(key === 'commune' || key === 'participations' ? 'asc' : 'desc')
       return key
     })
   }
@@ -1634,6 +1674,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     ci => ci.application_status === 'pending' || ci.application_status === 'rejected'
   )
   const pendingCount = pendingApplications.length
+  // Historial solo viene para admin (la API no lo envía a Marca).
+  const showPendingHistory = !isBrandPortal && applicationHistory.some(ci => ci.history !== undefined)
+  const pendingMenuKeys = PENDING_COLUMN_KEYS.filter(key => key !== 'participations' || showPendingHistory)
+  const pendingColumns = pendingMenuKeys.filter(key => pendingVisible[key])
+  const approvedColumns = APPROVED_COLUMN_KEYS.filter(key => approvedVisible[key])
   const pendingCommuneGroups = groupCommunes(
     applicationHistory.map(ci => ci.influencer?.commune).filter((v): v is string => Boolean(v))
   )
@@ -3339,9 +3384,27 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               {/* Filtros de postulantes — mismo estilo (select/input) que
                   InfluencerFilters.tsx, aplicados en memoria sobre esta lista.
                   Solo aparecen si hay algo que filtrar (>3 postulantes). */}
-              <div className="mb-3 flex w-full min-w-0 flex-wrap items-center gap-2 overflow-visible pb-1">
-                <div className="relative min-w-0 w-full sm:w-[300px] sm:shrink-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
+              <div className="mb-3 flex w-full min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+                <div className="relative w-[220px] shrink-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" /><input value={pendingSearch} onChange={event => setPendingSearch(event.target.value)} placeholder="Buscar nombre, Instagram o email" className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />{pendingSearch && <button type="button" onClick={() => setPendingSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"><X className="h-4 w-4" /></button>}</div>
               {applicationHistory.length > 0 && (<>
+                  <select
+                    value={pendingSortKey ? `${pendingSortKey}:${pendingSortDir}` : ''}
+                    onChange={e => {
+                      const [key, dir] = e.target.value.split(':') as [PendingSortKey | '', 'asc' | 'desc' | undefined]
+                      setPendingSortKey(key || null)
+                      if (dir) setPendingSortDir(dir)
+                    }}
+                    className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                    aria-label="Ordenar postulantes"
+                  >
+                    {PENDING_SORT_OPTIONS
+                      .filter(option => showPendingHistory || !option.value.startsWith('participations'))
+                      .map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {pendingSortKey && !PENDING_SORT_OPTIONS.some(option => option.value === `${pendingSortKey}:${pendingSortDir}`) && (
+                      <option value={`${pendingSortKey}:${pendingSortDir}`}>{PENDING_SORT_LABELS[pendingSortKey]} {pendingSortDir === 'asc' ? '↑' : '↓'}</option>
+                    )}
+                  </select>
                   <select
                     value={pendingApplicationStatusFilter}
                     onChange={e => setPendingApplicationStatusFilter(e.target.value as PendingApplicationStatusFilter)}
@@ -3424,17 +3487,20 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         setPendingSearch('')
                         setPendingApplicationStatusFilter('all')
                       }}
-                      className="text-sm font-semibold text-violet-700 hover:underline"
+                      className="shrink-0 whitespace-nowrap text-sm font-semibold text-violet-700 hover:underline"
                     >
                       Limpiar filtros
                     </button>
                   )}
 
-                  <span className="ml-auto shrink-0 text-sm font-medium text-gray-600">
-                    Mostrando {filteredPendingApplications.length} de {applicationHistory.length}
-                  </span>
               </>)}
-                <div className="relative z-50 shrink-0"><ColumnVisibilityMenu columns={CI_COLUMNS} visible={pendingVisibleColumns} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
+              </div>
+                {applicationHistory.length > 0 && (
+                  <span className="shrink-0 whitespace-nowrap text-sm font-medium text-gray-600">
+                    {filteredPendingApplications.length} de {applicationHistory.length}
+                  </span>
+                )}
+                <div className="relative z-50 shrink-0"><ColumnVisibilityMenu columns={columnMenu(pendingMenuKeys)} visible={pendingVisible} onToggle={togglePendingColumn} onReset={() => setPendingVisibleColumns(DEFAULT_CI_COLUMNS)} iconOnly /></div>
               </div>
 
               {filteredPendingApplications.length === 0 && (
@@ -3486,17 +3552,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <thead>
                       <tr className="border-b border-gray-200">
                         <PendingSortableHeader label="Influencer" sortKey="pro" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} title="Ordenar por Plan (PRO primero)" />
-                        {pendingVisibleColumns.status && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}
-                        {pendingVisibleColumns.platform && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Plataforma</th>}
-                        {pendingVisibleColumns.categories && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Categorías</th>}
-                        {pendingVisibleColumns.followers && <PendingSortableHeader label="Seguidores" sortKey="followers" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
-                        {pendingVisibleColumns.engagement && <PendingSortableHeader label="Engagement" sortKey="engagement" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
-                        {pendingVisibleColumns.rating && <PendingSortableHeader label="Rating" sortKey="rating" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
-                        {pendingVisibleColumns.commune && <PendingSortableHeader label="Comuna" sortKey="commune" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
-                        {pendingVisibleColumns.fee && <PendingSortableHeader label="Fee" sortKey="fee" activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} />}
-                        {pendingVisibleColumns.deliverables && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Deliverables</th>}
-                        {pendingVisibleColumns.progress && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Progreso</th>}
-                        {pendingVisibleColumns.status && <th className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">Estado</th>}
+                        {pendingColumns.map(key => {
+                          const sortKey = PENDING_COLUMN_SORT[key]
+                          return sortKey
+                            ? <PendingSortableHeader key={key} label={CI_COLUMN_LABELS[key]} sortKey={sortKey} activeKey={pendingSortKey} direction={pendingSortDir} onSort={togglePendingSort} title={key === 'participations' ? 'Campañas realizadas antes de esta (seleccionada + contenido entregado o asistencia)' : undefined} />
+                            : <th key={key} className="bg-gray-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600">{CI_COLUMN_LABELS[key]}</th>
+                        })}
                         <th className="bg-gray-50 px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600">Acciones</th>
                       </tr>
                     </thead>
@@ -3508,6 +3569,35 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         const profileUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
                         const gradient = GRADIENTS[i % GRADIENTS.length]
                         const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+                        const pendingCells: Record<PendingColumnKey, React.ReactNode> = {
+                              participations: <td className="px-4 py-3 whitespace-nowrap">
+                                {ci.history ? (
+                                  <div title={`Postulaciones: ${ci.history.applications} · Seleccionada: ${ci.history.selected} · Participaciones: ${ci.history.participations} · Contenidos entregados: ${ci.history.contents}`}>
+                                    <div className="text-sm font-semibold text-gray-800">Participaciones: {ci.history.participations}</div>
+                                    {ci.history.participations === 0 ? (
+                                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">✨ Nueva oportunidad</span>
+                                    ) : (
+                                      <div className="text-[11px] text-gray-500">{ci.history.selected} selec. · {ci.history.contents} {ci.history.contents === 1 ? 'contenido' : 'contenidos'}</div>
+                                    )}
+                                    <div className="text-[11px] text-gray-400">{ci.history.applications} {ci.history.applications === 1 ? 'postulación' : 'postulaciones'}</div>
+                                  </div>
+                                ) : <span className="text-sm text-gray-400">—</span>}
+                              </td>,
+                              status: <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                                  {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
+                                </span>
+                              </div>
+                            </td>,
+                              platform: <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>,
+                              categories: <td className="px-4 py-3 text-sm text-gray-600">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>,
+                              followers: <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>,
+                              engagement: <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>,
+                              rating: <td className="px-4 py-3 text-sm font-semibold text-gray-700 whitespace-nowrap">{inf.rating != null ? <span className="inline-flex items-center gap-1"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{inf.rating.toFixed(1)}</span> : 'Sin rating'}</td>,
+                              commune: <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>,
+                              fee: <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>,
+                        }
                         return (
                           <tr key={ci.id} className={cn('transition-colors', ci.application_status === 'rejected' ? 'bg-blue-50/45 opacity-70 hover:bg-blue-50/70' : 'hover:bg-violet-50/40')}>
                             <td className="px-4 py-3">
@@ -3546,22 +3636,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                                  {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
-                                </span>
-                              </div>
-                            </td>
-                            {pendingVisibleColumns.platform && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>}
-                            {pendingVisibleColumns.categories && <td className="px-4 py-3 text-sm text-gray-600">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>}
-                            {pendingVisibleColumns.followers && <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>}
-                            {pendingVisibleColumns.engagement && <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>}
-                            {pendingVisibleColumns.rating && <td className="px-4 py-3 text-sm font-semibold text-gray-700 whitespace-nowrap">{inf.rating != null ? <span className="inline-flex items-center gap-1"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{inf.rating.toFixed(1)}</span> : 'Sin rating'}</td>}
-                            {pendingVisibleColumns.commune && <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>}
-                            {pendingVisibleColumns.fee && <td className="px-4 py-3 text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</td>}
-                            {pendingVisibleColumns.deliverables && <td className="px-4 py-3 text-sm text-gray-600">0/0</td>}
-                            {pendingVisibleColumns.progress && <td className="px-4 py-3 text-sm text-gray-600">Sin deliverables</td>}
+                            {pendingColumns.map(key => <Fragment key={key}>{pendingCells[key]}</Fragment>)}
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2 whitespace-nowrap">
                                 {ci.application_status === 'rejected' ? <span className="text-xs font-semibold text-blue-700">No seleccionada</span> : <>
@@ -3737,8 +3812,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     }}
                   />
                   <ColumnVisibilityMenu
-                    columns={CI_COLUMNS}
-                    visible={ciVisibleColumns}
+                    columns={columnMenu(APPROVED_COLUMN_KEYS)}
+                    visible={approvedVisible}
                     onToggle={toggleCiColumn}
                     onReset={() => setCiVisibleColumns(DEFAULT_CI_COLUMNS)}
                     iconOnly
@@ -3846,33 +3921,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Asistencia</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Influencer</th>
-                    {ciVisibleColumns.platform && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Plataforma</th>
-                    )}
-                    {ciVisibleColumns.categories && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Categorías</th>
-                    )}
-                    {ciVisibleColumns.followers && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Seguidores</th>
-                    )}
-                    {ciVisibleColumns.engagement && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Engagement</th>
-                    )}
-                    {ciVisibleColumns.commune && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Comuna</th>
-                    )}
-                    {ciVisibleColumns.fee && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Fee</th>
-                    )}
-                    {ciVisibleColumns.deliverables && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Deliverables</th>
-                    )}
-                    {ciVisibleColumns.progress && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Progreso</th>
-                    )}
-                    {ciVisibleColumns.status && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">Estado</th>
-                    )}
+                    {approvedColumns.map(key => (
+                      <th key={key} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">{CI_COLUMN_LABELS[key]}</th>
+                    ))}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50"></th>
                   </tr>
                 </thead>
@@ -3901,6 +3952,70 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       : 0
                     const gradient = GRADIENTS[i % GRADIENTS.length]
                     const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+                    const approvedCells: Record<ApprovedColumnKey, React.ReactNode> = {
+                      platform: (
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                            {primarySP ? (
+                              <span className="flex items-center gap-1.5 capitalize whitespace-nowrap">
+                                {PLATFORM_ICONS[primarySP.platform]}
+                                <span className="font-medium">{primarySP.platform}</span>
+                              </span>
+                            ) : '—'}
+                          </td>
+                      ),
+                      categories: (
+                        <td className="px-4 py-3 text-xs text-gray-500">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>
+                      ),
+                      followers: (
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>
+                      ),
+                      engagement: (
+                        <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>
+                      ),
+                      rating: (
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-700 whitespace-nowrap">{inf.rating != null ? <span className="inline-flex items-center gap-1"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{inf.rating.toFixed(1)}</span> : 'Sin rating'}</td>
+                      ),
+                      commune: (
+                        <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>
+                      ),
+                      fee: (
+                        <td className="px-4 py-3">
+                            <span className="text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</span>
+                          </td>
+                      ),
+                      deliverables: (
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                            <span className={cn('font-semibold', delivsDone === delivsTotal && delivsTotal > 0 ? 'text-emerald-600' : 'text-gray-900')}>
+                              {delivsDone}
+                            </span>/{delivsTotal}
+                          </td>
+                      ),
+                      progress: (
+                        <td className="px-4 py-3 min-w-[120px]">
+                            {delivsTotal > 0 ? (
+                              <>
+                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={cn('h-full rounded-full', p === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${p}%` }} />
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-0.5">{p}%</div>
+                              </>
+                            ) : <span className="text-xs text-gray-300">Sin deliverables</span>}
+                          </td>
+                      ),
+                      status: (
+                        <td className="px-4 py-3">
+                          {/* Solo lectura: application_status es la fuente de verdad (CLAUDE 16.1).
+                              El antiguo selector escribía campaign_influencers.status, sin efecto. */}
+                          <span className={cn('text-[11px] font-semibold rounded-full px-2 py-0.5',
+                            ci.application_status === 'accepted' ? 'bg-emerald-100 text-emerald-700' :
+                            ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' :
+                            'bg-amber-100 text-amber-700'
+                          )}>
+                            {ci.application_status === 'accepted' ? 'Aceptada' : ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
+                          </span>
+                        </td>
+                      ),
+                    }
 
                     return (
                       <tr
@@ -4035,65 +4150,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             </div>
                           </div>
                         </td>
-                        {ciVisibleColumns.platform && (
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {primarySP ? (
-                              <span className="flex items-center gap-1.5 capitalize whitespace-nowrap">
-                                {PLATFORM_ICONS[primarySP.platform]}
-                                <span className="font-medium">{primarySP.platform}</span>
-                              </span>
-                            ) : '—'}
-                          </td>
-                        )}
-                        {ciVisibleColumns.categories && (
-                          <td className="px-4 py-3 text-xs text-gray-500">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>
-                        )}
-                        {ciVisibleColumns.followers && (
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>
-                        )}
-                        {ciVisibleColumns.engagement && (
-                          <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>
-                        )}
-                        {ciVisibleColumns.commune && (
-                          <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>
-                        )}
-                        {ciVisibleColumns.fee && (
-                          <td className="px-4 py-3">
-                            <span className="text-sm font-bold text-gray-900">{ci.fee ? formatCurrency(ci.fee, 'CLP') : '—'}</span>
-                          </td>
-                        )}
-                        {ciVisibleColumns.deliverables && (
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            <span className={cn('font-semibold', delivsDone === delivsTotal && delivsTotal > 0 ? 'text-emerald-600' : 'text-gray-900')}>
-                              {delivsDone}
-                            </span>/{delivsTotal}
-                          </td>
-                        )}
-                        {ciVisibleColumns.progress && (
-                          <td className="px-4 py-3 min-w-[120px]">
-                            {delivsTotal > 0 ? (
-                              <>
-                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                  <div className={cn('h-full rounded-full', p === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${p}%` }} />
-                                </div>
-                                <div className="text-[10px] text-gray-400 mt-0.5">{p}%</div>
-                              </>
-                            ) : <span className="text-xs text-gray-300">Sin deliverables</span>}
-                          </td>
-                        )}
-                        {ciVisibleColumns.status && (
-                        <td className="px-4 py-3">
-                          {/* Solo lectura: application_status es la fuente de verdad (CLAUDE 16.1).
-                              El antiguo selector escribía campaign_influencers.status, sin efecto. */}
-                          <span className={cn('text-[11px] font-semibold rounded-full px-2 py-0.5',
-                            ci.application_status === 'accepted' ? 'bg-emerald-100 text-emerald-700' :
-                            ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' :
-                            'bg-amber-100 text-amber-700'
-                          )}>
-                            {ci.application_status === 'accepted' ? 'Aceptada' : ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
-                          </span>
-                        </td>
-                        )}
+                        {approvedColumns.map(key => <Fragment key={key}>{approvedCells[key]}</Fragment>)}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             {typeof ci.metadata?.last_reminder_sent_at === 'string' && (

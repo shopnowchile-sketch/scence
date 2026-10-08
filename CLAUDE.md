@@ -422,6 +422,50 @@ Formato de respuesta (breve): **RESULTADO** · **CAMBIOS** · **VERIFICACIÓN** 
 
 Prioridad: menos código, menos tablas, menos duplicación, menos estados, menos legacy, menos mantenimiento, más claridad.
 
+## 18. Estándar de calidad — "hacer que el producto funcione" (permanente)
+
+**El trabajo no es que el código pase. Es que el producto funcione.** Una tarea no está terminada porque compila: termina cuando hay evidencia de que el resultado que espera el usuario realmente ocurrió. Complementa las secciones 11, 12 y 17.
+
+### 18.1 Causa raíz y patrón
+- No hacer desaparecer el síntoma: identificar dónde se origina, por qué ocurrió y qué permitió que ocurriera.
+- Preguntar siempre **"¿dónde más existe este mismo patrón?"** (definiciones duplicadas header/celdas, relaciones Supabase mal tipadas, estados paralelos, rutas inconsistentes, permisos repetidos, validación solo en frontend, cálculos distintos del mismo dato). Corregir el patrón, no solo el caso. Si el alcance crece, informarlo antes de ampliarlo.
+- Datos inconsistentes: encontrar el flujo que los genera y corregirlo. **Nunca esconder un problema de datos con lógica de frontend.**
+
+### 18.2 Verificación en la capa que cambió
+"Compila", "TypeScript pasa", "el build pasa", "la API responde 200" o "la función devuelve success" **no son prueba funcional**.
+
+| Si cambia… | Evidencia mínima |
+|---|---|
+| Datos / estado | Releer el registro en BD después del cambio y confirmar el valor final; confirmar que la UI lo refleja. |
+| API | Llamarla y validar el efecto persistido y los permisos por rol (Admin / Marca / Influencer), incluido el caso denegado. |
+| UI | Renderizar e interactuar: estados loading, error, vacío; tablas, filtros, sorting, modales, formularios; responsive si aplica. |
+| Navegación (Back, Cancel, Save, Close, Continue, redirects, breadcrumbs) | Recorrer A → B → acción → destino esperado, también llegando a B desde orígenes distintos. Historial si depende del origen; ruta determinística si no. |
+| Email (cambio) | Releer el registro, confirmar que el antiguo no quedó donde no debe, e identificar qué procesos/envíos usan ese campo. |
+| Email (merge) | Registro final, principal correcto, historial preservado, sin referencias rotas, y futuros envíos usando el email correcto. |
+| Flujo de campaña | Recorrer el flujo completo (postula → revisión → selección → comunicación → confirmación → entrega → validación → historial), no una sola etapa. |
+| Seguridad | UI → API → autorización (16.2) → BD/RLS. Ocultar en UI nunca es la corrección. |
+
+### 18.3 Verificar sin efectos reales
+La verificación **no puede generar efectos reales sobre usuarios, dinero ni datos de producción**: nada de emails reales al roster (16.8, 16.10), cobros PayPal (16.5) ni escrituras de prueba en producción. Verificar en local / Preview con cuentas de prueba, o con consultas de solo lectura en producción. Si la única forma de verificar implica un efecto real, detenerse y pedir aprobación (Regla Cero, sección 17).
+
+### 18.4 Merge y deploy
+Antes: diff revisado, solo archivos relacionados, sin temporales ni cambios accidentales, `tsc` + lint + tests relevantes + build (16.7), Preview verificado. **Después del merge: volver a comprobar** build → deployment → funcionalidad real. Preview bien ≠ producción bien.
+
+### 18.5 No inventar éxito
+Todo resultado se reporta con una etiqueta explícita en **VERIFICACIÓN** (formato de la sección 17):
+
+- **VERIFICADO** — ejecutado localmente y resultado comprobado.
+- **VERIFICADO EN PREVIEW** — comprobado en Preview, no en producción.
+- **VERIFICADO EN PRODUCCIÓN** — comprobado en producción.
+- **NO VERIFICADO** — no se pudo ejecutar la prueba; decir por qué y qué falta.
+
+Nunca convertir una inferencia en una verificación. Si no se pudo comprobar, no se declara terminado.
+
+### 18.6 Checklist de cierre
+Causa raíz (¿síntoma o causa? ¿patrón en otro lugar?) · Datos (¿BD correcta? ¿fuente única?) · Backend (¿API, permisos y errores?) · Frontend (¿UI refleja el cambio? ¿botones y navegación hacen lo que dicen?) · Integración (¿flujo completo?) · Regresión (¿flujos relacionados probados?) · Calidad (tsc, lint, tests, build, Preview) · Git (solo lo relacionado, sin temporales).
+
+Prioridad: **estabilidad → datos correctos → experiencia simple → seguridad → crecimiento.**
+
 ## Regla final para Claude
 
 Antes de escribir código, piensa como:

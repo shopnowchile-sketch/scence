@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeft, Building2, MoreHorizontal, Target, Calendar, DollarSign, Users, FileText,
+  ArrowLeft, Building2, Lock, MoreHorizontal, RotateCcw, Send, Target, Unlock, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
   ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter, BookOpen, Info, Sparkles,
@@ -2696,54 +2696,46 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         <div className="flex flex-wrap items-center gap-2">
           {summaryEditOpen ? (
             <>
-              <button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving}
-                className="rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
-              <button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving}
-                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
-                {summaryEditSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}{summaryEditSaving ? 'Guardando…' : 'Guardar cambios'}
+              <button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving} title="Cancelar edición" aria-label="Cancelar edición"
+                className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"><X className="h-4 w-4" aria-hidden /></button>
+              <button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} title="Guardar cambios" aria-label="Guardar cambios"
+                className="rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700 disabled:opacity-50">
+                {summaryEditSaving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
               </button>
             </>
           ) : (
             <>
               {c.status === 'draft' && (
                 <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">
-                  <Check className="h-3.5 w-3.5" aria-hidden />{isBrandPortal ? 'Enviar a revisión' : 'Enviar a aprobación'}
-                </button>
+                  title={isBrandPortal ? 'Enviar a revisión' : 'Enviar a aprobación'} aria-label={isBrandPortal ? 'Enviar a revisión' : 'Enviar a aprobación'}
+                  className="rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 hover:bg-violet-100 disabled:opacity-50"><Send className="h-4 w-4" aria-hidden /></button>
               )}
               {!isBrandPortal && (c.status === 'pending_approval' || c.status === 'paused') && (
                 <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
-                  <Play className="h-3.5 w-3.5" aria-hidden />{c.status === 'paused' ? 'Reactivar' : 'Activar'}
-                </button>
+                  title={c.status === 'paused' ? 'Reactivar campaña' : 'Activar campaña'} aria-label={c.status === 'paused' ? 'Reactivar campaña' : 'Activar campaña'}
+                  className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"><Play className="h-4 w-4" aria-hidden /></button>
               )}
               {c.status === 'active' && c.visibility === 'open' && (!isBrandPortal || c._brand_permissions?.canEdit) && (
                 <button onClick={() => handleStatusAction(c.applications_closed_at ? 'reopen_applications' : 'close_applications')} disabled={patchCampaign.isPending}
-                  title={c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones sin pausar la campaña'}
-                  className="rounded-lg border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">
-                  {c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones'}
+                  title={c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones sin pausar la campaña'} aria-label={c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones'}
+                  className="rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 hover:bg-violet-100 disabled:opacity-50">
+                  {c.applications_closed_at ? <Unlock className="h-4 w-4" aria-hidden /> : <Lock className="h-4 w-4" aria-hidden />}
                 </button>
               )}
               {c.status === 'active' && (
-                <button onClick={() => handleStatusAction('complete')} disabled={patchCampaign.isPending} title="Marcar campaña como completada"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
-                  <Check className="h-3.5 w-3.5" aria-hidden />Completar
-                </button>
+                <button onClick={() => handleStatusAction('complete')} disabled={patchCampaign.isPending} title="Marcar campaña como completada" aria-label="Marcar campaña como completada"
+                  className="rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700 disabled:opacity-50"><Check className="h-4 w-4" aria-hidden /></button>
               )}
               {c.status === 'completed' && (
-                <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">
-                  <Play className="h-3.5 w-3.5" aria-hidden />Reabrir campaña
-                </button>
+                <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending} title="Reabrir campaña" aria-label="Reabrir campaña"
+                  className="rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 hover:bg-violet-100 disabled:opacity-50"><RotateCcw className="h-4 w-4" aria-hidden /></button>
               )}
               {canEditCampaign && (
-                <button type="button" onClick={openSummaryEditor}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50">
-                  <Pencil className="h-3.5 w-3.5" aria-hidden />Editar campaña
-                </button>
+                <button type="button" onClick={openSummaryEditor} title="Editar campaña" aria-label="Editar campaña"
+                  className="rounded-lg border border-gray-200 bg-white p-2 text-gray-700 hover:bg-gray-50"><Pencil className="h-4 w-4" aria-hidden /></button>
               )}
               <div className="relative">
-                <button type="button" onClick={() => setActionsMenuOpen(open => !open)} aria-label="Más acciones" aria-haspopup="menu" aria-expanded={actionsMenuOpen}
+                <button type="button" onClick={() => setActionsMenuOpen(open => !open)} title="Más acciones" aria-label="Más acciones" aria-haspopup="menu" aria-expanded={actionsMenuOpen}
                   className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50"><MoreHorizontal className="h-4 w-4" aria-hidden /></button>
                 {actionsMenuOpen && (
                   <>

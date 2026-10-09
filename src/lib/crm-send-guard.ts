@@ -227,10 +227,11 @@ export type BatchResult = {
 
 export async function processLeadBatch(
   admin: SupabaseClient,
-  params: { jobId: string; userId: string; leads: BatchLead[] },
+  params: { jobId: string; userId: string; leads: BatchLead[]; jobCreatedAt?: string },
   deps: BatchDeps,
 ): Promise<BatchResult> {
-  const { jobId, userId, leads } = params
+  const { jobId, userId, leads, jobCreatedAt } = params
+  const jobStart = jobCreatedAt ? new Date(jobCreatedAt).getTime() : NaN
   const result: BatchResult = { sent: 0, skipped: 0, failed: 0, unconfirmed: 0, alreadyHandled: 0, recentlyContacted: 0, recordErrors: 0 }
   const handled = await loadHandledLeadIds(admin, jobId, leads.map(lead => lead.id))
 
@@ -249,6 +250,32 @@ export async function processLeadBatch(
     }
 
     if (handled.has(lead.id)) { result.skipped++; result.alreadyHandled++; continue }
+
+    // Intento INTERRUMPIDO: el lead quedó reservado después de que arrancó este job y no tiene ningún
+    // evento de este job. Pudo haber salido (Resend acepta y el proceso muere antes de registrar).
+    // La ventana de 10 min no basta: pasada esa ventana la reserva ya no protege. NO se envía; se deja
+    // registrado como no confirmado para revisión manual (mismo criterio que la reanudación manual).
+    if (lead.contacted_at && !Number.isNaN(jobStart) && new Date(lead.contacted_at).getTime() >= jobStart) {
+      result.failed++
+      result.unconfirmed++
+      console.error('[crm-bulk-send] intento previo sin registro en este job — NO se reenvía', { leadId: lead.id, jobId })
+      const { error } = await admin.from('crm_email_events').insert({
+        lead_id: lead.id,
+        resend_email_id: null,
+        event_type: 'email.send_unconfirmed',
+        recipient_email: lead.email,
+        subject: null,
+        raw_payload: { source: 'bulk-send-guard', job_id: jobId, resolution: 'no_provider_evidence', claimed_at: lead.contacted_at },
+      })
+      if (error) result.recordErrors++
+      await admin.from('crm_lead_activities').insert({
+        lead_id: lead.id,
+        action_type: 'note',
+        description: `Job ${jobId}: este lead ya estaba reservado por un intento previo sin registro. NO se reenvía automáticamente; revisar en Resend.`,
+        created_by: userId,
+      })
+      continue
+    }
 
     const outgoing = deps.prepare(lead)
     if (!outgoing) { result.failed++; continue }

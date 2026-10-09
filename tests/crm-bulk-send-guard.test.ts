@@ -239,3 +239,46 @@ describe('bloqueo del job', () => {
     assert.deepEqual(interrupted, ['b'])
   })
 })
+
+describe('processLeadBatch — intento interrumpido (Resend aceptó, el proceso murió antes de registrar)', () => {
+  const JOB_START = '2026-10-09T10:00:00.000Z'
+
+  test('reservado tras iniciar el job y sin evento: pasada la ventana de 10 min NO se reenvía y queda como no confirmado', async () => {
+    // contacted_at quedó de la reserva del intento caído; hoy ya pasó con creces la ventana.
+    const leads = [lead('a', { contacted_at: '2026-10-09T10:05:00.000Z' }), lead('b')]
+    const db = freshDb(leads)
+    const sentTo: string[] = []
+    const prepare = (l: BatchLead): OutgoingEmail => ({ subject: 's', message: 'm', templateKey: 'k', templateName: 'n', send: async () => { sentTo.push(l.id); return { id: 'x', error: null } } })
+    const r = await processLeadBatch(makeAdmin(db), { jobId: 'J', userId: 'u', leads, jobCreatedAt: JOB_START }, { isBlocked: () => false, pause: async () => {}, prepare })
+    assert.deepEqual(sentTo, ['b'], 'solo el lead sin intento previo recibe el email')
+    assert.deepEqual([r.sent, r.failed, r.unconfirmed], [1, 1, 1])
+    const ev = db.crm_email_events.find(e => e.lead_id === 'a')
+    assert.equal(ev?.event_type, 'email.send_unconfirmed')
+    assert.equal(ev?.raw_payload.job_id, 'J')
+    assert.equal(ev?.raw_payload.resolution, 'no_provider_evidence')
+
+    // Segunda pasada: el ledger ya lo reconoce, no vuelve a registrar ni a enviar.
+    const again = await processLeadBatch(makeAdmin(db), { jobId: 'J', userId: 'u', leads, jobCreatedAt: JOB_START }, { isBlocked: () => false, pause: async () => {}, prepare })
+    assert.equal(sentTo.length, 1)
+    assert.equal(again.alreadyHandled, 2)
+    assert.equal(db.crm_email_events.filter(e => e.lead_id === 'a').length, 1)
+  })
+
+  test('contactado ANTES de que empezara el job (y fuera de ventana): sí se envía, como siempre', async () => {
+    const leads = [lead('a', { contacted_at: '2026-09-01T00:00:00.000Z' })]
+    const db = freshDb(leads)
+    let calls = 0
+    const r = await processLeadBatch(makeAdmin(db), { jobId: 'J', userId: 'u', leads, jobCreatedAt: JOB_START }, deps(async () => { calls++; return { id: 'x', error: null } }))
+    assert.equal(calls, 1)
+    assert.deepEqual([r.sent, r.failed, r.unconfirmed], [1, 0, 0])
+  })
+
+  test('si no se puede registrar el no confirmado igual NO se envía y se cuenta el error de registro', async () => {
+    const leads = [lead('a', { contacted_at: '2026-10-09T10:05:00.000Z' })]
+    const db = freshDb(leads)
+    let calls = 0
+    const r = await processLeadBatch(makeAdmin(db, { failInsertOn: 'crm_email_events' }), { jobId: 'J', userId: 'u', leads, jobCreatedAt: JOB_START }, deps(async () => { calls++; return { id: 'x', error: null } }))
+    assert.equal(calls, 0)
+    assert.deepEqual([r.sent, r.unconfirmed, r.recordErrors], [0, 1, 1])
+  })
+})

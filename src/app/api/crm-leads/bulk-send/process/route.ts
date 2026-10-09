@@ -97,7 +97,8 @@ export async function POST(request: NextRequest) {
       job.subject,
       job.message ?? '',
       job.created_by,
-      job.template_key ?? 'crm_intro'
+      job.template_key ?? 'crm_intro',
+      job.created_at
     )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'error desconocido'

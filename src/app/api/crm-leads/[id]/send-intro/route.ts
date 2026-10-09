@@ -134,7 +134,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     // persona verifique en Resend antes de reintentar.
     const detail = thrown instanceof Error ? thrown.message : emailErr?.message ?? 'error desconocido'
     console.error('[send-intro] resultado ambiguo de Resend — reserva conservada', { leadId: params.id, detail })
-    await admin.from('crm_email_events').insert({
+    const unconfirmedEvent = await admin.from('crm_email_events').insert({
       lead_id: params.id,
       resend_email_id: null,
       event_type: 'email.send_unconfirmed',
@@ -143,12 +143,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       occurred_at: new Date().toISOString(),
       raw_payload: { source: 'send-intro', template_key: template.key, error: detail, ...sentContent },
     })
-    await admin.from('crm_lead_activities').insert({
+    if (unconfirmedEvent.error) console.error('[send-intro] no se pudo registrar el envío no confirmado — la reserva sigue activa', unconfirmedEvent.error)
+    const unconfirmedNote = await admin.from('crm_lead_activities').insert({
       lead_id: params.id,
       action_type: 'note',
       description: `Envío NO confirmado a ${lead.email} (${template.name}): ${detail}. Verifica en Resend antes de reintentar.`,
       created_by: user.id,
     })
+    if (unconfirmedNote.error) console.error('[send-intro] no se pudo registrar la nota del envío no confirmado', unconfirmedNote.error)
     return NextResponse.json(
       { error: 'No se pudo confirmar si el email salió. No se reintentará automáticamente: revisa Resend antes de volver a enviar.', code: 'send_unconfirmed' },
       { status: 502 },

@@ -21,7 +21,8 @@ export async function sendLeadBatch(
   subject: string,
   customMessage: string,
   userId: string,
-  templateKey = 'crm_intro'
+  templateKey = 'crm_intro',
+  jobCreatedAt: string
 ): Promise<BatchResult> {
   const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey) ?? CRM_EMAIL_CATALOG[0]
 
@@ -31,7 +32,7 @@ export async function sendLeadBatch(
   // alguien que se dio de baja. Si la consulta falla, lanza y la tanda se aborta.
   const blocked = await getBlockedEmails(admin, leads.map(lead => lead.email))
 
-  return processLeadBatch(admin, { jobId, userId, leads }, {
+  return processLeadBatch(admin, { jobId, userId, leads, jobCreatedAt }, {
     isBlocked: email => blocked.has(normalizeEmail(email)),
     pause: () => new Promise(resolve => setTimeout(resolve, 150)),
     prepare: lead => {

@@ -9,6 +9,8 @@ const ROUTES = [
   'src/app/api/campaigns/[id]/collaborations/route.ts',
   'src/app/api/campaigns/[id]/collaborations/candidates/route.ts',
   'src/app/api/campaigns/[id]/collaborations/[cid]/route.ts',
+  'src/app/api/campaigns/[id]/collaborations/plans/route.ts',
+  'src/app/api/campaigns/[id]/collaborations/plans/[planId]/route.ts',
 ]
 
 for (const file of ROUTES) {

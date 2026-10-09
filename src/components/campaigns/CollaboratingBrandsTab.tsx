@@ -5,21 +5,26 @@ import Link from 'next/link'
 import { AlertCircle, ArrowUpRight, Building2, Calendar, Info, Loader2, Mail, MoreHorizontal, Phone, Plus, Search, Trash2, User, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { SortableTH } from '@/components/ui/SortableTH'
 import {
   COLLAB_STATUSES,
   COLLAB_STATUS_LABEL,
   COLLAB_TYPES,
   COLLAB_TYPE_LABEL,
   type CollabStatus,
-  type CollabType,
+  type CampaignPlan,
   type CollaborationRow,
 } from '@/lib/campaign-collaborations-shared'
 import {
   useAddCollaboration,
   useCampaignCollaborations,
+  useCampaignContracts,
+  useContractContent,
+  type ContractSummary,
   useCollaborationCandidates,
   useCollaborationHistory,
   useRemoveCollaboration,
+  usePlanActions,
   useUpdateCollaboration,
   type CollaborationOwner,
 } from '@/hooks/useCampaignCollaborations'
@@ -41,6 +46,20 @@ const COUNTER_LABEL: Record<CollabStatus, string> = {
   declined: 'No participa',
 }
 
+const PLAN_STYLE: Record<string, string> = {
+  bronze: 'bg-orange-50 text-orange-800 ring-orange-200',
+  gold: 'bg-yellow-50 text-yellow-800 ring-yellow-300',
+  naming: 'bg-violet-50 text-violet-700 ring-violet-200',
+}
+
+const money = (value: number | null) => value == null ? '' : `$${Math.round(value).toLocaleString('es-CL')}`
+
+function PlanBadge({ name }: { name: string | null }) {
+  if (!name) return null
+  const style = PLAN_STYLE[name.trim().toLowerCase()] ?? 'bg-gray-100 text-gray-700 ring-gray-200'
+  return <span className={cn('inline-flex max-w-[110px] items-center truncate rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ring-1', style)}>{name}</span>
+}
+
 const FOCUS = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40'
 
 /** Las fechas `date` llegan como YYYY-MM-DD: se arman en local para no correr el día por zona horaria. */
@@ -54,6 +73,22 @@ function formatDate(value: string | null) {
 function normalize(value: string) {
   return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }
+
+const MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/** Todo lo que el usuario ve (y un poco más) en una fila: la búsqueda encuentra cualquier dato. */
+function searchText(row: CollaborationRow) {
+  const [y, m, d] = (row.follow_up_date ?? '').split('-').map(Number)
+  return normalize([
+    row.name, row.contact_name, row.contact_position, row.contact_email, row.contact_phone, row.instagram, row.industry,
+    COLLAB_STATUS_LABEL[row.status], row.collaboration_type ? COLLAB_TYPE_LABEL[row.collaboration_type] : '',
+    row.plan_name, row.plan_amount != null ? String(Math.round(row.plan_amount)) : '',
+    row.contribution_detail, row.quantity != null ? String(row.quantity) : '', row.next_step,
+    row.follow_up_date, y ? `${d} ${MONTHS_ES[m - 1]} ${y}` : '', row.owner_name,
+  ].filter(Boolean).join(' '))
+}
+
+type SortCol = 'name' | 'contact' | 'status' | 'plan' | 'type' | 'detail' | 'next' | 'date' | 'owner'
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'
@@ -80,39 +115,64 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
   const { data, isPending: isLoading, isError, error, refetch } = useCampaignCollaborations(campaignId)
   const rows = useMemo(() => data?.data ?? [], [data])
   const owners = useMemo(() => data?.owners ?? [], [data])
+  const plans = useMemo(() => data?.plans ?? [], [data])
+  const [plansOpen, setPlansOpen] = useState(false)
 
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | CollabStatus>('all')
-  const [typeFilter, setTypeFilter] = useState<'all' | CollabType>('all')
-  const [ownerFilter, setOwnerFilter] = useState<'all' | 'none' | string>('all')
+  const [sortBy, setSortBy] = useState<SortCol | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [menuId, setMenuId] = useState<string | null>(null)
   const remove = useRemoveCollaboration(campaignId)
 
-  // Búsqueda + filtros que no son de estado: los contadores los respetan,
-  // así la tarjeta de cada estado muestra cuántas habría al elegirla.
-  const baseFiltered = useMemo(() => {
-    const term = normalize(query.trim())
-    return rows.filter(row => {
-      if (term && !normalize([row.name, row.contact_name, row.contact_email, row.instagram].filter(Boolean).join(' ')).includes(term)) return false
-      if (typeFilter !== 'all' && row.collaboration_type !== typeFilter) return false
-      if (ownerFilter === 'none' && row.owner_id) return false
-      if (ownerFilter !== 'all' && ownerFilter !== 'none' && row.owner_id !== ownerFilter) return false
-      return true
-    })
-  }, [rows, query, typeFilter, ownerFilter])
+  // Un solo filtro: la barra de búsqueda (todas las palabras deben aparecer en algún dato de la fila).
+  // Los contadores reflejan los resultados de la búsqueda.
+  const searched = useMemo(() => {
+    const terms = normalize(query.trim()).split(/\s+/).filter(Boolean)
+    if (!terms.length) return rows
+    return rows.filter(row => { const text = searchText(row); return terms.every(t => text.includes(t)) })
+  }, [rows, query])
 
   const counts = useMemo(() => {
     const result = Object.fromEntries(COLLAB_STATUSES.map(s => [s, 0])) as Record<CollabStatus, number>
-    baseFiltered.forEach(row => { result[row.status] += 1 })
+    searched.forEach(row => { result[row.status] += 1 })
     return result
-  }, [baseFiltered])
+  }, [searched])
 
-  const visible = useMemo(
-    () => statusFilter === 'all' ? baseFiltered : baseFiltered.filter(row => row.status === statusFilter),
-    [baseFiltered, statusFilter],
-  )
+  const visible = useMemo(() => {
+    if (!sortBy) return searched
+    const planOrder = new Map(plans.map((p, i) => [p.id, i]))
+    const text = (v: string | null | undefined) => (v ?? '').trim()
+    const key = (row: CollaborationRow): string | number | null => {
+      switch (sortBy) {
+        case 'name': return text(row.name)
+        case 'contact': return text(row.contact_name) || null
+        case 'status': return COLLAB_STATUSES.indexOf(row.status)
+        case 'plan': return row.plan_id ? planOrder.get(row.plan_id) ?? 999 : null
+        case 'type': return row.collaboration_type ? COLLAB_TYPE_LABEL[row.collaboration_type] : null
+        case 'detail': return text(row.contribution_detail) || null
+        case 'next': return text(row.next_step) || null
+        case 'date': return row.follow_up_date
+        case 'owner': return text(row.owner_name) || null
+      }
+    }
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...searched].sort((a, b) => {
+      const ka = key(a), kb = key(b)
+      if (ka === null && kb === null) return 0
+      if (ka === null) return 1          // los vacíos siempre al final
+      if (kb === null) return -1
+      const cmp = typeof ka === 'number' && typeof kb === 'number' ? ka - kb : String(ka).localeCompare(String(kb), 'es', { sensitivity: 'base', numeric: true })
+      return cmp * dir
+    })
+  }, [searched, sortBy, sortDir, plans])
+
+  function toggleSort(col: SortCol) {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(col); setSortDir('asc') }
+  }
+
   const selected = rows.find(row => row.id === selectedId) ?? null
 
   useEffect(() => {
@@ -138,57 +198,44 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
     }
   }
 
-  const hasFilters = !!query.trim() || statusFilter !== 'all' || typeFilter !== 'all' || ownerFilter !== 'all'
 
   return (
-    <div className={cn('gap-5', selected ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start' : '')}>
+    <div className={cn('gap-5', selected ? 'md:grid md:grid-cols-[minmax(0,1fr)_360px] md:items-start' : '')}>
       <section className="min-w-0 space-y-5" aria-labelledby="collab-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="collab-title" className="text-xl font-semibold text-gray-900">Marcas colaboradoras</h2>
             <p className="mt-0.5 flex items-center gap-1.5 text-sm text-gray-500">Gestiona las marcas confirmadas y en proceso para {campaignName}. <Info className="h-3.5 w-3.5 text-gray-400" aria-hidden /></p>
           </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-5 sm:gap-3 sm:overflow-visible sm:pb-0" role="group" aria-label="Resumen por estado">
+          {COLLAB_STATUSES.map(status => (
+            <div key={status} className="card min-w-[128px] flex-1 p-3 sm:min-w-0 sm:p-5">
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-gray-600 sm:gap-2 sm:text-sm">
+                <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', STATUS_STYLE[status].dot)} aria-hidden />
+                <span className="truncate">{COUNTER_LABEL[status]}</span>
+              </span>
+              <span className="mt-1 block text-2xl font-semibold text-gray-900 sm:mt-2 sm:text-3xl">{isLoading ? '–' : counts[status]}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden />
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por marca, contacto, estado, plan, fecha, responsable…"
+              aria-label="Buscar en todos los datos" className="input-base pl-9" />
+          </div>
+          <span className="text-sm text-gray-500" aria-live="polite">{visible.length} {visible.length === 1 ? 'marca' : 'marcas'}</span>
+          <button type="button" onClick={() => setPlansOpen(true)}
+            className={cn('inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50', FOCUS)}>
+            Planes
+          </button>
           <button type="button" onClick={() => setAddOpen(true)}
             className={cn('inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800', FOCUS)}>
             <Plus className="h-4 w-4" aria-hidden /> Agregar marca
           </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" role="group" aria-label="Filtrar por estado">
-          {COLLAB_STATUSES.map(status => (
-            <button key={status} type="button" aria-pressed={statusFilter === status}
-              onClick={() => setStatusFilter(current => current === status ? 'all' : status)}
-              className={cn('card p-5 text-left transition-colors hover:border-gray-300', FOCUS,
-                statusFilter === status && 'border-violet-500 ring-1 ring-violet-500/30')}>
-              <span className="flex items-center gap-2 text-sm text-gray-600">
-                <span className={cn('h-2 w-2 rounded-full', STATUS_STYLE[status].dot)} aria-hidden />
-                {COUNTER_LABEL[status]}
-              </span>
-              <span className="mt-2 block text-3xl font-semibold text-gray-900">{isLoading ? '–' : counts[status]}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden />
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar marca o contacto…"
-              aria-label="Buscar marca o contacto" className="input-base pl-9" />
-          </div>
-          <select aria-label="Filtrar por estado" value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | CollabStatus)} className="input-base w-auto">
-            <option value="all">Estado</option>
-            {COLLAB_STATUSES.map(s => <option key={s} value={s}>{COLLAB_STATUS_LABEL[s]}</option>)}
-          </select>
-          <select aria-label="Filtrar por tipo de colaboración" value={typeFilter} onChange={e => setTypeFilter(e.target.value as 'all' | CollabType)} className="input-base w-auto">
-            <option value="all">Tipo de colaboración</option>
-            {COLLAB_TYPES.map(t => <option key={t} value={t}>{COLLAB_TYPE_LABEL[t]}</option>)}
-          </select>
-          <select aria-label="Filtrar por responsable" value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="input-base w-auto">
-            <option value="all">Responsable</option>
-            <option value="none">Sin responsable</option>
-            {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
-          <span className="ml-auto text-sm text-gray-500" aria-live="polite">{visible.length} {visible.length === 1 ? 'marca' : 'marcas'}</span>
         </div>
 
         {isLoading ? (
@@ -212,19 +259,18 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
           </div>
         ) : visible.length === 0 ? (
           <div className="card p-10 text-center text-sm text-gray-500">
-            Ninguna marca coincide con los filtros.
-            {hasFilters && (
-              <button type="button" onClick={() => { setQuery(''); setStatusFilter('all'); setTypeFilter('all'); setOwnerFilter('all') }}
-                className={cn('ml-2 font-semibold text-violet-700 hover:underline', FOCUS)}>Limpiar filtros</button>
-            )}
+            Ninguna marca coincide con la búsqueda.
+            <button type="button" onClick={() => setQuery('')} className={cn('ml-2 font-semibold text-violet-700 hover:underline', FOCUS)}>Limpiar búsqueda</button>
           </div>
         ) : (
           <div className="card overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-[12.5px]">
+            <table className="w-full min-w-[860px] text-left text-[12.5px]">
               <thead>
-                <tr className="border-b border-gray-100 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                  {['Marca', 'Contacto', 'Estado', 'Tipo de colaboración', 'Detalle / aporte', 'Próximo paso', 'Fecha', 'Responsable'].map(h => <th key={h} scope="col" className="px-2.5 py-3">{h}</th>)}
-                  <th scope="col" className="px-2 py-3"><span className="sr-only">Acciones</span></th>
+                <tr className="border-b border-gray-100">
+                  {([['name', 'Marca'], ['contact', 'Contacto'], ['status', 'Estado'], ['plan', 'Plan'], ['type', 'Tipo de colaboración'], ['detail', 'Detalle / aporte'], ['next', 'Próximo paso'], ['date', 'Fecha'], ['owner', 'Responsable']] as const).map(([col, label]) => (
+                    <SortableTH key={col} col={col} sortBy={sortBy ?? undefined} sortDir={sortDir} onSort={toggleSort} className="px-2.5 !text-[11px]">{label}</SortableTH>
+                  ))}
+                  <th scope="col" className="bg-gray-50 px-2 py-3"><span className="sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -234,13 +280,14 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
                     onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelectedId(row.id) } }}
                     className={cn('cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50/70', FOCUS, 'focus-visible:bg-violet-50/50', row.id === selectedId && 'bg-violet-50/40')}>
                     <td className="px-2.5 py-2.5">
-                      <span className="flex items-center gap-2.5"><BrandAvatar row={row} /><span className="max-w-[95px] truncate font-semibold text-gray-900" title={row.name}>{row.name}</span></span>
+                      <span className="flex items-center gap-2.5"><BrandAvatar row={row} /><span className="max-w-[110px] truncate font-semibold text-gray-900" title={row.name}>{row.name}</span></span>
                     </td>
                     <td className="px-2.5 py-2.5">
                       <span className="block text-gray-800">{row.contact_name ?? '—'}</span>
                       {row.contact_email && <span className="block max-w-[110px] truncate text-xs text-gray-500">{row.contact_email}</span>}
                     </td>
                     <td className="whitespace-nowrap px-2.5 py-2.5"><StatusBadge status={row.status} /></td>
+                    <td className="whitespace-nowrap px-2.5 py-2.5">{row.plan_name ? <PlanBadge name={row.plan_name} /> : <span className="text-gray-400">—</span>}</td>
                     <td className="whitespace-nowrap px-2.5 py-2.5 text-gray-700">{row.collaboration_type ? COLLAB_TYPE_LABEL[row.collaboration_type] : '—'}</td>
                     <td className="max-w-[100px] px-2.5 py-2.5 text-gray-700">
                       <span className="block truncate" title={row.contribution_detail ?? undefined}>{row.contribution_detail || (row.quantity != null ? `${row.quantity} un.` : 'Por definir')}</span>
@@ -280,29 +327,30 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
       </section>
 
       {selected && (
-        <CollaborationPanel key={selected.id} campaignId={campaignId} row={selected} owners={owners} onClose={() => setSelectedId(null)} />
+        <CollaborationPanel key={selected.id} campaignId={campaignId} row={selected} owners={owners} plans={plans} onClose={() => setSelectedId(null)} />
       )}
-      {addOpen && <AddBrandModal campaignId={campaignId} onClose={() => setAddOpen(false)} onAdded={id => { setAddOpen(false); setSelectedId(id) }} />}
+      {plansOpen && <PlansModal campaignId={campaignId} plans={plans} onClose={() => setPlansOpen(false)} />}
+      {addOpen && <AddBrandModal campaignId={campaignId} plans={plans} onOpenPlans={() => { setAddOpen(false); setPlansOpen(true) }} onClose={() => setAddOpen(false)} onAdded={id => { setAddOpen(false); setSelectedId(id) }} />}
     </div>
   )
 }
 
 // ── Panel lateral ─────────────────────────────────────────────────────────────
-function CollaborationPanel({ campaignId, row, owners, onClose }: {
-  campaignId: string; row: CollaborationRow; owners: CollaborationOwner[]; onClose: () => void
+function CollaborationPanel({ campaignId, row, owners, plans, onClose }: {
+  campaignId: string; row: CollaborationRow; owners: CollaborationOwner[]; plans: CampaignPlan[]; onClose: () => void
 }) {
-  const [tab, setTab] = useState<'summary' | 'notes' | 'history'>('summary')
+  const [tab, setTab] = useState<'summary' | 'contract' | 'notes' | 'history'>('summary')
   const closeRef = useRef<HTMLButtonElement>(null)
   useEffect(() => { closeRef.current?.focus() }, [])
   const href = profileHref(row)
 
   return (
     <aside aria-label={`Ficha de ${row.name}`}
-      className="fixed inset-0 z-40 overflow-y-auto bg-white lg:sticky lg:top-4 lg:z-auto lg:max-h-[calc(100vh-2rem)] lg:rounded-xl lg:border lg:border-gray-200 lg:shadow-sm">
+      className="fixed inset-0 z-40 overflow-y-auto bg-white md:sticky md:top-4 md:z-auto md:max-h-[calc(100vh-2rem)] md:rounded-xl md:border md:border-gray-200 md:shadow-sm">
       <div className="flex items-start gap-3 p-5">
         <BrandAvatar row={row} size="lg" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-lg font-semibold text-gray-900">{row.name}</h3><StatusBadge status={row.status} /></div>
+          <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-lg font-semibold text-gray-900">{row.name}</h3><StatusBadge status={row.status} /><PlanBadge name={row.plan_name} /></div>
           {row.industry && <p className="mt-0.5 truncate text-sm text-gray-500">{row.industry}</p>}
         </div>
         <button ref={closeRef} type="button" onClick={onClose} aria-label="Cerrar ficha" className={cn('rounded p-1 text-gray-500 hover:bg-gray-100', FOCUS)}><X className="h-5 w-5" aria-hidden /></button>
@@ -315,13 +363,14 @@ function CollaborationPanel({ campaignId, row, owners, onClose }: {
         </div>
       )}
       <div role="tablist" aria-label="Secciones de la ficha" className="flex gap-5 border-b border-gray-200 px-5">
-        {([['summary', 'Resumen'], ['notes', 'Notas'], ['history', 'Historial']] as const).map(([id, label]) => (
+        {([['summary', 'Resumen'], ['contract', 'Contrato'], ['notes', 'Notas'], ['history', 'Historial']] as const).map(([id, label]) => (
           <button key={id} role="tab" type="button" aria-selected={tab === id} onClick={() => setTab(id)}
             className={cn('-mb-px border-b-2 py-2.5 text-sm font-medium', FOCUS, tab === id ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-800')}>{label}</button>
         ))}
       </div>
       <div className="space-y-4 p-5" role="tabpanel">
-        {tab === 'summary' && <SummaryTab campaignId={campaignId} row={row} owners={owners} onSeeNotes={() => setTab('notes')} />}
+        {tab === 'summary' && <SummaryTab campaignId={campaignId} row={row} owners={owners} plans={plans} onSeeNotes={() => setTab('notes')} />}
+        {tab === 'contract' && <ContractTab campaignId={campaignId} row={row} />}
         {tab === 'notes' && <NotesTab campaignId={campaignId} row={row} />}
         {tab === 'history' && <HistoryTab campaignId={campaignId} row={row} />}
       </div>
@@ -338,12 +387,13 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor: string; c
   )
 }
 
-function SummaryTab({ campaignId, row, owners, onSeeNotes }: { campaignId: string; row: CollaborationRow; owners: CollaborationOwner[]; onSeeNotes: () => void }) {
+function SummaryTab({ campaignId, row, owners, plans, onSeeNotes }: { campaignId: string; row: CollaborationRow; owners: CollaborationOwner[]; plans: CampaignPlan[]; onSeeNotes: () => void }) {
   const update = useUpdateCollaboration(campaignId)
   const history = useCollaborationHistory(campaignId, row.lead_id ? row.id : null)
   const recentNotes = (history.data?.data ?? []).filter(a => a.action_type === 'note').slice(0, 2)
   const [form, setForm] = useState({
     status: row.status,
+    plan_id: row.plan_id ?? '',
     collaboration_type: row.collaboration_type ?? '',
     contribution_detail: row.contribution_detail ?? '',
     quantity: row.quantity != null ? String(row.quantity) : '',
@@ -356,6 +406,7 @@ function SummaryTab({ campaignId, row, owners, onSeeNotes }: { campaignId: strin
 
   const dirty =
     form.status !== row.status ||
+    form.plan_id !== (row.plan_id ?? '') ||
     form.collaboration_type !== (row.collaboration_type ?? '') ||
     form.contribution_detail !== (row.contribution_detail ?? '') ||
     form.quantity !== (row.quantity != null ? String(row.quantity) : '') ||
@@ -369,6 +420,7 @@ function SummaryTab({ campaignId, row, owners, onSeeNotes }: { campaignId: strin
       await update.mutateAsync({
         id: row.id,
         status: form.status,
+        plan_id: form.plan_id || null,
         collaboration_type: form.collaboration_type || null,
         contribution_detail: form.contribution_detail || null,
         quantity: form.quantity === '' ? null : Number(form.quantity),
@@ -390,6 +442,12 @@ function SummaryTab({ campaignId, row, owners, onSeeNotes }: { campaignId: strin
         <Field label="Estado" htmlFor="c-status">
           <select id="c-status" value={form.status} onChange={e => set('status', e.target.value as CollabStatus)} className="input-base">
             {COLLAB_STATUSES.map(s => <option key={s} value={s}>{COLLAB_STATUS_LABEL[s]}</option>)}
+          </select>
+        </Field>
+        <Field label="Plan" htmlFor="c-plan">
+          <select id="c-plan" value={form.plan_id} onChange={e => set('plan_id', e.target.value)} className="input-base">
+            <option value="">{plans.length ? 'Sin plan' : 'Sin planes definidos'}</option>
+            {plans.map(p => <option key={p.id} value={p.id}>{p.name}{p.amount != null ? ` · ${money(p.amount)}` : ''}</option>)}
           </select>
         </Field>
         <Field label="Tipo de colaboración" htmlFor="c-type">
@@ -547,8 +605,81 @@ function HistoryTab({ campaignId, row }: { campaignId: string; row: Collaboratio
   )
 }
 
+// ── Contrato de la marca (datos del sistema de contratos existente) ───────────
+const CONTRACT_STATUS: Record<string, string> = { draft: 'Borrador', pending_signature: 'Pendiente de firma', sent: 'Enviado', signed: 'Firmado', completed: 'Firmado', voided: 'Anulado', expired: 'Vencido' }
+const PAYMENT_CONDITION: Record<string, string> = { before_event: 'antes del evento', after_event: 'después del evento', on_signing: 'al firmar', before_date: 'antes de una fecha acordada' }
+
+function ContractCard({ contract }: { contract: ContractSummary }) {
+  const [open, setOpen] = useState(false)
+  const content = useContractContent(open ? contract.id : null)
+  const pkg = contract.metadata?.package
+  const pay = contract.metadata?.payment_terms
+  const ev = contract.metadata?.event
+  const total = contract.total_value != null ? Number(contract.total_value) : pkg?.amount ?? null
+  const list = (items?: string[]) => items && items.length > 0 ? (
+    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-gray-700">{items.map((i, n) => <li key={n}>{i}</li>)}</ul>
+  ) : <p className="mt-1 text-sm text-gray-400">No especificado</p>
+  return (
+    <div className="space-y-4 rounded-xl border border-gray-200 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="text-sm font-semibold text-gray-900">{contract.title}</h4>
+        <span className="badge bg-gray-100 text-gray-700">{CONTRACT_STATUS[contract.status] ?? contract.status}</span>
+      </div>
+      <dl className="grid grid-cols-2 gap-3 text-sm">
+        <div><dt className="text-xs text-gray-500">Plan</dt><dd className="font-medium text-gray-900">{pkg?.name ?? '—'}</dd></div>
+        <div><dt className="text-xs text-gray-500">Monto</dt><dd className="font-medium text-gray-900">{total != null ? money(total) : '—'} {contract.currency ?? ''}</dd></div>
+        {ev?.date && <div><dt className="text-xs text-gray-500">Evento</dt><dd className="text-gray-800">{ev.name ?? ''} {ev.date}{ev.start_time ? ` · ${ev.start_time}${ev.end_time ? `–${ev.end_time}` : ''}` : ''}</dd></div>}
+        {ev?.location && <div><dt className="text-xs text-gray-500">Lugar</dt><dd className="text-gray-800">{ev.location}</dd></div>}
+      </dl>
+      <div><h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Qué entrega SCENCE (incluye el plan)</h5>{list(pkg?.inclusions)}</div>
+      <div><h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Qué aporta la marca</h5>{list(pkg?.requirements)}</div>
+      {(pkg?.deliverables?.length ?? 0) > 0 && <div><h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Entregables</h5>{list(pkg?.deliverables)}</div>}
+      {pay && (pay.first_percentage || pay.second_percentage) && (
+        <div><h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Pago</h5>
+          <ul className="mt-1 space-y-0.5 text-sm text-gray-700">
+            {pay.first_percentage ? <li>{pay.first_percentage}%{pay.first_amount ? ` (${money(pay.first_amount)})` : ''} {PAYMENT_CONDITION[pay.first_condition ?? ''] ?? pay.first_condition ?? ''}</li> : null}
+            {pay.second_percentage ? <li>{pay.second_percentage}%{pay.second_amount ? ` (${money(pay.second_amount)})` : ''} {PAYMENT_CONDITION[pay.second_condition ?? ''] ?? pay.second_condition ?? ''}</li> : null}
+          </ul>
+        </div>
+      )}
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className={cn('text-sm font-semibold text-violet-700 hover:underline', FOCUS)}>
+        {open ? 'Ocultar contrato completo' : 'Ver contrato completo (responsabilidades de cada parte)'}
+      </button>
+      {open && (content.isPending ? <p className="text-sm text-gray-500" role="status">Cargando contrato…</p>
+        : content.isError ? <p role="alert" className="text-sm text-red-600">No se pudo cargar el contrato.</p>
+        : <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 font-sans text-xs leading-relaxed text-gray-800">{content.data?.data.content ?? 'Sin contenido'}</pre>)}
+    </div>
+  )
+}
+
+function ContractTab({ campaignId, row }: { campaignId: string; row: CollaborationRow }) {
+  const { data, isPending, isError } = useCampaignContracts(campaignId, !!row.brand_id)
+  const contractsHref = `/admin-campaigns/${campaignId}?tab=contracts`
+  if (!row.brand_id) {
+    return <p className="text-sm text-gray-500">Esta marca todavía es un lead del CRM. Conviértela en marca desde su ficha para poder generar su contrato.</p>
+  }
+  if (isPending) return <p className="text-sm text-gray-500" role="status">Cargando contratos…</p>
+  if (isError) return <p role="alert" className="text-sm text-red-600">No se pudieron cargar los contratos.</p>
+  const contracts = (data?.data ?? []).filter(c => c.brand_id === row.brand_id)
+  if (contracts.length === 0) {
+    return (
+      <div className="space-y-3 rounded-xl border border-dashed border-gray-200 p-5 text-center">
+        <p className="text-sm text-gray-600">Aún no hay contrato para esta marca en la campaña.</p>
+        <Link href={contractsHref} className={cn('inline-flex rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700', FOCUS)}>Generar contrato</Link>
+        {row.plan_name && <p className="text-xs text-gray-400">Plan elegido: {row.plan_name}{row.plan_amount != null ? ` · ${money(row.plan_amount)}` : ''}</p>}
+      </div>
+    )
+  }
+  return (
+    <>
+      {contracts.map(c => <ContractCard key={c.id} contract={c} />)}
+      <Link href={contractsHref} className={cn('block text-center text-sm font-semibold text-violet-700 hover:underline', FOCUS)}>Gestionar contratos de la campaña</Link>
+    </>
+  )
+}
+
 // ── Agregar marca ─────────────────────────────────────────────────────────────
-function AddBrandModal({ campaignId, onClose, onAdded }: { campaignId: string; onClose: () => void; onAdded: (id: string) => void }) {
+function AddBrandModal({ campaignId, plans, onOpenPlans, onClose, onAdded }: { campaignId: string; plans: CampaignPlan[]; onOpenPlans: () => void; onClose: () => void; onAdded: (id: string) => void }) {
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
   const [creating, setCreating] = useState(false)
@@ -556,6 +687,7 @@ function AddBrandModal({ campaignId, onClose, onAdded }: { campaignId: string; o
   const [creatingBusy, setCreatingBusy] = useState(false)
   // Si el lead se creó pero la asociación falló, el reintento reutiliza ese lead
   // en vez de crear otro registro en el CRM.
+  const [planId, setPlanId] = useState<string>('')
   const [createdLeadId, setCreatedLeadId] = useState<string | null>(null)
   const add = useAddCollaboration(campaignId)
   const candidates = useCollaborationCandidates(campaignId, debounced)
@@ -571,7 +703,7 @@ function AddBrandModal({ campaignId, onClose, onAdded }: { campaignId: string; o
 
   async function pick(target: { lead_id?: string; brand_id?: string }) {
     try {
-      const res = await add.mutateAsync(target)
+      const res = await add.mutateAsync({ ...target, plan_id: planId || null })
       toast.success('Marca agregada a la campaña')
       onAdded(res.data.id)
     } catch (err) {
@@ -618,7 +750,7 @@ function AddBrandModal({ campaignId, onClose, onAdded }: { campaignId: string; o
 
         {creating ? (
           <form onSubmit={createLead} className="space-y-3 overflow-y-auto p-5">
-            <p className="text-sm text-gray-500">Se crea en el CRM de SCENCE y se asocia a esta campaña.</p>
+            <p className="text-sm text-gray-500">Se crea en el CRM de SCENCE y se asocia a esta campaña{planId ? ` con plan ${plans.find(p => p.id === planId)?.name ?? ''}` : ''}.</p>
             {([['company_name', 'Marca / empresa'], ['contact_name', 'Contacto'], ['email', 'Email'], ['instagram', 'Instagram']] as const).map(([key, label]) => (
               <div key={key}>
                 <label htmlFor={`n-${key}`} className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
@@ -638,6 +770,14 @@ function AddBrandModal({ campaignId, onClose, onAdded }: { campaignId: string; o
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden />
               <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} aria-label="Buscar marca o lead" placeholder="Buscar por marca, contacto, email o Instagram…" className="input-base pl-9" />
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <label htmlFor="add-plan" className="text-xs font-medium text-gray-600">Plan</label>
+              <select id="add-plan" value={planId} onChange={e => setPlanId(e.target.value)} className="input-base w-auto py-1.5">
+                <option value="">Sin plan</option>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}{p.amount != null ? ` · ${money(p.amount)}` : ''}</option>)}
+              </select>
+              {plans.length === 0 && <button type="button" onClick={onOpenPlans} className={cn('text-xs font-semibold text-violet-700 hover:underline', FOCUS)}>Definir planes</button>}
             </div>
             <div className="mt-3 min-h-[120px] overflow-y-auto" aria-live="polite">
               {debounced.trim().length < 2 ? <p className="py-6 text-center text-sm text-gray-400">Escribe al menos 2 letras para buscar.</p>
@@ -665,6 +805,87 @@ function AddBrandModal({ campaignId, onClose, onAdded }: { campaignId: string; o
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Planes de la campaña ──────────────────────────────────────────────────────
+function PlanRow({ plan, onSave, onDelete, busy }: {
+  plan: CampaignPlan; busy: boolean
+  onSave: (patch: { name: string; amount: number | null; description: string | null }) => void
+  onDelete: () => void
+}) {
+  const [name, setName] = useState(plan.name)
+  const [amount, setAmount] = useState(plan.amount != null ? String(plan.amount) : '')
+  const [description, setDescription] = useState(plan.description ?? '')
+  const dirty = name !== plan.name || amount !== (plan.amount != null ? String(plan.amount) : '') || description !== (plan.description ?? '')
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_110px] gap-2 rounded-lg border border-gray-100 p-3 sm:grid-cols-[130px_120px_minmax(0,1fr)_auto]">
+      <input aria-label="Nombre del plan" value={name} maxLength={40} onChange={e => setName(e.target.value)} className="input-base" />
+      <input aria-label="Monto" type="number" min={0} value={amount} onChange={e => setAmount(e.target.value)} placeholder="Monto" className="input-base" />
+      <input aria-label="Qué incluye" value={description} maxLength={300} onChange={e => setDescription(e.target.value)} placeholder="Qué incluye (opcional)" className="input-base col-span-2 sm:col-span-1" />
+      <div className="col-span-2 flex items-center justify-end gap-1 sm:col-span-1">
+        <button type="button" disabled={!dirty || busy || !name.trim()} onClick={() => onSave({ name, amount: amount === '' ? null : Number(amount), description: description || null })}
+          className={cn('rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40', FOCUS)}>Guardar</button>
+        <button type="button" aria-label={`Eliminar plan ${plan.name}`} disabled={busy} onClick={onDelete} className={cn('rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600', FOCUS)}><Trash2 className="h-4 w-4" aria-hidden /></button>
+      </div>
+    </li>
+  )
+}
+
+function PlansModal({ campaignId, plans, onClose }: { campaignId: string; plans: CampaignPlan[]; onClose: () => void }) {
+  const actions = usePlanActions(campaignId)
+  const busy = actions.loadStandard.isPending || actions.create.isPending || actions.update.isPending || actions.remove.isPending
+  const [draft, setDraft] = useState({ name: '', amount: '', description: '' })
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  async function run<T>(action: Promise<T>, ok: string) {
+    try { await action; toast.success(ok); return true } catch (err) { toast.error(err instanceof Error ? err.message : 'No se pudo completar'); return false }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[8vh]" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="plans-title" onClick={e => e.stopPropagation()} className="flex max-h-[84vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <h3 id="plans-title" className="text-base font-semibold text-gray-900">Planes de esta campaña</h3>
+            <p className="text-xs text-gray-500">Cada campaña define sus propios planes. Las marcas eligen uno de esta lista.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className={cn('rounded p-1 text-gray-500 hover:bg-gray-100', FOCUS)}><X className="h-5 w-5" aria-hidden /></button>
+        </div>
+        <div className="space-y-3 overflow-y-auto p-5">
+          {plans.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center">
+              <p className="text-sm text-gray-600">Esta campaña aún no tiene planes.</p>
+              <button type="button" disabled={busy} onClick={() => run(actions.loadStandard.mutateAsync(), 'Plan estándar cargado')}
+                className={cn('mt-3 inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50', FOCUS)}>
+                {actions.loadStandard.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />} Usar estándar: Bronze, Gold, Naming
+              </button>
+              <p className="mt-2 text-xs text-gray-400">Luego puedes editar nombres y montos, o agregar otros.</p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {plans.map(plan => (
+                <PlanRow key={plan.id + plan.name + plan.amount + plan.description} plan={plan} busy={busy}
+                  onSave={patch => { void run(actions.update.mutateAsync({ id: plan.id, ...patch }), 'Plan guardado') }}
+                  onDelete={() => { if (window.confirm(`¿Eliminar el plan ${plan.name}? Las marcas con este plan quedarán sin plan.`)) void run(actions.remove.mutateAsync(plan.id), 'Plan eliminado') }} />
+              ))}
+            </ul>
+          )}
+          <form className="grid grid-cols-[minmax(0,1fr)_110px] gap-2 rounded-lg bg-gray-50 p-3 sm:grid-cols-[130px_120px_minmax(0,1fr)_auto]"
+            onSubmit={async e => { e.preventDefault(); if (await run(actions.create.mutateAsync({ name: draft.name, amount: draft.amount === '' ? null : Number(draft.amount), description: draft.description || null }), 'Plan creado')) setDraft({ name: '', amount: '', description: '' }) }}>
+            <input aria-label="Nuevo plan: nombre" value={draft.name} maxLength={40} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="Nuevo plan" className="input-base" />
+            <input aria-label="Nuevo plan: monto" type="number" min={0} value={draft.amount} onChange={e => setDraft(d => ({ ...d, amount: e.target.value }))} placeholder="Monto" className="input-base" />
+            <input aria-label="Nuevo plan: qué incluye" value={draft.description} maxLength={300} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} placeholder="Qué incluye (opcional)" className="input-base col-span-2 sm:col-span-1" />
+            <button type="submit" disabled={busy || !draft.name.trim()} className={cn('col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40 sm:col-span-1', FOCUS)}><Plus className="h-4 w-4" aria-hidden />Agregar</button>
+          </form>
+        </div>
       </div>
     </div>
   )

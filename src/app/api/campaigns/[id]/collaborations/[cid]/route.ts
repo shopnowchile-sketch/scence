@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   COLLAB_SELECT,
   COLLAB_STATUSES,
+  planBelongsToCampaign,
   COLLAB_STATUS_LABEL,
   COLLAB_TYPES,
   authorizeCollaborationAdmin,
@@ -63,6 +64,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Tipo de colaboración inválido' }, { status: 422 })
     }
     update.collaboration_type = body.collaboration_type
+  }
+  if (body.plan_id !== undefined) {
+    if (body.plan_id !== null && !(typeof body.plan_id === 'string' && await planBelongsToCampaign(admin, params.id, body.plan_id))) {
+      return NextResponse.json({ error: 'Plan inválido para esta campaña' }, { status: 422 })
+    }
+    update.plan_id = body.plan_id
   }
   for (const [key, max] of [['contribution_detail', 500], ['next_step', 300]] as const) {
     if (body[key] === undefined) continue

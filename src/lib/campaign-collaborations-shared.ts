@@ -3,6 +3,19 @@
 export const COLLAB_STATUSES = ['to_contact', 'contacted', 'negotiating', 'confirmed', 'declined'] as const
 export type CollabStatus = typeof COLLAB_STATUSES[number]
 
+/** Plan (nivel de aporte) definido para una campaña. */
+export interface CampaignPlan {
+  id: string
+  campaign_id: string
+  name: string
+  amount: number | null
+  description: string | null
+  sort_order: number
+}
+
+/** Estándar sugerido (solo nombres: los montos los define cada campaña). */
+export const STANDARD_PLAN_NAMES = ['Bronze', 'Gold', 'Naming'] as const
+
 export const COLLAB_TYPES = ['gifting', 'products', 'services', 'cash', 'mixed'] as const
 export type CollabType = typeof COLLAB_TYPES[number]
 
@@ -29,6 +42,9 @@ export interface CollaborationRow {
   brand_id: string | null
   status: CollabStatus
   collaboration_type: CollabType | null
+  plan_id: string | null
+  plan_name: string | null
+  plan_amount: number | null
   contribution_detail: string | null
   quantity: number | null
   next_step: string | null

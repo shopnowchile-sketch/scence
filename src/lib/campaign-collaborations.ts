@@ -7,7 +7,7 @@ import type { CollaborationRow } from '@/lib/campaign-collaborations-shared'
 export * from '@/lib/campaign-collaborations-shared'
 
 export const COLLAB_SELECT =
-  'id, campaign_id, lead_id, brand_id, status, collaboration_type, contribution_detail, quantity, next_step, follow_up_date, owner_id, created_at, updated_at'
+  'id, campaign_id, lead_id, brand_id, status, collaboration_type, plan_id, contribution_detail, quantity, next_step, follow_up_date, owner_id, created_at, updated_at'
 
 type AuthResult =
   | { ok: true; userId: string; admin: SupabaseClient }
@@ -58,15 +58,16 @@ interface BrandLite {
 }
 
 type RawCollab = Omit<CollaborationRow,
-  'name' | 'logo_url' | 'contact_name' | 'contact_position' | 'contact_email' | 'contact_phone' | 'instagram' | 'industry' | 'owner_name'>
+  'plan_name' | 'plan_amount' | 'name' | 'logo_url' | 'contact_name' | 'contact_position' | 'contact_email' | 'contact_phone' | 'instagram' | 'industry' | 'owner_name'>
 
 /** Une colaboraciones con lead/marca/responsable en 3 consultas fijas (sin N+1). */
 export async function hydrateCollaborations(admin: SupabaseClient, rows: RawCollab[]): Promise<CollaborationRow[]> {
   const leadIds = Array.from(new Set(rows.map(r => r.lead_id).filter((v): v is string => !!v)))
   const brandIds = Array.from(new Set(rows.map(r => r.brand_id).filter((v): v is string => !!v)))
   const ownerIds = Array.from(new Set(rows.map(r => r.owner_id).filter((v): v is string => !!v)))
+  const planIds = Array.from(new Set(rows.map(r => r.plan_id).filter((v): v is string => !!v)))
 
-  const [leadsRes, brandsRes, ownersRes] = await Promise.all([
+  const [leadsRes, brandsRes, ownersRes, plansRes] = await Promise.all([
     leadIds.length
       ? admin.from('crm_leads').select('id, company_name, contact_name, position, email, phone_1, instagram, industry').in('id', leadIds)
       : Promise.resolve({ data: [] as LeadLite[], error: null }),
@@ -76,10 +77,15 @@ export async function hydrateCollaborations(admin: SupabaseClient, rows: RawColl
     ownerIds.length
       ? admin.from('profiles').select('id, full_name, display_name').in('id', ownerIds)
       : Promise.resolve({ data: [] as { id: string; full_name: string | null; display_name: string | null }[], error: null }),
+    planIds.length
+      ? admin.from('campaign_collaboration_plans').select('id, name, amount').in('id', planIds)
+      : Promise.resolve({ data: [] as { id: string; name: string; amount: number | null }[], error: null }),
   ])
   if (leadsRes.error) throw new Error(leadsRes.error.message)
   if (brandsRes.error) throw new Error(brandsRes.error.message)
   if (ownersRes.error) throw new Error(ownersRes.error.message)
+  if (plansRes.error) throw new Error(plansRes.error.message)
+  const plans = new Map((plansRes.data as { id: string; name: string; amount: number | null }[]).map(p => [p.id, p]))
 
   const leads = new Map((leadsRes.data as LeadLite[]).map(l => [l.id, l]))
   const brands = new Map((brandsRes.data as BrandLite[]).map(b => [b.id, b]))
@@ -99,7 +105,15 @@ export async function hydrateCollaborations(admin: SupabaseClient, rows: RawColl
       contact_phone: lead?.phone_1 ?? brand?.contact_phone ?? null,
       instagram: lead?.instagram ?? brand?.instagram ?? null,
       industry: lead?.industry ?? brand?.industry ?? null,
+      plan_name: row.plan_id ? plans.get(row.plan_id)?.name ?? null : null,
+      plan_amount: row.plan_id ? plans.get(row.plan_id)?.amount ?? null : null,
       owner_name: row.owner_id ? owners.get(row.owner_id) ?? null : null,
     }
   })
+}
+
+/** El plan debe pertenecer a la misma campaña (nunca confiar en el id que envía el cliente). */
+export async function planBelongsToCampaign(admin: SupabaseClient, campaignId: string, planId: string): Promise<boolean> {
+  const { data } = await admin.from('campaign_collaboration_plans').select('id').eq('id', planId).eq('campaign_id', campaignId).maybeSingle()
+  return !!data
 }

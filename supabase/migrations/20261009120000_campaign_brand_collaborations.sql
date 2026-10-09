@@ -11,6 +11,23 @@
 -- las rutas /api/campaigns/[id]/collaborations usan service role tras validar
 -- isPlatformAdmin().
 
+-- Catálogo de planes (niveles de aporte) POR campaña: no todas las campañas tienen los
+-- mismos planes. Ej. estándar sugerido en la app: Bronze, Gold, Naming (editable).
+CREATE TABLE public.campaign_collaboration_plans (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 40),
+  amount      NUMERIC(14,2) CHECK (amount IS NULL OR amount >= 0),
+  description TEXT CHECK (char_length(description) <= 300),
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX campaign_collaboration_plans_name_key
+  ON public.campaign_collaboration_plans (campaign_id, lower(btrim(name)));
+ALTER TABLE public.campaign_collaboration_plans ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.campaign_collaboration_plans FROM PUBLIC, anon, authenticated;
+
 CREATE TABLE public.campaign_brand_collaborations (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id         UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
@@ -20,6 +37,8 @@ CREATE TABLE public.campaign_brand_collaborations (
                       CHECK (status IN ('to_contact', 'contacted', 'negotiating', 'confirmed', 'declined')),
   collaboration_type  TEXT
                       CHECK (collaboration_type IN ('gifting', 'products', 'services', 'cash', 'mixed')),
+  -- Plan elegido de la campaña (si se borra el plan, la colaboración queda sin plan).
+  plan_id             UUID REFERENCES public.campaign_collaboration_plans(id) ON DELETE SET NULL,
   contribution_detail TEXT CHECK (char_length(contribution_detail) <= 500),
   quantity            INTEGER CHECK (quantity IS NULL OR quantity >= 0),
   next_step           TEXT CHECK (char_length(next_step) <= 300),
@@ -40,6 +59,8 @@ CREATE INDEX campaign_brand_collaborations_lead_idx
   ON public.campaign_brand_collaborations (lead_id) WHERE lead_id IS NOT NULL;
 CREATE INDEX campaign_brand_collaborations_brand_idx
   ON public.campaign_brand_collaborations (brand_id) WHERE brand_id IS NOT NULL;
+CREATE INDEX campaign_brand_collaborations_plan_idx
+  ON public.campaign_brand_collaborations (plan_id) WHERE plan_id IS NOT NULL;
 CREATE INDEX campaign_brand_collaborations_owner_idx
   ON public.campaign_brand_collaborations (owner_id) WHERE owner_id IS NOT NULL;
 

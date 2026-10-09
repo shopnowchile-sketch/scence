@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ADMIN_ROLES } from '@/lib/supabase/ensureOrg'
 import {
   COLLAB_SELECT,
+  planBelongsToCampaign,
   authorizeCollaborationAdmin,
   hydrateCollaborations,
 } from '@/lib/campaign-collaborations'
@@ -17,12 +18,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!auth.ok) return auth.response
   const { admin } = auth
 
-  const [rowsRes, membersRes] = await Promise.all([
+  const [rowsRes, membersRes, plansRes] = await Promise.all([
     admin.from('campaign_brand_collaborations').select(COLLAB_SELECT).eq('campaign_id', params.id).order('created_at', { ascending: false }),
     admin.from('organization_members').select('user_id').eq('is_active', true).in('role', ADMIN_ROLES),
+    admin.from('campaign_collaboration_plans').select('id, campaign_id, name, amount, description, sort_order').eq('campaign_id', params.id).order('sort_order').order('created_at'),
   ])
   if (rowsRes.error) return NextResponse.json({ error: rowsRes.error.message }, { status: 500 })
   if (membersRes.error) return NextResponse.json({ error: membersRes.error.message }, { status: 500 })
+  if (plansRes.error) return NextResponse.json({ error: plansRes.error.message }, { status: 500 })
 
   const ownerIds = Array.from(new Set((membersRes.data ?? []).map(m => m.user_id as string)))
   const { data: profiles, error: profilesError } = ownerIds.length
@@ -33,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const data = await hydrateCollaborations(admin, rowsRes.data ?? [])
     const owners = (profiles ?? []).map(p => ({ id: p.id as string, name: (p.display_name || p.full_name || 'Admin') as string }))
-    return NextResponse.json({ data, owners })
+    return NextResponse.json({ data, owners, plans: plansRes.data ?? [] })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error al cargar colaboraciones' }, { status: 500 })
   }
@@ -51,6 +54,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   let leadId: string | null = typeof body.lead_id === 'string' ? body.lead_id : null
   let brandId: string | null = typeof body.brand_id === 'string' ? body.brand_id : null
   if (!leadId && !brandId) return NextResponse.json({ error: 'lead_id o brand_id requerido' }, { status: 422 })
+  const planId: string | null = typeof body.plan_id === 'string' ? body.plan_id : null
+  if (planId && !(UUID_RE.test(planId) && await planBelongsToCampaign(admin, params.id, planId))) {
+    return NextResponse.json({ error: 'Plan inválido para esta campaña' }, { status: 422 })
+  }
   if ((leadId && !UUID_RE.test(leadId)) || (brandId && !UUID_RE.test(brandId))) {
     return NextResponse.json({ error: 'Identificador inválido' }, { status: 422 })
   }
@@ -81,7 +88,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data, error } = await admin
     .from('campaign_brand_collaborations')
-    .insert({ campaign_id: params.id, lead_id: leadId, brand_id: brandId, owner_id: userId, created_by: userId })
+    .insert({ campaign_id: params.id, lead_id: leadId, brand_id: brandId, plan_id: planId, owner_id: userId, created_by: userId })
     .select(COLLAB_SELECT)
     .single()
   if (error) {

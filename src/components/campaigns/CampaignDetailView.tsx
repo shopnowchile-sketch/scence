@@ -25,7 +25,7 @@ interface Props {
   id: string
   mode: CampaignDetailMode
   // Admin-only props
-  defaultTab?: 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'history'
+  defaultTab?: 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'collaborators' | 'history'
 }
 
 export function CampaignDetailView({ id, mode, defaultTab = 'overview' }: Props) {

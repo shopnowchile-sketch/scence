@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeft, Target, Calendar, DollarSign, Users, FileText,
+  ArrowLeft, Building2, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
   ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter, BookOpen, Info, Sparkles,
@@ -14,6 +14,7 @@ import { es } from 'date-fns/locale'
 import { cn, formatCurrency, formatDate, formatDatetime, formatFollowers, PLATFORM_ICONS } from '@/lib/utils'
 import { CampaignStatusBadge, campaignStatusLabel, campaignStatusBadgeClass, CAMPAIGN_STATUS_OPTIONS } from '@/components/campaigns/CampaignStatusBadge'
 import { BartersTab } from '@/components/campaigns/BartersTab'
+import { CollaboratingBrandsTab } from '@/components/campaigns/CollaboratingBrandsTab'
 import { StarRating } from '@/components/ui/StarRating'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
@@ -123,8 +124,8 @@ const GRADIENTS = [
   'from-amber-400 to-orange-500', 'from-violet-400 to-indigo-500',
 ]
 
-type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'contracts' | 'history'
-const VALID_TABS: Tab[] = ['overview', 'influencers', 'deliverables', 'barters', 'assets', 'locations', 'billing', 'contracts', 'history']
+type Tab = 'overview' | 'influencers' | 'deliverables' | 'barters' | 'assets' | 'locations' | 'billing' | 'contracts' | 'collaborators' | 'history'
+const VALID_TABS: Tab[] = ['overview', 'influencers', 'deliverables', 'barters', 'assets', 'locations', 'billing', 'contracts', 'collaborators', 'history']
 
 // ── Columnas toggleables de las tablas del tab Influencers ─────────────────
 // Fuente única por tabla: la lista ordenada de keys define, en este orden, el
@@ -2730,6 +2731,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     { id: 'locations',    label: `Lugares (${brandLocations.length + (eventLocation ? 1 : 0)})`, icon: <Target className="h-3.5 w-3.5" /> },
     { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-3.5 w-3.5" /> },
     ...(!isBrandPortal ? [{ id: 'contracts' as Tab, label: 'Contratos', icon: <FileText className="h-3.5 w-3.5" /> }] : []),
+    ...(!isBrandPortal ? [{ id: 'collaborators' as Tab, label: 'Marcas colaboradoras', icon: <Building2 className="h-3.5 w-3.5" /> }] : []),
     { id: 'history',      label: 'Historial',     icon: <Clock className="h-3.5 w-3.5" /> },
   ]
 
@@ -4975,6 +4977,10 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           campaignBenefits={c.campaign_benefits ?? []}
           onSaveBenefits={benefits => patchCampaign.mutateAsync({ campaign_benefits: benefits })}
         />
+      )}
+
+      {tab === 'collaborators' && !isBrandPortal && (
+        <CollaboratingBrandsTab campaignId={id} campaignName={c.name} />
       )}
 
       {tab === 'history' && (

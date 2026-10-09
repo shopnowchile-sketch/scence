@@ -53,3 +53,18 @@ test('acciones destructivas solo para el portal admin (no marca)', () => {
 test('el lugar no repite partes iguales', () => {
   assert.match(source, /Array\.from\(new Set\(\[eventVenueName, eventLocation, eventCommune\]/)
 })
+
+test('barra superior solo con iconos: cada botón lleva aria-label y tooltip, sin texto visible', () => {
+  const start = source.indexOf('{/* Barra superior')
+  const end = source.indexOf('{/* Resumen del evento')
+  const bar = source.slice(start, end)
+  for (const label of ['Cancelar edición', 'Guardar cambios', 'Editar campaña', 'Marcar campaña como completada', 'Reabrir campaña', 'Más acciones']) {
+    assert.match(bar, new RegExp(`aria-label="${label}"`), `falta aria-label="${label}"`)
+  }
+  // Los textos de antes ya no son contenido visible de los botones
+  assert.doesNotMatch(bar, />\s*Editar campaña\s*</)
+  assert.doesNotMatch(bar, />\s*Guardar cambios\s*</)
+  assert.doesNotMatch(bar, />\s*Completar\s*</)
+  // El menú ⋯ conserva texto: sin palabras no se distinguiría Cancelar de Borrar todo
+  assert.match(bar, /Borrar todo \(permanente\)/)
+})

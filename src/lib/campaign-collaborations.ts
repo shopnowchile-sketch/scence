@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
-import type { CollaborationRow } from '@/lib/campaign-collaborations-shared'
+import { planCollaboratorImport, resolveContractBrandId, type CollaborationRow, type ImportPlan } from '@/lib/campaign-collaborations-shared'
 
 export * from '@/lib/campaign-collaborations-shared'
 
@@ -44,6 +44,7 @@ interface LeadLite {
   phone_1: string | null
   instagram: string | null
   industry: string | null
+  converted_brand_id: string | null
 }
 
 interface BrandLite {
@@ -58,7 +59,7 @@ interface BrandLite {
 }
 
 type RawCollab = Omit<CollaborationRow,
-  'plan_name' | 'plan_amount' | 'name' | 'logo_url' | 'contact_name' | 'contact_position' | 'contact_email' | 'contact_phone' | 'instagram' | 'industry' | 'owner_name'>
+  'plan_name' | 'plan_amount' | 'contract_brand_id' | 'name' | 'logo_url' | 'contact_name' | 'contact_position' | 'contact_email' | 'contact_phone' | 'instagram' | 'industry' | 'owner_name'>
 
 /** Une colaboraciones con lead/marca/responsable en 3 consultas fijas (sin N+1). */
 export async function hydrateCollaborations(admin: SupabaseClient, rows: RawCollab[]): Promise<CollaborationRow[]> {
@@ -69,7 +70,7 @@ export async function hydrateCollaborations(admin: SupabaseClient, rows: RawColl
 
   const [leadsRes, brandsRes, ownersRes, plansRes] = await Promise.all([
     leadIds.length
-      ? admin.from('crm_leads').select('id, company_name, contact_name, position, email, phone_1, instagram, industry').in('id', leadIds)
+      ? admin.from('crm_leads').select('id, company_name, contact_name, position, email, phone_1, instagram, industry, converted_brand_id').in('id', leadIds)
       : Promise.resolve({ data: [] as LeadLite[], error: null }),
     brandIds.length
       ? admin.from('brands').select('id, name, logo_url, contact_name, contact_email, contact_phone, instagram, industry').in('id', brandIds)
@@ -105,6 +106,7 @@ export async function hydrateCollaborations(admin: SupabaseClient, rows: RawColl
       contact_phone: lead?.phone_1 ?? brand?.contact_phone ?? null,
       instagram: lead?.instagram ?? brand?.instagram ?? null,
       industry: lead?.industry ?? brand?.industry ?? null,
+      contract_brand_id: resolveContractBrandId(row.brand_id, lead?.converted_brand_id ?? null),
       plan_name: row.plan_id ? plans.get(row.plan_id)?.name ?? null : null,
       plan_amount: row.plan_id ? plans.get(row.plan_id)?.amount ?? null : null,
       owner_name: row.owner_id ? owners.get(row.owner_id) ?? null : null,
@@ -116,4 +118,38 @@ export async function hydrateCollaborations(admin: SupabaseClient, rows: RawColl
 export async function planBelongsToCampaign(admin: SupabaseClient, campaignId: string, planId: string): Promise<boolean> {
   const { data } = await admin.from('campaign_collaboration_plans').select('id').eq('id', planId).eq('campaign_id', campaignId).maybeSingle()
   return !!data
+}
+
+/**
+ * Resuelve qué colaboradoras de `campaign_brands` faltan en la ficha nueva. Solo lectura.
+ * La identidad sale de la relación real (campaign_brands.brand_id → brands) y, si existe,
+ * del lead del CRM convertido a esa marca (crm_leads.converted_brand_id); no se infiere por nombre.
+ */
+export async function loadCollaboratorImportPlan(admin: SupabaseClient, campaignId: string): Promise<ImportPlan> {
+  const empty: ImportPlan = { toInsert: [], alreadyPresent: [], needsReview: [], ambiguousLeads: [] }
+  const [campaignRes, cbRes, existingRes] = await Promise.all([
+    admin.from('campaigns').select('brand_id').eq('id', campaignId).maybeSingle(),
+    admin.from('campaign_brands').select('brand_id, role').eq('campaign_id', campaignId).eq('role', 'collaborator'),
+    admin.from('campaign_brand_collaborations').select('brand_id, lead_id').eq('campaign_id', campaignId),
+  ])
+  if (campaignRes.error) throw new Error(campaignRes.error.message)
+  if (cbRes.error) throw new Error(cbRes.error.message)
+  if (existingRes.error) throw new Error(existingRes.error.message)
+  const primary = campaignRes.data?.brand_id ?? null
+  const brandIds = Array.from(new Set((cbRes.data ?? []).map(r => r.brand_id as string).filter(id => id && id !== primary)))
+  if (!brandIds.length) return empty
+
+  const [brandsRes, leadsRes] = await Promise.all([
+    admin.from('brands').select('id, name').in('id', brandIds),
+    admin.from('crm_leads').select('id, converted_brand_id').in('converted_brand_id', brandIds),
+  ])
+  if (brandsRes.error) throw new Error(brandsRes.error.message)
+  if (leadsRes.error) throw new Error(leadsRes.error.message)
+  const brandNames = new Map((brandsRes.data ?? []).filter(b => b.name).map(b => [b.id as string, b.name as string]))
+  const leadsByBrand = new Map<string, string[]>()
+  for (const lead of leadsRes.data ?? []) {
+    const key = lead.converted_brand_id as string
+    leadsByBrand.set(key, [...(leadsByBrand.get(key) ?? []), lead.id as string])
+  }
+  return planCollaboratorImport({ collaboratorBrandIds: brandIds, brandNames, leadsByBrand, existing: existingRes.data ?? [] })
 }

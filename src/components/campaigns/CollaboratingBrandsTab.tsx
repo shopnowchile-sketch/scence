@@ -19,6 +19,7 @@ import {
   useAddCollaboration,
   useCampaignCollaborations,
   useCampaignContracts,
+  useImportCollaborators,
   useContractContent,
   type ContractSummary,
   useCollaborationCandidates,
@@ -117,6 +118,8 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
   const owners = useMemo(() => data?.owners ?? [], [data])
   const plans = useMemo(() => data?.plans ?? [], [data])
   const [plansOpen, setPlansOpen] = useState(false)
+  const importable = data?.importable ?? 0
+  const importCollaborators = useImportCollaborators(campaignId)
 
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortCol | null>(null)
@@ -186,6 +189,18 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
     return () => window.removeEventListener('keydown', onKey)
   }, [selected])
 
+  async function runImport() {
+    try {
+      const result = await importCollaborators.mutateAsync()
+      if (result.imported.length) toast.success(`Importadas: ${result.imported.join(', ')}`)
+      else toast.info('No había colaboradoras nuevas para importar')
+      if (result.needs_review.length) toast.warning(`${result.needs_review.length} marca(s) requieren revisión manual: no se pudieron resolver con certeza`)
+      if (result.ambiguous_leads.length) toast.warning(`Más de un lead del CRM apunta a: ${result.ambiguous_leads.join(', ')}. Se importó solo la marca.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudieron importar las colaboradoras')
+    }
+  }
+
   async function removeRow(row: CollaborationRow) {
     setMenuId(null)
     if (!window.confirm(`¿Quitar a ${row.name} de esta campaña? La marca, su ficha y sus notas no se borran.`)) return
@@ -228,6 +243,13 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
               aria-label="Buscar en todos los datos" className="input-base pl-9" />
           </div>
           <span className="text-sm text-gray-500" aria-live="polite">{visible.length} {visible.length === 1 ? 'marca' : 'marcas'}</span>
+          {importable > 0 && (
+            <button type="button" onClick={runImport} disabled={importCollaborators.isPending}
+              title="Trae a esta ficha las marcas que ya son colaboradoras de la campaña. No duplica ni modifica lo existente."
+              className={cn('inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50', FOCUS)}>
+              {importCollaborators.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}Importar colaboradoras ({importable})
+            </button>
+          )}
           <button type="button" onClick={() => setPlansOpen(true)}
             className={cn('inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50', FOCUS)}>
             Planes
@@ -253,6 +275,7 @@ export function CollaboratingBrandsTab({ campaignId, campaignName }: { campaignI
             <Building2 className="h-8 w-8 text-gray-300" aria-hidden />
             <p className="text-sm font-semibold text-gray-800">Aún no hay marcas en esta campaña</p>
             <p className="max-w-sm text-sm text-gray-500">Agrega la primera marca para seguir su estado, aporte y próximos pasos.</p>
+            {importable > 0 && <p className="max-w-sm text-sm text-violet-700">Esta campaña ya tiene {importable} {importable === 1 ? 'marca colaboradora' : 'marcas colaboradoras'} en SCENCE: usa «Importar colaboradoras» para traerlas aquí.</p>}
             <button type="button" onClick={() => setAddOpen(true)} className={cn('inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800', FOCUS)}>
               <Plus className="h-4 w-4" aria-hidden /> Agregar la primera marca
             </button>
@@ -653,14 +676,14 @@ function ContractCard({ contract }: { contract: ContractSummary }) {
 }
 
 function ContractTab({ campaignId, row }: { campaignId: string; row: CollaborationRow }) {
-  const { data, isPending, isError } = useCampaignContracts(campaignId, !!row.brand_id)
+  const { data, isPending, isError } = useCampaignContracts(campaignId, !!row.contract_brand_id)
   const contractsHref = `/admin-campaigns/${campaignId}?tab=contracts`
-  if (!row.brand_id) {
-    return <p className="text-sm text-gray-500">Esta marca todavía es un lead del CRM. Conviértela en marca desde su ficha para poder generar su contrato.</p>
+  if (!row.contract_brand_id) {
+    return <p className="text-sm text-gray-500">Este lead del CRM aún no se ha convertido en marca. Conviértelo desde su ficha del CRM para poder generar su contrato.</p>
   }
   if (isPending) return <p className="text-sm text-gray-500" role="status">Cargando contratos…</p>
   if (isError) return <p role="alert" className="text-sm text-red-600">No se pudieron cargar los contratos.</p>
-  const contracts = (data?.data ?? []).filter(c => c.brand_id === row.brand_id)
+  const contracts = (data?.data ?? []).filter(c => c.brand_id === row.contract_brand_id)
   if (contracts.length === 0) {
     return (
       <div className="space-y-3 rounded-xl border border-dashed border-gray-200 p-5 text-center">

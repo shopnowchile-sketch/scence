@@ -20,7 +20,7 @@ export function useCampaignCollaborations(campaignId: string) {
   return useQuery({
     queryKey: listKey(campaignId),
     enabled: !!campaignId,
-    queryFn: async () => parse<{ data: CollaborationRow[]; owners: CollaborationOwner[]; plans: CampaignPlan[] }>(
+    queryFn: async () => parse<{ data: CollaborationRow[]; owners: CollaborationOwner[]; plans: CampaignPlan[]; importable: number; import_review: number }>(
       await fetch(`/api/campaigns/${campaignId}/collaborations`), 'Error al cargar las marcas colaboradoras'),
   })
 }
@@ -62,7 +62,7 @@ export function useUpdateCollaboration(campaignId: string) {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
       }), 'No se pudieron guardar los cambios'),
     onSuccess: ({ data }, vars) => {
-      qc.setQueryData<{ data: CollaborationRow[]; owners: CollaborationOwner[]; plans: CampaignPlan[] }>(listKey(campaignId), old =>
+      qc.setQueryData<{ data: CollaborationRow[]; owners: CollaborationOwner[]; plans: CampaignPlan[]; importable: number; import_review: number }>(listKey(campaignId), old =>
         old ? { ...old, data: old.data.map(row => row.id === data.id ? data : row) } : old)
       qc.invalidateQueries({ queryKey: historyKey(campaignId, vars.id) })
     },
@@ -123,5 +123,16 @@ export function useContractContent(contractId: string | null) {
     queryKey: ['contract-content', contractId],
     enabled: !!contractId,
     queryFn: async () => parse<{ data: { content: string | null } }>(await fetch(`/api/contracts/${contractId}`), 'No se pudo cargar el contrato'),
+  })
+}
+
+export interface ImportResult { imported: string[]; skipped: string[]; needs_review: { brand_id: string; reason: string }[]; ambiguous_leads: string[] }
+
+/** Trae a la ficha las colaboradoras que ya existen en la campaña. Idempotente. */
+export function useImportCollaborators(campaignId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => parse<ImportResult>(await fetch(`/api/campaigns/${campaignId}/collaborations/import`, { method: 'POST' }), 'No se pudieron importar las colaboradoras'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: listKey(campaignId) }),
   })
 }

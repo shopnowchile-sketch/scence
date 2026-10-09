@@ -5,6 +5,7 @@ import {
   planBelongsToCampaign,
   authorizeCollaborationAdmin,
   hydrateCollaborations,
+  loadCollaboratorImportPlan,
 } from '@/lib/campaign-collaborations'
 
 type Params = { params: { id: string } }
@@ -35,8 +36,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   try {
     const data = await hydrateCollaborations(admin, rowsRes.data ?? [])
+    // Aviso opcional: si falla no debe impedir ver la ficha.
+    const importPlan = await loadCollaboratorImportPlan(admin, params.id).catch(() => ({ toInsert: [], needsReview: [] }))
     const owners = (profiles ?? []).map(p => ({ id: p.id as string, name: (p.display_name || p.full_name || 'Admin') as string }))
-    return NextResponse.json({ data, owners, plans: plansRes.data ?? [] })
+    return NextResponse.json({ data, owners, plans: plansRes.data ?? [], importable: importPlan.toInsert.length, import_review: importPlan.needsReview.length })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error al cargar colaboraciones' }, { status: 500 })
   }

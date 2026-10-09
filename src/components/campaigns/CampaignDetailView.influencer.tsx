@@ -38,7 +38,9 @@ type Deliverable = {
   tags_pending?: boolean
 }
 
+type InfluencerCampaignAddress = { is_primary: boolean; name: string; commune: string | null; region: string | null; address?: string | null; instructions?: string | null; address_hidden?: boolean }
 type CampaignRow = {
+  locations?: InfluencerCampaignAddress[]
   id: string | null; status: string; application_status?: string | null; fee: number | null; currency: string
   // origin: 'application' (el influencer postuló, la marca decide) vs
   // 'invitation' (la marca invitó, el influencer decide — ver handleRespond).
@@ -77,6 +79,7 @@ type PreviewCampaign = {
   description: string | null; brief_url?: string | null
   start_date: string | null; end_date: string | null
   cover_url?: string | null
+  locations?: InfluencerCampaignAddress[]
   event_booking?: { id: string | null; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; commune?: string; region?: string; country?: string; instructions?: string; address_hidden?: boolean } | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
@@ -172,6 +175,29 @@ export function EventCountdownPill({ countdown, size, className }: {
       {countdown.count && <span className={cn('leading-none', size === 'lg' ? 'text-2xl' : 'text-lg')}>{countdown.count}</span>}
       <span className={size === 'lg' ? 'text-sm' : 'text-[11px]'}>{countdown.suffix}</span>
     </span>
+  )
+}
+
+// Otras direcciones de la campaña (la principal ya va en la tarjeta del evento).
+// El servidor decide qué llega: sin aceptar solo nombre y comuna; con `address`/`instructions` solo si fue aceptada.
+function OtherCampaignAddresses({ locations }: { locations?: InfluencerCampaignAddress[] }) {
+  const others = (locations ?? []).filter(l => !l.is_primary)
+  if (!others.length) return null
+  return (
+    <section className="mt-3 rounded-2xl border border-violet-200 bg-white p-4">
+      <h3 className="text-sm font-extrabold text-violet-950">Otras direcciones</h3>
+      <ul className="mt-2 space-y-2">
+        {others.map((l, index) => (
+          <li key={index} className="text-sm text-violet-900">
+            <p className="font-semibold">{l.name}{l.commune ? ` · ${l.commune}` : ''}</p>
+            {l.address
+              ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.address)}`} target="_blank" rel="noopener noreferrer" className="text-violet-700 underline">{l.address}</a>
+              : l.address_hidden ? <p className="text-[11px] text-violet-700">Dirección exacta disponible al ser aceptada.</p> : null}
+            {l.instructions && <p className="text-xs text-violet-800"><b>Cómo llegar:</b> {l.instructions}</p>}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -1126,6 +1152,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             el backend ni siquiera enviaba el booking. Lugar e instrucciones
             exactas siguen apareciendo solo cuando la influencer fue aceptada. */}
         <EventBookingCard booking={data.event_booking ?? null} showLocation={isAccepted || isSelfCreated} fallbackDate={c.start_date} />
+        <OtherCampaignAddresses locations={data.locations} />
         <CampaignWhatsappCard campaign={c} confirmed={isAccepted && (data.campaign_deliverables ?? []).some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')} />
         <CampaignBenefitsCard benefits={c.campaign_benefits} />
 

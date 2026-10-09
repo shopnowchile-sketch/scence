@@ -126,6 +126,14 @@ export function stripLegacyLocation(details: unknown): Json | null {
   return rest
 }
 
+/**
+ * campaigns.metadata hacia una influencer ACEPTADA: conserva todo lo que ya recibía
+ * (incluida la dirección vigente) salvo la copia histórica interna `legacy_location`.
+ */
+export function metadataForInfluencer(metadata: unknown): unknown {
+  return stripLegacyLocation(metadata) ?? metadata
+}
+
 /** Normaliza el texto de indicaciones; null si viene vacío. */
 export function normalizeInstructions(value: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
   if (value === undefined || value === null) return { ok: true, value: null }
@@ -222,18 +230,38 @@ export function applyPrimaryToBooking(
     return { location: null, location_id: null, location_details: { ...details, venue_name: null, commune: null, region: null, instructions: null, address_hidden: false } }
   }
   if (!('legacy_location' in details)) {
-    details.legacy_location = {
-      location: booking.location ?? null,
-      venue_name: details.venue_name ?? null,
-      commune: details.commune ?? null,
-      region: details.region ?? null,
-      country: details.country ?? null,
-      instructions: details.instructions ?? null,
-      address_hidden: details.address_hidden ?? false,
-    }
+    // Un booking que ya trae location_id nació (o fue resuelto) con una dirección canónica: su texto
+    // actual NO es histórico, así que no se guarda como tal (si no, al quitar todas las direcciones
+    // reaparecería una dirección que ya no corresponde). Solo el texto libre previo es histórico.
+    const alreadyCanonical = booking.location_id != null
+    details.legacy_location = alreadyCanonical
+      ? { location: null, venue_name: null, commune: null, region: null, country: null, instructions: null, address_hidden: false }
+      : {
+          location: booking.location ?? null,
+          venue_name: details.venue_name ?? null,
+          commune: details.commune ?? null,
+          region: details.region ?? null,
+          country: details.country ?? null,
+          instructions: details.instructions ?? null,
+          address_hidden: details.address_hidden ?? false,
+        }
   }
   const canonical = canonicalBookingFields(primary)
   return { location: canonical.location, location_id: canonical.location_id, location_details: { ...details, ...canonical.details } }
+}
+
+/**
+ * location_details de un booking de evento con direcciones canónicas: se FUSIONA con lo ya
+ * guardado (schedule, address_hidden, …) y con lo que envía el cliente; la ubicación la
+ * impone la principal. La copia histórica (`legacy_location`) la controla solo el servidor:
+ * se conserva la guardada y se descarta cualquiera que envíe el cliente.
+ */
+export function mergeBookingLocationDetails(existing: unknown, client: unknown, canonical: Json): Json {
+  const stored = asJson(existing)
+  const merged: Json = { ...stored, ...asJson(client), ...canonical }
+  if ('legacy_location' in stored) merged.legacy_location = stored.legacy_location
+  else delete merged.legacy_location
+  return merged
 }
 
 /**

@@ -130,6 +130,16 @@ test('booking: copia la principal, preserva schedule y restaura el texto origina
   assert.deepEqual(back.location_details.schedule, [{ starts_at: 'x' }])
 })
 
+test('booking nacido con dirección canónica (ya trae location_id): su texto NO se guarda como histórico', () => {
+  const born = { location: 'Av. Apoquindo 1234', location_id: 'p1', location_details: { venue_name: 'Bar La Virgen', commune: 'Las Condes' } }
+  const switched = applyPrimaryToBooking(born, loc({ location_id: 'p2', name: 'Otro', address: 'Otra 5', commune: 'Providencia' }))
+  assert.equal(switched.location, 'Otra 5')
+  const cleared = applyPrimaryToBooking({ location: switched.location, location_id: switched.location_id, location_details: switched.location_details }, null)
+  assert.equal(cleared.location, null, 'al quitar todas las direcciones no reaparece una dirección canónica antigua')
+  assert.equal(cleared.location_id, null)
+  assert.equal(cleared.location_details.venue_name, null)
+})
+
 test('booking sin texto histórico y sin direcciones: queda vacío, sin inventar datos', () => {
   const back = applyPrimaryToBooking({ location: null, location_id: 'p1', location_details: {} }, null)
   assert.equal(back.location, null)

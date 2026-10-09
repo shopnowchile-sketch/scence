@@ -131,6 +131,7 @@ test('búsqueda de lugares propios: sin tildes ni mayúsculas', () => {
 test('migración: tabla cerrada a anon/authenticated, RLS, índice de una sola principal y RESTRICT', () => {
   const sql = read('supabase/migrations/20261010120000_campaign_locations.sql')
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/)
+  assert.match(sql, /GRANT ALL ON TABLE public\.campaign_locations TO service_role/, 'service_role explícito: no depender de privilegios por defecto')
   assert.match(sql, /REVOKE ALL ON TABLE public\.campaign_locations FROM PUBLIC, anon, authenticated/)
   assert.match(sql, /campaign_id\s+UUID NOT NULL REFERENCES public\.campaigns\(id\) ON DELETE CASCADE/)
   assert.match(sql, /location_id\s+UUID NOT NULL REFERENCES public\.locations\(id\) ON DELETE RESTRICT/)

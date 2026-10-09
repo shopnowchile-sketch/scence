@@ -1,4 +1,4 @@
-import { loadCampaignLocations, locationsForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
+import { loadCampaignLocations, locationsForInfluencer, metadataForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
@@ -147,6 +147,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // Solo el título de cada entregable; las instrucciones se liberan al aceptar.
     payload.deliverable_templates = publicDeliverableTemplates(payload.deliverable_templates)
     payload.metadata = publicCampaignMetadata(campaign.metadata)
+  } else {
+    // Aceptada: dirección vigente sí; la copia histórica interna (legacy_location) nunca.
+    payload.metadata = metadataForInfluencer(campaign.metadata)
   }
 
   // Fecha y hora del evento ya son visibles antes de aceptar (para decidir si

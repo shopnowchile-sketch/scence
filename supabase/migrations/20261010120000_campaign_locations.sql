@@ -35,6 +35,9 @@ CREATE INDEX campaign_locations_location_idx
 
 ALTER TABLE public.campaign_locations ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.campaign_locations FROM PUBLIC, anon, authenticated;
+-- Explícito: no depender de los privilegios por defecto del entorno (en una rama de Supabase
+-- las tablas nuevas nacen sin SELECT/INSERT para service_role). En producción ya los tendría.
+GRANT ALL ON TABLE public.campaign_locations TO service_role;
 
 -- Validación de integridad (misma línea que locations_validate_hierarchy).
 CREATE OR REPLACE FUNCTION public.campaign_locations_validate()

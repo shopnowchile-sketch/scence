@@ -1,4 +1,4 @@
-import { loadCampaignLocations, locationsForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
+import { loadCampaignLocations, locationsForInfluencer, metadataForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
@@ -165,8 +165,11 @@ export async function GET() {
   // Lo mismo campaigns.metadata (dirección, WhatsApp, instrucciones, links):
   // antes de aceptar solo viajan las claves públicas (publicCampaignMetadata).
   const assignedWithAllowedBrands = visibleAssignedFiltered.map((row: Record<string, unknown>) => {
-    if (row.application_status === 'accepted') return row
     const campaign = row.campaign as Record<string, unknown> | null
+    // Aceptada: ve lo operativo (dirección vigente incluida), nunca la copia histórica interna.
+    if (row.application_status === 'accepted') {
+      return campaign ? { ...row, campaign: { ...campaign, metadata: metadataForInfluencer(campaign.metadata) } } : row
+    }
     return {
       ...row,
       campaign: campaign

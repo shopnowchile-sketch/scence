@@ -1,4 +1,4 @@
-import { loadCampaignLocations, locationsForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
+import { loadCampaignLocations, locationsForInfluencer, metadataForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
@@ -128,6 +128,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     delete payload.brief_url
     delete payload.campaign_brands
     payload.metadata = publicCampaignMetadata(campaign.metadata)
+  } else {
+    // Aceptada: dirección vigente sí; la copia histórica interna (legacy_location) nunca.
+    payload.metadata = metadataForInfluencer(campaign.metadata)
   }
 
   // Fecha y hora del evento ya son visibles antes de aceptar (para decidir si

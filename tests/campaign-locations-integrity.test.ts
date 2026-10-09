@@ -8,7 +8,7 @@ import { register } from 'node:module'
 register('./support/ts-resolve.mjs', import.meta.url)
 
 const {
-  applyPrimaryToMetadata, canonicalBookingFields, lockCanonicalLocationMetadata, locationsForInfluencer, stripLegacyLocation,
+  applyPrimaryToMetadata, canonicalBookingFields, lockCanonicalLocationMetadata, locationsForInfluencer, metadataForInfluencer, stripLegacyLocation, mergeBookingLocationDetails,
 } = await import('../src/lib/campaign-locations.ts')
 
 const read = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
@@ -53,6 +53,29 @@ test('privacidad: el texto histórico (legacy_location) nunca llega a la influen
   assert.equal(stripLegacyLocation([1]), null)
 })
 
+test('PUT de booking con direcciones canónicas: fusiona con lo guardado (schedule, histórico) y el cliente no controla legacy_location', () => {
+  const stored = { schedule: [{ starts_at: 'x' }], commune: 'Huechuraba', legacy_location: { location: 'Dirección vieja A 123', commune: 'Ñuñoa' } }
+  const canonical = canonicalBookingFields(primary).details
+  const merged = mergeBookingLocationDetails(stored, { venue_name: 'FALSO', legacy_location: { location: 'ATAQUE' }, notes: 'ok' }, canonical) as Record<string, unknown>
+  assert.deepEqual(merged.schedule, [{ starts_at: 'x' }], 'conserva lo guardado que el cliente no reenvía')
+  assert.equal(merged.venue_name, 'Bar La Virgen', 'la ubicación la impone la principal')
+  assert.equal(merged.notes, 'ok', 'conserva otros campos que sí envía el cliente')
+  assert.deepEqual(merged.legacy_location, stored.legacy_location, 'el cliente no puede reemplazar la copia histórica')
+  // sin histórico guardado, un legacy_location enviado por el cliente se descarta
+  const created = mergeBookingLocationDetails(null, { legacy_location: { location: 'x' } }, canonical) as Record<string, unknown>
+  assert.equal('legacy_location' in created, false)
+})
+
+test('privacidad: la aceptada conserva la dirección vigente en metadata pero nunca la copia histórica', () => {
+  const meta = applyPrimaryToMetadata({ address: 'Vieja 1', commune: 'Ñuñoa', whatsapp_group_url: 'https://x' }, primary) as Record<string, unknown>
+  const view = metadataForInfluencer(meta) as Record<string, unknown>
+  assert.equal(view.address, 'Av. Apoquindo 1234')
+  assert.equal(view.whatsapp_group_url, 'https://x')
+  assert.equal('legacy_location' in view, false)
+  assert.equal('legacy_location' in meta, true, 'no muta el original')
+  assert.equal(metadataForInfluencer(null), null)
+})
+
 test('privacidad: pendiente/rechazada solo ve nombre y comuna, aceptada ve todo, en cada dirección', () => {
   const second = { ...primary, id: 'l2', location_id: 'p2', is_primary: false, name: 'Hotel Mar', address: 'Mar 5', instructions: 'Piso 3' }
   const pending = locationsForInfluencer([primary, second], false) as Array<Record<string, unknown>>
@@ -72,6 +95,8 @@ test('bookings POST y PUT: el evento toma la principal; location y location_id s
   const src = read('src/app/api/bookings/route.ts')
   assert.equal((src.match(/canonicalBookingLocationForCampaign\(/g) ?? []).length, 2, 'POST y PUT')
   assert.match(src, /location_id: canonicalLocation\?\.location_id \?\? null/, 'POST escribe location_id')
+  assert.equal((src.match(/mergeBookingLocationDetails\(/g) ?? []).length, 2, 'POST y PUT fusionan en vez de reemplazar location_details')
+  assert.match(src, /select\('calendar_event_id, campaign_id, organization_id, event_type, influencer_id, location_details'\)/, 'PUT lee lo guardado')
   assert.match(src, /\.\.\.rest, \.\.\.canonicalFields/, 'PUT aplica la dirección canónica DESPUÉS de lo que envía el cliente')
   assert.match(src, /event_type === 'event' && !primaryInfluencerId/, 'solo el booking general del evento')
   assert.match(src, /existing\.event_type === 'event' && !existing\.influencer_id/)
@@ -90,9 +115,11 @@ test('lectura: admin y marca reciben TODAS las direcciones de su campaña; la in
   const detail = read('src/app/api/influencer/campaigns/[id]/route.ts')
   assert.match(detail, /locationsForInfluencer\(await loadCampaignLocations\(admin, params\.id\)\.catch\(\(\) => \[\]\), isAccepted\)/)
   assert.match(detail, /stripLegacyLocation\(eventBooking\.location_details\)/)
+  assert.match(detail, /payload\.metadata = metadataForInfluencer\(campaign\.metadata\)/, 'la aceptada tampoco recibe legacy_location en metadata')
   const mine = read('src/app/api/influencer/my-campaigns/route.ts')
   assert.match(mine, /locationsForInfluencer\(/)
   assert.match(mine, /stripLegacyLocation\(booking\.location_details\)/)
+  assert.match(mine, /metadata: metadataForInfluencer\(campaign\.metadata\)/)
   assert.match(mine, /row\.application_status === 'accepted' \|\| row\._self_created === true/)
 })
 

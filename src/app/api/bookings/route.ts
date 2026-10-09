@@ -8,7 +8,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
-import { canonicalBookingLocationForCampaign } from '@/lib/campaign-locations'
+import { canonicalBookingLocationForCampaign, mergeBookingLocationDetails } from '@/lib/campaign-locations'
 import {
   createCalendarEvent,
   updateCalendarEvent,
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
     ? await canonicalBookingLocationForCampaign(admin, String(campaign_id))
     : null
   const location = canonicalLocation ? canonicalLocation.location : clientLocation
-  const location_details = canonicalLocation ? { ...(clientLocationDetails ?? {}), ...canonicalLocation.details } : clientLocationDetails
+  const location_details = canonicalLocation ? mergeBookingLocationDetails(null, clientLocationDetails, canonicalLocation.details) : clientLocationDetails
 
   // Idempotencia: si es el booking general de una campaña (sin influencer) y ya
   // existe uno con el mismo horario, no crear un duplicado (evita doble-submit
@@ -240,7 +240,7 @@ export async function PUT(req: NextRequest) {
   // Obtain existing to get gcal ID
   const { data: existing } = await admin
     .from('bookings')
-    .select('calendar_event_id, campaign_id, organization_id, event_type, influencer_id')
+    .select('calendar_event_id, campaign_id, organization_id, event_type, influencer_id, location_details')
     .eq('id', id)
     .maybeSingle()
 
@@ -256,7 +256,7 @@ export async function PUT(req: NextRequest) {
     : null
   const location = canonicalLocation ? canonicalLocation.location : clientLocation
   const canonicalFields = canonicalLocation
-    ? { location_id: canonicalLocation.location_id, location_details: { ...(rest.location_details ?? {}), ...canonicalLocation.details } }
+    ? { location_id: canonicalLocation.location_id, location_details: mergeBookingLocationDetails(existing.location_details, rest.location_details, canonicalLocation.details) }
     : {}
 
   if (existing?.calendar_event_id) {

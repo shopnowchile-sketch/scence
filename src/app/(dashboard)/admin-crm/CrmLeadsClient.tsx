@@ -409,7 +409,10 @@ export function CrmLeadsClient() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">CRM — Prospectos</h1>
-          <p className="text-sm text-gray-400">{total.toLocaleString('es-CL')} empresas cargadas · calificar y contactar</p>
+          <p className="text-sm text-gray-400">
+            {total.toLocaleString('es-CL')} empresas cargadas · calificar y contactar ·{' '}
+            <Link href="/admin-crm/envios" className="text-violet-600 font-semibold hover:underline">Envíos masivos</Link>
+          </p>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 w-full">

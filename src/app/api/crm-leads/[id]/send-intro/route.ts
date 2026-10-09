@@ -5,6 +5,7 @@ import { isCrmAdmin } from '@/lib/crm-auth'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { buildUnsubscribeUrl, commercialEmailHeaders, isOptedOut, OptOutLookupError } from '@/lib/email-optouts'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { claimLeadSend, releaseLeadSend, isDefinitiveResendFailure, SEND_GUARD_WINDOW_MS } from '@/lib/crm-send-guard'
 
 type Params = { params: { id: string } }
 
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: lead, error: leadErr } = await admin
     .from('crm_leads')
-    .select('id, contact_name, company_name, email, qualification_status')
+    .select('id, contact_name, company_name, email, qualification_status, contacted_at')
     .eq('id', params.id)
     .single()
 
@@ -92,16 +93,74 @@ export async function POST(req: NextRequest, { params }: Params) {
     unsubscribeUrl,
   })
 
-  const { data: emailData, error: emailErr } = await getResend().emails.send({
-    from: FROM_EMAIL,
-    to: lead.email, tags: [emailAudience('crm')],
-    subject,
-    html,
-    text: message,
-    headers: commercialEmailHeaders(unsubscribeUrl),
-  })
+  // Reserva atómica ANTES de llamar a Resend: dos solicitudes simultáneas no
+  // pueden pasar ambas. Es una protección temporal (ventana de 10 min), no una
+  // garantía de entrega única: Resend no ofrece clave de idempotencia aquí.
+  const claim = await claimLeadSend(admin, params.id, lead.contacted_at ?? null)
+  if (!claim.claimed) {
+    if (claim.reason === 'error') {
+      console.error('[send-intro] no se pudo reservar el envío — no se envía', claim.message)
+      return NextResponse.json({ error: 'No se pudo reservar el envío. Por seguridad no se envió el email. Intenta de nuevo en unos minutos.' }, { status: 503 })
+    }
+    return NextResponse.json(
+      { error: `Este lead ya fue contactado hace menos de ${Math.round(SEND_GUARD_WINDOW_MS / 60000)} minutos. No se envió otro email para evitar duplicados.`, code: 'recent_send' },
+      { status: 409 },
+    )
+  }
+
+  let emailData: { id?: string } | null = null
+  let emailErr: { name?: string; message?: string } | null = null
+  let thrown: unknown = null
+  try {
+    const result = await getResend().emails.send({
+      from: FROM_EMAIL,
+      to: lead.email, tags: [emailAudience('crm')],
+      subject,
+      html,
+      text: message,
+      headers: commercialEmailHeaders(unsubscribeUrl),
+    })
+    emailData = result.data
+    emailErr = result.error
+  } catch (error) {
+    thrown = error
+  }
+
+  const sentContent = { subject, message, html }
+
+  if (thrown || (emailErr && !isDefinitiveResendFailure(emailErr))) {
+    // Resultado AMBIGUO: el correo pudo haberse aceptado. No se libera la
+    // reserva ni se reenvía automáticamente; queda registrado para que una
+    // persona verifique en Resend antes de reintentar.
+    const detail = thrown instanceof Error ? thrown.message : emailErr?.message ?? 'error desconocido'
+    console.error('[send-intro] resultado ambiguo de Resend — reserva conservada', { leadId: params.id, detail })
+    const unconfirmedEvent = await admin.from('crm_email_events').insert({
+      lead_id: params.id,
+      resend_email_id: null,
+      event_type: 'email.send_unconfirmed',
+      recipient_email: lead.email,
+      subject,
+      occurred_at: new Date().toISOString(),
+      raw_payload: { source: 'send-intro', template_key: template.key, error: detail, ...sentContent },
+    })
+    if (unconfirmedEvent.error) console.error('[send-intro] no se pudo registrar el envío no confirmado — la reserva sigue activa', unconfirmedEvent.error)
+    const unconfirmedNote = await admin.from('crm_lead_activities').insert({
+      lead_id: params.id,
+      action_type: 'note',
+      description: `Envío NO confirmado a ${lead.email} (${template.name}): ${detail}. Verifica en Resend antes de reintentar.`,
+      created_by: user.id,
+    })
+    if (unconfirmedNote.error) console.error('[send-intro] no se pudo registrar la nota del envío no confirmado', unconfirmedNote.error)
+    return NextResponse.json(
+      { error: 'No se pudo confirmar si el email salió. No se reintentará automáticamente: revisa Resend antes de volver a enviar.', code: 'send_unconfirmed' },
+      { status: 502 },
+    )
+  }
 
   if (emailErr) {
+    // Rechazo definitivo: el email no salió, se libera la reserva.
+    const released = await releaseLeadSend(admin, params.id, claim)
+    if (released.error) console.error('[send-intro] no se pudo liberar la reserva', released.error)
     await admin.from('crm_lead_activities').insert({
       lead_id: params.id,
       action_type: 'email_sent',
@@ -121,9 +180,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     leadUpdate.qualification_status = 'contacted'
   }
 
-  await admin.from('crm_leads').update(leadUpdate).eq('id', params.id)
+  // El email YA salió. Si un registro posterior falla, NO se revierte ni se
+  // reenvía: la reserva sigue activa y se deja constancia para resolverlo.
+  const writeErrors: string[] = []
+  const track = (label: string, error: { message: string } | null) => { if (error) writeErrors.push(`${label}: ${error.message}`) }
 
-  await admin.from('crm_email_events').insert({
+  track('crm_leads', (await admin.from('crm_leads').update(leadUpdate).eq('id', params.id)).error)
+
+  track('crm_email_events', (await admin.from('crm_email_events').insert({
     lead_id: params.id,
     resend_email_id: resendEmailId,
     event_type: 'email.sent',
@@ -135,20 +199,33 @@ export async function POST(req: NextRequest, { params }: Params) {
       email_type: template.name,
       template_key: template.key,
       resend_email_id: resendEmailId,
+      ...sentContent,
     },
-  })
+  })).error)
 
-  await admin.from('crm_lead_activities').insert({
+  track('crm_lead_activities', (await admin.from('crm_lead_activities').insert({
     lead_id: params.id,
     action_type: 'email_sent',
     description: `Tipo: ${template.name} · Para: ${lead.email} · Asunto: ${subject}`,
     created_by: user.id,
-  })
+  })).error)
+
+  if (writeErrors.length > 0) {
+    console.error('[send-intro] email enviado pero falló el registro — NO reenviar', { leadId: params.id, resendEmailId, writeErrors })
+    // Último intento de dejar al menos una huella con el id de Resend.
+    await admin.from('crm_lead_activities').insert({
+      lead_id: params.id,
+      action_type: 'note',
+      description: `Email enviado a ${lead.email} (Resend ${resendEmailId ?? 'sin id'}) pero el registro quedó incompleto. No reenviar.`,
+      created_by: user.id,
+    })
+  }
 
   return NextResponse.json({
     success: true,
     resend_email_id: resendEmailId,
     subject,
     message,
+    ...(writeErrors.length > 0 ? { warning: 'El email salió, pero el registro quedó incompleto. No lo reenvíes.' } : {}),
   })
 }

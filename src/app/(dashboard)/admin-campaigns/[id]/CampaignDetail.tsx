@@ -15,6 +15,7 @@ import { cn, formatCurrency, formatDate, formatDatetime, formatFollowers, PLATFO
 import { CampaignStatusBadge, campaignStatusLabel, campaignStatusBadgeClass, CAMPAIGN_STATUS_OPTIONS } from '@/components/campaigns/CampaignStatusBadge'
 import { BartersTab } from '@/components/campaigns/BartersTab'
 import { CollaboratingBrandsTab } from '@/components/campaigns/CollaboratingBrandsTab'
+import { CampaignTabBar } from '@/components/campaigns/CampaignTabBar'
 import { StarRating } from '@/components/ui/StarRating'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
@@ -2950,20 +2951,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         </div>
       </div>
 
-      {/* Tabs — achicados (pedido de Pri: "arregla la ui que se vea bien") */}
-      <div className="border-b border-gray-200">
-        <div className="flex gap-1 overflow-x-auto">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => selectTab(t.id)}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 transition-all -mb-px whitespace-nowrap',
-                tab === t.id ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              )}>
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Tabs — personalizables: mover, ocultar y volver a agregar (preferencia por navegador) */}
+      <CampaignTabBar tabs={TABS} active={tab} onSelect={id => selectTab(id as Tab)} />
 
       {/* ── OVERVIEW ───────────────────────────────────────────────────────── */}
       {tab === 'overview' && (

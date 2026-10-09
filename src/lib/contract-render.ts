@@ -190,7 +190,7 @@ export async function buildCampaignContractContext(
 ): Promise<ContractContextResult> {
   const { data: campaign, error: campaignError } = await admin
     .from('campaigns')
-    .select('id, name, description, type, start_date, end_date, brand_id, organization_id, currency, address, metadata')
+    .select('id, name, description, type, start_date, end_date, brand_id, organization_id, currency, metadata')
     .eq('id', params.campaignId)
     .single()
   if (campaignError || !campaign) throw new Error('Campaña no encontrada')
@@ -256,8 +256,10 @@ export async function buildCampaignContractContext(
       : formatDateOnlyEs(booking?.starts_at ?? (metadata.event_date as string | undefined)),
     event_start_time: eventOverride?.startTime?.trim() ? `${eventOverride.startTime.trim()} hrs` : formatTimeEs(booking?.starts_at),
     event_end_time: eventOverride?.endTime?.trim() ? `${eventOverride.endTime.trim()} hrs` : formatTimeEs(booking?.ends_at),
-    // Prioridad: dato ingresado en este contrato > booking real > campaigns.address (la misma columna real que usa "Editar ubicación" en el header de la campaña — no metadata, que nunca se llena para esto).
-    event_location: eventOverride?.location?.trim() || booking?.location || campaign.address || (metadata.address as string | undefined),
+    // Prioridad: dato ingresado en este contrato > booking real > metadata.address. La dirección de la
+    // campaña vive en `campaigns.metadata.address` (así la escriben POST/PATCH de campañas y la lee el
+    // header "Editar ubicación"); la columna `campaigns.address` está en desuso y NO se consulta.
+    event_location: eventOverride?.location?.trim() || booking?.location || (metadata.address as string | undefined),
 
     // PAQUETE — viene del formulario de generación (no hay tabla de paquetes hoy).
     package_name: pkg?.name,
@@ -308,7 +310,7 @@ export async function buildCampaignContractContext(
         date: isoDateInTz(booking?.starts_at) ?? (metadata.event_date as string | undefined),
         startTime: timeInTz(booking?.starts_at),
         endTime: timeInTz(booking?.ends_at),
-        location: booking?.location ?? campaign.address ?? (metadata.address as string | undefined),
+        location: booking?.location ?? (metadata.address as string | undefined),
       },
     },
   }

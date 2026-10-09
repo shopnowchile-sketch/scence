@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeft, Building2, Target, Calendar, DollarSign, Users, FileText,
+  ArrowLeft, Building2, MoreHorizontal, Target, Calendar, DollarSign, Users, FileText,
   BarChart3, ExternalLink, CheckCircle2,
   XCircle, Clock, Pencil, Play, Pause, Check, AlertCircle, Loader2, Trash2, Plus, FileDown, Gift,
   ChevronRight, Search, X, ChevronDown, Star, Mail, Eye, Heart, MessageCircle, RefreshCw, MapPin, Upload, Download, ImagePlus, Copy, ListFilter, BookOpen, Info, Sparkles,
@@ -1364,10 +1364,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
   const [overviewEditSection, setOverviewEditSection] = useState<OverviewEditSection>('content')
-  const [editingEvent, setEditingEvent] = useState(false)
-  const [eventSaving, setEventSaving] = useState(false)
-  const [eventForm, setEventForm] = useState({ name: '', starts_at: '', ends_at: '', location: '', venue_name: '', commune: '', location_instructions: '', visibility: 'private' })
   const [summaryEditOpen, setSummaryEditOpen] = useState(false)
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
   const [timeEditOpen, setTimeEditOpen] = useState(false)
   const [timeEditForm, setTimeEditForm] = useState({ start_time: '', end_time: '' })
   const [summaryEditSaving, setSummaryEditSaving] = useState(false)
@@ -2072,7 +2070,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   // Hotel" arriba y "Ubicación por confirmar" abajo. Ahora todo lo que se sabe
   // del lugar se concatena acá, de lo más específico a lo más general.
   const eventLocationLabel = (eventVenueName || eventLocation)
-    ? [eventVenueName, eventLocation, eventCommune].filter(Boolean).join(' · ')
+    ? Array.from(new Set([eventVenueName, eventLocation, eventCommune].filter((part): part is string => Boolean(part)).map(part => part.trim()))).join(' · ')   // sin repetir partes iguales
     : (eventCommune ? `${eventCommune} · Lugar por confirmar` : 'Ubicación por confirmar')
   const legacyEventDate = (() => {
     const metadata = (c as unknown as { metadata?: unknown }).metadata
@@ -2113,23 +2111,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return `${days} día${days === 1 ? '' : 's'}`
   })()
 
-  function openEventEditor() {
-    setOverviewEditMode(false)
-    setEventForm({
-      name: c.name ?? '',
-      starts_at: eventBooking?.starts_at ? format(new Date(eventBooking.starts_at), "yyyy-MM-dd'T'HH:mm") : '',
-      ends_at: eventBooking?.ends_at ? format(new Date(eventBooking.ends_at), "yyyy-MM-dd'T'HH:mm") : '',
-      location: eventLocation ?? '',
-      venue_name: eventVenueName ?? '',
-      commune: eventCommune ?? '',
-      location_instructions: eventBooking?.location_details?.instructions ?? '',
-      visibility: c.visibility === 'open' ? 'open' : 'private',
-    })
-    setEditingEvent(true)
-  }
-
   function openSummaryEditor() {
-    setEditingEvent(false)
     // Todos los campos que guarda saveSummaryEditor deben partir del valor
     // actual: si faltan, el guardado borraría marca, descripción o metadata.
     const summaryMetadata = (c.metadata ?? {}) as Record<string, unknown>
@@ -2330,41 +2312,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la ubicación')
     } finally {
       setLocationEditSaving(false)
-    }
-  }
-
-  async function saveEvent() {
-    if (!eventForm.name.trim() || !eventForm.starts_at || !eventForm.ends_at || !eventForm.location.trim()) {
-      toast.error('Completa nombre, fecha, hora y ubicación del evento')
-      return
-    }
-    setEventSaving(true)
-    try {
-      const startsAt = new Date(eventForm.starts_at).toISOString()
-      const endsAt = new Date(eventForm.ends_at).toISOString()
-      const locationDetails = { venue_name: eventForm.venue_name.trim(), instructions: eventForm.location_instructions.trim(), commune: eventForm.commune.trim() }
-      const bookingPayload = eventBooking?.id
-        ? { id: eventBooking.id, title: eventForm.name.trim(), description: c.description ?? '', location: eventForm.location.trim(), location_details: locationDetails, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
-        : { campaign_id: id, title: eventForm.name.trim(), description: c.description ?? '', event_type: 'event', location: eventForm.location.trim(), location_details: locationDetails, starts_at: startsAt, ends_at: endsAt, timezone: 'America/Santiago' }
-      const response = await fetch('/api/bookings', {
-        method: eventBooking?.id ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bookingPayload),
-      })
-      const json = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(json.error ?? 'No se pudo guardar el evento')
-      await patchCampaign.mutateAsync({
-        name: eventForm.name.trim(),
-        address: eventForm.location.trim(),
-        visibility: eventForm.visibility,
-      })
-      await refetch()
-      setEditingEvent(false)
-      toast.success('Fecha y ubicación actualizadas')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el evento')
-    } finally {
-      setEventSaving(false)
     }
   }
 
@@ -2737,113 +2684,109 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
   return (
     <div className="space-y-5">
-      {/* Breadcrumb + actions */}
-      <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" /> Volver
+      {/* Barra superior: ruta, editar y acciones. Lo secundario/destructivo vive en el menú ⋯. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav aria-label="Ruta" className="flex min-w-0 items-center gap-2 text-sm">
+          <button type="button" onClick={handleBack} className="flex items-center gap-1.5 text-gray-500 transition-colors hover:text-gray-800">
+            <ArrowLeft className="h-4 w-4" aria-hidden /> Campañas
           </button>
-          <span className="text-gray-200">/</span>
-          <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{c.name}</span>
-          </div>
-          <p className="mt-1 text-xs capitalize text-gray-400">{format(new Date(), "EEEE d 'de' MMMM", { locale: es })}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canEditCampaign && (
-            <button
-              type="button"
-              onClick={() => void handleDuplicateCampaign()}
-              disabled={duplicatingCampaign}
-              title="Duplicar campaña como borrador"
-              aria-label="Duplicar campaña como borrador"
-              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
-            >
-              {duplicatingCampaign ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
-            </button>
-          )}
-          <Link href={isBrandPortal ? `/brand-campaigns/${id}/report` : `/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
-            title="Reporte PDF"
-            className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
-            <FileDown className="h-3.5 w-3.5" />
-          </Link>
-          {c.status === 'draft' && (
-            isBrandPortal ? (
-              <button
-                onClick={() => handleStatusAction('submit_for_approval')}
-                disabled={patchCampaign.isPending}
-                title="Enviar campaña a revisión"
-                className="flex items-center gap-1.5 px-3 py-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
-              >
-                <Check className="h-3.5 w-3.5" />
-                <span className="text-xs font-semibold">Enviar a revisión</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => handleStatusAction('submit_for_approval')}
-                disabled={patchCampaign.isPending}
-                title="Enviar a aprobación"
-                className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
-              >
-                <Check className="h-3.5 w-3.5" />
-              </button>
-            )
-          )}
-          {!isBrandPortal && (c.status === 'pending_approval' || c.status === 'paused') && (
-            <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
-              title={c.status === 'paused' ? 'Reactivar' : 'Activar'}
-              className="flex items-center justify-center p-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors">
-              <Play className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {c.status === 'active' && (
+          <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-gray-300" aria-hidden />
+          <span className="max-w-[320px] truncate font-semibold text-gray-800">{c.name}</span>
+        </nav>
+        <div className="flex flex-wrap items-center gap-2">
+          {summaryEditOpen ? (
             <>
-              {c.visibility === 'open' && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-                <button
-                  onClick={() => handleStatusAction(c.applications_closed_at ? 'reopen_applications' : 'close_applications')}
-                  disabled={patchCampaign.isPending}
-                  title={c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones sin pausar la campaña'}
-                  className="flex items-center gap-1.5 px-3 py-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors"
-                >
-                  <span className="text-xs font-semibold">{c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones'}</span>
-                </button>
-              )}
-              <button onClick={() => handleStatusAction('pause')} disabled={patchCampaign.isPending}
-                title="Pausar campaña"
-                className="flex items-center justify-center p-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors">
-                <Pause className="h-3.5 w-3.5" />
-              </button>
-              <button onClick={() => handleStatusAction('complete')} disabled={patchCampaign.isPending}
-                title="Marcar campaña como completada"
-                className="flex items-center justify-center p-2 text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors">
-                <Check className="h-3.5 w-3.5" />
+              <button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving}
+                className="rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+              <button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving}
+                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+                {summaryEditSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}{summaryEditSaving ? 'Guardando…' : 'Guardar cambios'}
               </button>
             </>
-          )}
-          {c.status === 'completed' && (
-            <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
-              title="Reabrir campaña"
-              className="flex items-center justify-center p-2 text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-50 transition-colors">
-              <Play className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {!isBrandPortal && c.status !== 'canceled' && (
-            <button onClick={handleDeleteCampaign} disabled={deletingCampaign}
-              title="Eliminar: marca la campaña como Cancelada (no borra datos)"
-              className="flex items-center justify-center p-2 text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {!isBrandPortal && (
-            <button onClick={handleHardDeleteCampaign} disabled={deletingCampaign}
-              title="Borrar todo: borrado permanente de la campaña y sus datos — no se puede deshacer"
-              className="flex items-center justify-center p-2 text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+          ) : (
+            <>
+              {c.status === 'draft' && (
+                <button onClick={() => handleStatusAction('submit_for_approval')} disabled={patchCampaign.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">
+                  <Check className="h-3.5 w-3.5" aria-hidden />{isBrandPortal ? 'Enviar a revisión' : 'Enviar a aprobación'}
+                </button>
+              )}
+              {!isBrandPortal && (c.status === 'pending_approval' || c.status === 'paused') && (
+                <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                  <Play className="h-3.5 w-3.5" aria-hidden />{c.status === 'paused' ? 'Reactivar' : 'Activar'}
+                </button>
+              )}
+              {c.status === 'active' && c.visibility === 'open' && (!isBrandPortal || c._brand_permissions?.canEdit) && (
+                <button onClick={() => handleStatusAction(c.applications_closed_at ? 'reopen_applications' : 'close_applications')} disabled={patchCampaign.isPending}
+                  title={c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones sin pausar la campaña'}
+                  className="rounded-lg border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">
+                  {c.applications_closed_at ? 'Reabrir postulaciones' : 'Cerrar postulaciones'}
+                </button>
+              )}
+              {c.status === 'active' && (
+                <button onClick={() => handleStatusAction('complete')} disabled={patchCampaign.isPending} title="Marcar campaña como completada"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+                  <Check className="h-3.5 w-3.5" aria-hidden />Completar
+                </button>
+              )}
+              {c.status === 'completed' && (
+                <button onClick={() => handleStatusAction('activate')} disabled={patchCampaign.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">
+                  <Play className="h-3.5 w-3.5" aria-hidden />Reabrir campaña
+                </button>
+              )}
+              {canEditCampaign && (
+                <button type="button" onClick={openSummaryEditor}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50">
+                  <Pencil className="h-3.5 w-3.5" aria-hidden />Editar campaña
+                </button>
+              )}
+              <div className="relative">
+                <button type="button" onClick={() => setActionsMenuOpen(open => !open)} aria-label="Más acciones" aria-haspopup="menu" aria-expanded={actionsMenuOpen}
+                  className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50"><MoreHorizontal className="h-4 w-4" aria-hidden /></button>
+                {actionsMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setActionsMenuOpen(false)} aria-hidden />
+                    <div role="menu" className="absolute right-0 top-11 z-40 w-64 rounded-xl border border-gray-200 bg-white p-1.5 text-sm shadow-lg">
+                      {canEditCampaign && (
+                        <button role="menuitem" type="button" disabled={duplicatingCampaign} onClick={() => { setActionsMenuOpen(false); void handleDuplicateCampaign() }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                          {duplicatingCampaign ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}Duplicar como borrador
+                        </button>
+                      )}
+                      <Link role="menuitem" href={isBrandPortal ? `/brand-campaigns/${id}/report` : `/admin-campaigns/${id}/report`} target="_blank" rel="noopener noreferrer"
+                        onClick={() => setActionsMenuOpen(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50">
+                        <FileDown className="h-3.5 w-3.5" aria-hidden />Reporte PDF
+                      </Link>
+                      {c.status === 'active' && (
+                        <button role="menuitem" type="button" disabled={patchCampaign.isPending} onClick={() => { setActionsMenuOpen(false); handleStatusAction('pause') }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+                          <Pause className="h-3.5 w-3.5" aria-hidden />Pausar campaña
+                        </button>
+                      )}
+                      {!isBrandPortal && (
+                        <>
+                          <div className="my-1 border-t border-gray-100" />
+                          {c.status !== 'canceled' && (
+                            <button role="menuitem" type="button" disabled={deletingCampaign} onClick={() => { setActionsMenuOpen(false); void handleDeleteCampaign() }}
+                              title="Marca la campaña como Cancelada (no borra datos)"
+                              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-red-600 hover:bg-red-50 disabled:opacity-50">
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden />Cancelar campaña
+                            </button>
+                          )}
+                          <button role="menuitem" type="button" disabled={deletingCampaign} onClick={() => { setActionsMenuOpen(false); void handleHardDeleteCampaign() }}
+                            title="Borrado permanente de la campaña y sus datos — no se puede deshacer"
+                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden />Borrar todo (permanente)
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -2865,7 +2808,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 día): esa fecha ya se ve en la caja de día/mes de la izquierda.
                 Se muestra solo cuando aporta información real — sin evento
                 agendado, o un rango de campaña de varios días. */}
-            {!editingEvent && (c.start_date || c.end_date) && (!eventDateDay || (campaignDurationLabel && campaignDurationLabel !== 'Mismo día')) && <div className="mt-2 flex max-w-48 items-start gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] font-medium leading-tight text-gray-600"><Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" /><span>Campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}{campaignDurationLabel ? ` · ${campaignDurationLabel}` : ''}</span></div>}
+            {(c.start_date || c.end_date) && (!eventDateDay || (campaignDurationLabel && campaignDurationLabel !== 'Mismo día')) && <div className="mt-2 flex max-w-48 items-start gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] font-medium leading-tight text-gray-600"><Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" /><span>Campaña: {c.start_date ? formatDate(c.start_date) : 'Por confirmar'}{c.end_date ? ` – ${formatDate(c.end_date)}` : ''}{campaignDurationLabel ? ` · ${campaignDurationLabel}` : ''}</span></div>}
           </div>
           <div className="min-w-0 flex-1 lg:min-w-[260px]">
             <div className="mb-1 flex items-center gap-1.5">
@@ -2884,10 +2827,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               ) : Boolean(campaignBrands[0]?.name) ? (
                 <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-gray-500">{String(campaignBrands[0].name)}</p>
               ) : null}
-              {canEditCampaign && (summaryEditOpen ? <div className="flex items-center gap-1"><button type="button" onClick={() => setSummaryEditOpen(false)} disabled={summaryEditSaving} className="rounded px-2 py-1 text-xs font-semibold text-gray-500 hover:bg-gray-100">Cancelar</button><button type="button" onClick={() => void saveSummaryEditor()} disabled={summaryEditSaving} className="rounded-md bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div> : <button type="button" onClick={openSummaryEditor} title="Editar resumen de campaña" className="rounded p-1 text-gray-400 hover:bg-violet-50 hover:text-violet-700"><Pencil className="h-3 w-3" /></button>)}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {editingEvent ? <input value={eventForm.name} onChange={e => setEventForm(previous => ({ ...previous, name: e.target.value }))} className="min-w-0 flex-1 rounded border border-violet-300 bg-white px-2 py-1 text-base font-bold text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : summaryEditOpen ? <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} aria-label="Nombre de campaña" className="h-9 min-w-[220px] flex-1 rounded-lg border border-violet-300 bg-white px-2 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
+              {summaryEditOpen ? <input value={summaryEditForm.name} onChange={event => setSummaryEditForm(previous => ({ ...previous, name: event.target.value }))} aria-label="Nombre de campaña" className="h-9 min-w-[220px] flex-1 rounded-lg border border-violet-300 bg-white px-2 text-xl font-bold tracking-tight text-gray-900 outline-none focus:ring-2 focus:ring-violet-100" /> : <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">{campaignSummaryName}</h1>}
               {isBrandPortal ? (
                 <CampaignStatusBadge status={c.status} />
               ) : (
@@ -2918,17 +2860,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               ) : <span className="badge badge-gray capitalize text-[10px]">{c.type.replace(/_/g, ' ')}</span>}
               {canEditCampaign && !coverAsset && <button type="button" onClick={() => coverInputRef.current?.click()} disabled={coverSaving} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="JPG, PNG o WebP · máximo 5 MB"><ImagePlus className="h-3.5 w-3.5" />{coverSaving ? 'Subiendo…' : 'Subir banner'}</button>}
             </div>
-                        {editingEvent && <label className="mt-3 block max-w-md text-xs font-semibold text-gray-600">Nombre del lugar<input value={eventForm.venue_name} onChange={e => setEventForm(previous => ({ ...previous, venue_name: e.target.value }))} placeholder="Ej. Hotel Marriott Santiago" className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></label>}
-            {editingEvent && <div className="mt-3 flex items-center gap-2"><label className="text-xs font-semibold text-gray-600">Visibilidad</label><select value={eventForm.visibility} onChange={e => setEventForm(previous => ({ ...previous, visibility: e.target.value }))} className="rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none"><option value="private">Privada</option><option value="open">Pública</option></select></div>}
-            {!editingEvent && !timeEditOpen && eventInstructions && <p className="mt-2 flex max-w-3xl items-start gap-2 text-xs text-gray-500"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" /><span>{eventInstructions}</span></p>}
-            {editingEvent ? <div className="mt-3 grid max-w-3xl gap-2 sm:grid-cols-2"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" /><div className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2"><input type="datetime-local" value={eventForm.starts_at} onChange={e => setEventForm(previous => ({ ...previous, starts_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /><input type="datetime-local" value={eventForm.ends_at} onChange={e => setEventForm(previous => ({ ...previous, ends_at: e.target.value }))} className="min-w-0 rounded-lg border border-violet-200 bg-white px-2 py-1.5 text-xs outline-none" /></div></div><div className="space-y-1"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 flex-shrink-0 text-violet-600" /><input value={eventForm.location} placeholder="Dirección o lugar" onChange={e => setEventForm(previous => ({ ...previous, location: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" /></div><div className="grid gap-1 sm:grid-cols-2"><input list="event-communes" value={eventForm.commune} placeholder="Comuna" onChange={e => setEventForm(previous => ({ ...previous, commune: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /><datalist id="event-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><input value={eventForm.location_instructions} placeholder="Indicaciones (opcional)" onChange={e => setEventForm(previous => ({ ...previous, location_instructions: e.target.value }))} className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none" /></div></div></div> : <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><>{summaryEditOpen && eventScheduleForm[0] ? (<>
+            {!timeEditOpen && eventInstructions && <p className="mt-2 flex max-w-3xl items-start gap-2 text-xs text-gray-500"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" /><span>{eventInstructions}</span></p>}
+            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm"><>{summaryEditOpen && eventScheduleForm[0] ? (<>
                         <span className="inline-flex items-center gap-2">
                           <Calendar className="h-4 w-4 flex-shrink-0 text-violet-600" />
                           <input
                             type="date"
                             value={eventScheduleForm[0].starts_at ? eventScheduleForm[0].starts_at.slice(0, 10) : ''}
                             onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: `${event.target.value}T${day.starts_at?.slice(11, 16) || '00:00'}` } : day))}
-                            className="w-[125px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
+                            className="w-[150px] rounded-md border border-violet-200 bg-white px-2 py-1 text-sm font-medium text-gray-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                             aria-label="Fecha"
                           />
                         </span>
@@ -2938,7 +2878,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             type="time"
                             value={eventScheduleForm[0].starts_at ? eventScheduleForm[0].starts_at.slice(11, 16) : ''}
                             onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, starts_at: `${day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T${event.target.value}` } : day))}
-                            className="w-[105px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
+                            className="w-[110px] rounded-md border border-violet-200 bg-white px-2 py-1 text-sm font-medium text-gray-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                             aria-label="Hora de inicio"
                           />
                           <span>–</span>
@@ -2946,11 +2886,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             type="time"
                             value={eventScheduleForm[0].ends_at ? eventScheduleForm[0].ends_at.slice(11, 16) : ''}
                             onChange={event => setEventScheduleForm(previous => previous.map((day, index) => index === 0 ? { ...day, ends_at: `${day.ends_at?.slice(0, 10) || day.starts_at?.slice(0, 10) || summaryEditForm.start_date}T${event.target.value}` } : day))}
-                            className="w-[105px] border-0 bg-transparent p-0 text-sm font-medium text-gray-800 outline-none focus:ring-0"
+                            className="w-[110px] rounded-md border border-violet-200 bg-white px-2 py-1 text-sm font-medium text-gray-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                             aria-label="Hora de término"
                           />
                         </span>
-                      </>) : null}{!(summaryEditOpen && eventScheduleForm[0]) && eventBookings.map((booking, index) => { const start = booking.starts_at ? format(new Date(booking.starts_at), "EEE d MMM", { locale: es }) : null; const startTime = booking.starts_at ? formatEventTime(booking.starts_at) : null; const endTime = booking.ends_at ? formatEventTime(booking.ends_at) : null; return start && startTime ? <span key={booking.id ?? index} className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{start.replace(/^./, letter => letter.toUpperCase())} <Clock className="ml-1 h-4 w-4 text-violet-600" />{endTime ? `${startTime}–${endTime}` : startTime}</span> : null })}{!hasEventSchedule && !(summaryEditOpen && eventScheduleForm[0]) && (canEditCampaign ? <div className="relative"><button type="button" onClick={openTimeEditor} className="inline-flex items-center gap-2 font-semibold text-amber-700 hover:underline"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</button>{timeEditOpen && <div className="absolute left-0 top-8 z-40 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><div className="grid grid-cols-2 gap-2"><input type="time" value={timeEditForm.start_time} onChange={event => setTimeEditForm(previous => ({ ...previous, start_time: event.target.value }))} aria-label="Hora de inicio" className="input-base w-full" /><input type="time" value={timeEditForm.end_time} onChange={event => setTimeEditForm(previous => ({ ...previous, end_time: event.target.value }))} aria-label="Hora de término" className="input-base w-full" /></div><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setTimeEditOpen(false)} disabled={summaryEditSaving} className="px-2 py-1.5 text-xs font-semibold text-gray-500">Cancelar</button><button type="button" onClick={saveTimeEditor} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div> : <span className="inline-flex items-center gap-2 font-semibold text-amber-700"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</span>)}<div className="relative inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" />{summaryEditOpen ? <input value={summaryEditForm.location} onChange={event => setSummaryEditForm(previous => ({ ...previous, location: event.target.value }))} placeholder="Dirección o lugar" aria-label="Lugar" className="min-w-[200px] rounded border border-violet-300 bg-white px-2 py-0.5 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-violet-100" /> : canEditCampaign ? <button type="button" onClick={openLocationEditor} className="truncate text-left hover:text-violet-700 hover:underline" title="Editar ubicación">{eventLocationLabel}</button> : <span className="truncate">{eventLocationLabel}</span>}{locationEditOpen && <div className="absolute left-0 top-7 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><label className="block text-xs font-semibold text-gray-700">Lugar de la marca</label>{brandLocations.length > 0 ? <select autoFocus value={locationPickerId} onChange={event => applyBrandLocationToEditor(event.target.value)} className="input-base mt-1 w-full text-sm"><option value="">— Seleccionar —</option>{brandLocations.map((loc, idx) => { const optId = String(loc.id ?? idx); const detail = [loc.address, loc.city].filter(Boolean).map(String).join(', '); return <option key={optId} value={optId}>{[String(loc.name ?? 'Lugar sin nombre'), detail].filter(Boolean).join(' — ')}</option> })}</select> : <div className="mt-1 space-y-1.5"><p className="text-xs text-gray-400">No hay lugares guardados para esta marca.</p><button type="button" onClick={() => { setLocationEditOpen(false); setTab('locations'); setLocationFormOpen(true) }} className="text-xs font-semibold text-violet-600 hover:underline">+ Agregar lugar</button></div>}<label className="mt-3 block text-xs font-semibold text-gray-700">Comuna</label><input list="location-edit-communes" value={locationEditForm.commune} onChange={event => setLocationEditForm(previous => ({ ...previous, commune: event.target.value }))} placeholder="Ej: Las Condes" className="input-base mt-1 w-full" /><datalist id="location-edit-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><label className="mt-2 block text-xs font-semibold text-gray-700">Dirección exacta <span className="font-normal text-gray-400">(opcional — déjala vacía para no revelar el lugar)</span></label><input value={locationEditForm.address} onChange={event => setLocationEditForm(previous => ({ ...previous, address: event.target.value }))} placeholder="Calle 123, depto/of." className="input-base mt-1 w-full" /><label className="mt-2 block text-xs font-semibold text-gray-700">Indicaciones <span className="font-normal text-gray-400">(opcional)</span></label><input value={locationEditForm.instructions} onChange={event => setLocationEditForm(previous => ({ ...previous, instructions: event.target.value }))} placeholder="Ingreso por..., estacionamiento, etc." className="input-base mt-1 w-full" /><div className="mt-2 flex items-center justify-end gap-2">{locationEditForm.address.trim() && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationEditForm.address.trim())}`} target="_blank" rel="noopener noreferrer" className="mr-auto text-xs font-semibold text-violet-700 hover:underline">Ver en Maps</a>}<button type="button" onClick={() => setLocationEditOpen(false)} disabled={locationEditSaving} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveLocation()} disabled={locationEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{locationEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>}
+                      </>) : null}{!(summaryEditOpen && eventScheduleForm[0]) && eventBookings.map((booking, index) => { const start = booking.starts_at ? format(new Date(booking.starts_at), "EEE d MMM", { locale: es }) : null; const startTime = booking.starts_at ? formatEventTime(booking.starts_at) : null; const endTime = booking.ends_at ? formatEventTime(booking.ends_at) : null; return start && startTime ? <span key={booking.id ?? index} className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{start.replace(/^./, letter => letter.toUpperCase())} <Clock className="ml-1 h-4 w-4 text-violet-600" />{endTime ? `${startTime}–${endTime}` : startTime}</span> : null })}{!hasEventSchedule && !(summaryEditOpen && eventScheduleForm[0]) && (canEditCampaign ? <div className="relative"><button type="button" onClick={openTimeEditor} className="inline-flex items-center gap-2 font-semibold text-amber-700 hover:underline"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</button>{timeEditOpen && <div className="absolute left-0 top-8 z-40 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><div className="grid grid-cols-2 gap-2"><input type="time" value={timeEditForm.start_time} onChange={event => setTimeEditForm(previous => ({ ...previous, start_time: event.target.value }))} aria-label="Hora de inicio" className="input-base w-full" /><input type="time" value={timeEditForm.end_time} onChange={event => setTimeEditForm(previous => ({ ...previous, end_time: event.target.value }))} aria-label="Hora de término" className="input-base w-full" /></div><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setTimeEditOpen(false)} disabled={summaryEditSaving} className="px-2 py-1.5 text-xs font-semibold text-gray-500">Cancelar</button><button type="button" onClick={saveTimeEditor} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div> : <span className="inline-flex items-center gap-2 font-semibold text-amber-700"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</span>)}<div className="relative inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" />{summaryEditOpen ? <input value={summaryEditForm.location} onChange={event => setSummaryEditForm(previous => ({ ...previous, location: event.target.value }))} placeholder="Dirección o lugar" aria-label="Lugar" className="min-w-[220px] rounded-md border border-violet-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" /> : canEditCampaign ? <button type="button" onClick={openLocationEditor} className="truncate text-left hover:text-violet-700 hover:underline" title="Editar ubicación">{eventLocationLabel}</button> : <span className="truncate">{eventLocationLabel}</span>}{locationEditOpen && <div className="absolute left-0 top-7 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><label className="block text-xs font-semibold text-gray-700">Lugar de la marca</label>{brandLocations.length > 0 ? <select autoFocus value={locationPickerId} onChange={event => applyBrandLocationToEditor(event.target.value)} className="input-base mt-1 w-full text-sm"><option value="">— Seleccionar —</option>{brandLocations.map((loc, idx) => { const optId = String(loc.id ?? idx); const detail = [loc.address, loc.city].filter(Boolean).map(String).join(', '); return <option key={optId} value={optId}>{[String(loc.name ?? 'Lugar sin nombre'), detail].filter(Boolean).join(' — ')}</option> })}</select> : <div className="mt-1 space-y-1.5"><p className="text-xs text-gray-400">No hay lugares guardados para esta marca.</p><button type="button" onClick={() => { setLocationEditOpen(false); setTab('locations'); setLocationFormOpen(true) }} className="text-xs font-semibold text-violet-600 hover:underline">+ Agregar lugar</button></div>}<label className="mt-3 block text-xs font-semibold text-gray-700">Comuna</label><input list="location-edit-communes" value={locationEditForm.commune} onChange={event => setLocationEditForm(previous => ({ ...previous, commune: event.target.value }))} placeholder="Ej: Las Condes" className="input-base mt-1 w-full" /><datalist id="location-edit-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><label className="mt-2 block text-xs font-semibold text-gray-700">Dirección exacta <span className="font-normal text-gray-400">(opcional — déjala vacía para no revelar el lugar)</span></label><input value={locationEditForm.address} onChange={event => setLocationEditForm(previous => ({ ...previous, address: event.target.value }))} placeholder="Calle 123, depto/of." className="input-base mt-1 w-full" /><label className="mt-2 block text-xs font-semibold text-gray-700">Indicaciones <span className="font-normal text-gray-400">(opcional)</span></label><input value={locationEditForm.instructions} onChange={event => setLocationEditForm(previous => ({ ...previous, instructions: event.target.value }))} placeholder="Ingreso por..., estacionamiento, etc." className="input-base mt-1 w-full" /><div className="mt-2 flex items-center justify-end gap-2">{locationEditForm.address.trim() && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationEditForm.address.trim())}`} target="_blank" rel="noopener noreferrer" className="mr-auto text-xs font-semibold text-violet-700 hover:underline">Ver en Maps</a>}<button type="button" onClick={() => setLocationEditOpen(false)} disabled={locationEditSaving} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveLocation()} disabled={locationEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{locationEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>
           </div>
           <div className="grid w-full grid-cols-3 gap-2 lg:w-[480px] lg:grid-cols-4 lg:flex-none">
             {attendanceConfirmedInfluencers.length > 0 && <button type="button" onClick={() => showAttendanceKpi('confirmed')} className="rounded-lg bg-emerald-50 px-2 py-1.5 text-center transition hover:bg-emerald-100 hover:ring-1 hover:ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300" title="Ver confirmadas que asistieron">

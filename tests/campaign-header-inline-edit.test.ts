@@ -28,3 +28,26 @@ test('los datos de lugar y fecha editados se guardan con el mismo estado de form
   assert.match(source, /setEventScheduleForm\(previous => previous\.map/)
   assert.match(source, /value=\{summaryEditForm\.type\}/)
 })
+
+test('no queda el editor de evento muerto (nunca se abría desde ningún botón)', () => {
+  for (const dead of ['editingEvent', 'openEventEditor', 'setEventForm', 'saveEvent(']) {
+    assert.equal(source.includes(dead), false, `no debe existir ${dead}`)
+  }
+})
+
+test('barra superior: Editar campaña / Cancelar / Guardar cambios y menú de acciones', () => {
+  for (const text of ['Editar campaña', 'Guardar cambios', 'Duplicar como borrador', 'Reporte PDF', 'Pausar campaña', 'Cancelar campaña', 'Borrar todo (permanente)']) {
+    assert.ok(source.includes(text), `falta "${text}"`)
+  }
+  assert.equal(count(/title="Editar resumen de campaña"/g), 0, 'el lápiz diminuto junto a la marca ya no existe')
+})
+
+test('acciones destructivas solo para el portal admin (no marca)', () => {
+  const idx = source.indexOf('Borrar todo (permanente)')
+  const before = source.slice(Math.max(0, idx - 1800), idx)
+  assert.match(before, /!isBrandPortal && \(/)
+})
+
+test('el lugar no repite partes iguales', () => {
+  assert.match(source, /Array\.from\(new Set\(\[eventVenueName, eventLocation, eventCommune\]/)
+})

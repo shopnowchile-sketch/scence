@@ -21,15 +21,15 @@ function resolvePaymentCondition(condition: string, date: string): string {
   }
 }
 
-// ── Paquetes de "SCENCE Launch Experience" ──────────────────────────────────
+// ── Textos de inclusiones de "SCENCE Launch Experience" ─────────────────────
 // Tomados literalmente de la presentación comercial (scence_launch_marcas_.pdf).
-// No son inclusiones inventadas: son atajos editables, no una regla fija —
-// el Admin puede modificar nombre/monto/inclusiones antes de generar.
+// Son SOLO texto descriptivo editable: NO definen nombre ni precio del paquete.
+// El nombre y el monto salen del plan de la colaboración confirmada, validado
+// en el servidor (ver POST /api/contracts con collaboration_id).
 const PACKAGE_PRESETS = [
   {
     id: 'basico',
     name: 'Plan Básico · La Escena',
-    amount: 100000,
     inclusions: [
       'Presencia de la marca dentro del evento',
       'Inclusión en la comunicación general de marcas',
@@ -41,7 +41,6 @@ const PACKAGE_PRESETS = [
   {
     id: 'gold',
     name: 'Plan Gold · Protagonista',
-    amount: 350000,
     inclusions: [
       'Presencia de la marca dentro del evento',
       'Inclusión en la comunicación general de marcas',
@@ -61,7 +60,6 @@ const PACKAGE_PRESETS = [
   {
     id: 'premium',
     name: 'Plan Premium · Ícono',
-    amount: undefined as number | undefined, // "A definir" en la presentación — no se inventa un monto.
     inclusions: [
       'Presencia de la marca dentro del evento',
       'Inclusión en la comunicación general de marcas',
@@ -85,6 +83,7 @@ const PACKAGE_PRESETS = [
 
 type Template = { id: string; name: string; campaign_type?: string | null; document_type?: string }
 type CollaboratorBrand = { id: string; name: string; email?: string | null }
+type ConfirmedCollaboration = { id: string; name: string; plan_name: string | null; plan_amount: number | null; contract_brand_id: string | null }
 type SavedContract = { id: string; title: string; status: string; content?: string; created_at: string; total_value?: number | null; currency?: string | null; brand?: { name?: string } | null }
 
 export function GenerateContractModal({
@@ -107,6 +106,11 @@ export function GenerateContractModal({
   const contractTemplates = templates.filter(t => (t.document_type ?? 'contract') === 'contract')
   const [templateId, setTemplateId] = useState('')
   const [partnerBrandId, setPartnerBrandId] = useState('')
+  // Colaboración confirmada: cuando se elige, marca, nombre y monto del paquete
+  // son de solo lectura y el servidor los resuelve desde el plan.
+  const [collaborations, setCollaborations] = useState<ConfirmedCollaboration[]>([])
+  const [collaborationId, setCollaborationId] = useState('')
+  const selectedCollaboration = collaborations.find(c => c.id === collaborationId) ?? null
   // Datos del evento: precargados desde el booking real cuando existe;
   // editables por el Admin cuando falten o deban corregirse para este
   // contrato en particular. NUNCA se escriben de vuelta en `bookings`.
@@ -202,6 +206,24 @@ export function GenerateContractModal({
   }, [campaignId])
 
   useEffect(() => {
+    // Colaboraciones confirmadas de la campaña (mismo endpoint de la ficha de
+    // marcas colaboradoras; solo admin). Si falla, queda el flujo manual.
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/collaborations`)
+        const json = await res.json()
+        if (cancelled || !res.ok) return
+        const rows = (Array.isArray(json.data) ? json.data : []) as Array<ConfirmedCollaboration & { status: string }>
+        setCollaborations(rows.filter(r => r.status === 'confirmed'))
+      } catch {
+        // Silencioso: sin colaboraciones se usa el flujo manual.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [campaignId])
+
+  useEffect(() => {
     // Mismo endpoint que ya usa el tab "Lugares" de la campana
     // (GET /api/brands/[id]/locations) — no hay endpoint nuevo.
     if (!brandId) return
@@ -238,8 +260,6 @@ export function GenerateContractModal({
   }
 
   function applyPreset(preset: typeof PACKAGE_PRESETS[number]) {
-    setPackageName(preset.name)
-    setPackageAmount(preset.amount ? String(preset.amount) : '')
     setInclusions(preset.inclusions.join('\n'))
   }
 
@@ -253,7 +273,8 @@ export function GenerateContractModal({
     return {
       campaign_id: campaignId,
       template_id: templateId,
-      partner_brand_id: partnerBrandId || null,
+      // Con colaboración, marca/plan/monto los resuelve el servidor: no se envían.
+      ...(collaborationId ? { collaboration_id: collaborationId } : { partner_brand_id: partnerBrandId || null }),
       event: {
         name: eventName.trim() || undefined,
         date: eventDate || undefined,
@@ -262,9 +283,7 @@ export function GenerateContractModal({
         location: eventLocation.trim() || undefined,
       },
       package: {
-        name: packageName || undefined,
-        amount: amountNum,
-        currency: 'CLP',
+        ...(collaborationId ? {} : { name: packageName || undefined, amount: amountNum, currency: 'CLP' }),
         inclusions: inclusions.split('\n').map(l => l.trim()).filter(Boolean),
         requirements: requirements.split('\n').map(l => l.trim()).filter(Boolean),
         deliverables: deliverables.split('\n').map(l => l.trim()).filter(Boolean),
@@ -380,11 +399,30 @@ export function GenerateContractModal({
                     {contractTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
+                {collaborations.length > 0 && (
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Colaboración confirmada</label>
+                    <select className="input-base" value={collaborationId} onChange={e => setCollaborationId(e.target.value)}>
+                      <option value="">— Contrato manual (sin colaboración) —</option>
+                      {collaborations.map(c => (
+                        <option key={c.id} value={c.id} disabled={!c.contract_brand_id || !c.plan_name || !c.plan_amount}>
+                          {c.name} · {c.plan_name ?? 'sin plan'}{c.plan_amount ? ` · $${Number(c.plan_amount).toLocaleString('es-CL')}` : ' · plan sin monto'}{!c.contract_brand_id ? ' · sin marca' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedCollaboration && (
+                      <p className="text-[11px] text-emerald-700 mt-1">La marca, el plan y el monto se toman de la colaboración y los valida el servidor.</p>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Marca colaboradora</label>
-                  <select className="input-base" value={partnerBrandId} onChange={e => setPartnerBrandId(e.target.value)}>
+                  <select className="input-base" value={selectedCollaboration?.contract_brand_id ?? partnerBrandId} disabled={Boolean(selectedCollaboration)} onChange={e => setPartnerBrandId(e.target.value)}>
                     <option value="">— Sin marca colaboradora —</option>
                     {collaboratorBrands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {selectedCollaboration?.contract_brand_id && !collaboratorBrands.some(b => b.id === selectedCollaboration.contract_brand_id) && (
+                      <option value={selectedCollaboration.contract_brand_id}>{selectedCollaboration.name}</option>
+                    )}
                   </select>
                   {collaboratorBrands.length === 0 && (
                     <p className="text-[11px] text-amber-600 mt-1">Esta campaña no tiene marcas colaboradoras asignadas (campaign_brands).</p>
@@ -447,23 +485,29 @@ export function GenerateContractModal({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2">Paquete — atajos desde la presentación comercial</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">Paquete — textos de inclusiones (no definen precio)</label>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {PACKAGE_PRESETS.map(preset => (
                     <button key={preset.id} type="button" onClick={() => applyPreset(preset)}
                       className="text-xs bg-violet-50 text-violet-700 border border-violet-200 rounded-md px-2.5 py-1 font-semibold hover:bg-violet-100 transition-colors">
-                      {preset.name}{preset.amount ? ` · $${preset.amount.toLocaleString('es-CL')}` : ' · monto a definir'}
+                      {preset.name}
                     </button>
                   ))}
                 </div>
+                {selectedCollaboration && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-3">
+                    Los textos de inclusiones son atajos manuales y no están vinculados al plan «{selectedCollaboration.plan_name}».
+                    Verifica que las inclusiones correspondan a ese plan antes de generar.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[11px] font-medium text-gray-500 mb-1">Nombre del paquete</label>
-                    <input className="input-base" value={packageName} onChange={e => setPackageName(e.target.value)} placeholder="Ej: Plan Gold · Protagonista" />
+                    <input className="input-base" value={selectedCollaboration ? (selectedCollaboration.plan_name ?? '') : packageName} readOnly={Boolean(selectedCollaboration)} onChange={e => setPackageName(e.target.value)} placeholder="Ej: Plan Gold · Protagonista" />
                   </div>
                   <div>
                     <label className="block text-[11px] font-medium text-gray-500 mb-1">Monto (CLP)</label>
-                    <input className="input-base" type="number" value={packageAmount} onChange={e => setPackageAmount(e.target.value)} placeholder="350000" />
+                    <input className="input-base" type="number" value={selectedCollaboration ? (selectedCollaboration.plan_amount ?? '') : packageAmount} readOnly={Boolean(selectedCollaboration)} onChange={e => setPackageAmount(e.target.value)} placeholder="350000" />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 mt-3">

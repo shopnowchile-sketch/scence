@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import { renderDocument, templateVariables } from '@/lib/document-templates'
 import { buildCampaignContractContext, type ContractPackageInput, type ContractPaymentInput } from '@/lib/contract-render'
+import { findExistingBrandContract, type CollaborationContractTerms, resolveCollaborationContractTerms, validatePaymentSplit } from '@/lib/contract-from-collaboration'
 
 // Campos legal/comercialmente obligatorios para un contrato de campaña/marca.
 // Solo bloquean la generación cuando la plantilla elegida realmente los usa
@@ -58,6 +59,10 @@ type GenerateBody = {
   campaign_id?: string
   template_id?: string
   partner_brand_id?: string | null
+  // Si viene, el SERVIDOR resuelve marca, nombre del plan y monto desde la
+  // colaboración confirmada; partner_brand_id, package.name y package.amount
+  // del body se ignoran. package.* restante (inclusiones, etc.) es descriptivo.
+  collaboration_id?: string | null
   package?: ContractPackageInput
   payment?: ContractPaymentInput
   // Datos de evento ingresados por el Admin en el modal cuando el booking
@@ -105,12 +110,34 @@ export async function POST(request: NextRequest) {
     .single()
   if (templateError || !template) return NextResponse.json({ error: 'Plantilla no encontrada' }, { status: 404 })
 
+  // Condiciones comerciales efectivas. Con collaboration_id el servidor es la
+  // única autoridad sobre marca, plan y monto.
+  let partnerBrandId: string | null = body.partner_brand_id ?? null
+  let pkg: ContractPackageInput | undefined = body.package
+  let collaborationTerms: CollaborationContractTerms | null = null
+  if (body.collaboration_id) {
+    const resolved = await resolveCollaborationContractTerms(admin, body.campaign_id, body.collaboration_id)
+    if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status })
+    const splitError = validatePaymentSplit(body.payment)
+    if (splitError) return NextResponse.json({ error: splitError }, { status: 422 })
+    collaborationTerms = resolved.terms
+    partnerBrandId = resolved.terms.partnerBrandId
+    pkg = { ...body.package, name: resolved.terms.packageName, amount: resolved.terms.packageAmount, currency: undefined }
+    if (!body.dry_run) {
+      const { existing, error: existingError } = await findExistingBrandContract(admin, body.campaign_id, resolved.terms.partnerBrandId)
+      if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 })
+      if (existing) {
+        return NextResponse.json({ error: 'Ya existe un contrato para esta marca en la campaña', existing_contract_id: existing.id }, { status: 409 })
+      }
+    }
+  }
+
   let result: Awaited<ReturnType<typeof buildCampaignContractContext>>
   try {
     result = await buildCampaignContractContext(admin, {
       campaignId: body.campaign_id,
-      partnerBrandId: body.partner_brand_id ?? null,
-      package: body.package,
+      partnerBrandId,
+      package: pkg,
       payment: body.payment,
       eventOverride: body.event
         ? { name: body.event.name, date: body.event.date, startTime: body.event.start_time, endTime: body.event.end_time, location: body.event.location }
@@ -168,13 +195,13 @@ export async function POST(request: NextRequest) {
       campaign_id: body.campaign_id,
       organization_id: campaign.organization_id,
       party_type: 'brand',
-      brand_id: body.partner_brand_id ?? null,
+      brand_id: partnerBrandId,
       campaign_brand_id: meta.campaignBrandId,
       template_id: template.id,
       title: `${template.name} — ${meta.campaign.name}`,
       status: 'draft',
-      total_value: body.package?.amount ?? null,
-      currency: body.package?.currency ?? null,
+      total_value: pkg?.amount ?? null,
+      currency: pkg?.currency ?? context.currency ?? null,
       start_date: meta.campaign.start_date,
       end_date: meta.campaign.end_date,
       content,
@@ -184,13 +211,18 @@ export async function POST(request: NextRequest) {
       // este mismo request — nada se vuelve a resolver al leer el contrato
       // después (GET /api/contracts/[id] devuelve esta fila tal cual).
       metadata: {
+        // Origen de las condiciones: cuando viene de una colaboración, queda el
+        // rastro de qué colaboración y plan las aprobaron.
+        source: collaborationTerms
+          ? { type: 'collaboration', collaboration_id: collaborationTerms.collaborationId, plan_id: collaborationTerms.planId }
+          : { type: 'manual' },
         package: {
-          name: body.package?.name ?? null,
-          amount: body.package?.amount ?? null,
-          currency: body.package?.currency ?? null,
-          inclusions: body.package?.inclusions ?? [],
-          requirements: body.package?.requirements ?? [],
-          deliverables: body.package?.deliverables ?? [],
+          name: pkg?.name ?? null,
+          amount: pkg?.amount ?? null,
+          currency: pkg?.currency ?? context.currency ?? null,
+          inclusions: pkg?.inclusions ?? [],
+          requirements: pkg?.requirements ?? [],
+          deliverables: pkg?.deliverables ?? [],
         },
         payment_terms: {
           type: body.payment?.first_percentage === 50 && body.payment?.second_percentage === 50 ? '50_50' : (body.payment ? 'custom' : null),
@@ -225,6 +257,10 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (insertError) {
+    // 23505: los índices únicos de contracts bloquearon un duplicado (doble clic o solicitud concurrente).
+    if (insertError.code === '23505') {
+      return NextResponse.json({ error: 'Ya existe un contrato para esta marca en la campaña' }, { status: 409 })
+    }
     console.error('[POST /api/contracts]', insertError)
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }

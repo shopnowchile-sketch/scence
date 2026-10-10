@@ -2,6 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieOptions } from '@supabase/ssr'
 import { detectLocale, LOCALE_COOKIE } from '@/i18n/config'
+import {
+  AUTH_DEADLINE_MS,
+  AuthDeadlineError,
+  HIGH_DEMAND_RETRY_SECONDS,
+  isTemporaryAuthFailure,
+  withDeadline,
+} from '@/lib/load-protection'
 
 const PUBLIC_ROUTES = [
   '/login', '/register', '/forgot-password', '/reset-password',
@@ -67,9 +74,29 @@ export async function middleware(request: NextRequest) {
   // getUser() hace una petición a Auth en cada navegación. getClaims() verifica
   // el JWT firmado (con JWKS cacheado) y evita que el middleware se convierta en
   // un cuello de botella durante aperturas masivas de campañas.
-  const { data: claimsData } = await supabase.auth.getClaims()
+  //
+  // Con un plazo total (AUTH_DEADLINE_MS): si Auth está saturado, la librería
+  // reintenta el refresh hasta ~30 s y Vercel corta el middleware a los 25 s.
+  let claimsResult: Awaited<ReturnType<typeof supabase.auth.getClaims>>
+  try {
+    claimsResult = await withDeadline(supabase.auth.getClaims(), AUTH_DEADLINE_MS)
+  } catch (error) {
+    if (!(error instanceof AuthDeadlineError)) throw error
+    claimsResult = { data: null, error } as unknown as typeof claimsResult
+  }
+  const { data: claimsData, error: claimsError } = claimsResult
   const claims = claimsData?.claims
   const isApiRoute = path.startsWith('/api/')
+
+  // Supabase caído o saturado (timeout, 429, 5xx) ≠ "sin sesión": no se da
+  // acceso, pero tampoco se manda a /login. Se responde 503 con una respuesta
+  // NUEVA (no supabaseResponse) para no propagar el borrado de cookies que la
+  // librería hace ante 429/500: la sesión sigue intacta y el reintento entra.
+  if (!claims && isTemporaryAuthFailure(claimsError)) {
+    const failure = claimsError as { name?: string; status?: number } | null
+    console.warn('[middleware] Auth no disponible, respondiendo 503:', path, failure?.name, failure?.status)
+    return withLocale(highDemandResponse(isApiRoute, locale))
+  }
 
   if (!claims) {
     // API routes → return JSON 401 instead of HTML redirect
@@ -145,6 +172,30 @@ export async function middleware(request: NextRequest) {
   }
 
   return withLocale(supabaseResponse)
+}
+
+/** 503 "alta demanda" con reintento automático. Nunca concede acceso. */
+function highDemandResponse(isApiRoute: boolean, locale: string) {
+  const headers = {
+    'Retry-After': String(HIGH_DEMAND_RETRY_SECONDS),
+    'Cache-Control': 'no-store',
+  }
+  const en = locale === 'en'
+  const message = en
+    ? 'High demand right now. Retrying automatically…'
+    : 'Estamos con alta demanda. Reintentando automáticamente…'
+  if (isApiRoute) {
+    return NextResponse.json({ error: message, retryAfter: HIGH_DEMAND_RETRY_SECONDS }, { status: 503, headers })
+  }
+  const html = `<!doctype html><html lang="${en ? 'en' : 'es'}"><head><meta charset="utf-8">`
+    + `<meta name="viewport" content="width=device-width, initial-scale=1">`
+    + `<meta http-equiv="refresh" content="${HIGH_DEMAND_RETRY_SECONDS}">`
+    + `<title>SCENCE</title></head>`
+    + `<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;color:#111827">`
+    + `<div style="text-align:center;padding:24px;max-width:420px"><p style="font-weight:800;font-size:20px;margin:0 0 8px">SCENCE</p>`
+    + `<p style="margin:0 0 16px;color:#4b5563">${message}</p>`
+    + `<a href="" style="color:#7c3aed;font-weight:600">${en ? 'Retry now' : 'Reintentar ahora'}</a></div></body></html>`
+  return new NextResponse(html, { status: 503, headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8' } })
 }
 
 export const config = {

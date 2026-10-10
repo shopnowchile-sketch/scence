@@ -141,8 +141,11 @@ describe('6 · El bulk salta al bloqueado y sigue con el resto', () => {
   })
 
   test('sendLeadBatch salta con `continue` — no corta el job', () => {
-    const code = src('lib/crm-bulk-send.ts')
-    const inicio = code.indexOf('if (blocked.has(')
+    // La lógica del loop vive en processLeadBatch (crm-send-guard.ts); crm-bulk-send.ts
+    // solo le entrega el conjunto de bloqueados.
+    assert.ok(src('lib/crm-bulk-send.ts').includes('blocked.has(normalizeEmail(email))'), 'sendLeadBatch debe pasar el conjunto de bloqueados')
+    const code = src('lib/crm-send-guard.ts')
+    const inicio = code.indexOf('if (deps.isBlocked(')
     assert.ok(inicio > -1, 'debe existir la guarda de bloqueo en el loop')
     const hastaContinue = code.slice(inicio, code.indexOf('continue', inicio))
     assert.ok(hastaContinue.includes('skipped++'), 'el bloqueado debe contarse como skipped')
@@ -370,8 +373,13 @@ describe('13 · FAIL CLOSED — si no se puede comprobar la lista, no se envía'
     const code = src('app/api/crm-leads/bulk-send/process/route.ts')
     const catchStart = code.indexOf('} catch (error) {')
     assert.ok(catchStart > -1, 'la llamada a sendLeadBatch debe estar protegida')
-    const bloque = code.slice(catchStart, code.indexOf('const { sent, skipped, failed } = batchResult'))
-    assert.ok(bloque.includes("status: 'failed'"), 'el job debe quedar marcado como fallido')
+    const bloque = code.slice(catchStart, code.indexOf('const { sent, skipped, failed, unconfirmed, recordErrors } = batchResult'))
+    // failJobBatch (crm-send-guard.ts) marca el job como fallido y NO toca el cursor.
+    assert.ok(bloque.includes('failJobBatch('), 'el job debe quedar marcado como fallido')
+    const guard = src('lib/crm-send-guard.ts')
+    const fail = guard.slice(guard.indexOf('export async function failJobBatch'))
+    assert.ok(fail.slice(0, fail.indexOf('\n}')).includes("status: 'failed'"), 'failJobBatch debe fijar status failed')
+    assert.ok(!fail.slice(0, fail.indexOf('\n}')).includes('cursor'), 'failJobBatch no debe mover el cursor')
     assert.ok(!bloque.includes('cursor:'), 'el cursor NO debe avanzar cuando la tanda aborta')
     assert.ok(bloque.includes('503'))
   })

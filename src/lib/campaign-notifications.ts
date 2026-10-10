@@ -4,6 +4,7 @@ import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { getResend, FROM_EMAIL, campaignOpenAvailableEmail, influencerInviteEmail, campaignAssignedEmail, sponsorOpportunityEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
+import { batchPauseMs, sleep } from '@/lib/load-protection'
 
 const BATCH_SIZE = 100 // límite de resend.batch.send()
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -174,6 +175,10 @@ export async function announceCampaignToInfluencers(
 
     let sent = 0
     let failed = 0
+    // Pausa entre lotes para repartir la llegada de influencers al portal
+    // (incidente Login 504, 2026-10-06). Acotada para no pasar maxDuration=300.
+    const pauseMs = batchPauseMs(Math.ceil(targets.length / BATCH_SIZE))
+    let batchesSent = 0
 
     for (let i = 0; i < targets.length; i += BATCH_SIZE) {
       const chunk = targets.slice(i, i + BATCH_SIZE)
@@ -185,6 +190,7 @@ export async function announceCampaignToInfluencers(
         console.warn('[announceCampaignToInfluencers] emails inválidos omitidos:', invalidChunk.map(inf => ({ id: inf.id, email: inf.email })))
       }
       if (validChunk.length === 0) continue
+      if (batchesSent++ > 0 && pauseMs > 0) await sleep(pauseMs)
 
       try {
         const { error: batchErr } = await getResend().batch.send(
@@ -362,10 +368,13 @@ export async function announceCampaignReopened(
     if (!campaign || skipped) return { sent: 0, failed: 0, remaining: 0, skipped }
     let sent = 0
     let failed = 0
+    const pauseMs = batchPauseMs(Math.ceil(pending.length / BATCH_SIZE))
+    let batchesSent = 0
     for (let i = 0; i < pending.length; i += BATCH_SIZE) {
       const chunk = pending.slice(i, i + BATCH_SIZE)
       const validChunk = chunk.filter(inf => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inf.email ?? ''))
       if (validChunk.length === 0) continue
+      if (batchesSent++ > 0 && pauseMs > 0) await sleep(pauseMs)
       try {
         const { error: batchErr } = await getResend().batch.send(
           validChunk.map(inf => ({

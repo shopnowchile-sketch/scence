@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { ensureBrandRow } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL, brandSignupConfirmEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { normalizeInstagramHandle } from '@/lib/brands/instagram'
+import { normalizeWhatsappPhone } from '@/lib/brands/contact'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -12,6 +14,8 @@ export async function POST(req: NextRequest) {
     contact_name?: string
     email?: string
     password?: string
+    instagram?: string
+    whatsapp?: string
     referred_by_instagram?: string
   }
 
@@ -40,6 +44,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nombre de contacto inválido' }, { status: 422 })
   }
 
+  // Instagram y WhatsApp son obligatorios para toda marca nueva (validado en
+  // backend; el formulario es solo UX). WhatsApp se guarda en contact_phone.
+  const instagram = normalizeInstagramHandle(body.instagram)
+  if (!instagram) {
+    return NextResponse.json({ error: 'Instagram de la marca es obligatorio (ej. @mimarca)' }, { status: 422 })
+  }
+
+  const whatsapp = normalizeWhatsappPhone(body.whatsapp)
+  if (!whatsapp) {
+    return NextResponse.json(
+      { error: 'WhatsApp es obligatorio, con código de país (ej. +56 9 1234 5678)' },
+      { status: 422 },
+    )
+  }
+
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: 'Email inválido' }, { status: 422 })
   }
@@ -52,6 +71,21 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient()
+
+  // Instagram es la identidad comercial global de la marca
+  // (brands.instagram_handle_normalized): si ya existe, no se crea otra marca.
+  const { data: existingBrand } = await admin
+    .from('brands')
+    .select('id')
+    .eq('instagram_handle_normalized', instagram)
+    .limit(1)
+    .maybeSingle()
+  if (existingBrand) {
+    return NextResponse.json(
+      { error: 'Esa marca de Instagram ya está registrada en SCENCE. Escríbenos para darte acceso.' },
+      { status: 409 },
+    )
+  }
 
   /*
    * No buscamos ni modificamos usuarios existentes.
@@ -68,6 +102,8 @@ export async function POST(req: NextRequest) {
       full_name: contactName,
       brand_name: brandName,
       organization_name: brandName,
+      brand_instagram: instagram,
+      brand_whatsapp: whatsapp,
       referred_by_instagram: referredByInstagram,
     },
   })
@@ -126,6 +162,8 @@ export async function POST(req: NextRequest) {
           full_name: contactName,
           brand_name: brandName,
           organization_name: brandName,
+          brand_instagram: instagram,
+          brand_whatsapp: whatsapp,
           referred_by_instagram: referredByInstagram,
         },
       },

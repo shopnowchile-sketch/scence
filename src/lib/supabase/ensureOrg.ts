@@ -423,6 +423,8 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
   const contactEmail = user.email ?? null
   const brandName    = (user.user_metadata?.brand_name as string | undefined) ?? user.email ?? 'Mi Marca'
   const contactName  = (user.user_metadata?.full_name as string | undefined) ?? null
+  const brandInstagram = (user.user_metadata?.brand_instagram as string | undefined) || null
+  const brandWhatsapp  = (user.user_metadata?.brand_whatsapp as string | undefined) || null
 
   if (contactEmail) {
     const { data: orphan } = await admin
@@ -480,6 +482,8 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
       name:            brandName,
       contact_name:    contactName,
       contact_email:   contactEmail,
+      instagram:       brandInstagram,
+      contact_phone:   brandWhatsapp,
       created_by:      user.id,
       status:          'pending_approval',
       referred_by_influencer_id: referredByInfluencerId,

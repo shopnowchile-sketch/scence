@@ -12,6 +12,10 @@ import { createBrowserClient } from '@/lib/supabase/client'
 const schema = z.object({
   brand_name:   z.string().min(2, 'Mínimo 2 caracteres').max(100),
   contact_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
+  instagram:    z.string().trim().min(2, 'Instagram es obligatorio')
+    .refine(v => /^[a-z0-9._]{1,30}$/.test(v.replace(/^@+/, '').toLowerCase()), 'Ingresa un usuario válido (ej. @mimarca)'),
+  whatsapp:     z.string().trim()
+    .refine(v => /^\+[1-9]\d{7,14}$/.test(v.replace(/^00/, '+').replace(/[\s().-]/g, '')), 'WhatsApp con código de país (ej. +56 9 1234 5678)'),
   email:        z.string().email('Email inválido'),
   password:     z.string()
     .min(8, 'Mínimo 8 caracteres')
@@ -49,7 +53,7 @@ export function BrandRegisterForm() {
 
   const pwd = watch('password') ?? ''
 
-  async function onSubmit({ brand_name, contact_name, email, password }: FormValues) {
+  async function onSubmit({ brand_name, contact_name, instagram, whatsapp, email, password }: FormValues) {
     setLoading(true)
     setError(null)
 
@@ -75,7 +79,7 @@ export function BrandRegisterForm() {
       res = await fetch('/api/auth/register-brand', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brand_name, contact_name, email, password, referred_by_instagram: searchParams.get('ref') ?? undefined }),
+      body: JSON.stringify({ brand_name, contact_name, instagram, whatsapp, email, password, referred_by_instagram: searchParams.get('ref') ?? undefined }),
       })
     } catch {
       setError('No pudimos crear tu cuenta. Intenta nuevamente en unos minutos.')
@@ -160,6 +164,16 @@ export function BrandRegisterForm() {
           {errors.contact_name && <p className="text-xs text-red-500 mt-1">{errors.contact_name.message}</p>}
         </div>
 
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Instagram de la marca</label>
+          <input {...register('instagram')} className="input-base w-full" placeholder="@mimarca" />
+          {errors.instagram && <p className="text-xs text-red-500 mt-1">{errors.instagram.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp</label>
+          <input {...register('whatsapp')} type="tel" autoComplete="tel" className="input-base w-full" placeholder="+56 9 1234 5678" />
+          {errors.whatsapp && <p className="text-xs text-red-500 mt-1">{errors.whatsapp.message}</p>}
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
           <input

@@ -266,10 +266,10 @@ export function BrandOrgForm() {
               <input type="email" value={form.contact_email ?? ''} onChange={set('contact_email')} placeholder="ana@empresa.com" className="input-base w-full" />
             </div>
           </Field>
-          <Field label="Teléfono">
+          <Field label="WhatsApp *">
             <div className="flex items-center gap-1">
               <Phone className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
-              <input type="tel" value={form.contact_phone ?? ''} onChange={set('contact_phone')} placeholder="+56 9 XXXX XXXX" className="input-base w-full" />
+              <input type="tel" value={form.contact_phone ?? ''} onChange={set('contact_phone')} placeholder="+56 9 XXXX XXXX" required className="input-base w-full" />
             </div>
           </Field>
         </div>

@@ -16,6 +16,10 @@ const brandSchema = z.object({
   brand_name:   z.string().min(2, 'Mínimo 2 caracteres').max(100),
   contact_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
   referred_by:  z.string().max(60).optional(),
+  instagram:    z.string().trim().min(2, 'Instagram es obligatorio')
+    .refine(v => /^[a-z0-9._]{1,30}$/.test(v.replace(/^@+/, '').toLowerCase()), 'Ingresa un usuario válido (ej. @mimarca)'),
+  whatsapp:     z.string().trim()
+    .refine(v => /^\+[1-9]\d{7,14}$/.test(v.replace(/^00/, '+').replace(/[\s().-]/g, '')), 'WhatsApp con código de país (ej. +56 9 1234 5678)'),
   email:        z.string().email('Email inválido'),
   password:     z.string()
     .min(8, 'Mínimo 8 caracteres')
@@ -164,7 +168,7 @@ function BrandForm({ onBack }: { onBack: () => void }) {
   // mismo contrato, misma validación de contraseña, mismo manejo de
   // email_sent:false, mismo "no navegar al portal", mismo signOut de sesión
   // previa antes de crear la cuenta nueva.
-  async function onSubmit({ brand_name, contact_name, referred_by, email, password }: BrandValues) {
+  async function onSubmit({ brand_name, contact_name, instagram, whatsapp, referred_by, email, password }: BrandValues) {
     setLoading(true); setError(null)
 
     const supabase = createBrowserClient()
@@ -179,6 +183,8 @@ function BrandForm({ onBack }: { onBack: () => void }) {
         body: JSON.stringify({
           brand_name,
           contact_name,
+          instagram,
+          whatsapp,
           email,
           password,
           referred_by_instagram: referred_by || null,
@@ -232,6 +238,16 @@ function BrandForm({ onBack }: { onBack: () => void }) {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre de contacto</label>
           <input {...register('contact_name')} autoComplete="name" className="input-base w-full" placeholder="Ana García" />
           {errors.contact_name && <p className="text-xs text-red-500 mt-1">{errors.contact_name.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Instagram de la empresa</label>
+          <input {...register('instagram')} className="input-base w-full" placeholder="@mimarca" />
+          {errors.instagram && <p className="text-xs text-red-500 mt-1">{errors.instagram.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp</label>
+          <input {...register('whatsapp')} type="tel" autoComplete="tel" className="input-base w-full" placeholder="+56 9 1234 5678" />
+          {errors.whatsapp && <p className="text-xs text-red-500 mt-1">{errors.whatsapp.message}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>

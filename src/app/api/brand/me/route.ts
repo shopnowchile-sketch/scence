@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandPlanAccess } from '@/lib/plan-limits'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
+import { normalizeWhatsappPhone } from '@/lib/brands/contact'
 
 const BRAND_FIELDS = `
   id, name, logo_url, logo_path, website, instagram, industry, rut,
@@ -84,7 +85,7 @@ export async function PATCH(request: Request) {
   // (brand)/layout.tsx, que redirige a /brand-settings/organization si falta.
   const { data: existingBrand } = await admin
     .from('brands')
-    .select('instagram')
+    .select('instagram, contact_phone')
     .eq('id', access.brandId)
     .single()
   const finalInstagram = 'instagram' in body
@@ -92,6 +93,20 @@ export async function PATCH(request: Request) {
     : String(existingBrand?.instagram ?? '').trim()
   if (!finalInstagram) {
     return NextResponse.json({ error: 'Instagram es obligatorio para usar el portal de marca' }, { status: 400 })
+  }
+
+  // WhatsApp obligatorio (brands.contact_phone). Mismo criterio: se valida el
+  // estado FINAL, así una marca existente sin teléfono puede editar otros
+  // datos solo si lo completa, y nadie puede vaciarlo.
+  const finalWhatsapp = 'contact_phone' in body
+    ? contact_phone
+    : existingBrand?.contact_phone
+  const normalizedWhatsapp = normalizeWhatsappPhone(finalWhatsapp)
+  if (!normalizedWhatsapp) {
+    return NextResponse.json(
+      { error: 'WhatsApp es obligatorio, con código de país (ej. +56 9 1234 5678)' },
+      { status: 400 },
+    )
   }
 
   const requiredLegalFields = [
@@ -116,7 +131,7 @@ export async function PATCH(request: Request) {
       rut:              rut              || null,
       contact_name:     contact_name     || null,
       contact_email:    contact_email    || null,
-      contact_phone:    contact_phone    || null,
+      contact_phone:    normalizedWhatsapp,
       address_street:   address_street   || null,
       address_number:   address_number   || null,
       address_city:     address_city     || null,

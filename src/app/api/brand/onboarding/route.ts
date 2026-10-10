@@ -24,14 +24,14 @@ export async function GET() {
 
   const admin = createAdminClient()
   const [{ data: brand }, { data: profile }, { data: documents }, { data: campaigns }] = await Promise.all([
-    admin.from('brands').select('rut, instagram, contact_name, contact_email, address_street, address_city, address_region, address_country, address_place_id').eq('id', access.brandId).single(),
+    admin.from('brands').select('rut, instagram, contact_phone, contact_name, contact_email, address_street, address_city, address_region, address_country, address_place_id').eq('id', access.brandId).single(),
     admin.from('profiles').select('metadata').eq('id', user.id).single(),
     admin.from('brand_documents').select('status, document_type').eq('brand_id', access.brandId).eq('document_type', 'nda'),
     admin.from('campaigns').select('id').eq('brand_id', access.brandId).order('created_at', { ascending: true }).limit(1),
   ])
 
   const organizationComplete = Boolean(
-    brand?.instagram?.trim() && brand?.contact_name?.trim() && brand?.contact_email?.trim() &&
+    brand?.instagram?.trim() && brand?.contact_phone?.trim() && brand?.contact_name?.trim() && brand?.contact_email?.trim() &&
     brand?.rut?.trim() && brand?.address_street?.trim() && brand?.address_city?.trim() &&
     brand?.address_region?.trim() && brand?.address_country?.trim() && brand?.address_place_id?.trim(),
   )

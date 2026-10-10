@@ -17,6 +17,7 @@ import {
 import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
+import { loadCampaignLocations, lockCanonicalLocationMetadata } from '@/lib/campaign-locations'
 
 type Params = { params: { id: string } }
 
@@ -108,6 +109,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ...data,
       campaign_influencers: campaignInfluencersWithPlan,
       address: typeof metadata.address === 'string' ? metadata.address : null,
+      locations: await loadCampaignLocations(admin, params.id).catch(() => []),
       // Misma agenda que el detalle admin: una campaña de varios días tiene
       // múltiples bookings de campaña, no un rango sintético.
       event_booking: eventBookings?.[0] ?? null,
@@ -342,6 +344,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...existingMetadata,
       address: normalizedAddress,
     }
+  }
+
+  // La dirección canónica (campaign_locations) no se pisa con datos obsoletos del cliente.
+  if (updates.metadata) {
+    updates.metadata = lockCanonicalLocationMetadata(campaignBase.metadata, updates.metadata as Record<string, unknown>)
   }
 
   if (Object.keys(updates).length === 0) {

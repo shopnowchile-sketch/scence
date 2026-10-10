@@ -13,6 +13,8 @@ import {
 import { cn } from '@/lib/utils'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
 import { DeliverableTemplateBuilder, DELIVERABLE_TYPES, CAMPAIGN_DELIVERABLE_DEFAULTS } from '@/components/campaigns/DeliverableTemplateBuilder'
+import { CampaignLocationsEditor } from '@/components/locations/CampaignLocationsEditor'
+import { savePendingCampaignLocations, type PendingCampaignLocation } from '@/hooks/useCampaignLocations'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -72,8 +74,6 @@ const schema = z.object({
   brand_id: z.string().optional(),
   visibility: z.enum(['private', 'open']).default('open'),
   access_mode: z.enum(['public', 'private_pro', 'invitation']).default('public'),
-  address: z.string().max(300).optional(),
-  commune: z.string().max(120).optional(), region: z.string().max(120).optional(), country: z.string().max(120).default('Chile'),
   whatsapp_group_url: z.string().optional(), application_questions: z.array(z.string()).optional(),
   application_deadline: z.string().optional(), max_influencers: z.number().int().min(1).optional(),
 })
@@ -260,16 +260,16 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, eventDays, setEventDays, venueName, setVenueName, setRemovedEventBookingIds, portal = 'admin', campaignType }: StepProps & {
+function Step1({ register, control, errors, eventDays, setEventDays, campaignId, pendingLocations, setPendingLocations, setRemovedEventBookingIds, portal = 'admin', campaignType }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
   setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>>
-  venueName: string
-  setVenueName: (value: string) => void
-  arrivalInstructions: string
-  setArrivalInstructions: (value: string) => void
+  campaignId: string | null
+  pendingLocations: PendingCampaignLocation[]
+  setPendingLocations: (value: PendingCampaignLocation[]) => void
   setRemovedEventBookingIds: React.Dispatch<React.SetStateAction<string[]>>
   portal?: 'admin' | 'brand'
 }) {
+  const brandId = useWatch({ control, name: 'brand_id' })
   const addDay = () => setEventDays(days => [...days, { starts_at: '', ends_at: '' }])
   const updateDay = (index: number, key: 'starts_at' | 'ends_at', value: string) =>
     setEventDays(days => days.map((day, i) => i === index ? { ...day, [key]: value } : day))
@@ -296,17 +296,13 @@ function Step1({ register, control, errors, eventDays, setEventDays, venueName, 
           <span className="text-[11px] text-gray-400 shrink-0">Información del evento</span>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del lugar <span className="font-normal text-gray-400">(visible al aceptar)</span></label>
-          <input value={venueName} onChange={e => setVenueName(e.target.value)} className="input-base w-full !py-2" placeholder="Ej. Centro Parque" />
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Calle y número <span className="font-normal text-gray-400">(al aceptar)</span></label><input {...register('address')} className="input-base w-full !py-2" placeholder="Av. Presidente Riesco 5335" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Comuna <span className="font-normal text-gray-400">(visible al postular)</span></label><input {...register('commune')} className="input-base w-full !py-2" placeholder="Las Condes" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Región <span className="font-normal text-gray-400">(no visible)</span></label><input {...register('region')} className="input-base w-full !py-2" placeholder="Metropolitana" /></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">País <span className="font-normal text-gray-400">(al postular)</span></label><input {...register('country')} className="input-base w-full !py-2" placeholder="Chile" /></div>
-        </div>
+        <CampaignLocationsEditor
+          campaignId={campaignId}
+          portal={portal}
+          brandId={portal === 'admin' ? (brandId || null) : null}
+          pending={pendingLocations}
+          onPendingChange={setPendingLocations}
+        />
 
         <div className="border-t border-gray-200 pt-3">
           <div className="flex items-center justify-between gap-3 mb-2">
@@ -419,8 +415,7 @@ export function CampaignForm({
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
   const [eventDays, setEventDays] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([{ starts_at: '', ends_at: '' }])
   const [removedEventBookingIds, setRemovedEventBookingIds] = useState<string[]>([])
-  const [venueName, setVenueName] = useState('')
-  const [arrivalInstructions, setArrivalInstructions] = useState('')
+  const [pendingLocations, setPendingLocations] = useState<PendingCampaignLocation[]>([])
 
   const { register, control, handleSubmit, getValues, setValue, trigger, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -430,7 +425,7 @@ export function CampaignForm({
       approval_required: true,
       platforms: [],
       hashtags: [], social_tags: ['@influencers.snc'], tags: [], deliverable_templates: [], campaign_benefits: [],
-      brand_id: '', visibility: 'open', access_mode: 'public', address: '', commune: '', region: '', country: 'Chile', whatsapp_group_url: '', application_questions: [],
+      brand_id: '', visibility: 'open', access_mode: 'public', whatsapp_group_url: '', application_questions: [],
       application_deadline: '', max_influencers: undefined, event_date: '', approval_submission_url: '', reference_url: '',
       brief_url: '', collaborator_ids: [],
     },
@@ -440,7 +435,7 @@ export function CampaignForm({
   const campaignType = useWatch({ control, name: 'type' })
   // A diferencia del autosave anterior (solo al avanzar), esta firma observa
   // todas las ediciones del borrador, incluida la guía de contenido.
-  const autosaveSignature = JSON.stringify({ form: useWatch({ control }), eventDays, venueName, arrivalInstructions })
+  const autosaveSignature = JSON.stringify({ form: useWatch({ control }), eventDays, pendingLocations })
 
   useEffect(() => {
     if (portal !== 'brand') return
@@ -476,8 +471,6 @@ export function CampaignForm({
       commission_rate: data.type === 'commission' ? (data.commission_rate ?? null) : null,
       brand_id: data.brand_id || null,
       visibility: data.access_mode === 'public' ? 'open' : 'private',
-      
-      address: data.address?.trim() || null,
       application_questions: data.application_questions ?? [],
       brief_url: data.brief_url || null,
       metadata: {
@@ -485,10 +478,6 @@ export function CampaignForm({
         reference_url: reference_url || null,
         approval_submission_url: approval_submission_url || null,
         whatsapp_group_url: data.whatsapp_group_url?.trim() || null,
-        venue_name: venueName.trim() || null,
-        commune: data.commune?.trim() || null,
-        region: data.region?.trim() || null,
-        country: data.country?.trim() || 'Chile',
         access_mode: access_mode || 'public',
       },
       application_deadline: data.visibility === 'open' && data.application_deadline
@@ -498,9 +487,17 @@ export function CampaignForm({
     }
   }
 
+  // Las direcciones elegidas antes de que existiera la campaña se asocian apenas se crea.
+  // Va ANTES de syncEventBookings: así los bookings nacen con la dirección principal.
+  async function flushPendingLocations(savedCampaignId: string) {
+    if (!pendingLocations.length) return
+    const failed = await savePendingCampaignLocations(savedCampaignId, pendingLocations)
+    setPendingLocations(failed)
+    if (failed.length) toast.error(`No se pudo guardar ${failed.length === 1 ? 'una dirección' : `${failed.length} direcciones`}. Revísalas en el paso 1.`)
+  }
+
   async function syncEventBookings(savedCampaignId: string, values: FormValues) {
     if (values.type !== 'event_appearance') return
-    const address = values.address?.trim() || null
     const completeDays = eventDays.filter(day => day.starts_at && day.ends_at)
     const incomplete = eventDays.some(day => Boolean(day.starts_at) !== Boolean(day.ends_at))
     if (incomplete) throw new Error('Completa inicio y término de cada día del evento')
@@ -516,7 +513,6 @@ export function CampaignForm({
       if (!day.starts_at || !day.ends_at) continue
       const payload = {
         title: values.name.trim(), description: values.description ?? '',
-        location: address, location_details: { venue_name: venueName.trim() || null, commune: values.commune?.trim() || null, region: values.region?.trim() || null, country: values.country?.trim() || 'Chile', instructions: arrivalInstructions.trim() || null, address_hidden: Boolean(address) },
         starts_at: new Date(day.starts_at).toISOString(), ends_at: new Date(day.ends_at).toISOString(), timezone: 'America/Santiago',
       }
       const response = await fetch('/api/bookings', {
@@ -548,6 +544,7 @@ export function CampaignForm({
         if (res.ok) {
           const { data: campaign } = await res.json()
           setCampaignId(campaign.id)
+          await flushPendingLocations(campaign.id)
           await syncEventBookings(campaign.id, getValues())
           setDraftSavedAt(new Date())
         }
@@ -633,6 +630,7 @@ export function CampaignForm({
       const { data: campaign } = await res.json()
       const savedCampaignId = campaign?.id ?? campaignId
       if (!savedCampaignId) throw new Error('No se pudo identificar la campaña creada')
+      await flushPendingLocations(savedCampaignId)
       await syncEventBookings(savedCampaignId, data)
 
       // La marca sigue trabajando sobre un borrador durante el autosave, pero
@@ -661,7 +659,7 @@ export function CampaignForm({
   }
 
   // La creación ahora solo valida los campos visibles y esenciales.
-  const STEP_BY_FIELD: Record<string, number> = { name: 1, description: 1, brand_id: 1, start_date: 1, address: 1 }
+  const STEP_BY_FIELD: Record<string, number> = { name: 1, description: 1, brand_id: 1, start_date: 1 }
 
   function findFirstError(node: unknown, path: string[] = []): { path: string[]; message?: string } | null {
     if (!node || typeof node !== 'object') return null
@@ -699,7 +697,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-3">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} venueName={venueName} setVenueName={setVenueName} arrivalInstructions={arrivalInstructions} setArrivalInstructions={setArrivalInstructions} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} campaignId={campaignId} pendingLocations={pendingLocations} setPendingLocations={setPendingLocations} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
         </div>
 
         {/* Navigation */}

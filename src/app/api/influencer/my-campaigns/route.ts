@@ -1,3 +1,4 @@
+import { loadCampaignLocations, locationsForInfluencer, metadataForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
@@ -164,8 +165,11 @@ export async function GET() {
   // Lo mismo campaigns.metadata (dirección, WhatsApp, instrucciones, links):
   // antes de aceptar solo viajan las claves públicas (publicCampaignMetadata).
   const assignedWithAllowedBrands = visibleAssignedFiltered.map((row: Record<string, unknown>) => {
-    if (row.application_status === 'accepted') return row
     const campaign = row.campaign as Record<string, unknown> | null
+    // Aceptada: ve lo operativo (dirección vigente incluida), nunca la copia histórica interna.
+    if (row.application_status === 'accepted') {
+      return campaign ? { ...row, campaign: { ...campaign, metadata: metadataForInfluencer(campaign.metadata) } } : row
+    }
     return {
       ...row,
       campaign: campaign
@@ -260,7 +264,7 @@ export async function GET() {
       if (accepted) {
         // La dirección permite a la influencer decidir si puede asistir. Brief y
         // materiales privados continúan protegidos por el estado de aceptación.
-        row.event_booking = booking
+        row.event_booking = { ...booking, location_details: stripLegacyLocation(booking.location_details) }
         continue
       }
       // Postulación pendiente o rechazada: fecha y hora sí (son lo que permite
@@ -286,6 +290,20 @@ export async function GET() {
         },
         status: booking.status ?? null,
       }
+    }
+  }
+
+  // Direcciones canónicas de la campaña (campaign_locations), redactadas EN EL SERVIDOR
+  // según la participación: sin aceptar solo nombre y comuna. Campañas históricas
+  // (sin direcciones canónicas) no reciben `locations` y siguen con el booking.
+  if (campaignIds.length > 0) {
+    const { data: linked } = await admin.from('campaign_locations').select('campaign_id').in('campaign_id', campaignIds)
+    const withLocations = new Set((linked ?? []).map(r => r.campaign_id as string))
+    for (const row of merged as Array<Record<string, unknown>>) {
+      const campaignId = (row.campaign as Record<string, unknown> | null)?.id as string | undefined
+      if (!campaignId || !withLocations.has(campaignId)) continue
+      const accepted = row.application_status === 'accepted' || row._self_created === true
+      row.locations = locationsForInfluencer(await loadCampaignLocations(admin, campaignId).catch(() => []), accepted)
     }
   }
 

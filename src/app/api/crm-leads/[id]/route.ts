@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
 import { isCrmAdmin } from '@/lib/crm-auth'
+import { shouldHandOffToBrand, handoffStatusLabel } from '@/lib/crm-brand-handoff'
 
 type Params = { params: { id: string } }
 
@@ -171,24 +172,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  // ── Integración CRM -> Brands ─────────────────────────────────────────────
-  // Al convertir un lead (qualification_status = 'converted') se crea
-  // automáticamente la marca en `brands` con los campos mapeados, y se deja
-  // el vínculo en `crm_leads.converted_brand_id` — columna que ya existía
-  // desde la migración original (20260703000000_crm_leads.sql) pero nunca se
-  // había usado. Idempotente: si el lead ya tiene converted_brand_id (porque
-  // ya se convirtió antes), NO crea una segunda marca aunque se repita el
-  // PATCH — así que reintentar tras un error es seguro.
+  // ── Integración CRM -> Marcas ─────────────────────────────────────────────
+  // Cuando el lead pasa a "Interesada" (o a un estado posterior sin marca todavía) se crea la marca en
+  // `brands` y se deja el vínculo en `crm_leads.converted_brand_id`; desde ahí se gestiona en Marcas.
+  // Idempotente: si el lead ya tiene converted_brand_id NO se crea otra marca aunque se repita el PATCH.
+  // Si ya existe una marca con el mismo email de contacto, se vincula esa en vez de duplicarla.
   let convertedBrandId: string | null = data.converted_brand_id ?? null
   let brandCreated = false
 
-  if (body.qualification_status === 'converted' && !data.converted_brand_id) {
+  if (shouldHandOffToBrand(body.qualification_status, data.converted_brand_id)) {
+    const statusLabel = handoffStatusLabel(body.qualification_status)
     const brandName = data.company_name || data.contact_name || data.email || data.instagram
 
     if (!brandName) {
       return NextResponse.json({
         data,
-        error: 'Estado actualizado a "Convertido", pero no se pudo crear la marca: el lead no tiene empresa, contacto, email ni Instagram para usar como nombre.',
+        error: `Estado actualizado a "${statusLabel}", pero no se pudo crear la marca: el lead no tiene empresa, contacto, email ni Instagram para usar como nombre.`,
       }, { status: 422 })
     }
 
@@ -196,19 +195,39 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!orgId) {
       return NextResponse.json({
         data,
-        error: 'Estado actualizado a "Convertido", pero no se encontró organización para crear la marca.',
+        error: `Estado actualizado a "${statusLabel}", pero no se encontró organización para crear la marca.`,
       }, { status: 400 })
+    }
+
+    // ¿Ya existe una marca con ese email de contacto? Se vincula en vez de duplicar.
+    if (data.email) {
+      const { data: existingBrand } = await admin
+        .from('brands')
+        .select('id')
+        .ilike('contact_email', String(data.email))
+        .limit(1)
+        .maybeSingle()
+      if (existingBrand) {
+        await admin.from('crm_leads').update({ converted_brand_id: existingBrand.id }).eq('id', params.id)
+        await admin.from('crm_lead_activities').insert({
+          lead_id: params.id,
+          action_type: 'note',
+          description: `El lead se vinculó a la marca existente con el mismo email (brand ${existingBrand.id}); no se creó otra.`,
+          created_by: user.id,
+        })
+        return NextResponse.json({ data: { ...data, converted_brand_id: existingBrand.id }, brand_created: false, brand_linked: true })
+      }
     }
 
     const noteParts = [
       data.qualification_notes ? String(data.qualification_notes).trim() : null,
-      `Convertido automáticamente desde el CRM (lead ${data.id}, fuente: ${data.source ?? 'desconocida'}).`,
+      `Creada automáticamente desde el CRM al pasar a "${statusLabel}" (lead ${data.id}, fuente: ${data.source ?? 'desconocida'}).`,
     ].filter(Boolean)
 
     // La marca convertida recibe su propia organización (nunca la del admin).
     const brandOrgId = await provisionOrgForBrand(brandName)
     if (!brandOrgId) {
-      return NextResponse.json({ data, error: 'Estado actualizado a "Convertido", pero no se pudo crear la organización de la marca.' }, { status: 500 })
+      return NextResponse.json({ data, error: `Estado actualizado a "${statusLabel}", pero no se pudo crear la organización de la marca.` }, { status: 500 })
     }
 
     const { data: brand, error: brandError } = await admin
@@ -235,7 +254,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       console.error('[PATCH /api/crm-leads/[id]] error creando marca desde lead convertido', brandError)
       return NextResponse.json({
         data,
-        error: `Estado actualizado a "Convertido", pero no se pudo crear la marca: ${brandError.message}`,
+        error: `Estado actualizado a "${statusLabel}", pero no se pudo crear la marca: ${brandError.message}`,
       }, { status: 500 })
     }
 
@@ -247,7 +266,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     await admin.from('crm_lead_activities').insert({
       lead_id: params.id,
       action_type: 'note',
-      description: `Marca creada automáticamente en SCENCE al convertir el lead (brand ${convertedBrandId}).`,
+      description: `Marca creada automáticamente en SCENCE al pasar el lead a "${statusLabel}" (brand ${convertedBrandId}). Se gestiona desde Marcas.`,
       created_by: user.id,
     })
   }

@@ -60,10 +60,56 @@ function applyContactDataFilter(query: any, contactData: string) {
   return query
 }
 
+// Máximo de leads que se pueden seleccionar de una vez (la base completa hoy ronda los 21.000).
+const MAX_SELECTABLE_IDS = 50000
+
 function chunksOf<T>(values: T[], size: number) {
   const chunks: T[][] = []
   for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size))
   return chunks
+}
+
+// Caché en memoria de la instancia (el CRM es de uso interno y los datos que pesan —eventos de email,
+// usuarios de Auth, catálogos— cambian despacio). Evita releer ~100.000 eventos y todos los usuarios
+// en cada cambio de filtro o de página.
+const memoCache = new Map<string, { at: number; value: unknown }>()
+async function memo<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const hit = memoCache.get(key)
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T
+  const value = await load()
+  memoCache.set(key, { at: Date.now(), value })
+  return value
+}
+
+const emptyEventSets = (): EmailEventSets => ({
+  sent: new Set<string>(), delivered: new Set<string>(), opened: new Set<string>(),
+  clicked: new Set<string>(), failed: new Set<string>(), bounced: new Set<string>(),
+})
+
+async function loadEmailEventSets(admin: ReturnType<typeof createAdminClient>): Promise<EmailEventSets> {
+  const sets = emptyEventSets()
+  const PAGE = 1000
+  let from = 0
+  for (;;) {
+    const { data: rows } = await admin
+      .from('crm_email_events')
+      .select('lead_id, event_type')
+      .not('lead_id', 'is', null)
+      .range(from, from + PAGE - 1)
+    if (!rows || rows.length === 0) break
+    for (const row of rows as Array<{ lead_id: string | null; event_type: string | null }>) {
+      if (!row.lead_id || !row.event_type) continue
+      if (row.event_type === 'email.sent') sets.sent.add(row.lead_id)
+      if (row.event_type === 'email.delivered') sets.delivered.add(row.lead_id)
+      if (row.event_type === 'email.opened') sets.opened.add(row.lead_id)
+      if (row.event_type === 'email.clicked') sets.clicked.add(row.lead_id)
+      if (row.event_type === 'email.failed') sets.failed.add(row.lead_id)
+      if (row.event_type === 'email.bounced') sets.bounced.add(row.lead_id)
+    }
+    if (rows.length < PAGE) break
+    from += PAGE
+  }
+  return sets
 }
 
 // ── GET /api/crm-leads — lista paginada con filtros ───────────────────────────
@@ -91,42 +137,13 @@ export async function GET(request: NextRequest) {
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
-  const emailEventSets: EmailEventSets = {
-    sent: new Set<string>(),
-    delivered: new Set<string>(),
-    opened: new Set<string>(),
-    clicked: new Set<string>(),
-    failed: new Set<string>(),
-    bounced: new Set<string>(),
-  }
-
-  {
-    const PAGE = 1000
-    let from = 0
-
-    for (;;) {
-      const { data: rows } = await admin
-        .from('crm_email_events')
-        .select('lead_id, event_type')
-        .not('lead_id', 'is', null)
-        .range(from, from + PAGE - 1)
-
-      if (!rows || rows.length === 0) break
-
-      for (const row of rows as Array<{ lead_id: string | null; event_type: string | null }>) {
-        if (!row.lead_id || !row.event_type) continue
-        if (row.event_type === 'email.sent') emailEventSets.sent.add(row.lead_id)
-        if (row.event_type === 'email.delivered') emailEventSets.delivered.add(row.lead_id)
-        if (row.event_type === 'email.opened') emailEventSets.opened.add(row.lead_id)
-        if (row.event_type === 'email.clicked') emailEventSets.clicked.add(row.lead_id)
-        if (row.event_type === 'email.failed') emailEventSets.failed.add(row.lead_id)
-        if (row.event_type === 'email.bounced') emailEventSets.bounced.add(row.lead_id)
-      }
-
-      if (rows.length < PAGE) break
-      from += PAGE
-    }
-  }
+  // Los eventos de email solo se leen cuando hacen falta: para los contadores (`meta=1`) o para filtrar
+  // por interacción (enviados, abrió, clic…). Listar, paginar o filtrar por base/comuna no los toca.
+  const wantMeta = searchParams.get('meta') === '1' && !idsOnly
+  const needsEvents = emailStatus in EMAIL_STATUS_EVENT_TYPES
+  const emailEventSets: EmailEventSets = wantMeta || needsEvents
+    ? await memo('crm-email-events', 60_000, () => loadEmailEventSets(admin))
+    : emptyEventSets()
 
   // ── ids_only: trae TODOS los ids que cumplen el filtro (no solo la página
   // actual) — usado por "Seleccionar todos los que cumplen el filtro" en el
@@ -162,16 +179,18 @@ export async function GET(request: NextRequest) {
         }
         if (!rows || rows.length === 0) break
         for (const r of rows as Array<{ id: string }>) allIds.add(r.id)
-        if (rows.length < PAGE || allIds.size >= 20000) break
+        if (rows.length < PAGE || allIds.size >= MAX_SELECTABLE_IDS) break
         from += PAGE
       }
-      if (allIds.size >= 20000) break
+      if (allIds.size >= MAX_SELECTABLE_IDS) break
     }
 
-    return NextResponse.json({ ids: Array.from(allIds).slice(0, 20000) })
+    const ids = Array.from(allIds).slice(0, MAX_SELECTABLE_IDS)
+    // `truncated`: había más que el máximo. La pantalla lo avisa en vez de aparentar que seleccionó todo.
+    return NextResponse.json({ ids, truncated: allIds.size > MAX_SELECTABLE_IDS || ids.length >= MAX_SELECTABLE_IDS })
   }
 
-  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at'
+  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at, converted_brand_id'
   const buildLeadsQuery = (eventLeadIds?: string[], withCount = false) => {
     let q: any = withCount
       ? admin.from('crm_leads').select(leadFields, { count: 'exact' })
@@ -217,7 +236,7 @@ export async function GET(request: NextRequest) {
     count = result.count ?? 0
   }
 
-  const authMap = await buildAuthEmailMap(admin)
+  const authMap = await memo('crm-auth-emails', 5 * 60_000, () => buildAuthEmailMap(admin))
 
   const leadIds = (data ?? []).map((lead: { id: string }) => lead.id)
   const openedMap = new Map<string, string | null>()
@@ -253,36 +272,30 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  // Dimensiones de catálogo visibles en el toolbar: comuna y base de datos
-  // (source). Se paginan para no perder valores por el límite de filas de
-  // PostgREST. Una sola pasada trae ambas columnas.
-  const communesSet = new Set<string>()
-  const sourcesSet = new Set<string>()
-  {
-    const PAGE = 1000
-    let from = 0
-    for (;;) {
-      const { data: filterRows } = await admin
-        .from('crm_leads')
-        .select('commune, source')
-        .range(from, from + PAGE - 1)
+  // Dimensiones de catálogo (comuna y base de datos) y contadores: solo se calculan con `meta=1`
+  // (carga inicial y tras enviar/importar/eliminar). Se paginan para no perder valores por el límite
+  // de filas de PostgREST y se guardan unos minutos.
+  const meta = wantMeta
+    ? await memo('crm-catalogs', 5 * 60_000, async () => {
+        const communesSet = new Set<string>()
+        const sourcesSet = new Set<string>()
+        const PAGE = 1000
+        let from = 0
+        for (;;) {
+          const { data: filterRows } = await admin.from('crm_leads').select('commune, source').range(from, from + PAGE - 1)
+          if (!filterRows || filterRows.length === 0) break
+          for (const r of filterRows) {
+            if (r.commune) communesSet.add(r.commune)
+            if (r.source) sourcesSet.add(r.source)
+          }
+          if (filterRows.length < PAGE) break
+          from += PAGE
+        }
+        return { communes: Array.from(communesSet).sort(), sources: Array.from(sourcesSet).sort() }
+      })
+    : null
 
-      if (!filterRows || filterRows.length === 0) break
-
-      for (const r of filterRows) {
-        if (r.commune) communesSet.add(r.commune)
-        if (r.source) sourcesSet.add(r.source)
-      }
-
-      if (filterRows.length < PAGE) break
-      from += PAGE
-    }
-  }
-
-  const communes = Array.from(communesSet).sort()
-  const sources = Array.from(sourcesSet).sort()
-
-  const stats = {
+  const stats = wantMeta ? {
     sent: emailEventSets.sent.size,
     delivered: emailEventSets.delivered.size,
     opened: emailEventSets.opened.size,
@@ -290,9 +303,9 @@ export async function GET(request: NextRequest) {
     failed: emailEventSets.failed.size,
     bounced: emailEventSets.bounced.size,
     openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
-  }
+  } : undefined
 
-  return NextResponse.json({ data: enriched, total: count, page, limit, communes, sources, stats })
+  return NextResponse.json({ data: enriched, total: count, page, limit, ...(meta ? { communes: meta.communes, sources: meta.sources } : {}), ...(stats ? { stats } : {}) })
 }
 
 // ── POST /api/crm-leads — crear lead manual ──────────────────────────────────

@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3 } from 'lucide-react'
+import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload, Trash2, Columns3, CheckCheck, FilterX } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
@@ -30,6 +30,7 @@ type Lead = {
   app_last_sign_in_at: string | null
   email_opened: boolean
   email_opened_at: string | null
+  converted_brand_id?: string | null
 }
 
 type LeadForm = {
@@ -147,9 +148,14 @@ export function CrmLeadsClient() {
     requestAnimationFrame(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
+  // Contadores y catálogos (comunas, bases) se piden solo la primera vez y tras cambios de datos:
+  // paginar o filtrar no los recalcula (en el servidor leen ~100.000 eventos).
+  const needsMeta = useRef(true)
+
   const load = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+    if (needsMeta.current) params.set('meta', '1')
     if (search) params.set('search', search)
     if (qualification) params.set('qualification', qualification)
     if (commune) params.set('commune', commune)
@@ -165,6 +171,7 @@ export function CrmLeadsClient() {
       if (j.stats) setStats(j.stats)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
       if (Array.isArray(j.sources)) setSources(j.sources)
+      if (j.stats) needsMeta.current = false
     } catch {
       toast.error('Error cargando leads')
     }
@@ -197,6 +204,7 @@ export function CrmLeadsClient() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudo crear el lead')
 
+      needsMeta.current = true
       toast.success('Lead creado')
       setShowAddModal(false)
       setForm(EMPTY_FORM)
@@ -210,6 +218,7 @@ export function CrmLeadsClient() {
   }
 
   const selectedCount = selectedIds.length
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const allMatchingSelected = total > 0 && selectedCount === total
 
   function toggleLead(id: string) {
@@ -231,7 +240,8 @@ export function CrmLeadsClient() {
       if (!r.ok) throw new Error(j.error ?? 'No se pudo seleccionar todos')
       const ids = Array.from(new Set<string>(j.ids ?? []))
       setSelectedIds(ids)
-      toast.success(`${ids.length} lead${ids.length === 1 ? '' : 's'} seleccionado${ids.length === 1 ? '' : 's'}`)
+      toast.success(`${ids.length.toLocaleString('es-CL')} lead${ids.length === 1 ? '' : 's'} seleccionado${ids.length === 1 ? '' : 's'}`)
+      if (j.truncated) toast.warning('Hay más leads que el máximo seleccionable de una vez. Filtra por base o por comuna para el resto.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo seleccionar todos')
     } finally {
@@ -277,6 +287,7 @@ export function CrmLeadsClient() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudieron enviar los emails')
 
+      needsMeta.current = true
       toast.success(`Envío en marcha: ${j.total} leads. Te llega un email cuando termine.`)
       setShowBulkSendModal(false)
       resetBulkTemplate()
@@ -305,6 +316,7 @@ export function CrmLeadsClient() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudieron eliminar los leads')
 
+      needsMeta.current = true
       toast.success(`Leads eliminados: ${j.deleted}`)
       setSelectedIds([])
       setDeleteConfirm('')
@@ -352,6 +364,7 @@ export function CrmLeadsClient() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudo importar')
 
+      needsMeta.current = true
       toast.success(`Importados: ${j.imported} · Duplicados: ${j.duplicates} · Inválidos: ${j.invalid}`)
       if (j.limited_to_500) toast.warning('Se importaron máximo 500 filas por seguridad')
 
@@ -383,7 +396,9 @@ export function CrmLeadsClient() {
         if (!j.data) load()
         return
       }
-      if (j.brand_created) toast.success('Convertido — marca creada en SCENCE ✓')
+      if (j.brand_created) toast.success('Marca creada en Marcas ✓ — gestiónala desde allí')
+      else if (j.brand_linked) toast.success('Vinculada a la marca que ya existía ✓')
+      if (j.data?.converted_brand_id) setLeads(prev => prev.map(l => l.id === id ? { ...l, converted_brand_id: j.data.converted_brand_id } : l))
     } catch {
       toast.error('No se pudo actualizar la calificación')
       load()
@@ -404,69 +419,40 @@ export function CrmLeadsClient() {
     setPage(1)
   }
 
+  const EMAIL_FILTERS: { value: string; label: string }[] = [
+    { value: '', label: 'Email: todos' },
+    { value: 'not_sent', label: 'Sin enviar' },
+    { value: 'sent', label: 'Enviados' },
+    { value: 'delivered', label: 'Entregados' },
+    { value: 'opened', label: 'Abrieron' },
+    { value: 'clicked', label: 'Hicieron clic' },
+    { value: 'failed_bounced', label: 'Fallidos / rebotados' },
+  ]
+  const selectCls = (active: boolean) => cn(
+    'h-8 rounded-lg border bg-white px-2 text-xs outline-none focus:border-violet-400',
+    active ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+  )
+  const iconBtn = 'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+  const statCard = (active: boolean) => cn(
+    'min-w-0 rounded-lg border px-3 py-1.5 text-left transition-colors',
+    active ? 'border-violet-300 bg-violet-50' : 'border-gray-200 bg-white hover:border-violet-300 hover:bg-violet-50/40'
+  )
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">CRM — Prospectos</h1>
-          <p className="text-sm text-gray-400">
-            {total.toLocaleString('es-CL')} empresas cargadas · calificar y contactar ·{' '}
+          <h1 className="text-lg font-bold text-gray-900">CRM — Prospectos</h1>
+          <p className="text-xs text-gray-400">
+            {total.toLocaleString('es-CL')} empresas · calificar y contactar ·{' '}
             <Link href="/admin-crm/envios" className="text-violet-600 font-semibold hover:underline">Envíos masivos</Link>
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 w-full">
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('sent')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Enviados</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.sent.toLocaleString('es-CL')}</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('delivered')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Entregados</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.delivered.toLocaleString('es-CL')}</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('opened')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Abiertos</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.opened.toLocaleString('es-CL')}</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('opened')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Tasa apertura</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.openRate}%</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('failed_bounced')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Fallidos/Rebotados</p>
-            <p className="text-2xl font-bold text-gray-900">{(stats.failed + stats.bounced).toLocaleString('es-CL')}</p>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowColumnsMenu(v => !v)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50"
-            >
+            <button type="button" onClick={() => setShowColumnsMenu(v => !v)} title="Columnas" aria-label="Columnas" className={iconBtn}>
               <Columns3 className="h-4 w-4" />
-              Columnas
             </button>
 
             {showColumnsMenu && (
@@ -501,211 +487,127 @@ export function CrmLeadsClient() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowImportModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50"
-          >
+          <button type="button" onClick={() => setShowImportModal(true)} title="Importar leads" aria-label="Importar leads" className={iconBtn}>
             <Upload className="h-4 w-4" />
-            Importar leads
           </button>
 
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700"
+            title="Agregar lead"
+            aria-label="Agregar lead"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white hover:bg-violet-700"
           >
             <Plus className="h-4 w-4" />
-            Agregar lead
           </button>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative min-w-[240px] flex-[1_1_280px] max-w-md">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {([
+          { label: 'Enviados', value: stats.sent.toLocaleString('es-CL'), status: 'sent' },
+          { label: 'Entregados', value: stats.delivered.toLocaleString('es-CL'), status: 'delivered' },
+          { label: 'Abiertos', value: stats.opened.toLocaleString('es-CL'), status: 'opened' },
+          { label: 'Fallidos / rebotados', value: (stats.failed + stats.bounced).toLocaleString('es-CL'), status: 'failed_bounced' },
+        ]).map(card => (
+          <button key={card.status} type="button" onClick={() => goToEmailStatus(emailStatus === card.status ? '' : card.status)} aria-pressed={emailStatus === card.status} className={statCard(emailStatus === card.status)}>
+            <p className="truncate text-[11px] text-gray-500">{card.label}</p>
+            <p className="text-lg font-bold leading-tight text-gray-900">{card.value}</p>
+          </button>
+        ))}
+        <div className="min-w-0 rounded-lg border border-gray-200 bg-white px-3 py-1.5">
+          <p className="truncate text-[11px] text-gray-500">Tasa de apertura</p>
+          <p className="text-lg font-bold leading-tight text-gray-900">{stats.openRate}%</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white p-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="relative min-w-[200px] flex-[1_1_240px] max-w-sm">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
             <input
               value={search}
               onChange={e => { setPage(1); setSearch(e.target.value) }}
-              placeholder="Buscar por empresa, contacto o email..."
-              className="h-9 w-full pl-8 pr-3 rounded-lg border border-gray-200 bg-white text-xs outline-none focus:border-violet-400"
+              placeholder="Buscar empresa, contacto, email o Instagram"
+              aria-label="Buscar"
+              className="h-8 w-full pl-8 pr-3 rounded-lg border border-gray-200 bg-white text-xs outline-none focus:border-violet-400"
             />
           </div>
 
-          <select
-            value={commune}
-            aria-label="Filtrar por comuna"
-            onChange={e => { setPage(1); setCommune(e.target.value) }}
-            className="h-9 min-w-[150px] rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
-          >
-            <option value="">Todas las comunas</option>
-            {communes.map(value => <option key={value} value={value}>{value}</option>)}
-          </select>
-
-          <select
-            value={source}
-            aria-label="Filtrar por base de datos"
-            onChange={e => { setPage(1); setSource(e.target.value) }}
-            className={cn(
-              'h-9 min-w-[170px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
-              source ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
-            )}
-          >
+          <select value={source} aria-label="Filtrar por base de datos" onChange={e => { setPage(1); setSource(e.target.value) }} className={cn(selectCls(Boolean(source)), 'min-w-[150px] max-w-[220px]')}>
             <option value="">Todas las bases</option>
             {sources.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
 
-          <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">
-            <button
-              type="button"
-              aria-pressed={!emailStatus}
-              onClick={() => { setPage(1); setEmailStatus('') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                !emailStatus ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Email: todos
-            </button>
-            <button
-              type="button"
-              aria-pressed={emailStatus === 'opened'}
-              onClick={() => { setPage(1); setEmailStatus('opened') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                emailStatus === 'opened' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Abrió
-            </button>
-            <button
-              type="button"
-              aria-pressed={emailStatus === 'clicked'}
-              onClick={() => { setPage(1); setEmailStatus('clicked') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                emailStatus === 'clicked' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Hizo clic
-            </button>
-            <button
-              type="button"
-              aria-pressed={emailStatus === 'not_sent'}
-              onClick={() => { setPage(1); setEmailStatus('not_sent') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                emailStatus === 'not_sent' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Sin enviar
-            </button>
-          </div>
+          <select value={commune} aria-label="Filtrar por comuna" onChange={e => { setPage(1); setCommune(e.target.value) }} className={cn(selectCls(Boolean(commune)), 'min-w-[130px] max-w-[180px]')}>
+            <option value="">Todas las comunas</option>
+            {communes.map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
 
-          <button
-            type="button"
-            aria-pressed={qualification === 'interested'}
-            onClick={() => { setPage(1); setQualification(qualification === 'interested' ? '' : 'interested') }}
-            className={cn(
-              'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
-              qualification === 'interested'
-                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-            )}
-          >
-            Interesadas
-          </button>
+          <select value={qualification} aria-label="Filtrar por calificación" onChange={e => { setPage(1); setQualification(e.target.value) }} className={selectCls(Boolean(qualification))}>
+            <option value="">Toda calificación</option>
+            {PIPELINE_STATUSES.map(k => <option key={k} value={k}>{STATUS_CONFIG[k].label}</option>)}
+          </select>
 
-          <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por disponibilidad de email">
-            {[
-              { value: '', label: 'Todos' },
-              { value: 'has_email', label: 'Con email' },
-              { value: 'missing_email', label: 'Sin email' },
-            ].map(option => (
-              <button
-                key={option.value || 'all'}
-                type="button"
-                aria-pressed={contactData === option.value}
-                onClick={() => { setPage(1); setContactData(option.value) }}
-                className={cn(
-                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                  contactData === option.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <select value={emailStatus} aria-label="Filtrar por interacción de email" onChange={e => { setPage(1); setEmailStatus(e.target.value) }} className={selectCls(Boolean(emailStatus))}>
+            {EMAIL_FILTERS.map(o => <option key={o.value || 'all'} value={o.value}>{o.label}</option>)}
+          </select>
+
+          <select value={contactData} aria-label="Filtrar por disponibilidad de email" onChange={e => { setPage(1); setContactData(e.target.value) }} className={selectCls(Boolean(contactData))}>
+            <option value="">Con y sin email</option>
+            <option value="has_email">Solo con email</option>
+            <option value="missing_email">Solo sin email</option>
+          </select>
 
           {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="h-9 px-2 text-xs font-semibold text-gray-500 hover:text-gray-800"
-            >
-              Limpiar
+            <button type="button" onClick={clearFilters} title="Limpiar filtros" aria-label="Limpiar filtros" className={iconBtn}>
+              <FilterX className="h-4 w-4" />
             </button>
           )}
 
           {total > 0 && (
             <button
               type="button"
-              onClick={selectAllMatching}
-              disabled={selectingAll || allMatchingSelected}
-              className="ml-auto h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700 disabled:bg-violet-100 disabled:text-violet-700"
+              onClick={() => { if (allMatchingSelected) setSelectedIds([]); else void selectAllMatching() }}
+              disabled={selectingAll}
+              title={allMatchingSelected ? 'Quitar la selección' : `Seleccionar los ${total.toLocaleString('es-CL')} que cumplen el filtro`}
+              aria-label={allMatchingSelected ? 'Quitar la selección' : `Seleccionar los ${total.toLocaleString('es-CL')} que cumplen el filtro`}
+              className={cn(
+                'ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold disabled:opacity-60',
+                allMatchingSelected ? 'bg-violet-100 text-violet-700' : 'bg-violet-600 text-white hover:bg-violet-700'
+              )}
             >
-              {selectingAll
-                ? 'Seleccionando...'
-                : allMatchingSelected
-                  ? `Todas (${total}) seleccionadas`
-                  : `Seleccionar las ${total}`}
+              {selectingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+              {total.toLocaleString('es-CL')}
             </button>
           )}
         </div>
       </div>
 
       {selectedCount > 0 && (
-        <div className="bg-violet-50 border border-violet-100 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <p className="text-sm font-semibold text-violet-700">
-              {selectedCount} lead{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedIds([])}
-              className="px-3 py-2 rounded-xl border border-violet-200 bg-white text-violet-700 text-sm font-semibold hover:bg-violet-50"
-            >
-              Limpiar selección
+        <div className="bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm font-semibold text-violet-700">
+            {selectedCount.toLocaleString('es-CL')} lead{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => setSelectedIds([])} title="Limpiar selección" aria-label="Limpiar selección" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200 bg-white text-violet-700 hover:bg-violet-50">
+              <X className="h-4 w-4" />
             </button>
-            <button
-              type="button"
-              onClick={() => setShowBulkSendModal(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700"
-            >
+            <button type="button" onClick={() => setShowBulkSendModal(true)} title="Enviar email a la selección" aria-label="Enviar email a la selección" className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white hover:bg-violet-700">
               <Mail className="h-4 w-4" />
-              Enviar email
             </button>
-
-            <button
-              type="button"
-              onClick={() => setShowDeleteModal(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
-            >
+            <button type="button" onClick={() => setShowDeleteModal(true)} title="Eliminar la selección" aria-label="Eliminar la selección" className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white hover:bg-red-700">
               <Trash2 className="h-4 w-4" />
-              Eliminar seleccionadas
             </button>
           </div>
         </div>
       )}
 
       <div ref={tableRef} className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
-        <table className="w-full text-sm min-w-[900px]">
+        <table className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-gray-50 text-left text-xs text-gray-400">
-              <th className="px-4 py-3 font-semibold w-10">
+              <th className="px-3 py-2 font-semibold w-10">
                 <input
                   type="checkbox"
                   checked={allMatchingSelected}
@@ -719,17 +621,17 @@ export function CrmLeadsClient() {
                   className="h-4 w-4 rounded border-gray-300 text-violet-600"
                 />
               </th>
-              <th className="px-4 py-3 font-semibold">Empresa</th>
-              {isColumnVisible('contact') && <th className="px-4 py-3 font-semibold">Contacto</th>}
-              {isColumnVisible('instagram') && <th className="px-4 py-3 font-semibold">Instagram</th>}
-              {isColumnVisible('location') && <th className="px-4 py-3 font-semibold">Ubicación</th>}
-              {isColumnVisible('industry') && <th className="px-4 py-3 font-semibold">Rubro</th>}
-              {isColumnVisible('source') && <th className="px-4 py-3 font-semibold">Origen</th>}
-              {isColumnVisible('qualification') && <th className="px-4 py-3 font-semibold">Calificación</th>}
-              {isColumnVisible('last_email') && <th className="px-4 py-3 font-semibold">Último email</th>}
-              {isColumnVisible('email_opened') && <th className="px-4 py-3 font-semibold">Abrió email</th>}
-              {isColumnVisible('connected') && <th className="px-4 py-3 font-semibold">Conectado</th>}
-              {isColumnVisible('action') && <th className="px-4 py-3 font-semibold text-right">Acción</th>}
+              <th className="px-3 py-2 font-semibold">Empresa</th>
+              {isColumnVisible('contact') && <th className="px-3 py-2 font-semibold">Contacto</th>}
+              {isColumnVisible('instagram') && <th className="px-3 py-2 font-semibold">Instagram</th>}
+              {isColumnVisible('location') && <th className="px-3 py-2 font-semibold">Ubicación</th>}
+              {isColumnVisible('industry') && <th className="px-3 py-2 font-semibold">Rubro</th>}
+              {isColumnVisible('source') && <th className="px-3 py-2 font-semibold">Origen</th>}
+              {isColumnVisible('qualification') && <th className="px-3 py-2 font-semibold">Calificación</th>}
+              {isColumnVisible('last_email') && <th className="px-3 py-2 font-semibold">Último email</th>}
+              {isColumnVisible('email_opened') && <th className="px-3 py-2 font-semibold" title="Abrió el email"><Mail className="h-3.5 w-3.5" aria-label="Abrió el email" /></th>}
+              {isColumnVisible('connected') && <th className="px-3 py-2 font-semibold" title="Conectado a la app"><CheckCircle2 className="h-3.5 w-3.5" aria-label="Conectado a la app" /></th>}
+              {isColumnVisible('action') && <th className="px-3 py-2 font-semibold text-right"><span className="sr-only">Acción</span></th>}
             </tr>
           </thead>
           <tbody>
@@ -741,28 +643,28 @@ export function CrmLeadsClient() {
               const cfg = STATUS_CONFIG[lead.qualification_status] ?? STATUS_CONFIG.unqualified
               return (
                 <tr key={lead.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-1.5">
                     <input
                       type="checkbox"
-                      checked={selectedIds.includes(lead.id)}
+                      checked={selectedSet.has(lead.id)}
                       onChange={() => toggleLead(lead.id)}
                       className="h-4 w-4 rounded border-gray-300 text-violet-600"
                     />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-1.5">
                     <Link href={`/admin-crm/${lead.id}`} className="flex items-center gap-2 font-medium text-gray-900 hover:text-violet-600">
                       <Building2 className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
-                      <span className="truncate max-w-[200px]">{lead.company_name || '—'}</span>
+                      <span className="truncate max-w-[180px]">{lead.company_name || '—'}</span>
                     </Link>
                   </td>
 {isColumnVisible('contact') && (
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-3 py-1.5 text-gray-600">
                     <div className="truncate max-w-[180px]">{lead.email || '—'}</div>
                     {lead.contact_name && <div className="text-xs text-gray-400 truncate max-w-[180px]">{lead.contact_name}</div>}
                   </td>
                   )}
 {isColumnVisible('instagram') && (
-                  <td className="px-4 py-3 text-gray-600 text-xs">
+                  <td className="px-3 py-1.5 text-gray-600 text-xs">
                     {lead.instagram ? (
                       <a
                         href={`https://instagram.com/${lead.instagram.replace(/^@/, '')}`}
@@ -776,15 +678,15 @@ export function CrmLeadsClient() {
                     ) : '—'}
                   </td>
                   )}
-{isColumnVisible('location') && <td className="px-4 py-3 text-gray-500 text-xs">{lead.commune || '—'}</td>}
-{isColumnVisible('industry') && <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[160px]">{lead.industry || '—'}</td>}
+{isColumnVisible('location') && <td className="px-3 py-1.5 text-gray-500 text-xs">{lead.commune || '—'}</td>}
+{isColumnVisible('industry') && <td className="px-3 py-1.5 text-gray-500 text-xs truncate max-w-[160px]">{lead.industry || '—'}</td>}
 {isColumnVisible('source') && (
-                  <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[140px]" title={lead.source ?? undefined}>
+                  <td className="px-3 py-1.5 text-gray-500 text-xs truncate max-w-[140px]" title={lead.source ?? undefined}>
                     {lead.source || '—'}
                   </td>
                   )}
 {isColumnVisible('qualification') && (
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-1.5">
                     <select
                       value={lead.qualification_status}
                       onChange={e => updateStatus(lead.id, e.target.value as Lead['qualification_status'])}
@@ -797,39 +699,49 @@ export function CrmLeadsClient() {
                   </td>
                   )}
 {isColumnVisible('last_email') && (
-                  <td className="px-4 py-3 text-xs text-gray-400">
+                  <td className="px-3 py-1.5 text-xs text-gray-400">
                     {lead.contacted_at ? new Date(lead.contacted_at).toLocaleDateString('es-CL') : 'Nunca'}
                   </td>
                   )}
 
                   {isColumnVisible('email_opened') && (
-                  <td className="px-4 py-3 text-xs">
+                  <td className="px-3 py-1.5 text-xs">
                     {lead.email_opened ? (
                       <span className="inline-flex items-center gap-1 text-emerald-600" title={lead.email_opened_at ? `Abrió: ${formatDate(lead.email_opened_at, "d MMM yyyy HH:mm")}` : undefined}>
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Sí
+                        <CheckCircle2 className="h-4 w-4" aria-label="Sí" />
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-gray-300">
-                        <Circle className="h-3.5 w-3.5" /> No
+                      <span className="inline-flex items-center text-gray-300" title="No">
+                        <Circle className="h-4 w-4" aria-label="No" />
                       </span>
                     )}
                   </td>
                   )}
 {isColumnVisible('connected') && (
-                  <td className="px-4 py-3 text-xs">
+                  <td className="px-3 py-1.5 text-xs">
                     {lead.app_connected ? (
                       <span className="inline-flex items-center gap-1 text-emerald-600" title={lead.app_last_sign_in_at ? `Último ingreso: ${formatDate(lead.app_last_sign_in_at, "d MMM yyyy HH:mm")}` : undefined}>
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Sí
+                        <CheckCircle2 className="h-4 w-4" aria-label="Sí" />
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-gray-300">
-                        <Circle className="h-3.5 w-3.5" /> No
+                      <span className="inline-flex items-center text-gray-300" title="No">
+                        <Circle className="h-4 w-4" aria-label="No" />
                       </span>
                     )}
                   </td>
                   )}
 {isColumnVisible('action') && (
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-1.5 text-right">
+                    {lead.converted_brand_id && (
+                      <Link
+                        href={`/admin-brands/${lead.converted_brand_id}`}
+                        title="Gestionar en Marcas"
+                        aria-label="Gestionar en Marcas"
+                        className="mr-1.5 inline-flex items-center justify-center h-7 w-7 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                      >
+                        <Building2 className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
                     <Link
                       href={`/admin-crm/${lead.id}`}
                       title="Revisar y enviar email"

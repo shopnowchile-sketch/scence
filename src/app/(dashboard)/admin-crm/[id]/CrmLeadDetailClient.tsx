@@ -192,7 +192,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
         if (j.data) load()
         return
       }
-      toast.success(j.brand_created ? 'Convertido — marca creada en SCENCE ✓' : 'Calificación actualizada')
+      toast.success(j.brand_created ? 'Marca creada en Marcas ✓ — gestiónala desde allí' : j.brand_linked ? 'Vinculada a la marca que ya existía ✓' : 'Calificación actualizada')
       load()
     } catch {
       toast.error('No se pudo actualizar')

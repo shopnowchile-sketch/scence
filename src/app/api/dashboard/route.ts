@@ -20,7 +20,7 @@ export async function GET() {
   // If still no org (brand new user before first dashboard load), return zeros
   if (!orgId) {
     return NextResponse.json({
-      kpis: { active_campaigns: 0, total_influencers: 0, revenue_month: 0, payroll_month: 0, margin: 0, margin_pct: 0 },
+      kpis: { active_campaigns: 0, total_influencers: 0, active_influencers: 0, revenue_month: 0, payroll_month: 0, margin: 0, margin_pct: 0 },
       influencer_portal: { entered: 0, pending: 0 },
       pro_plan: { active: 0, roster: 0, attempts: 0, attempt_list: [] },
       live_influencers: [],
@@ -43,6 +43,7 @@ export async function GET() {
   const [
     campaignsRes,
     influencersCountRes,
+    activeInfluencersCountRes,
     influencersWithAccountRes,
     brandsCountRes,
     brandsEnteredCountRes,
@@ -60,10 +61,16 @@ export async function GET() {
       .eq('organization_id', orgId)
       .not('status', 'in', '("canceled","completed")'),
 
-    // Conteo exacto real (sin cap de fila) — usado para el KPI "Influencers en roster"
+    // Roster total: mantiene los cálculos de acceso pendiente y plan Pro.
     db.from('influencers')
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId),
+
+    // DASH-001: KPI operativo; excluye influencers inactivos.
+    db.from('influencers')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('is_active', true),
 
     // FIX (2026-07-13, pedido Pri): esto antes era un head-count de
     // "user_id IS NOT NULL" y se mostraba como "Han ingresado" — pero eso
@@ -158,6 +165,7 @@ export async function GET() {
 
   // Totales mediante COUNT, sin descargar las aproximadamente 1.700 filas.
   const totalInfluencers = influencersCountRes.count ?? 0
+  const activeInfluencers = activeInfluencersCountRes.count ?? 0
   const totalBrands = brandsCountRes.count ?? 0
   const brandsEntered = brandsEnteredCountRes.count ?? 0
 
@@ -329,6 +337,7 @@ export async function GET() {
     kpis: {
       active_campaigns:  campaignsRes.count ?? 0,
       total_influencers: totalInfluencers,
+      active_influencers: activeInfluencers,
       total_brands:      totalBrands,
       brands_entered:    brandsEntered,
       brands_pending:    Math.max(0, totalBrands - brandsEntered),

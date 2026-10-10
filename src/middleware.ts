@@ -92,7 +92,7 @@ export async function middleware(request: NextRequest) {
     '/admin-campaigns', '/admin-influencers', '/admin-analytics', '/admin-settings',
     '/admin-billing', '/admin-bookings', '/admin-brands', '/admin-payroll',
     '/admin-affiliates', '/admin-contracts', '/admin-events', '/admin-support',
-    '/admin-dash', '/admin-crm',
+    '/admin-dash', '/admin-crm', '/admin-requirements',
   ]
 
   // Rutas exclusivas del portal influencer

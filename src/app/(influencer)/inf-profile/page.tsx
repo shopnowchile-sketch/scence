@@ -457,9 +457,6 @@ export default function ProfilePage() {
                       {sp.followers > 0 && <p className="text-sm font-bold text-gray-900">{sp.followers.toLocaleString('es-CL')}</p>}
                       {sp.engagement_rate && <p className="text-xs text-gray-400">{sp.engagement_rate.toFixed(1)}% eng.</p>}
                       <InstagramSyncHint profile={sp} />
-                      {sp.platform === 'instagram' && sp.sync_status === 'not_found' && (
-                        <p className="text-[11px] text-gray-500 max-w-[220px]">Revisa tu @ o cambia tu cuenta a Creador (gratis) para que las marcas vean tus seguidores reales.</p>
-                      )}
                     </div>
                   </div>
                 ))}

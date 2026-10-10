@@ -354,7 +354,7 @@ Triage por prioridad (P1-P3), estado (Abierto/En progreso/Cerrado), remitente y 
 | Mi perfil | `profiles.*` | ✅ OK |
 | Organización | `organizations.*` | ✅ OK |
 | Usuarios | Reusa `TeamMembers` (ya construido en `organization`) | ✅ desbloqueado en v2.4 — estaba "soon" (bug B-02) aunque el componente ya existía, solo faltaba montarlo en `admin-settings/users` |
-| Locations | `public.locations` + `/api/locations` | Código de administración jerárquica presente en `master`; detalle actualizado en § AD-17. El estado desplegado en producción no se verificó en esta revisión. |
+| Locations | `public.locations` + `/api/locations` | Código de administración jerárquica presente en `master`; detalle actualizado en § AD-17.1. El estado desplegado en producción no se verificó en esta revisión. |
 
 #### AD-17.1 Locations — estado actual revisado (2026-10-10)
 

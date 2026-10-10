@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
 // ── GET /api/dashboard — aggregated KPIs ──────────────────────────────────────
@@ -71,10 +72,13 @@ export async function GET() {
     // traen los user_id (liviano, solo esa columna) para resolver cuántos
     // tienen una conexión real vía resolveLastSeen (profiles.last_seen_at
     // primero, auth.users.last_sign_in_at como respaldo) más abajo.
-    db.from('influencers')
+    // Paginado: PostgREST corta a 1000 filas y el roster ya pasa de 2.700.
+    fetchAllRows<{ user_id: string | null }>((from, to) => db.from('influencers')
       .select('user_id')
       .eq('organization_id', orgId)
-      .not('user_id', 'is', null),
+      .not('user_id', 'is', null)
+      .order('id')
+      .range(from, to)),
 
     // Conteos de marcas sin descargar su listado completo.
     // NOTA: a diferencia de influencers (todos bajo la org de la agencia),
@@ -107,7 +111,7 @@ export async function GET() {
         id, title, type, status, due_date, platform,
         influencer:influencers (id, display_name, avatar_url),
         campaign:campaigns (id, name)
-      `)
+      `, { count: 'exact' })
       .in('status', ['in_review'])
       .order('due_date', { ascending: true })
       .limit(5),
@@ -249,10 +253,12 @@ export async function GET() {
   ))))
 
   // Pro reales: exactamente el mismo resolver que usa el resto del producto.
-  const { data: allInfluencerIds } = await db
+  const { data: allInfluencerIds } = await fetchAllRows<{ id: string }>((from, to) => db
     .from('influencers')
     .select('id')
     .eq('organization_id', orgId)
+    .order('id')
+    .range(from, to))
   const proStatuses = await getInfluencerProStatuses(db, (allInfluencerIds ?? []).map(row => row.id))
 
   const proActiveCount = Array.from(proStatuses.values()).filter(status => status !== 'free').length

@@ -16,13 +16,16 @@ export async function resolveLastSeen(
   const result: Record<string, string | null> = {}
   if (userIds.length === 0) return result
 
-  const { data: profiles } = await admin
-    .from('profiles')
-    .select('id, last_seen_at')
-    .in('id', userIds)
-
-  for (const p of profiles ?? []) {
-    result[p.id as string] = (p.last_seen_at as string | null) ?? null
+  // En lotes: un `.in()` con miles de UUID excede el largo de URL de PostgREST,
+  // la consulta falla en silencio y se perdía el heartbeat real (last_seen_at).
+  for (let i = 0; i < userIds.length; i += 200) {
+    const { data: profiles } = await admin
+      .from('profiles')
+      .select('id, last_seen_at')
+      .in('id', userIds.slice(i, i + 200))
+    for (const p of profiles ?? []) {
+      result[p.id as string] = (p.last_seen_at as string | null) ?? null
+    }
   }
 
   const pending = new Set(userIds.filter(uid => !result[uid]))

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
 export async function GET(request: NextRequest) {
@@ -12,6 +13,11 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  // Honorarios, presupuestos y métricas globales: solo administración de plataforma
+  // (mismo criterio que /api/dashboard). Antes cualquier usuario con organización accedía.
+  if (!orgId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { isAdmin } = await getUserRole(user.id, orgId, admin)
+  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { searchParams } = new URL(request.url)
   const range = searchParams.get('range') ?? '6m' // 1m, 3m, 6m, 12m
 
@@ -57,10 +63,13 @@ export async function GET(request: NextRequest) {
       .limit(100),
 
     // Deliverable stats (scoped by org via campaign join)
-    admin.from('campaign_deliverables')
+    // Paginado: PostgREST corta a 1000 filas y ya hay más de 1.100 entregables.
+    fetchAllRows<{ id: string; status: string; type: string; platform: string | null; campaign_id: string }>((from, to) => admin.from('campaign_deliverables')
       .select('id, status, type, platform, campaign_id, campaign:campaigns!inner(organization_id)')
       .eq('campaign.organization_id', orgId ?? 'none')
-      .not('campaign_id', 'is', null),
+      .not('campaign_id', 'is', null)
+      .order('id')
+      .range(from, to)),
 
     // Top performing influencers by total fees (scoped by org via campaign join)
     admin.from('campaign_influencers')

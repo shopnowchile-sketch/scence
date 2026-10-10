@@ -5,7 +5,7 @@ import type { UserRole } from '@/hooks/useIsAdmin'
 import {
   LayoutDashboard, Target, Users, CalendarDays,
   CreditCard, Banknote, FileText, BarChart3,
-  Building2, Link2, Bug, CalendarCheck, Trophy, Contact } from 'lucide-react'
+  Building2, Link2, Bug, CalendarCheck, Trophy, Contact, ListChecks } from 'lucide-react'
 import { AppSidebar, type NavSection } from './AppSidebar'
 
 type NavigationSummary = { role: UserRole; bookings: number; pendingCampaigns: number; pendingBrands: number; openTickets: number }
@@ -84,6 +84,7 @@ export function Sidebar() {
       title: 'Reportes',
       items: [
         { href: '/admin-analytics', label: 'Analytics', icon: BarChart3 },
+        ...(isAdmin ? [{ href: '/admin-requirements', label: 'Requerimientos', icon: ListChecks }] : []),
       ],
     },
   ]

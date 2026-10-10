@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
 
 type CampaignMetricRow = {
@@ -154,9 +155,12 @@ export async function GET(request: NextRequest) {
   if (summary) {
     const [deliverablesResult, pendingApprovalResult] = await Promise.all([
       campaignIds.length
-        ? admin.from('campaign_deliverables')
+        // Paginado: PostgREST corta a 1000 filas y ya hay más de 1.100 entregables.
+        ? fetchAllRows<{ campaign_id: string; status: string; content_url: string | null; published_url: string | null }>((from, to) => admin.from('campaign_deliverables')
           .select('campaign_id, status, content_url, published_url')
           .in('campaign_id', campaignIds)
+          .order('id')
+          .range(from, to))
         : Promise.resolve({ data: [], error: null }),
       admin.from('campaigns')
         .select('id', { count: 'exact', head: true })
@@ -164,7 +168,7 @@ export async function GET(request: NextRequest) {
     ])
     const { data: deliverables, error: deliverablesError } = deliverablesResult
     if (deliverablesError) {
-      return NextResponse.json({ error: deliverablesError.message }, { status: 500 })
+      return NextResponse.json({ error: deliverablesError instanceof Error ? deliverablesError.message : 'No se pudieron cargar los entregables' }, { status: 500 })
     }
     const pendingDeliverables = (deliverables ?? []).reduce(
       (total, row) => total + (isDeliverableComplete(row) ? 0 : 1),
@@ -186,10 +190,10 @@ export async function GET(request: NextRequest) {
     campaignIds.length
       // Participantes = solo postulaciones/invitaciones ACEPTADas. Las filas
       // pending (postulantes/invitadas sin aceptar) o rejected NO cuentan.
-      ? admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds).eq('application_status', 'accepted')
+      ? fetchAllRows<{ campaign_id: string }>((from, to) => admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds).eq('application_status', 'accepted').order('id').range(from, to))
       : { data: [] },
     campaignIds.length
-      ? admin.from('campaign_deliverables').select('campaign_id, influencer_id, type, status, attendance_outcome, content_url, published_url, performance, engagement_rate').in('campaign_id', campaignIds)
+      ? fetchAllRows<{ campaign_id: string; influencer_id: string | null; type: string; status: string; attendance_outcome: string | null; content_url: string | null; published_url: string | null; performance: unknown; engagement_rate: number | null }>((from, to) => admin.from('campaign_deliverables').select('campaign_id, influencer_id, type, status, attendance_outcome, content_url, published_url, performance, engagement_rate').in('campaign_id', campaignIds).order('id').range(from, to))
       : { data: [] },
   ])
 

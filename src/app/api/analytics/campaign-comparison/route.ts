@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
 type Performance = {
   views?: number | null
@@ -20,6 +21,8 @@ export async function GET(request: NextRequest) {
   if (!orgId) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
   }
+  const { isAdmin } = await getUserRole(user.id, orgId, admin)
+  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const params = request.nextUrl.searchParams
   let dateFrom = params.get('date_from')
@@ -55,14 +58,17 @@ export async function GET(request: NextRequest) {
   const campaignIds = (campaigns ?? []).map(campaign => campaign.id)
   if (campaignIds.length === 0) return NextResponse.json({ data: [] })
 
-  let deliverableQuery = admin
-    .from('campaign_deliverables')
-    .select('campaign_id, platform, performance, engagement_rate, metrics_updated_at')
-    .in('campaign_id', campaignIds)
-
-  if (platform) deliverableQuery = deliverableQuery.eq('platform', platform)
-  if (dateFrom) deliverableQuery = deliverableQuery.gte('metrics_updated_at', `${dateFrom}T00:00:00.000Z`)
-  if (dateTo) deliverableQuery = deliverableQuery.lte('metrics_updated_at', `${dateTo}T23:59:59.999Z`)
+  // Paginado: PostgREST corta a 1000 filas y ya hay más de 1.100 entregables.
+  const deliverableQuery = fetchAllRows<{ campaign_id: string; platform: string | null; performance: unknown; engagement_rate: number | null; metrics_updated_at: string | null }>((from, to) => {
+    let q = admin
+      .from('campaign_deliverables')
+      .select('campaign_id, platform, performance, engagement_rate, metrics_updated_at')
+      .in('campaign_id', campaignIds)
+    if (platform) q = q.eq('platform', platform)
+    if (dateFrom) q = q.gte('metrics_updated_at', `${dateFrom}T00:00:00.000Z`)
+    if (dateTo) q = q.lte('metrics_updated_at', `${dateTo}T23:59:59.999Z`)
+    return q.order('id').range(from, to)
+  })
 
   let conversionQuery = admin
     .from('affiliate_conversions')
@@ -80,7 +86,7 @@ export async function GET(request: NextRequest) {
   ] = await Promise.all([deliverableQuery, conversionQuery])
 
   if (deliverableError) {
-    return NextResponse.json({ error: deliverableError.message }, { status: 500 })
+    return NextResponse.json({ error: deliverableError instanceof Error ? deliverableError.message : 'No se pudieron cargar los entregables' }, { status: 500 })
   }
   if (conversionError) {
     return NextResponse.json({ error: conversionError.message }, { status: 500 })

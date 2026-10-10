@@ -10,6 +10,7 @@ import { format, parseISO, isPast, isFuture } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { PhysicalLocationPicker } from '@/components/locations/PhysicalLocationPicker'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type EventStatus = 'draft' | 'published' | 'canceled' | 'completed'
@@ -29,6 +30,7 @@ interface Event {
   description: string | null
   event_date: string
   location: string | null
+  location_id: string | null
   is_virtual: boolean
   virtual_link: string | null
   capacity: number | null
@@ -181,6 +183,7 @@ function NewEventModal({
     description: '',
     event_date: '',
     location: '',
+    location_id: '',
     is_virtual: false,
     virtual_link: '',
     capacity: '',
@@ -215,6 +218,7 @@ function NewEventModal({
           description: form.description || null,
           event_date: new Date(form.event_date).toISOString(),
           location: form.is_virtual ? null : (form.location || null),
+          location_id: form.is_virtual ? null : (form.location_id || null),
           is_virtual: form.is_virtual,
           virtual_link: form.is_virtual ? (form.virtual_link || null) : null,
           capacity: form.capacity ? Number(form.capacity) : null,
@@ -317,15 +321,10 @@ function NewEventModal({
               />
             </div>
           ) : (
-            <div>
-              <label className="label">Ubicación</label>
-              <input
-                className="input-base"
-                placeholder="Ej: Centro de Convenciones, Santiago"
-                value={form.location}
-                onChange={e => set('location', e.target.value)}
-              />
-            </div>
+            <PhysicalLocationPicker
+              value={{ locationId: form.location_id || null, locationDisplay: form.location || null }}
+              onChange={value => setForm(f => ({ ...f, location_id: value.locationId ?? '', location: value.locationDisplay ?? '' }))}
+            />
           )}
 
           <div>

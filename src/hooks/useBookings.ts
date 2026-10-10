@@ -65,6 +65,7 @@ export interface CreateBookingInput {
   influencer_id?: string | null
   campaign_id?: string | null
   location?: string | null
+  location_id?: string | null
   is_virtual?: boolean
   virtual_link?: string | null
   fee?: number | null

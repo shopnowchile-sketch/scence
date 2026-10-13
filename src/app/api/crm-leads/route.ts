@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
   const region = searchParams.get('region') ?? ''
   const source = searchParams.get('source') ?? ''
   const industry = searchParams.get('industry') ?? ''
-  const commune = searchParams.get('commune') ?? ''
+  const communesFilter = searchParams.getAll('commune').filter(Boolean)
   const emailStatus = searchParams.get('email_status') ?? ''
   const contactData = searchParams.get('contact_data') ?? ''
   const idsOnly = searchParams.get('ids_only') === '1'
@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
       if (region) q = q.eq('region', region)
       if (source) q = q.eq('source', source)
       if (industry) q = q.eq('industry', industry)
-      if (commune) q = q.eq('commune', commune)
+      if (communesFilter.length) q = q.in('commune', communesFilter)
       q = applyContactDataFilter(q, contactData)
       if (eventLeadIds) q = q.in('id', eventLeadIds)
       if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
@@ -251,7 +251,7 @@ export async function GET(request: NextRequest) {
     if (region) q = q.eq('region', region)
     if (source) q = q.eq('source', source)
     if (industry) q = q.eq('industry', industry)
-    if (commune) q = q.eq('commune', commune)
+    if (communesFilter.length) q = q.in('commune', communesFilter)
     q = applyContactDataFilter(q, contactData)
     if (eventLeadIds) q = q.in('id', eventLeadIds)
     if (emailStatus === 'not_sent') q = q.is('contacted_at', null)

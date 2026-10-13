@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
 import { isCrmAdmin } from '@/lib/crm-auth'
+import { canonicalCommune } from '@/lib/crm-commune'
+import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 
 type Params = { params: { id: string } }
 
@@ -11,6 +13,14 @@ type Params = { params: { id: string } }
 // Desde "Interesada" el lead ya es parte del sistema: se crea su marca (pendiente de
 // aprobación) con toda su información y queda vinculada al lead, que sigue en el CRM.
 const BRAND_CREATING_STATUSES = ['interested', 'building', 'converted']
+
+// Campos de contacto editables desde la ficha (texto libre, vacío = sin dato).
+const EDITABLE_FIELDS = ['contact_name', 'company_name', 'email', 'phone_1', 'phone_2', 'instagram', 'website', 'address', 'commune', 'region', 'industry'] as const
+const FIELD_LABELS: Record<string, string> = {
+  contact_name: 'contacto', company_name: 'empresa', email: 'email', phone_1: 'teléfono', phone_2: 'teléfono 2',
+  instagram: 'instagram', website: 'sitio web', address: 'dirección', commune: 'comuna', region: 'región', industry: 'rubro',
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 const VALID_STATUS = ['unqualified', 'qualified', 'rejected', 'contacted', 'interested', 'building', 'converted']
 
@@ -128,6 +138,40 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (body.qualification_notes !== undefined) update.qualification_notes = body.qualification_notes
 
+  // Edición de datos de contacto: validada en servidor, con historial.
+  const editedFields: string[] = []
+  for (const field of EDITABLE_FIELDS) {
+    if (body[field] === undefined) continue
+    if (body[field] !== null && typeof body[field] !== 'string') {
+      return NextResponse.json({ error: `${FIELD_LABELS[field]} inválido` }, { status: 422 })
+    }
+    let value: string | null = typeof body[field] === 'string' ? body[field].trim().slice(0, 300) : null
+    if (value === '') value = null
+    if (field === 'email' && value) {
+      value = value.toLowerCase()
+      if (!EMAIL_RE.test(value)) return NextResponse.json({ error: 'El email no es válido' }, { status: 422 })
+    }
+    if (field === 'commune' && value) value = await canonicalCommune(admin, value)
+    update[field] = value
+    editedFields.push(field)
+  }
+  if (editedFields.includes('email')) {
+    const newEmail = update.email as string | null
+    if (newEmail) {
+      const { data: dup } = await admin.from('crm_leads').select('id, company_name').eq('email', newEmail).neq('id', params.id).limit(1)
+      if (dup?.length) {
+        return NextResponse.json({ error: `Ese email ya existe en otro lead (${dup[0].company_name ?? 'sin nombre'})` }, { status: 409 })
+      }
+    }
+    // Los datos de validación del email anterior ya no aplican.
+    update.email_domain = newEmail ? newEmail.split('@')[1] : null
+    update.email_result = null
+    update.email_reason = null
+    update.email_status_code = null
+    update.email_role_account = null
+    update.email_free_domain = null
+  }
+
   const note = typeof body.note === 'string' ? body.note.trim() : ''
   if (body.note !== undefined && !note) {
     return NextResponse.json({ error: 'La nota no puede estar vacía' }, { status: 422 })
@@ -142,6 +186,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (editedFields.length > 0) {
+    bumpCrmCacheVersion()
+    await admin.from('crm_lead_activities').insert({
+      lead_id: params.id,
+      action_type: 'note',
+      description: `Datos actualizados: ${editedFields.map(f => FIELD_LABELS[f]).join(', ')}`,
+      created_by: user.id,
+    })
+  }
 
   if (body.qualification_status) {
     const actionTypeByStatus: Record<string, string> = {

@@ -5,6 +5,7 @@ import { isCrmAdmin } from '@/lib/crm-auth'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { buildUnsubscribeUrl, commercialEmailHeaders, isOptedOut, OptOutLookupError } from '@/lib/email-optouts'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { isValidAttachmentPath, loadCrmAttachment, type LoadedAttachment } from '@/lib/crm-attachments'
 import { claimLeadSend, releaseLeadSend, isDefinitiveResendFailure, SEND_GUARD_WINDOW_MS } from '@/lib/crm-send-guard'
 
 type Params = { params: { id: string } }
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const body = await req.json().catch(() => ({} as { subject?: string; message?: string; template_key?: string }))
+  const body = await req.json().catch(() => ({} as { subject?: string; message?: string; template_key?: string; attachment_path?: string; attachment_name?: string }))
 
   const { data: lead, error: leadErr } = await admin
     .from('crm_leads')
@@ -93,6 +94,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     unsubscribeUrl,
   })
 
+  // Adjunto opcional: se valida y se lee ANTES de reservar el envío, para que un
+  // adjunto roto no deje al lead reservado sin email.
+  let attachment: LoadedAttachment | null = null
+  if (body.attachment_path !== undefined && body.attachment_path !== null && body.attachment_path !== '') {
+    if (!isValidAttachmentPath(body.attachment_path)) {
+      return NextResponse.json({ error: 'Adjunto inválido' }, { status: 422 })
+    }
+    try {
+      attachment = await loadCrmAttachment(admin, body.attachment_path, typeof body.attachment_name === 'string' ? body.attachment_name : 'adjunto')
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo leer el adjunto' }, { status: 422 })
+    }
+  }
+
   // Reserva atómica ANTES de llamar a Resend: dos solicitudes simultáneas no
   // pueden pasar ambas. Es una protección temporal (ventana de 10 min), no una
   // garantía de entrega única: Resend no ofrece clave de idempotencia aquí.
@@ -119,6 +134,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       html,
       text: message,
       headers: commercialEmailHeaders(unsubscribeUrl),
+      ...(attachment ? { attachments: [attachment] } : {}),
     })
     emailData = result.data
     emailErr = result.error
@@ -126,7 +142,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     thrown = error
   }
 
-  const sentContent = { subject, message, html }
+  const sentContent = { subject, message, html, ...(attachment ? { attachment_name: attachment.filename } : {}) }
 
   if (thrown || (emailErr && !isDefinitiveResendFailure(emailErr))) {
     // Resultado AMBIGUO: el correo pudo haberse aceptado. No se libera la

@@ -3,6 +3,7 @@ import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 import { buildUnsubscribeUrl, commercialEmailHeaders, getBlockedEmails, normalizeEmail } from '@/lib/email-optouts'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import type { LoadedAttachment } from '@/lib/crm-attachments'
 import { processLeadBatch, BATCH_SIZE, type BatchLead, type BatchResult } from '@/lib/crm-send-guard'
 
 // Tamaño de tanda por invocación (definido en crm-send-guard.ts para que la reanudación
@@ -22,7 +23,8 @@ export async function sendLeadBatch(
   customMessage: string,
   userId: string,
   templateKey = 'crm_intro',
-  jobCreatedAt: string
+  jobCreatedAt: string,
+  attachment: LoadedAttachment | null = null
 ): Promise<BatchResult> {
   const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey) ?? CRM_EMAIL_CATALOG[0]
 
@@ -70,6 +72,7 @@ export async function sendLeadBatch(
             html,
             text: message,
             headers: commercialEmailHeaders(unsubscribeUrl),
+            ...(attachment ? { attachments: [attachment] } : {}),
           })
           return { id: data?.id ?? null, error }
         },

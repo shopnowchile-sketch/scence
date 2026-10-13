@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import AttachmentPicker, { type CrmAttachment } from '../AttachmentPicker'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 
 type Activity = {
@@ -142,6 +143,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   const [emailTemplateKey, setEmailTemplateKey] = useState(DEFAULT_CRM_TEMPLATE.key)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
+  const [emailAttachment, setEmailAttachment] = useState<CrmAttachment | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -209,11 +211,12 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
       const r = await fetch(`/api/crm-leads/${id}/send-intro`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: emailSubject, message: emailMessage, template_key: emailTemplateKey }),
+        body: JSON.stringify({ subject: emailSubject, message: emailMessage, template_key: emailTemplateKey, ...(emailAttachment ? { attachment_path: emailAttachment.path, attachment_name: emailAttachment.name } : {}) }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'Error al enviar')
       toast.success('Email enviado')
+      setEmailAttachment(null)
       setShowEmailEditor(false)
       load()
     } catch (e) {
@@ -446,6 +449,8 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
                     className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none focus:border-violet-400 min-h-[260px]"
                   />
                 </div>
+
+                <AttachmentPicker value={emailAttachment} onChange={setEmailAttachment} disabled={sending} />
 
                 <div className="flex items-center gap-2 justify-end">
                   <button

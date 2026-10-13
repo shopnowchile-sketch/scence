@@ -9,6 +9,7 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { CRM_NICHE_SOURCES } from '@/lib/crm-niches'
 import CommuneMultiSelect from './CommuneMultiSelect'
+import AttachmentPicker, { type CrmAttachment } from './AttachmentPicker'
 
 type Lead = {
   id: string
@@ -138,6 +139,7 @@ export function CrmLeadsClient() {
   const [bulkTemplateKey, setBulkTemplateKey] = useState(DEFAULT_CRM_TEMPLATE.key)
   const [bulkSubject, setBulkSubject] = useState(DEFAULT_CRM_TEMPLATE.defaultSubject)
   const [bulkMessage, setBulkMessage] = useState(DEFAULT_CRM_TEMPLATE.defaultMessage ?? '')
+  const [bulkAttachment, setBulkAttachment] = useState<CrmAttachment | null>(null)
   const [sendingBulk, setSendingBulk] = useState(false)
   const limit = 50
   const tableRef = useRef<HTMLDivElement>(null)
@@ -259,6 +261,7 @@ export function CrmLeadsClient() {
     setBulkTemplateKey(DEFAULT_CRM_TEMPLATE.key)
     setBulkSubject(DEFAULT_CRM_TEMPLATE.defaultSubject)
     setBulkMessage(DEFAULT_CRM_TEMPLATE.defaultMessage ?? '')
+    setBulkAttachment(null)
   }
 
   async function sendBulkEmails() {
@@ -277,6 +280,7 @@ export function CrmLeadsClient() {
           template_key: bulkTemplateKey,
           subject: bulkSubject,
           message: bulkMessage,
+          ...(bulkAttachment ? { attachment_path: bulkAttachment.path, attachment_name: bulkAttachment.name } : {}),
         }),
       })
 
@@ -917,6 +921,8 @@ export function CrmLeadsClient() {
                   Puedes editarlo. Las variables {'{{contact_name}}'} y {'{{company_name}}'} se personalizan para cada lead.
                 </p>
               </div>
+
+              <AttachmentPicker value={bulkAttachment} onChange={setBulkAttachment} disabled={sendingBulk} />
             </div>
 
             <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">

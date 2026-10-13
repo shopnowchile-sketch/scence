@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { expandDeliverableTemplates, type DeliverableTemplateInput } from '@/lib/deliverable-templates'
 import { getResend, FROM_EMAIL, campaignApplicationApprovedEmail } from '@/lib/resend'
 import { isInfluencerPro } from '@/lib/influencer-pro'
+import { checkReopenAllowed } from '@/lib/campaign-application-reopen'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -253,6 +254,67 @@ export async function rejectCampaignApplications(
   }
 
   return { ok: true, rejectedIds }
+}
+
+/**
+ * Devuelve una postulación "No seleccionada" a "Pendiente" (decisión manual de
+ * un admin). Solo postulaciones (origin='application'): una invitación rechazada
+ * es decisión de la influencer. No toca cierres por asistencia (metadata
+ * removal_reason). Limpia rejected_at y las notas de cierre automático.
+ * Sin emails ni otros efectos: solo vuelve a la bandeja de pendientes.
+ */
+export async function reopenCampaignApplication(
+  admin: SupabaseClient,
+  params: { campaignId: string; applicationId: string }
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const { data: application, error: lookupError } = await admin
+    .from('campaign_influencers')
+    .select('id, influencer_id, application_status, origin, notes, metadata')
+    .eq('id', params.applicationId)
+    .eq('campaign_id', params.campaignId)
+    .maybeSingle()
+
+  if (lookupError) return { ok: false, error: lookupError.message, status: 500 }
+  if (!application) return { ok: false, error: 'Postulación no encontrada', status: 404 }
+
+  const { data: campaign, error: campaignError } = await admin
+    .from('campaigns')
+    .select('status, visibility, application_deadline, applications_closed_at')
+    .eq('id', params.campaignId)
+    .maybeSingle()
+  if (campaignError) return { ok: false, error: campaignError.message, status: 500 }
+  if (!campaign) return { ok: false, error: 'Campaña no encontrada', status: 404 }
+
+  let influencerIsPro = true
+  if (campaign.visibility === 'private') {
+    try { influencerIsPro = await isInfluencerPro(admin, application.influencer_id as string) }
+    catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se pudo verificar el Plan Pro', status: 500 } }
+  }
+
+  const check = checkReopenAllowed(
+    { application_status: application.application_status, origin: application.origin, metadata: (application.metadata ?? null) as Record<string, unknown> | null },
+    campaign,
+    influencerIsPro,
+  )
+  if (!check.ok) return check
+
+  const now = new Date().toISOString()
+  const notes = typeof application.notes === 'string' && application.notes.startsWith('Postulación cerrada automáticamente')
+    ? null
+    : application.notes
+  const { data: updated, error: updateError } = await admin
+    .from('campaign_influencers')
+    .update({ application_status: 'pending', rejected_at: null, rejection_reason: null, notes, updated_at: now })
+    .eq('id', params.applicationId)
+    .eq('campaign_id', params.campaignId)
+    .eq('application_status', 'rejected')
+    .select('id')
+
+  if (updateError) return { ok: false, error: updateError.message, status: 500 }
+  if (!updated || updated.length !== 1) {
+    return { ok: false, error: 'La postulación fue gestionada por otra solicitud', status: 409 }
+  }
+  return { ok: true }
 }
 
 export const AUTO_CLOSE_NOTES = {

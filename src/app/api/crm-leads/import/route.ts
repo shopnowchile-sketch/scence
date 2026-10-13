@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
+import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = []
@@ -234,6 +235,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  bumpCrmCacheVersion()
   return NextResponse.json({
     imported: inserted,
     duplicates: duplicates.length,

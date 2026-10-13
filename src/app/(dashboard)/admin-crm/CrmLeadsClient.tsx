@@ -164,6 +164,8 @@ export function CrmLeadsClient() {
       setTotal(j.total ?? 0)
       if (j.stats) setStats(j.stats)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
+      // Si la comuna elegida ya no tiene leads (desapareció de la lista), se quita el filtro.
+      if (commune && nextLeads.length === 0 && Array.isArray(j.communes) && !j.communes.includes(commune)) setCommune('')
       if (Array.isArray(j.sources)) setSources(j.sources)
     } catch {
       toast.error('Error cargando leads')

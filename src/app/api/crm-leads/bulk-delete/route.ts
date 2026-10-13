@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
+import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 
 export async function DELETE(request: NextRequest) {
   const supabase = createServerClient()
@@ -51,6 +52,7 @@ export async function DELETE(request: NextRequest) {
     deleted += data?.length ?? 0
   }
 
+  bumpCrmCacheVersion()
   return NextResponse.json({
     deleted,
     requested: uniqueIds.length,

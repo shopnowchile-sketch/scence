@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2 } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2, Pencil } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import AttachmentPicker, { type CrmAttachment } from '../AttachmentPicker'
@@ -336,16 +336,28 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
           <span className="text-gray-200">/</span>
           <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{lead.company_name}</span>
         </div>
-        <button
-          type="button"
-          onClick={deleteLead}
-          disabled={deleting}
-          title="Eliminar lead"
-          aria-label="Eliminar lead"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-        >
-          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={startEditingContact}
+            disabled={editingContact}
+            title="Editar datos de la empresa"
+            aria-label="Editar datos de la empresa"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 disabled:opacity-40"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={deleteLead}
+            disabled={deleting}
+            title="Eliminar lead"
+            aria-label="Eliminar lead"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

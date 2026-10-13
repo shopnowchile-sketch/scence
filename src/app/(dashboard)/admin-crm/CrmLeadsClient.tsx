@@ -383,7 +383,7 @@ export function CrmLeadsClient() {
         if (!j.data) load()
         return
       }
-      if (j.brand_created) toast.success('Convertido — marca creada en SCENCE ✓')
+      if (j.brand_created) toast.success('Marca creada en SCENCE (pendiente de aprobación) ✓')
     } catch {
       toast.error('No se pudo actualizar la calificación')
       load()

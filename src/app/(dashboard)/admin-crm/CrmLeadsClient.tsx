@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { CRM_NICHE_SOURCES } from '@/lib/crm-niches'
+import CommuneMultiSelect from './CommuneMultiSelect'
 
 type Lead = {
   id: string
@@ -111,7 +112,7 @@ export function CrmLeadsClient() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [qualification, setQualification] = useState('')
-  const [commune, setCommune] = useState('')
+  const [selectedCommunes, setSelectedCommunes] = useState<string[]>([])
   const [source, setSource] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
@@ -152,7 +153,7 @@ export function CrmLeadsClient() {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
     if (search) params.set('search', search)
     if (qualification) params.set('qualification', qualification)
-    if (commune) params.set('commune', commune)
+    selectedCommunes.forEach(c => params.append('commune', c))
     if (source) params.set('source', source)
     if (emailStatus) params.set('email_status', emailStatus)
     if (contactData) params.set('contact_data', contactData)
@@ -164,18 +165,23 @@ export function CrmLeadsClient() {
       setTotal(j.total ?? 0)
       if (j.stats) setStats(j.stats)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
+      // Si la comuna elegida ya no tiene leads (desapareció de la lista), se quita el filtro.
+      if (nextLeads.length === 0 && Array.isArray(j.communes)) {
+        const valid = selectedCommunes.filter(c => j.communes.includes(c))
+        if (valid.length !== selectedCommunes.length) setSelectedCommunes(valid)
+      }
       if (Array.isArray(j.sources)) setSources(j.sources)
     } catch {
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, commune, source, emailStatus, contactData])
+  }, [page, search, qualification, selectedCommunes, source, emailStatus, contactData])
 
   useEffect(() => { load() }, [load])
 
   // Cambiar de página conserva una selección global. Cambiar los filtros la
   // reinicia para que nunca se envíe a destinatarios de una búsqueda anterior.
-  useEffect(() => { setSelectedIds([]) }, [search, qualification, commune, source, emailStatus, contactData])
+  useEffect(() => { setSelectedIds([]) }, [search, qualification, selectedCommunes, source, emailStatus, contactData])
 
   function updateForm<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -222,7 +228,7 @@ export function CrmLeadsClient() {
       const params = new URLSearchParams({ ids_only: '1' })
       if (search) params.set('search', search)
       if (qualification) params.set('qualification', qualification)
-      if (commune) params.set('commune', commune)
+      selectedCommunes.forEach(c => params.append('commune', c))
       if (source) params.set('source', source)
       if (emailStatus) params.set('email_status', emailStatus)
       if (contactData) params.set('contact_data', contactData)
@@ -391,13 +397,13 @@ export function CrmLeadsClient() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
-  const activeFilterCount = [qualification, commune, source, emailStatus, contactData].filter(Boolean).length
+  const activeFilterCount = [qualification, source, emailStatus, contactData].filter(Boolean).length + (selectedCommunes.length ? 1 : 0)
   const hasActiveFilters = Boolean(search || activeFilterCount)
 
   function clearFilters() {
     setSearch('')
     setQualification('')
-    setCommune('')
+    setSelectedCommunes([])
     setSource('')
     setEmailStatus('')
     setContactData('')
@@ -533,15 +539,11 @@ export function CrmLeadsClient() {
             />
           </div>
 
-          <select
-            value={commune}
-            aria-label="Filtrar por comuna"
-            onChange={e => { setPage(1); setCommune(e.target.value) }}
-            className="h-9 min-w-[150px] rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-700 outline-none focus:border-violet-400"
-          >
-            <option value="">Todas las comunas</option>
-            {communes.map(value => <option key={value} value={value}>{value}</option>)}
-          </select>
+          <CommuneMultiSelect
+            options={communes}
+            selected={selectedCommunes}
+            onChange={next => { setPage(1); setSelectedCommunes(next) }}
+          />
 
           <select
             value={source}

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
+import { crmCacheVersion, bumpCrmCacheVersion } from '@/lib/crm-cache-version'
+import { canonicalCommune } from '@/lib/crm-commune'
 
 // Módulo CRM — aislado, no toca brands/influencers/campaigns.
 // Solo super_admin / brand_manager (mismo criterio que useIsAdmin / Sidebar admin).
@@ -66,6 +68,18 @@ function chunksOf<T>(values: T[], size: number) {
   return chunks
 }
 
+// Columnas donde busca el buscador del CRM: contacto + rubro/actividad (incluye el
+// código de actividad, ej. "181010") + ubicación + origen. Un solo criterio para el
+// listado y para "seleccionar todos los que cumplen el filtro".
+const SEARCH_COLUMNS = [
+  'company_name', 'contact_name', 'email', 'instagram', 'phone_1', 'company_rut',
+  'industry', 'economic_activity', 'industry_filter', 'position',
+  'commune', 'source', 'website',
+]
+function searchFilter(search: string) {
+  return SEARCH_COLUMNS.map(column => `${column}.ilike.%${search}%`).join(',')
+}
+
 // ── Lectura paralela + caché corta ───────────────────────────────────────────
 // Antes cada carga del listado recorría en serie ~55 páginas (eventos de email,
 // usuarios de auth y TODA la tabla de leads solo para sacar comunas/fuentes)
@@ -77,11 +91,13 @@ type Admin = ReturnType<typeof createAdminClient>
 function cachedLoader<T>(load: (admin: Admin) => Promise<T>) {
   let value: T | null = null
   let at = 0
+  let ver = -1
   let inflight: Promise<T> | null = null
   return (admin: Admin): Promise<T> => {
-    if (value !== null && Date.now() - at < CACHE_TTL_MS) return Promise.resolve(value)
+    if (value !== null && ver === crmCacheVersion() && Date.now() - at < CACHE_TTL_MS) return Promise.resolve(value)
+    const loadingVer = crmCacheVersion()
     inflight ??= load(admin)
-      .then(result => { value = result; at = Date.now(); return result })
+      .then(result => { value = result; at = Date.now(); ver = loadingVer; return result })
       .finally(() => { inflight = null })
     return inflight
   }
@@ -166,7 +182,7 @@ export async function GET(request: NextRequest) {
   const region = searchParams.get('region') ?? ''
   const source = searchParams.get('source') ?? ''
   const industry = searchParams.get('industry') ?? ''
-  const commune = searchParams.get('commune') ?? ''
+  const communesFilter = searchParams.getAll('commune').filter(Boolean)
   const emailStatus = searchParams.get('email_status') ?? ''
   const contactData = searchParams.get('contact_data') ?? ''
   const idsOnly = searchParams.get('ids_only') === '1'
@@ -189,11 +205,11 @@ export async function GET(request: NextRequest) {
       if (region) q = q.eq('region', region)
       if (source) q = q.eq('source', source)
       if (industry) q = q.eq('industry', industry)
-      if (commune) q = q.eq('commune', commune)
+      if (communesFilter.length) q = q.in('commune', communesFilter)
       q = applyContactDataFilter(q, contactData)
       if (eventLeadIds) q = q.in('id', eventLeadIds)
       if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
-      if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
+      if (search) q = q.or(searchFilter(search))
       return q
     }
 
@@ -235,11 +251,11 @@ export async function GET(request: NextRequest) {
     if (region) q = q.eq('region', region)
     if (source) q = q.eq('source', source)
     if (industry) q = q.eq('industry', industry)
-    if (commune) q = q.eq('commune', commune)
+    if (communesFilter.length) q = q.in('commune', communesFilter)
     q = applyContactDataFilter(q, contactData)
     if (eventLeadIds) q = q.in('id', eventLeadIds)
     if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
-    if (search) q = q.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,instagram.ilike.%${search}%`)
+    if (search) q = q.or(searchFilter(search))
     return q
   }
 
@@ -379,7 +395,7 @@ export async function POST(request: NextRequest) {
       email: email || null,
       phone_1: phone1 || null,
       instagram: instagram || null,
-      commune: commune || null,
+      commune: await canonicalCommune(admin, commune),
       region: region || null,
       industry: industry || null,
       source,
@@ -394,6 +410,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  bumpCrmCacheVersion()
   await admin.from('crm_lead_activities').insert({
     lead_id: lead.id,
     action_type: 'created',

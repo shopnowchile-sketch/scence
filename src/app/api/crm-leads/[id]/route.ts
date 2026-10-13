@@ -8,6 +8,10 @@ type Params = { params: { id: string } }
 // Pipeline comercial: unqualified → contacted → interested → building → converted
 // (rejected = descartada). `qualified` se conserva por compatibilidad con filas
 // históricas y con el filtro existente, pero ya no se ofrece en la UI.
+// Desde "Interesada" el lead ya es parte del sistema: se crea su marca (pendiente de
+// aprobación) con toda su información y queda vinculada al lead, que sigue en el CRM.
+const BRAND_CREATING_STATUSES = ['interested', 'building', 'converted']
+
 const VALID_STATUS = ['unqualified', 'qualified', 'rejected', 'contacted', 'interested', 'building', 'converted']
 
 // ── GET /api/crm-leads/[id] — detalle + historial de actividad ────────────────
@@ -172,7 +176,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   // ── Integración CRM -> Brands ─────────────────────────────────────────────
-  // Al convertir un lead (qualification_status = 'converted') se crea
+  // Al pasar un lead a Interesada (o más adelante en el pipeline) se crea
   // automáticamente la marca en `brands` con los campos mapeados, y se deja
   // el vínculo en `crm_leads.converted_brand_id` — columna que ya existía
   // desde la migración original (20260703000000_crm_leads.sql) pero nunca se
@@ -182,13 +186,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   let convertedBrandId: string | null = data.converted_brand_id ?? null
   let brandCreated = false
 
-  if (body.qualification_status === 'converted' && !data.converted_brand_id) {
-    const brandName = data.company_name || data.contact_name || data.email || data.instagram
+  if (BRAND_CREATING_STATUSES.includes(body.qualification_status) && !data.converted_brand_id) {
+    const brandName = String(data.company_name ?? '').trim() || String(data.instagram ?? '').trim() || String(data.contact_name ?? '').trim()
 
     if (!brandName) {
       return NextResponse.json({
         data,
-        error: 'Estado actualizado a "Convertido", pero no se pudo crear la marca: el lead no tiene empresa, contacto, email ni Instagram para usar como nombre.',
+        error: 'Estado actualizado, pero no se pudo crear la marca: el lead no tiene nombre de empresa (ni Instagram o contacto como alternativa). Complétalo en la ficha y vuelve a marcar el estado.',
       }, { status: 422 })
     }
 
@@ -196,19 +200,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!orgId) {
       return NextResponse.json({
         data,
-        error: 'Estado actualizado a "Convertido", pero no se encontró organización para crear la marca.',
+        error: 'Estado actualizado, pero no se encontró organización para crear la marca.',
       }, { status: 400 })
     }
 
     const noteParts = [
       data.qualification_notes ? String(data.qualification_notes).trim() : null,
-      `Convertido automáticamente desde el CRM (lead ${data.id}, fuente: ${data.source ?? 'desconocida'}).`,
+      `Creada automáticamente desde el CRM al pasar a "${body.qualification_status}" (lead ${data.id}, fuente: ${data.source ?? 'desconocida'}).`,
     ].filter(Boolean)
 
     // La marca convertida recibe su propia organización (nunca la del admin).
     const brandOrgId = await provisionOrgForBrand(brandName)
     if (!brandOrgId) {
-      return NextResponse.json({ data, error: 'Estado actualizado a "Convertido", pero no se pudo crear la organización de la marca.' }, { status: 500 })
+      return NextResponse.json({ data, error: 'Estado actualizado, pero no se pudo crear la organización de la marca.' }, { status: 500 })
     }
 
     const { data: brand, error: brandError } = await admin
@@ -223,10 +227,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         contact_name: data.contact_name ?? null,
         contact_email: data.email ?? null,
         contact_phone: data.phone_1 ?? null,
+        address_street: data.address ?? null,
         address_city: data.commune ?? null,
         address_region: data.region ?? null,
-        rut: data.company_rut ?? null,
+        rut: data.company_rut ? (data.company_dv ? `${data.company_rut}-${data.company_dv}` : data.company_rut) : null,
         notes: noteParts.join(' · '),
+        // Perfil comercial del lead que no tiene columna propia en brands. Solo datos
+        // de la empresa: nada del seguimiento interno del CRM (estado, notas, emails).
+        metadata: {
+          source: 'crm_lead',
+          crm_lead_id: data.id,
+          crm_source: data.source ?? null,
+          crm_profile: {
+            contact_rut: data.contact_rut ?? null,
+            phone_2: data.phone_2 ?? null,
+            position: data.position ?? null,
+            economic_activity: data.economic_activity ?? null,
+            company_size: data.company_size ?? null,
+            employee_count: data.employee_count ?? null,
+            commune: data.commune ?? null,
+            region: data.region ?? null,
+          },
+        },
       })
       .select('id')
       .single()
@@ -235,7 +257,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       console.error('[PATCH /api/crm-leads/[id]] error creando marca desde lead convertido', brandError)
       return NextResponse.json({
         data,
-        error: `Estado actualizado a "Convertido", pero no se pudo crear la marca: ${brandError.message}`,
+        error: `Estado actualizado, pero no se pudo crear la marca: ${brandError.message}`,
       }, { status: 500 })
     }
 

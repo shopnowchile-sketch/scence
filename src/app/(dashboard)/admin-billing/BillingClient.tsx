@@ -14,6 +14,7 @@ import {
   usePayroll, usePatchPayroll, useCreatePayroll,
 } from '@/hooks/useBilling'
 import { useInfluencersList } from '@/hooks/useInfluencersList'
+import { isInvoiceOverdue, summarizeInvoices } from '@/lib/invoice-kpis'
 import { useCampaignsList } from '@/hooks/useCampaignsList'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -76,9 +77,9 @@ function Avatar({ name, url, size = 8 }: { name: string; url?: string | null; si
 
 // ── KPIs ──────────────────────────────────────────────────────────────────────
 function BillingKPIs({ invoices, payrolls }: { invoices: Invoice[]; payrolls: PayrollRun[] }) {
-  const totalBilled  = invoices.filter(i => i.status !== 'void').reduce((s, i) => s + i.total, 0)
-  const totalPaid    = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
+  // Definiciones únicas en lib/invoice-kpis: facturado (emitidas), cobrado
+  // (pagadas) y vencido (impagas con fecha de vencimiento pasada).
+  const { billed: totalBilled, collected: totalPaid, overdue: totalOverdue } = summarizeInvoices(invoices)
   const totalPayroll = payrolls.filter(p => p.status !== 'failed').reduce((s, p) => s + p.total_amount, 0)
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -591,7 +592,9 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
   const [showNewInvoice, setShowNewInvoice] = useState(false)
   const [showNewPayroll, setShowNewPayroll] = useState(false)
 
-  const { data: invoicesData, isLoading: loadingInvoices } = useInvoices({ status: filterStatus === 'all' ? undefined : filterStatus })
+  // 'Vencidas' se deriva (impagas con vencimiento pasado) y no existe como filtro
+  // de servidor fiable: casi ninguna factura vencida llega a tener status 'overdue'.
+  const { data: invoicesData, isLoading: loadingInvoices } = useInvoices({ status: filterStatus === 'all' || filterStatus === 'overdue' ? undefined : filterStatus })
   // KPIs y los contadores de cada pill de estado necesitan el total real, no
   // el subset que deja el filtro activo — antes se calculaban sobre
   // `invoices` (ya filtrado), así que al hacer clic en "Vencidas" las 4
@@ -602,8 +605,10 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
   const patchInvoice = usePatchInvoice()
   const patchPayroll = usePatchPayroll()
 
-  const invoices: Invoice[] = invoicesData?.data ?? []
   const allInvoices: Invoice[] = allInvoicesData?.data ?? []
+  const invoices: Invoice[] = filterStatus === 'overdue'
+    ? allInvoices.filter(inv => isInvoiceOverdue(inv))
+    : invoicesData?.data ?? []
   const payrolls: PayrollRun[] = payrollData?.data ?? []
 
   function handleAction(action: string, id: string) {
@@ -691,7 +696,7 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
                 )}>
                 {f.label}
                 <span className="ml-1.5 text-xs opacity-70">
-                  {f.value === 'all' ? allInvoices.length : allInvoices.filter(i => i.status === f.value).length}
+                  {f.value === 'all' ? allInvoices.length : f.value === 'overdue' ? allInvoices.filter(i => isInvoiceOverdue(i)).length : allInvoices.filter(i => i.status === f.value).length}
                 </span>
               </button>
             ))}
@@ -721,7 +726,7 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
                   </td></tr>
                 ) : invoices.map(inv => {
                   const s = INVOICE_STATUS[inv.status] ?? INVOICE_STATUS_FALLBACK
-                  const overdue = inv.status === 'overdue'
+                  const overdue = isInvoiceOverdue(inv)
                   return (
                     <tr key={inv.id} className="hover:bg-gray-50/70 transition-colors group cursor-pointer" onClick={() => setSelected(inv)}>
                       <td className="px-4 py-3"><span className="font-mono text-xs font-semibold text-gray-700">{inv.invoice_number}</span></td>

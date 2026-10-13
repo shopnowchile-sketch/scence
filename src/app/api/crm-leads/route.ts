@@ -66,6 +66,88 @@ function chunksOf<T>(values: T[], size: number) {
   return chunks
 }
 
+// ── Lectura paralela + caché corta ───────────────────────────────────────────
+// Antes cada carga del listado recorría en serie ~55 páginas (eventos de email,
+// usuarios de auth y TODA la tabla de leads solo para sacar comunas/fuentes)
+// antes de devolver 50 filas. Ahora las páginas se piden en paralelo y el
+// resultado se reutiliza 60 s (los filtros/paginación no deberían recalcularlo).
+const CACHE_TTL_MS = 60_000
+type Admin = ReturnType<typeof createAdminClient>
+
+function cachedLoader<T>(load: (admin: Admin) => Promise<T>) {
+  let value: T | null = null
+  let at = 0
+  let inflight: Promise<T> | null = null
+  return (admin: Admin): Promise<T> => {
+    if (value !== null && Date.now() - at < CACHE_TTL_MS) return Promise.resolve(value)
+    inflight ??= load(admin)
+      .then(result => { value = result; at = Date.now(); return result })
+      .finally(() => { inflight = null })
+    return inflight
+  }
+}
+
+async function fetchAllPages<T>(
+  total: number,
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+) {
+  const PAGE = 1000
+  const CONCURRENCY = 6
+  const starts = Array.from({ length: Math.ceil(total / PAGE) }, (_, i) => i * PAGE)
+  const out: T[] = []
+  for (let i = 0; i < starts.length; i += CONCURRENCY) {
+    const results = await Promise.all(starts.slice(i, i + CONCURRENCY).map(from => fetchPage(from, from + PAGE - 1)))
+    for (const r of results) {
+      if (r.error) throw new Error(r.error.message)
+      out.push(...(r.data ?? []))
+    }
+  }
+  return out
+}
+
+function emptyEmailEventSets(): EmailEventSets {
+  return { sent: new Set<string>(), delivered: new Set<string>(), opened: new Set<string>(), clicked: new Set<string>(), failed: new Set<string>(), bounced: new Set<string>() }
+}
+
+const getEmailEventSets = cachedLoader(async admin => {
+  const { count, error } = await admin
+    .from('crm_email_events')
+    .select('id', { count: 'exact', head: true })
+    .not('lead_id', 'is', null)
+  if (error) throw new Error(error.message)
+
+  const rows = await fetchAllPages<{ lead_id: string | null; event_type: string | null }>(count ?? 0, (from, to) =>
+    admin.from('crm_email_events').select('lead_id, event_type').not('lead_id', 'is', null).range(from, to))
+
+  const sets = emptyEmailEventSets()
+  const setByType: Record<string, Set<string>> = {
+    'email.sent': sets.sent, 'email.delivered': sets.delivered, 'email.opened': sets.opened,
+    'email.clicked': sets.clicked, 'email.failed': sets.failed, 'email.bounced': sets.bounced,
+  }
+  for (const row of rows) {
+    if (row.lead_id && row.event_type) setByType[row.event_type]?.add(row.lead_id)
+  }
+  return sets
+})
+
+const getAuthEmailMap = cachedLoader(buildAuthEmailMap)
+
+const getLeadCatalog = cachedLoader(async admin => {
+  const { count, error } = await admin.from('crm_leads').select('id', { count: 'exact', head: true })
+  if (error) throw new Error(error.message)
+
+  const rows = await fetchAllPages<{ commune: string | null; source: string | null }>(count ?? 0, (from, to) =>
+    admin.from('crm_leads').select('commune, source').range(from, to))
+
+  const communes = new Set<string>()
+  const sources = new Set<string>()
+  for (const r of rows) {
+    if (r.commune) communes.add(r.commune)
+    if (r.source) sources.add(r.source)
+  }
+  return { communes: Array.from(communes).sort(), sources: Array.from(sources).sort() }
+})
+
 // ── GET /api/crm-leads — lista paginada con filtros ───────────────────────────
 export async function GET(request: NextRequest) {
   const supabase = createServerClient()
@@ -91,42 +173,10 @@ export async function GET(request: NextRequest) {
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
-  const emailEventSets: EmailEventSets = {
-    sent: new Set<string>(),
-    delivered: new Set<string>(),
-    opened: new Set<string>(),
-    clicked: new Set<string>(),
-    failed: new Set<string>(),
-    bounced: new Set<string>(),
-  }
-
-  {
-    const PAGE = 1000
-    let from = 0
-
-    for (;;) {
-      const { data: rows } = await admin
-        .from('crm_email_events')
-        .select('lead_id, event_type')
-        .not('lead_id', 'is', null)
-        .range(from, from + PAGE - 1)
-
-      if (!rows || rows.length === 0) break
-
-      for (const row of rows as Array<{ lead_id: string | null; event_type: string | null }>) {
-        if (!row.lead_id || !row.event_type) continue
-        if (row.event_type === 'email.sent') emailEventSets.sent.add(row.lead_id)
-        if (row.event_type === 'email.delivered') emailEventSets.delivered.add(row.lead_id)
-        if (row.event_type === 'email.opened') emailEventSets.opened.add(row.lead_id)
-        if (row.event_type === 'email.clicked') emailEventSets.clicked.add(row.lead_id)
-        if (row.event_type === 'email.failed') emailEventSets.failed.add(row.lead_id)
-        if (row.event_type === 'email.bounced') emailEventSets.bounced.add(row.lead_id)
-      }
-
-      if (rows.length < PAGE) break
-      from += PAGE
-    }
-  }
+  const emailEventSets = await getEmailEventSets(admin).catch(error => {
+    console.error('[GET /api/crm-leads email events]', error)
+    return emptyEmailEventSets()
+  })
 
   // ── ids_only: trae TODOS los ids que cumplen el filtro (no solo la página
   // actual) — usado por "Seleccionar todos los que cumplen el filtro" en el
@@ -170,6 +220,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ ids: Array.from(allIds).slice(0, 20000) })
   }
+
+  // Auth map y catálogo no dependen de la página: se piden en paralelo con la query de leads (y con caché).
+  const authMapPromise = getAuthEmailMap(admin)
+  const catalogPromise = getLeadCatalog(admin)
 
   const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at'
   const buildLeadsQuery = (eventLeadIds?: string[], withCount = false) => {
@@ -217,7 +271,10 @@ export async function GET(request: NextRequest) {
     count = result.count ?? 0
   }
 
-  const authMap = await buildAuthEmailMap(admin)
+  const authMap = await authMapPromise.catch(error => {
+    console.error('[GET /api/crm-leads auth map]', error)
+    return new Map<string, string | null>()
+  })
 
   const leadIds = (data ?? []).map((lead: { id: string }) => lead.id)
   const openedMap = new Map<string, string | null>()
@@ -253,34 +310,10 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  // Dimensiones de catálogo visibles en el toolbar: comuna y base de datos
-  // (source). Se paginan para no perder valores por el límite de filas de
-  // PostgREST. Una sola pasada trae ambas columnas.
-  const communesSet = new Set<string>()
-  const sourcesSet = new Set<string>()
-  {
-    const PAGE = 1000
-    let from = 0
-    for (;;) {
-      const { data: filterRows } = await admin
-        .from('crm_leads')
-        .select('commune, source')
-        .range(from, from + PAGE - 1)
-
-      if (!filterRows || filterRows.length === 0) break
-
-      for (const r of filterRows) {
-        if (r.commune) communesSet.add(r.commune)
-        if (r.source) sourcesSet.add(r.source)
-      }
-
-      if (filterRows.length < PAGE) break
-      from += PAGE
-    }
-  }
-
-  const communes = Array.from(communesSet).sort()
-  const sources = Array.from(sourcesSet).sort()
+  const { communes, sources } = await catalogPromise.catch(error => {
+    console.error('[GET /api/crm-leads catalog]', error)
+    return { communes: [] as string[], sources: [] as string[] }
+  })
 
   const stats = {
     sent: emailEventSets.sent.size,

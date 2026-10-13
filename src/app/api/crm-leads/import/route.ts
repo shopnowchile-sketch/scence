@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
+import { canonicalCommune } from '@/lib/crm-commune'
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = []
@@ -162,6 +163,8 @@ export async function POST(request: NextRequest) {
   // que ya usan las scheduled tasks de prospección al insertar directo.
   const invalid = parsed.filter(r => !r.company_name && !r.email && !r.instagram)
   const valid = parsed.filter(r => r.company_name || r.email || r.instagram)
+
+  for (const r of valid) r.commune = await canonicalCommune(admin, r.commune)
 
   const emails = Array.from(new Set(valid.map(r => r.email).filter(Boolean))) as string[]
   const existingEmails = new Set<string>()

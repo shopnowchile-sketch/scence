@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
 import { crmCacheVersion, bumpCrmCacheVersion } from '@/lib/crm-cache-version'
+import { canonicalCommune } from '@/lib/crm-commune'
 
 // Módulo CRM — aislado, no toca brands/influencers/campaigns.
 // Solo super_admin / brand_manager (mismo criterio que useIsAdmin / Sidebar admin).
@@ -394,7 +395,7 @@ export async function POST(request: NextRequest) {
       email: email || null,
       phone_1: phone1 || null,
       instagram: instagram || null,
-      commune: commune || null,
+      commune: await canonicalCommune(admin, commune),
       region: region || null,
       industry: industry || null,
       source,

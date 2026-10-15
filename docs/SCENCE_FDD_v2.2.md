@@ -129,6 +129,10 @@ El flujo macro del negocio: se define la campaña, se convoca al elenco de influ
 
 ## 3\. Requisitos Funcionales por Portal
 
+### 3.0 Fuente de verdad funcional — piloto DASH-001
+
+Cuando existe una versión aprobada, el requerimiento versionado es la fuente de verdad funcional. El piloto `DASH-001` conserva definición, impacto, evidencias, pruebas y desviaciones; solo `super_admin` puede proponer o aprobar versiones. Estado inicial: **por verificar** hasta aplicar la migración en un entorno de desarrollo autorizado y contrastar el KPI con datos reales.
+
 > Los mockups son reconstrucciones fieles (SVG, no screenshots literales) generadas a partir de la sesión en vivo del 2026-07-01, en `docs/mockups/*.svg`.
 
 ### 3.1 Portal Admin
@@ -144,7 +148,7 @@ Dashboard Admin
 | Campo                 | Fuente                                                          | Para qué sirve                       |
 | --------------------- | --------------------------------------------------------------- | ------------------------------------ |
 | Campañas en curso     | `count(campaigns) where status in (active,pending_influencers)` | KPI de carga operativa del mes       |
-| Influencers en roster | `count(influencers) where is_active=true`                       | Tamaño total del roster disponible   |
+| Influencers en roster | `count(influencers) where organization_id=sesión and is_active=true` | Tamaño total del roster operativo disponible |
 | Marcas registradas    | `count(brands)`                                                 | Tamaño de la cartera de clientes     |
 | Facturado (outbound)  | `sum(invoices.total)` del mes                                   | Ingreso reconocido                   |
 | Costos recibidos      | `sum(payroll_runs.total)` del mes                               | Costo de payroll del mes             |

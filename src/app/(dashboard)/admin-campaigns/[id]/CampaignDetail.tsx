@@ -27,6 +27,7 @@ import { getDeliverableMetricsUrl } from '@/lib/deliverables/metrics-state'
 import { getAttendanceState } from '@/lib/attendance-state'
 import { COMUNAS_CHILE, groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
+import { CampaignLocationsEditor } from '@/components/locations/CampaignLocationsEditor'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, CAMPAIGN_DELIVERABLE_DEFAULTS, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector, brandMatchesQuery } from '@/components/campaigns/BrandSelector'
@@ -1370,17 +1371,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [timeEditOpen, setTimeEditOpen] = useState(false)
   const [timeEditForm, setTimeEditForm] = useState({ start_time: '', end_time: '' })
   const [summaryEditSaving, setSummaryEditSaving] = useState(false)
-  const [summaryEditForm, setSummaryEditForm] = useState({ name: '', description: '', brand_id: '', type: 'event_appearance', start_date: '', end_date: '', visibility: 'private', access_mode: 'public', venue_name: '', location: '', commune: '', region: '', country: 'Chile', location_instructions: '' })
+  const [summaryEditForm, setSummaryEditForm] = useState({ name: '', description: '', brand_id: '', type: 'event_appearance', start_date: '', end_date: '', visibility: 'private', access_mode: 'public' })
   const [eventScheduleForm, setEventScheduleForm] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([])
   const [locationEditOpen, setLocationEditOpen] = useState(false)
-  const [locationEditSaving, setLocationEditSaving] = useState(false)
-  // Compatibilidad temporal: el bloque anterior no se vuelve a abrir; la
-  // edición de ubicación ocurre inline con openLocationEditor.
-  const [locationEditForm, setLocationEditForm] = useState({ venueName: '', address: '', commune: '', instructions: '' })
-  // Selector de "Lugar de la marca" dentro del popup de ubicación — solo
-  // precarga locationEditForm desde brand_locations (ya cargado en brandLocations).
-  // saveLocation() sigue escribiendo únicamente en bookings/campaigns, nunca aquí.
-  const [locationPickerId, setLocationPickerId] = useState('')
   const [deletingCampaign, setDeletingCampaign] = useState(false)
   const [duplicatingCampaign, setDuplicatingCampaign] = useState(false)
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null)
@@ -1427,7 +1420,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const [showCampaignInvoiceModal, setShowCampaignInvoiceModal] = useState(false)
   const [contractTemplates, setContractTemplates] = useState<Array<Record<string, unknown>>>([])
   const [showGenerateContractModal, setShowGenerateContractModal] = useState(false)
-  const [brandLocations, setBrandLocations] = useState<Array<Record<string, unknown>>>([])
   const [campaignAssets, setCampaignAssets] = useState<Array<Record<string, unknown>>>([])
   const [assetName, setAssetName] = useState('')
   const [assetUrl, setAssetUrl] = useState('')
@@ -1444,18 +1436,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const brandGuideUploadInputRef = useRef<HTMLInputElement>(null)
   const [coverSaving, setCoverSaving] = useState(false)
   const coverInputRef = useRef<HTMLInputElement>(null)
-  const [locationFormOpen, setLocationFormOpen] = useState(false)
-  const [locationSaving, setLocationSaving] = useState(false)
-  const [locationForm, setLocationForm] = useState({
-    location_type: 'store',
-    name: '',
-    address: '',
-    city: '',
-    region: '',
-    country: 'Chile',
-    is_public: false,
-    notes: '',
-  })
 
   // Filtros de "solicitudes pendientes" (postulaciones a campaña pública) —
   // pedido de Pri 2026-07-13: filtrar por seguidores, engagement, comuna y
@@ -1576,28 +1556,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     void loadCampaignScopedData()
     return () => { cancelled = true }
   }, [id])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadBrandLocations() {
-      if (!primaryBrandId) {
-        setBrandLocations([])
-        return
-      }
-
-      try {
-        const res = await fetch(`/api/brands/${primaryBrandId}/locations`)
-        const json = await res.json().catch(() => ({}))
-        if (!cancelled) setBrandLocations(Array.isArray(json.data) ? json.data : [])
-      } catch {
-        if (!cancelled) setBrandLocations([])
-      }
-    }
-
-    void loadBrandLocations()
-    return () => { cancelled = true }
-  }, [primaryBrandId])
 
   if (isLoading) {
     return (
@@ -2073,6 +2031,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const eventLocationLabel = (eventVenueName || eventLocation)
     ? Array.from(new Set([eventVenueName, eventLocation, eventCommune].filter((part): part is string => Boolean(part)).map(part => part.trim()))).join(' · ')   // sin repetir partes iguales
     : (eventCommune ? `${eventCommune} · Lugar por confirmar` : 'Ubicación por confirmar')
+  // Direcciones canónicas (campaign_locations). Si la campaña aún no tiene, se muestra el texto histórico.
+  const campaignLocations = (c as unknown as { locations?: Array<{ is_primary: boolean; display: string }> }).locations ?? []
+  const primaryLocationDisplay = campaignLocations.find(l => l.is_primary)?.display ?? null
+  const headerLocationLabel = primaryLocationDisplay
+    ? `${primaryLocationDisplay}${campaignLocations.length > 1 ? ` · +${campaignLocations.length - 1} más` : ''}`
+    : eventLocationLabel
   const legacyEventDate = (() => {
     const metadata = (c as unknown as { metadata?: unknown }).metadata
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
@@ -2116,7 +2080,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     // Todos los campos que guarda saveSummaryEditor deben partir del valor
     // actual: si faltan, el guardado borraría marca, descripción o metadata.
     const summaryMetadata = (c.metadata ?? {}) as Record<string, unknown>
-    const metadataText = (key: string) => typeof summaryMetadata[key] === 'string' ? summaryMetadata[key] as string : ''
     setSummaryEditForm({
       name: c.name ?? '',
       description: c.description ?? '',
@@ -2127,12 +2090,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       visibility: c.visibility === 'open' ? 'open' : 'private',
       // Misma derivación que /api/influencer/campaigns/[id]/apply.
       access_mode: summaryMetadata.access_mode === 'invitation' ? 'invitation' : c.visibility === 'private' ? 'private_pro' : 'public',
-      venue_name: eventVenueName ?? '',
-      location: eventLocation ?? c.address ?? '',
-      commune: eventCommune ?? metadataText('commune'),
-      region: metadataText('region'),
-      country: metadataText('country') || 'Chile',
-      location_instructions: eventBooking?.location_details?.instructions ?? '',
     })
     setEventScheduleForm(eventBookings.length > 0
       ? eventBookings.map(booking => ({
@@ -2190,15 +2147,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         start_date: schedule[0]?.starts_at?.slice(0, 10) || summaryEditForm.start_date || null,
         end_date: [...schedule].reverse().find(day => day.starts_at)?.starts_at.slice(0, 10) || summaryEditForm.end_date || null,
         visibility: summaryEditForm.visibility,
-        address: summaryEditForm.location.trim() || null,
         metadata: {
           ...(c.metadata ?? {}),
           access_mode: summaryEditForm.access_mode,
-          venue_name: summaryEditForm.venue_name.trim() || null,
-          commune: summaryEditForm.commune.trim() || null,
-          region: summaryEditForm.region.trim() || null,
-          country: summaryEditForm.country.trim() || 'Chile',
-          location_instructions: summaryEditForm.location_instructions.trim() || null,
         },
       })
       const savedIds = new Set(schedule.flatMap(day => day.id ? [day.id] : []))
@@ -2213,12 +2164,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
         const payload = {
           title: summaryEditForm.name.trim(),
           description: c.description ?? '',
-          location: summaryEditForm.location.trim() || null,
-          location_details: {
-            ...(eventBooking?.location_details ?? {}),
-            venue_name: summaryEditForm.venue_name.trim() || null,
-            instructions: summaryEditForm.location_instructions.trim() || null,
-          },
           starts_at: new Date(day.starts_at).toISOString(),
           ends_at: new Date(day.ends_at).toISOString(),
           timezone: 'America/Santiago',
@@ -2252,68 +2197,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       starts_at: `${date}T${timeEditForm.start_time}`,
       ends_at: `${date}T${timeEditForm.end_time}`,
     }])
-  }
-
-  function openLocationEditor() {
-    setLocationEditForm({
-      venueName: eventBooking?.location_details?.venue_name ?? '',
-      address: eventLocation ?? c.address ?? '',
-      commune: eventCommune ?? '',
-      instructions: eventBooking?.location_details?.instructions ?? '',
-    })
-    setLocationPickerId('')
-    setLocationEditOpen(true)
-  }
-
-  // Precarga locationEditForm desde un lugar guardado de la marca (brand_locations).
-  // No escribe nada — el usuario sigue pudiendo editar antes de guardar, y
-  // saveLocation() jamás toca brand_locations.
-  function applyBrandLocationToEditor(locationId: string) {
-    setLocationPickerId(locationId)
-    const loc = brandLocations.find((l, idx) => String(l.id ?? idx) === locationId)
-    if (!loc) return
-    setLocationEditForm(previous => ({
-      ...previous,
-      venueName: String(loc.name ?? ''),
-      address: String(loc.address ?? ''),
-      commune: String(loc.city ?? ''),
-    }))
-  }
-
-  async function saveLocation() {
-    setLocationEditSaving(true)
-    try {
-      const address = locationEditForm.address.trim()
-      const locationDetails = {
-        ...(eventBooking?.location_details ?? {}),
-        venue_name: locationEditForm.venueName.trim() || null,
-        commune: locationEditForm.commune.trim() || null,
-        instructions: locationEditForm.instructions.trim() || null,
-      }
-      // Todos los días del mismo evento comparten la misma ubicación.
-      for (const booking of eventBookings) {
-        if (!booking.id) continue
-        const response = await fetch('/api/bookings', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: booking.id, title: c.name, description: c.description ?? '',
-            location: address || null, location_details: locationDetails,
-            starts_at: booking.starts_at ?? undefined, ends_at: booking.ends_at ?? undefined,
-            timezone: 'America/Santiago',
-          }),
-        })
-        const json = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(json.error ?? 'No se pudo actualizar la ubicación')
-      }
-      await patchCampaign.mutateAsync({ address: address || null })
-      await refetch()
-      setLocationEditOpen(false)
-      toast.success('Ubicación actualizada')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la ubicación')
-    } finally {
-      setLocationEditSaving(false)
-    }
   }
 
   async function reloadCampaignAssets() {
@@ -2479,71 +2362,6 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     }
   }
 
-  async function reloadBrandLocations() {
-    if (!primaryBrandId) {
-      setBrandLocations([])
-      return
-    }
-
-    const res = await fetch(`/api/brands/${primaryBrandId}/locations`)
-    const json = await res.json().catch(() => ({}))
-    setBrandLocations(Array.isArray(json.data) ? json.data : [])
-  }
-
-  async function handleAddBrandLocation(e: React.FormEvent) {
-    e.preventDefault()
-
-    if (!primaryBrandId) {
-      toast.error('La campaña no tiene marca principal')
-      return
-    }
-
-    if (!locationForm.name.trim()) {
-      toast.error('Agrega el nombre del lugar')
-      return
-    }
-
-    setLocationSaving(true)
-    try {
-      const res = await fetch(`/api/brands/${primaryBrandId}/locations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location_type: locationForm.location_type,
-          name: locationForm.name.trim(),
-          address: locationForm.address.trim() || null,
-          city: locationForm.city.trim() || null,
-          region: locationForm.region.trim() || null,
-          country: locationForm.country.trim() || 'Chile',
-          is_public: locationForm.location_type === 'home' ? false : locationForm.is_public,
-          notes: locationForm.notes.trim() || null,
-        }),
-      })
-
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'Error al crear lugar')
-
-      setLocationForm({
-        location_type: 'store',
-        name: '',
-        address: '',
-        city: '',
-        region: '',
-        country: 'Chile',
-        is_public: false,
-        notes: '',
-      })
-
-      setLocationFormOpen(false)
-      await reloadBrandLocations()
-      toast.success('Lugar agregado')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al crear lugar')
-    } finally {
-      setLocationSaving(false)
-    }
-  }
-
   function handleBack() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back()
@@ -2676,7 +2494,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     { id: 'deliverables', label: `Entregables${pendingDeliverableReviewCount > 0 ? ` (${pendingDeliverableReviewCount})` : ''}`, icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
     { id: 'barters',      label: 'Canjes',        icon: <Gift className="h-3.5 w-3.5" /> },
     { id: 'assets',       label: `Assets (${campaignAssets.length})`, icon: <FileText className="h-3.5 w-3.5" /> },
-    { id: 'locations',    label: `Lugares (${brandLocations.length + (eventLocation ? 1 : 0)})`, icon: <Target className="h-3.5 w-3.5" /> },
+    { id: 'locations',    label: `Lugares (${campaignLocations.length || (eventLocation ? 1 : 0)})`, icon: <Target className="h-3.5 w-3.5" /> },
     { id: 'billing',      label: `Facturas (${campaignInvoices.length})`, icon: <DollarSign className="h-3.5 w-3.5" /> },
     ...(!isBrandPortal ? [{ id: 'contracts' as Tab, label: 'Contratos', icon: <FileText className="h-3.5 w-3.5" /> }] : []),
     ...(!isBrandPortal ? [{ id: 'collaborators' as Tab, label: 'Marcas colaboradoras', icon: <Building2 className="h-3.5 w-3.5" /> }] : []),
@@ -2883,7 +2701,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             aria-label="Hora de término"
                           />
                         </span>
-                      </>) : null}{!(summaryEditOpen && eventScheduleForm[0]) && eventBookings.map((booking, index) => { const start = booking.starts_at ? format(new Date(booking.starts_at), "EEE d MMM", { locale: es }) : null; const startTime = booking.starts_at ? formatEventTime(booking.starts_at) : null; const endTime = booking.ends_at ? formatEventTime(booking.ends_at) : null; return start && startTime ? <span key={booking.id ?? index} className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{start.replace(/^./, letter => letter.toUpperCase())} <Clock className="ml-1 h-4 w-4 text-violet-600" />{endTime ? `${startTime}–${endTime}` : startTime}</span> : null })}{!hasEventSchedule && !(summaryEditOpen && eventScheduleForm[0]) && (canEditCampaign ? <div className="relative"><button type="button" onClick={openTimeEditor} className="inline-flex items-center gap-2 font-semibold text-amber-700 hover:underline"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</button>{timeEditOpen && <div className="absolute left-0 top-8 z-40 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><div className="grid grid-cols-2 gap-2"><input type="time" value={timeEditForm.start_time} onChange={event => setTimeEditForm(previous => ({ ...previous, start_time: event.target.value }))} aria-label="Hora de inicio" className="input-base w-full" /><input type="time" value={timeEditForm.end_time} onChange={event => setTimeEditForm(previous => ({ ...previous, end_time: event.target.value }))} aria-label="Hora de término" className="input-base w-full" /></div><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setTimeEditOpen(false)} disabled={summaryEditSaving} className="px-2 py-1.5 text-xs font-semibold text-gray-500">Cancelar</button><button type="button" onClick={saveTimeEditor} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div> : <span className="inline-flex items-center gap-2 font-semibold text-amber-700"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</span>)}<div className="relative inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" />{summaryEditOpen ? <input value={summaryEditForm.location} onChange={event => setSummaryEditForm(previous => ({ ...previous, location: event.target.value }))} placeholder="Dirección o lugar" aria-label="Lugar" className="min-w-[220px] rounded-md border border-violet-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" /> : canEditCampaign ? <button type="button" onClick={openLocationEditor} className="truncate text-left hover:text-violet-700 hover:underline" title="Editar ubicación">{eventLocationLabel}</button> : <span className="truncate">{eventLocationLabel}</span>}{locationEditOpen && <div className="absolute left-0 top-7 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><label className="block text-xs font-semibold text-gray-700">Lugar de la marca</label>{brandLocations.length > 0 ? <select autoFocus value={locationPickerId} onChange={event => applyBrandLocationToEditor(event.target.value)} className="input-base mt-1 w-full text-sm"><option value="">— Seleccionar —</option>{brandLocations.map((loc, idx) => { const optId = String(loc.id ?? idx); const detail = [loc.address, loc.city].filter(Boolean).map(String).join(', '); return <option key={optId} value={optId}>{[String(loc.name ?? 'Lugar sin nombre'), detail].filter(Boolean).join(' — ')}</option> })}</select> : <div className="mt-1 space-y-1.5"><p className="text-xs text-gray-400">No hay lugares guardados para esta marca.</p><button type="button" onClick={() => { setLocationEditOpen(false); setTab('locations'); setLocationFormOpen(true) }} className="text-xs font-semibold text-violet-600 hover:underline">+ Agregar lugar</button></div>}<label className="mt-3 block text-xs font-semibold text-gray-700">Comuna</label><input list="location-edit-communes" value={locationEditForm.commune} onChange={event => setLocationEditForm(previous => ({ ...previous, commune: event.target.value }))} placeholder="Ej: Las Condes" className="input-base mt-1 w-full" /><datalist id="location-edit-communes">{COMUNAS_CHILE.map(commune => <option key={commune} value={commune} />)}</datalist><label className="mt-2 block text-xs font-semibold text-gray-700">Dirección exacta <span className="font-normal text-gray-400">(opcional — déjala vacía para no revelar el lugar)</span></label><input value={locationEditForm.address} onChange={event => setLocationEditForm(previous => ({ ...previous, address: event.target.value }))} placeholder="Calle 123, depto/of." className="input-base mt-1 w-full" /><label className="mt-2 block text-xs font-semibold text-gray-700">Indicaciones <span className="font-normal text-gray-400">(opcional)</span></label><input value={locationEditForm.instructions} onChange={event => setLocationEditForm(previous => ({ ...previous, instructions: event.target.value }))} placeholder="Ingreso por..., estacionamiento, etc." className="input-base mt-1 w-full" /><div className="mt-2 flex items-center justify-end gap-2">{locationEditForm.address.trim() && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationEditForm.address.trim())}`} target="_blank" rel="noopener noreferrer" className="mr-auto text-xs font-semibold text-violet-700 hover:underline">Ver en Maps</a>}<button type="button" onClick={() => setLocationEditOpen(false)} disabled={locationEditSaving} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800">Cancelar</button><button type="button" onClick={() => void saveLocation()} disabled={locationEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{locationEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>
+                      </>) : null}{!(summaryEditOpen && eventScheduleForm[0]) && eventBookings.map((booking, index) => { const start = booking.starts_at ? format(new Date(booking.starts_at), "EEE d MMM", { locale: es }) : null; const startTime = booking.starts_at ? formatEventTime(booking.starts_at) : null; const endTime = booking.ends_at ? formatEventTime(booking.ends_at) : null; return start && startTime ? <span key={booking.id ?? index} className="inline-flex items-center gap-2 font-medium text-gray-800"><Calendar className="h-4 w-4 text-violet-600" />{start.replace(/^./, letter => letter.toUpperCase())} <Clock className="ml-1 h-4 w-4 text-violet-600" />{endTime ? `${startTime}–${endTime}` : startTime}</span> : null })}{!hasEventSchedule && !(summaryEditOpen && eventScheduleForm[0]) && (canEditCampaign ? <div className="relative"><button type="button" onClick={openTimeEditor} className="inline-flex items-center gap-2 font-semibold text-amber-700 hover:underline"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</button>{timeEditOpen && <div className="absolute left-0 top-8 z-40 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><div className="grid grid-cols-2 gap-2"><input type="time" value={timeEditForm.start_time} onChange={event => setTimeEditForm(previous => ({ ...previous, start_time: event.target.value }))} aria-label="Hora de inicio" className="input-base w-full" /><input type="time" value={timeEditForm.end_time} onChange={event => setTimeEditForm(previous => ({ ...previous, end_time: event.target.value }))} aria-label="Hora de término" className="input-base w-full" /></div><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setTimeEditOpen(false)} disabled={summaryEditSaving} className="px-2 py-1.5 text-xs font-semibold text-gray-500">Cancelar</button><button type="button" onClick={saveTimeEditor} disabled={summaryEditSaving} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{summaryEditSaving ? 'Guardando…' : 'Guardar'}</button></div></div>}</div> : <span className="inline-flex items-center gap-2 font-semibold text-amber-700"><Clock className="h-4 w-4 text-amber-600" />Hora por confirmar</span>)}<div className="relative inline-flex min-w-0 items-center gap-2 text-gray-800"><MapPin className="h-4 w-4 shrink-0 text-violet-600" />{canEditCampaign ? <button type="button" onClick={() => setLocationEditOpen(open => !open)} className="truncate text-left hover:text-violet-700 hover:underline" title="Editar direcciones">{headerLocationLabel}</button> : <span className="truncate">{headerLocationLabel}</span>}{locationEditOpen && <div className="absolute left-0 top-7 z-40 w-[min(440px,calc(100vw-2rem))] rounded-xl border border-violet-200 bg-white p-3 shadow-xl"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-semibold text-gray-700">Direcciones de la campaña</p><button type="button" onClick={() => setLocationEditOpen(false)} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800">Cerrar</button></div><CampaignLocationsEditor campaignId={id} portal={isBrandPortal ? 'brand' : 'admin'} brandId={isBrandPortal ? null : (c.brand_id ?? null)} canEdit={canEditCampaign} onChanged={() => void refetch()} /></div>}</div><span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500"><FileText className="h-4 w-4 text-violet-600" />{(briefAsset?.signed_url || c.brief_url) ? <a href={String(briefAsset?.signed_url ?? c.brief_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 hover:underline">Brief</a> : <span>Sin brief</span>}{canEditCampaign && <><input ref={briefInputRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void handleUploadBrief(file) }} /><button type="button" onClick={() => briefInputRef.current?.click()} disabled={briefSaving} title={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} aria-label={(briefAsset || c.brief_url) ? 'Reemplazar brief' : 'Subir brief'} className="rounded p-1 text-violet-700 hover:bg-violet-50 disabled:opacity-50">{briefSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}</button></>}</span></></div>
           </div>
           <div className="grid w-full grid-cols-3 gap-2 lg:w-[480px] lg:grid-cols-4 lg:flex-none">
             {attendanceConfirmedInfluencers.length > 0 && <button type="button" onClick={() => showAttendanceKpi('confirmed')} className="rounded-lg bg-emerald-50 px-2 py-1.5 text-center transition hover:bg-emerald-100 hover:ring-1 hover:ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300" title="Ver confirmadas que asistieron">
@@ -4464,139 +4282,15 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
 
       {/* ── LUGARES ────────────────────────────────────────────────────────── */}
       {tab === 'locations' && (
-        <div className="card p-6 space-y-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700">Lugares de la campaña</h3>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setLocationFormOpen(prev => !prev)}
-              className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 shrink-0"
-            >
-              {locationFormOpen ? 'Cerrar' : '+ Agregar lugar'}
-            </button>
+        <div className="card p-6 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700">Direcciones de la campaña</h3>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Una campaña puede tener varias. La principal es la que ven el calendario y la ficha del evento.
+              Antes de aceptar, las influencers solo ven el nombre del lugar y la comuna.
+            </p>
           </div>
-
-          {locationFormOpen && (
-            <form onSubmit={handleAddBrandLocation} className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select
-                  value={locationForm.location_type}
-                  onChange={e => setLocationForm(prev => ({
-                    ...prev,
-                    location_type: e.target.value,
-                    is_public: e.target.value === 'home' ? false : prev.is_public,
-                  }))}
-                  className="input-base w-full text-sm bg-white"
-                >
-                  <option value="store">Local o tienda</option>
-                  <option value="event">Evento</option>
-                  <option value="restaurant">Restaurante</option>
-                  <option value="home">Casa de influencer</option>
-                  <option value="virtual">Virtual</option>
-                  <option value="other">Otro</option>
-                </select>
-                <input
-                  value={locationForm.name}
-                  onChange={e => setLocationForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="input-base w-full text-sm bg-white"
-                  placeholder="Nombre del lugar"
-                />
-                <input
-                  value={locationForm.address}
-                  onChange={e => setLocationForm(prev => ({ ...prev, address: e.target.value }))}
-                  className="input-base w-full text-sm bg-white"
-                  placeholder="Dirección"
-                />
-                <input
-                  value={locationForm.city}
-                  onChange={e => setLocationForm(prev => ({ ...prev, city: e.target.value }))}
-                  className="input-base w-full text-sm bg-white"
-                  placeholder="Ciudad / comuna"
-                />
-                <input
-                  value={locationForm.region}
-                  onChange={e => setLocationForm(prev => ({ ...prev, region: e.target.value }))}
-                  className="input-base w-full text-sm bg-white"
-                  placeholder="Región"
-                />
-                <input
-                  value={locationForm.country}
-                  onChange={e => setLocationForm(prev => ({ ...prev, country: e.target.value }))}
-                  className="input-base w-full text-sm bg-white"
-                  placeholder="País"
-                />
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={locationForm.is_public}
-                    disabled={locationForm.location_type === 'home'}
-                    onChange={e => setLocationForm(prev => ({ ...prev, is_public: e.target.checked }))}
-                  />
-                  {locationForm.location_type === 'home'
-                    ? 'Domicilio protegido (privado)'
-                    : 'Visible para marca/influencer'}
-                </label>
-              </div>
-
-              <textarea
-                value={locationForm.notes}
-                onChange={e => setLocationForm(prev => ({ ...prev, notes: e.target.value }))}
-                className="input-base w-full text-sm bg-white"
-                placeholder="Notas internas"
-                rows={3}
-              />
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={locationSaving}
-                  className="px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 disabled:opacity-60"
-                >
-                  {locationSaving ? 'Guardando...' : 'Guardar lugar'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {!eventLocation && brandLocations.length === 0 ? (
-            <p className="text-sm text-gray-400">Sin lugares asociados todavía.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {eventLocation && (
-                <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-900">{eventVenueName || 'Lugar principal'}</p>
-                      <p className="mt-1 text-xs text-gray-600">{eventLocation}{eventCommune ? `, ${eventCommune}` : ''}</p>
-                      {eventBooking?.location_details?.instructions?.trim() && <p className="mt-2 text-xs text-gray-400">{eventBooking.location_details.instructions.trim()}</p>}
-                    </div>
-                    <span className="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-semibold text-violet-700">Principal</span>
-                  </div>
-                </div>
-              )}
-              {brandLocations.map((loc, idx) => (
-                <div key={`${loc.id ?? idx}`} className="rounded-xl border border-gray-100 p-4 bg-white">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{String(loc.name ?? loc.label ?? 'Lugar sin nombre')}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {[loc.address, loc.city, loc.region, loc.country].filter(Boolean).map(String).join(', ') || 'Sin dirección visible'}
-                      </p>
-                    </div>
-                    {loc.is_public ? (
-                      <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">Público</span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-500 font-semibold">Privado</span>
-                    )}
-                  </div>
-                  {loc.notes ? <p className="text-xs text-gray-400 mt-3">{String(loc.notes)}</p> : null}
-                </div>
-              ))}
-            </div>
-          )}
+          <CampaignLocationsEditor campaignId={id} portal={isBrandPortal ? 'brand' : 'admin'} brandId={isBrandPortal ? null : (c.brand_id ?? null)} canEdit={canEditCampaign} onChanged={() => void refetch()} />
         </div>
       )}
 

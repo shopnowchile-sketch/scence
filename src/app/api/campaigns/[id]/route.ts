@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
+import { loadCampaignLocations, lockCanonicalLocationMetadata } from '@/lib/campaign-locations'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
@@ -156,6 +157,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     ...data,
     campaign_influencers: campaignInfluencersWithPlan,
     address: typeof campaignMetadata.address === 'string' ? campaignMetadata.address : null,
+    // Direcciones canónicas (todas, para admin y marca dueña). Si la tabla aún no existe: [].
+    locations: await loadCampaignLocations(admin, params.id).catch(() => []),
     event_booking: eventBooking ?? null,
     // Una campaña de varios días usa varios bookings de campaña. Se mantiene
     // event_booking para consumidores existentes y se expone la agenda completa
@@ -269,13 +272,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
         ? (rest.metadata as Record<string, unknown>)
         : {}
 
-    rest.metadata = {
+    // La dirección canónica (campaign_locations) no se pisa con datos obsoletos del cliente.
+    rest.metadata = lockCanonicalLocationMetadata(existingMetadata, {
       ...existingMetadata,
       ...incomingMetadata,
       ...(address !== undefined ? {
         address: address !== null && String(address).trim() !== '' ? String(address).trim() : null,
       } : {}),
-    }
+    })
   }
 
   // Campos del formulario que pertenecen a metadata, no a columnas de

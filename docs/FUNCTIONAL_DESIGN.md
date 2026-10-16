@@ -2,7 +2,7 @@
 
 **Plataforma de gestión de campañas de influencer marketing**
 
-**Versión:** 2.4 | **Fecha de emisión:** 2026-07-04
+**Versión:** 2.5 | **Fecha de actualización:** 2026-10-10
 
 ---
 
@@ -19,6 +19,7 @@
 
 | Versión | Detalle del cambio | Fecha |
 |---|---|---|
+| 2.5 | Actualización del estado actual de Locations según código y migraciones de `master`; se corrige el registro histórico obsoleto de G-13. No implica verificación de producción. | 2026-10-10 |
 | 1.0 | Versión inicial del FDD | (previa a esta auditoría) |
 | 2.0 | Auditoría en vivo contra producción (`scence-app.vercel.app`), 3 portales, 25 pantallas documentadas con mockups fieles, 9 bugs encontrados | 2026-07-01 |
 | 2.1 | Reestructurado a formato ejecutivo (control de documento, mapa de proceso, requisitos funcionales por portal, reportes, no-funcionales, notificaciones, glosario). Se corrigieron 6 de los 9 bugs encontrados (ver §12, Bugs) | 2026-07-01 |
@@ -353,7 +354,48 @@ Triage por prioridad (P1-P3), estado (Abierto/En progreso/Cerrado), remitente y 
 | Mi perfil | `profiles.*` | ✅ OK |
 | Organización | `organizations.*` | ✅ OK |
 | Usuarios | Reusa `TeamMembers` (ya construido en `organization`) | ✅ desbloqueado en v2.4 — estaba "soon" (bug B-02) aunque el componente ya existía, solo faltaba montarlo en `admin-settings/users` |
-| Lugares | `locations` | ✅ CRUD completo — ver G-13 |
+| Locations | `public.locations` + `/api/locations` | Código de administración jerárquica presente en `master`; detalle actualizado en § AD-17.1. El estado desplegado en producción no se verificó en esta revisión. |
+
+#### AD-17.1 Locations — estado actual revisado (2026-10-10)
+
+**Fuente de esta actualización:** rutas, componentes y migraciones presentes en la rama `master`. Esta revisión del repositorio no confirma por sí sola qué migraciones están aplicadas ni qué versión está desplegada en producción.
+
+**Rutas y componentes encontrados**
+- UI de administración: `src/app/(dashboard)/admin-settings/locations/page.tsx`.
+- API de colección: `src/app/api/locations/route.ts` (`GET` y `POST`).
+- API de nodo: `src/app/api/locations/[id]/route.ts` (`GET` y `PATCH`).
+- Autorización compartida: `src/lib/locations-server.ts`; requiere sesión y rol de administrador de plataforma.
+- Constantes y validaciones de entrada: `src/lib/locations.ts`.
+- Resolución de geografía de influencers: `src/lib/influencer-location.ts`.
+
+**Modelo jerárquico definido en código/migraciones**
+- Niveles: `country → region → [city] → commune → place`.
+- `city` es opcional: una comuna puede depender directamente de una región o de una ciudad de esa región.
+- El catálogo geográfico no requiere organización propietaria; los `place` sí representan lugares físicos y admiten tipo, dirección, coordenadas, privacidad y referencias a marca/influencer.
+- Tipos de `place` reconocidos por el código: `brand_venue`, `store`, `showroom`, `event`, `influencer_home` y `other`.
+- La migración `20261004230000_locations_hierarchy.sql` define constraints, normalización, índice de unicidad geográfica y validación de jerarquía en la base de datos. También impide desactivar un nodo con hijos activos y evita que un hijo activo dependa de un padre inactivo.
+- La migración `20261004230100_locations_seed_chile.sql` declara un seed idempotente de Chile, 16 regiones y 346 comunas; no precarga ciudades.
+- `20261005150000_drop_unused_location_geo_columns.sql` elimina de `locations` las columnas duplicadas `city` y `country`, porque la geografía se representa por `parent_id/level/name`.
+
+**Comportamiento de la API presente en el código**
+- `GET /api/locations` lista nodos raíz o hijos con `parent_id`; por defecto excluye inactivos. Con `q` busca mediante `search_locations` y devuelve resultados con ruta jerárquica. Con `include_inactive=1` incluye inactivos.
+- `GET /api/locations/[id]` devuelve el nodo y su breadcrumb.
+- `POST /api/locations` crea un nodo y valida campos; para `place` comprueba tipo, coordenadas y organización.
+- `PATCH /api/locations/[id]` actualiza campos permitidos, mueve el nodo o cambia `is_active`. No existe `DELETE` en la ruta actual; la baja funcional es lógica.
+- La API de Locations no es un endpoint público: la autorización se realiza en servidor y solo permite administradores de plataforma.
+
+**Relación con influencers**
+- Las migraciones `20261005100000_influencers_location_source_of_truth.sql`, `20261005110000_influencers_international_location_migration.sql` y `20261005120000_influencers_location_legacy_pass2.sql` introducen/usan `influencers.location_id` como referencia canónica y migran solo coincidencias consideradas de alta confianza.
+- `src/lib/influencer-location.ts` deriva país, región, ciudad y comuna recorriendo `locations.parent_id`. Si no se puede resolver `location_id`, la geografía derivada queda en `null`; esta función no usa texto legacy como fallback.
+- `20261005130000_influencer_signup_location_source_of_truth.sql` actualiza el registro para aceptar `location_id`. La migración `20261005170000_remove_legacy_commune_signup_write.sql` elimina la escritura legacy de comuna durante el registro. Su comentario indica expresamente que las columnas legacy no se eliminan en esa migración.
+- Las migraciones anteriores son evidencia de lo definido en el repositorio; su aplicación real en producción debe verificarse por separado.
+
+**Límites de lo confirmado**
+- El código de `src/app/api/bookings/route.ts` revisado aún recibe y persiste `location` como texto. Esta revisión no demuestra que Bookings/Events estén integrados por completo con `location_id` canónico.
+- No se ha confirmado en esta actualización el estado de `brand_locations` ni una migración completa del portal de marcas.
+- El manejo de domicilios privados de influencers requiere comprobar cada consumidor; no basta con que el panel de administración esté protegido.
+- La lista principal de `tests/` revisada no mostró un archivo dedicado a Locations. No se ha confirmado aquí si `tests/integration/` contiene cobertura indirecta.
+- No se ejecutaron pruebas runtime ni consultas a la base de producción como parte de esta actualización. Por lo tanto, no se afirma que el flujo esté validado en producción.
 
 #### AD-18 CRM (Prospectos)
 **Navegación:** `admin-crm`, `admin-crm/[id]` · **Tablas:** `crm_leads`, `crm_lead_activities` · **Acceso:** solo `super_admin`/`brand_manager`
@@ -962,11 +1004,11 @@ flowchart TD
 | G-09 | No hay perfil público de influencer para marcas (`/brand-influencers/[id]`) | Bajo |
 | G-10 | Sin onboarding guiado para marcas nuevas | Bajo |
 | G-11 | "Campañas propias" del influencer no está en el modelo de permisos documentado | Medio — requiere decisión de producto |
-| G-13 | ~~Configuración → Lugares es un stub...~~ **Resuelto 2026-07-01:** la tabla `locations` existía (RLS incluida) pero 0 endpoints la usaban — no era "conectar UI a API existente" como se pensó al inicio, había que construir el API completo. Se construyó `GET/POST /api/locations` + `PATCH/DELETE /api/locations/[id]` (org-scoped, solo `super_admin`) y la UI (lista + modal crear/editar + borrar) en `admin-settings/locations` | Cerrado |
+| G-13 | ~~Configuración → Lugares es un stub~~. El registro histórico del 2026-07-01 quedó obsoleto: el código actual en `master` implementa jerarquía geográfica (`country/region/city/commune`) y `place`, API protegida para administradores de plataforma y baja lógica mediante `PATCH` (`is_active`); la ruta actual no expone `DELETE`. Ver § AD-17.1. La verificación del estado desplegado en producción sigue pendiente. | Estado del código actualizado; producción no verificada |
 | G-14 | ~~Duplicación de plantillas de email de booking...~~ **Resuelto 2026-07-01:** no era duplicación, eran 2 pasos de un mismo flujo (solicitud de confirmación + recibo). Se conectó el recibo (`bookingConfirmEmail`) que estaba muerto | Cerrado |
 | G-15 | ~~Migraciones del repo no reflejan `brands`...~~ **Resuelto 2026-07-01:** agregada migración baseline (`20260701000001_baseline_brands_table.sql`) documentando columnas, constraints, índices y RLS reales de `brands`, sin tocar producción (tabla ya existe ahí). **Hallazgo nuevo durante esta tarea (no corregido, requiere aprobación aparte):** las 4 RLS policies de `brands` comparan `organization_id` contra una subquery que también selecciona `brands.organization_id` (no `profiles.organization_id`, columna que no existe) — la condición es tautológica y en la práctica no filtra por organización a nivel RLS. Bajo riesgo real hoy porque las 20 rutas que tocan `brands` usan `createAdminClient()` (service role, bypassea RLS) con su propia lógica de autorización — pero es una brecha de defensa en profundidad si algo llega a consultar `brands` desde el browser con la key anon/authenticated | Cerrado (baseline). RLS de `brands` queda como hallazgo de seguridad pendiente de decisión — ver nota. |
 | G-16 | ~~`CampaignDetailView.tsx` soporta `mode="brand"`...~~ **Resuelto 2026-07-01:** confirmado por grep que ninguna ruta real usaba `mode="brand"` (Marca usa `CampaignDetail` directo). Se eliminó la rama y el archivo `CampaignDetailView.brand.tsx`, validado con script exhaustivo de imports (0 rotos) + `tsc --noEmit` (0 errores) antes de commitear | Cerrado |
 
 ---
 
-*Fin del documento — SCENCE FDD v2.1, 2026-07-01.*
+*Fin del documento — SCENCE FDD v2.5, actualizado 2026-10-10.*

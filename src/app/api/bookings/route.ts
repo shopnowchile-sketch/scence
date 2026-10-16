@@ -8,6 +8,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { resolvePhysicalLocation, PhysicalLocationError } from '@/lib/resolvePhysicalLocation'
 import {
   createCalendarEvent,
   updateCalendarEvent,
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
   const {
     campaign_id, influencer_id, organization_id,
     title, description, event_type,
-    location, location_details, is_virtual, virtual_link,
+    location, location_id, location_details, is_virtual, virtual_link,
     starts_at, ends_at,
     fee, currency, travel_covered,
     notes, attendee_emails = [],
@@ -137,6 +138,24 @@ export async function POST(req: NextRequest) {
     if (existingBooking) return NextResponse.json(existingBooking, { status: 200 })
   }
 
+  let resolvedLocation
+  try {
+    resolvedLocation = await resolvePhysicalLocation(admin, {
+      locationId: location_id ?? null,
+      location: location ?? null,
+      locationDetails: location_details ?? null,
+      isVirtual: is_virtual ?? false,
+    })
+  } catch (error) {
+    if (error instanceof PhysicalLocationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    throw error
+  }
+
+  const canonicalLocation = resolvedLocation.locationDisplay
+  const canonicalLocationId = resolvedLocation.locationId
+
   // 1. Crear en Google Calendar
   let gcalEventId: string | null = null
   let gcalLink: string | null = null
@@ -147,7 +166,7 @@ export async function POST(req: NextRequest) {
       description: description
         ? `${description}\n\nEvento SCENCE — ${event_type ?? 'Booking'}`
         : `Evento SCENCE — ${event_type ?? 'Booking'}`,
-      location: location ?? (is_virtual ? virtual_link : undefined),
+      location: canonicalLocation ?? (is_virtual ? virtual_link : undefined),
       startsAt: new Date(starts_at),
       endsAt: new Date(ends_at),
       attendeeEmails: attendee_emails,
@@ -171,7 +190,8 @@ export async function POST(req: NextRequest) {
       title,
       description,
       event_type,
-      location,
+      location: canonicalLocation,
+      location_id: canonicalLocationId,
       location_details: location_details ?? null,
       is_virtual: is_virtual ?? false,
       virtual_link,

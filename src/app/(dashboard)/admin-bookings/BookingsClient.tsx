@@ -14,6 +14,7 @@ import {
 import { es } from 'date-fns/locale'
 import { cn, formatCurrency } from '@/lib/utils'
 import { AddressWithMap } from '@/components/maps/GoogleMap'
+import { PhysicalLocationPicker } from '@/components/locations/PhysicalLocationPicker'
 import type { Booking, BookingStatus } from '@/types'
 import { useBookings, useUpdateBookingStatus, useCancelBooking, useCreateBooking } from '@/hooks/useBookings'
 
@@ -27,6 +28,7 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
     ends_at: '',
     is_virtual: false,
     location: '',
+    location_id: '',
     virtual_link: '',
     fee: '',
     currency: 'CLP',
@@ -68,6 +70,7 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
         ends_at: new Date(form.ends_at).toISOString(),
         is_virtual: form.is_virtual,
         location: form.is_virtual ? null : form.location || null,
+        location_id: form.is_virtual ? null : form.location_id || null,
         virtual_link: form.is_virtual ? form.virtual_link || null : null,
         fee: form.fee ? Number(form.fee) : null,
         currency: form.currency || 'CLP',
@@ -147,17 +150,17 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
             <span className="text-sm text-gray-700">Evento virtual</span>
           </div>
 
-          {/* Ubicación o link virtual */}
+          {/* Lugar físico o link virtual */}
           {form.is_virtual ? (
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Link de la reunión</label>
               <input className="input-base" value={form.virtual_link} onChange={e => set('virtual_link', e.target.value)} placeholder="https://meet.google.com/..." />
             </div>
           ) : (
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Ubicación</label>
-              <input className="input-base" value={form.location} onChange={e => set('location', e.target.value)} placeholder="Dirección o lugar..." />
-            </div>
+            <PhysicalLocationPicker
+              value={{ locationId: form.location_id || null, locationDisplay: form.location || null }}
+              onChange={value => setForm(f => ({ ...f, location_id: value.locationId ?? '', location: value.locationDisplay ?? '' }))}
+            />
           )}
 
           {/* Campaña — primero */}

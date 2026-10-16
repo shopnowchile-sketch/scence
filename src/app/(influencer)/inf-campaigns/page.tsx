@@ -158,6 +158,7 @@ export default function MyCampaignsPage() {
   // no había forma de acotar la vista salvo el filtro de marca que solo
   // aplica a "Disponibles para postular".
   const [campStatusFilter, setCampStatusFilter] = useState<string>('')
+  const [instagramPublicWarning, setInstagramPublicWarning] = useState(false)
 
   // FIX (2026-07-04): antes, si /api/influencer/my-campaigns fallaba (o
   // simplemente tardaba/erroraba por lo que sea), el `throw` cortaba la
@@ -169,7 +170,7 @@ export default function MyCampaignsPage() {
   // por esto. Ahora cada fetch se resuelve de forma independiente.
   const load = useCallback(async () => {
     setLoading(true)
-    const [assignedResult, openResult] = await Promise.allSettled([
+    const [assignedResult, openResult, profileResult] = await Promise.allSettled([
       fetch('/api/influencer/my-campaigns').then(async r => {
         const json = await r.json()
         if (!r.ok) throw new Error(json.error)
@@ -193,6 +194,10 @@ export default function MyCampaignsPage() {
         if (!r.ok) return []
         return (await r.json()).data ?? []
       }),
+      fetch('/api/influencer/me').then(async r => {
+        if (!r.ok) return null
+        return (await r.json()).data ?? null
+      }),
     ])
 
     if (assignedResult.status === 'fulfilled') {
@@ -205,6 +210,13 @@ export default function MyCampaignsPage() {
       setOpenCampaigns(openResult.value)
     } else {
       setOpenCampaigns([])
+    }
+
+    if (profileResult.status === 'fulfilled') {
+      const instagram = (profileResult.value?.influencer_social_profiles ?? []).find((sp: { platform?: string }) => sp.platform === 'instagram')
+      setInstagramPublicWarning(instagram?.sync_status === 'not_found')
+    } else {
+      setInstagramPublicWarning(false)
     }
 
     setLoading(false)
@@ -475,6 +487,12 @@ export default function MyCampaignsPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {instagramPublicWarning && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <strong>Instagram:</strong> para actualizar tus seguidores, tu perfil debe estar público y el @ debe ser correcto. <span className="font-medium">Esto no impide que puedas postular a campañas.</span>
         </div>
       )}
 

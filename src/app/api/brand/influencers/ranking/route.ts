@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
     const { data: delRows, error: delErr } = await fetchAllRows(
       (from, to) => admin
         .from('campaign_deliverables')
-        .select('influencer_id, campaign_influencer_id, status, campaign_id')
+        .select('influencer_id, campaign_influencer_id, type, status, content_url, published_url, attendance_response, campaign_id')
         .in('campaign_id', campaignIds)
         .range(from, to),
       { maxRows: 10000 }

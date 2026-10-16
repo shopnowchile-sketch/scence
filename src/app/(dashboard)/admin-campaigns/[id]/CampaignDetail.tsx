@@ -1999,7 +1999,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const reelDeliverables = campaignDeliverables.filter(d => d.type === 'reel')
   const deliverableCount = reelDeliverables.length
   const pendingDeliverableReviewCount = campaignDeliverables.filter(d => d.type !== 'event_attendance' && d.status === 'in_review').length
-  const deliverableDone  = reelDeliverables.filter(d => d.status === 'published').length
+  const deliverableDone  = reelDeliverables.filter(isDeliverableComplete).length
   // Fuente canónica para las fechas mostradas en "Deliverables requeridos por
   // campaña" (Overview): campaign_deliverables reales (una fila por entregable
   // asignado), no la plantilla. Si aún no hay entregables reales generados para
@@ -2945,7 +2945,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </button>}
             {deliverableCount > 0 && <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver entregables">
               <div className="text-sm font-bold text-gray-900">{deliverableDone}/{deliverableCount}</div>
-              <div className="text-[10px] font-medium text-gray-500">Entregables publicados</div>
+              <div className="text-[10px] font-medium text-gray-500">Reels completados</div>
             </button>}
           </div>
         </div>
@@ -3800,7 +3800,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const instagramSP = inf.influencer_social_profiles?.find(profile => profile.platform === 'instagram' && profile.username)
                     const instagramUrl = instagramSP?.username ? buildProfileUrl('instagram', instagramSP.username) : null
                     const myDelivs    = campaignDeliverables.filter(d => d.influencer?.id === inf.id)
-                    const delivsDone  = myDelivs.filter(d => d.status === 'published').length
+                    const delivsDone  = myDelivs.filter(isDeliverableComplete).length
                     const delivsTotal = myDelivs.length
                     const attendance = myDelivs.find(d => d.type === 'event_attendance')
                     const attendanceConfirmed = attendance?.attendance_response === 'confirmed'
@@ -3809,12 +3809,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const attendancePending = attendanceState === 'unconfirmed'
                     const attendanceNoConfirmed = attendanceState === 'no_confirmed'
                     const noShow = attendance?.attendance_outcome === 'no_show'
-                    const p = delivsTotal > 0
-                      ? Math.round(myDelivs.reduce((sum, d) => {
-                          if (d.status === 'published') return sum + 100
-                          return sum + (d.progress ?? 0)
-                        }, 0) / delivsTotal)
-                      : 0
+                    // Mismo criterio que "Deliverables" (done/total). La columna
+                    // `progress` ya no la escribe ninguna pantalla (siempre 0).
+                    const p = delivsTotal > 0 ? Math.round((delivsDone / delivsTotal) * 100) : 0
                     const gradient = GRADIENTS[i % GRADIENTS.length]
                     const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
                     const approvedCells: Record<ApprovedColumnKey, React.ReactNode> = {

@@ -18,12 +18,17 @@ export type MemoryOptions = {
   failSelectOn?: string
   /** Las actualizaciones de esta tabla fallan. */
   failUpdateOn?: string
+  /** Los borrados (delete) en esta tabla fallan. */
+  failDeleteOn?: string
+  /** Asigna `id` incremental ('mem-1', 'mem-2'…) a las filas insertadas sin `id`. Opt-in: por defecto no se agrega nada. */
+  autoId?: boolean
 }
 
 export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
+  let idSeq = 0
   const from = (table: string) => {
     const filters: Array<(r: Row) => boolean> = []
-    let op: 'select' | 'insert' | 'update' = 'select'
+    let op: 'select' | 'insert' | 'update' | 'delete' = 'select'
     let payload: any
     let wantRows = false
     let head = false
@@ -32,6 +37,7 @@ export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
       select(_cols?: string, o?: { count?: string; head?: boolean }) { wantRows = true; head = Boolean(o?.head); count = Boolean(o?.count); return builder },
       insert(p: any) { op = 'insert'; payload = p; return builder },
       update(p: any) { op = 'update'; payload = p; return builder },
+      delete() { op = 'delete'; return builder },
       eq(c: string, v: unknown) { filters.push(r => getPath(r, c) === v); return builder },
       is(c: string, v: unknown) { filters.push(r => (getPath(r, c) ?? null) === v); return builder },
       not(c: string, kind: string, v: unknown) {
@@ -62,7 +68,16 @@ export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
       const rows = db[table] ?? (db[table] = [])
       if (op === 'insert') {
         if (opts.failInsertOn === table) return { data: null, error: { message: `insert fallido en ${table}` } }
-        rows.push(...([] as Row[]).concat(payload).map((p: Row) => ({ ...p })))
+        const inserted = ([] as Row[]).concat(payload).map((p: Row) => ({ ...p }))
+        if (opts.autoId) inserted.forEach(r => { if (r.id === undefined) r.id = `mem-${++idSeq}` })
+        rows.push(...inserted)
+        // Con `.select()` encadenado (insert(...).select().single()) devuelve las filas, como PostgREST.
+        return { data: wantRows ? inserted.map(r => ({ ...r })) : null, error: null }
+      }
+      if (op === 'delete') {
+        if (opts.failDeleteOn === table) return { data: null, error: { message: `delete fallido en ${table}` } }
+        const keep = rows.filter(r => !filters.every(f => f(r)))
+        rows.splice(0, rows.length, ...keep)
         return { data: null, error: null }
       }
       if (op === 'update') {

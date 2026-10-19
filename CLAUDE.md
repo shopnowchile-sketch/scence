@@ -369,7 +369,7 @@ Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `
 
 ### 16.7 Verificación mínima antes de commit
 
-`npx tsc --noEmit`, `npx next lint` y `next build`. En un sandbox sin salida a `fonts.googleapis.com`, el build se valida con la fuente simulada (`NEXT_FONT_GOOGLE_MOCKED_RESPONSES`); el build real lo confirma Vercel al desplegar.
+`npx tsc --noEmit`, `npx next lint` y `next build`. En un sandbox sin salida a `fonts.googleapis.com`, el build se valida con la fuente simulada (`NEXT_FONT_GOOGLE_MOCKED_RESPONSES`); el build real lo confirma Vercel al desplegar. La validación final del protocolo (sección 18, paso 9) añade `npm test`.
 
 ### 16.9 Tenant: una marca = una organización
 
@@ -405,7 +405,7 @@ Una influencer con `is_active = false` no puede recibir ningún email enviado po
 
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 
-La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12.
+La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.
 
 - **Auditar antes de cambiar:** entender cómo funciona hoy, cuál es la fuente de verdad y qué se puede reutilizar.
 - **Reutilizar antes de crear** (sección 6). Nada de componentes, tablas, APIs, migraciones, estados o configuraciones que el objetivo no necesite.
@@ -416,11 +416,55 @@ La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente anal
 - **Preguntar solo lo necesario:** decidir lo que se infiere del contexto. Detenerse solo ante decisiones de negocio o riesgo real sobre datos, dinero, usuarios, seguridad o comportamiento de negocio (Regla Cero).
 - **Datos de producción:** identificar los registros exactos, previsualizar, revisar dependencias y pedir aprobación antes de cualquier escritura destructiva o sensible.
 - **Antes de merge:** TypeScript, lint, build y el comportamiento relevante verificados (16.7). Commit, push, deploy y migraciones siguen requiriendo autorización explícita (sección 11).
-- **Revisión local:** los cambios se dejan listos para revisar en `localhost:3000` antes de subirlos.
+- **Revisión local:** los cambios se dejan listos para revisar en `localhost:3000` antes de subirlos (reglas de uso en la sección 18, «Entorno de desarrollo»).
 
-Formato de respuesta (breve): **RESULTADO** · **CAMBIOS** · **VERIFICACIÓN** · **RIESGOS / DECISIONES** (solo si existen) · **SIGUIENTE PASO** (una acción). Si no hizo falta cambiar nada, decirlo. No devolver listas de instrucciones para que la fundadora las repita.
+Formato de respuesta (breve): **RESULTADO** · **CAMBIOS** · **VERIFICACIÓN** · **RIESGOS / DECISIONES** (solo si existen) · **SIGUIENTE PASO** (una acción). Si no hizo falta cambiar nada, decirlo. No devolver listas de instrucciones para que la fundadora las repita. Al entregar un requerimiento, este formato se amplía como indica la sección 18 (paso 10).
 
 Prioridad: menos código, menos tablas, menos duplicación, menos estados, menos legacy, menos mantenimiento, más claridad.
+
+## 18. Protocolo permanente de implementación SCENCE
+
+Se aplica a cada requerimiento de la fundadora. **No reemplaza** las secciones 0, 11, 12, 16 y 17: las ordena en un flujo y las cita en vez de repetirlas. Si dos reglas chocan, prevalece la más estricta (Regla Cero y sección 11).
+
+**Flujo (en este orden). Un paso que no aplique se declara «No aplica» con su motivo; nunca se omite en silencio.**
+
+1. **REQUERIMIENTO.** Entender el objetivo, el resultado esperado y los criterios de aceptación. Preguntar solo por decisiones importantes que falten (sección 17).
+2. **AUDITORÍA** (solo lectura). Revisar código, arquitectura, portal, componentes, APIs, base de datos, permisos y RLS, documentación y regresiones potenciales. Aplican la sección 11 (antes de modificar) y la 12 (si es un bug). **No se modifica código antes de terminar la auditoría y definir el plan.**
+3. **PLAN.** Causa raíz, solución mínima, archivos afectados, riesgos y pruebas necesarias. Reutilizar > modificar > crear (sección 6). Si el cambio toca la Regla Cero (visibilidad, postulación, aprobación, briefs, datos de marcas o influencers, pagos, ownership o permisos), **el plan se presenta y se espera aprobación antes de implementar.**
+4. **IMPLEMENTACIÓN.** Solo lo que el requerimiento necesita; no mezclar funcionalidades ajenas (sección 17). Sin modificar producción.
+5. **DOCUMENTACIÓN.** Actualizar los documentos pertinentes (requerimientos, diseño funcional, arquitectura, registro de cambios) **en su fuente única**, sin crear copias. Las reglas de negocio viven en este archivo. Las fuentes por tipo de información y la nomenclatura están en `docs/00-MASTER/GUIA-DE-DOCUMENTACION_v1.0_2026-10-19.md` (es una **propuesta documental pendiente de aprobación**: **no prevalece** sobre las reglas oficiales de este archivo ni oficializa las fuentes en conflicto, como el FDD principal). Hoy no existe un archivo de registro de cambios: no se crea uno sin aprobación; mientras tanto la entrega (paso 10) es el registro.
+6. **TESTING.** Ejecutar `npm test` y las pruebas de integración o específicas relevantes que existan. Las de integración solo contra su base de pruebas, nunca contra producción, y sin pasar claves por el chat (ver `tests/integration/run-crm-integration.sh`). **No se afirma que un test pasó si no se ejecutó.**
+7. **QA.** Revisar funcionalidad, UI, APIs, base de datos, permisos y RLS, casos límite, casos de otros roles y regresiones relevantes (sección 11).
+8. **SMOKE TESTS.** Flujos críticos en local o en un Preview seguro, según corresponda; los cambios se dejan listos para revisión local (sección 17). Sin autorización, **no** ejecutar acciones con efectos externos: correos reales (Resend, envío masivo del CRM), cobros (PayPal), mensajes (WhatsApp) ni escrituras en datos reales. Antes de cualquier smoke test que escriba datos, confirmar a qué base apunta el entorno (ver «Entorno de desarrollo»).
+9. **VALIDACIÓN FINAL.** TypeScript, lint, tests y build según el proyecto y los cambios (16.7, con la fuente simulada en sandbox), más la revisión del diff (sección 11). Lo que no pueda ejecutarse se declara con su motivo y queda **pendiente**.
+10. **ENTREGA.** Formato de la sección 17, ampliado: **RESULTADO** (terminado, incompleto o bloqueado, con su motivo; ver «Criterio de cierre») · **CAMBIOS** (archivos modificados y documentación actualizada) · **VERIFICACIÓN** (pruebas con PASS/FAIL, smoke tests) · **RIESGOS / DECISIONES / PENDIENTES** · **ESTADO** (despliegue) · **SIGUIENTE PASO** (una acción). Debe quedar la trazabilidad requerimiento → archivos → documentación → pruebas → resultado.
+
+**Proporcionalidad y revisión de seguridad.** Testing, QA y smoke tests (pasos 6 a 8) son **proporcionales al alcance y al riesgo** del requerimiento. **Toda prueba omitida se justifica por escrito en la entrega.** Los cambios de autenticación, autorización, RLS, facturación o permisos exigen además una **revisión de seguridad pertinente**, registrada en la entrega: rutas y APIs afectadas, chequeo de permisos en backend (no solo en frontend), RLS, y casos de los otros roles (secciones 7, 11 y 16.2).
+
+**Criterio de cierre.** Un requerimiento solo se declara **terminado** cuando cumple los criterios de aceptación **y** las verificaciones aplicables. Si quedan pruebas fallidas o pendientes, se declara **incompleto** o **bloqueado**, indicando el motivo y qué falta para cerrarlo.
+
+**Entorno de desarrollo: `localhost:3000`.** Es la dirección fija de desarrollo y de pruebas visuales (aplica al flujo anterior: implementar → probar en localhost → QA y smoke tests → revisar resultados → pedir aprobación antes de commit, merge o deploy).
+
+- **Repositorio y cambios:** trabajar en el repositorio y la rama o worktree que corresponda, preservando todos los cambios existentes sin commit. No sobrescribir ni revertir cambios ajenos.
+- **Servidor:** antes de iniciarlo, comprobar si ya funciona en el puerto 3000 y reutilizarlo cuando corresponda. No iniciar servidores duplicados ni cambiar de puerto en silencio.
+- **Puerto ocupado por otro proceso:** identificarlo antes de actuar. No terminar procesos ni cambiar de puerto sin autorización.
+- **`localhost` no es base local:** usar `localhost:3000` no implica usar una base de datos local. Antes de cualquier operación que escriba datos, comprobar el destino de Supabase **sin exponer secretos** (solo el ref del proyecto, nunca claves).
+- **Producción:** nunca ejecutar pruebas que escriban datos en producción (sección 17, «Datos de producción»). Si el entorno apunta a producción, detener esas pruebas y comunicarlo.
+- **Base aislada no disponible:** si una prueba la requiere y aún no existe, indicar qué falta y detener **solo esa prueba**; continuar con las verificaciones locales que sí sean seguras.
+- **Herramientas:** no instalar Docker, cambiar dependencias ni incorporar herramientas nuevas como requisito del desarrollo habitual.
+- **Verificación visual:** no se declara «verificado visualmente» (nivel «Verificado en Preview» o equivalente local) algo que no se abrió y comprobó realmente en el navegador. Si no se abrió, se marca «Por verificar».
+
+**Reglas obligatorias**
+
+- No duplicar componentes, APIs, tablas ni documentación si se puede reutilizar lo existente (secciones 6 y 17).
+- Sin migraciones destructivas, cambios de permisos, despliegues ni acciones con efectos reales sin autorización explícita (sección 11).
+- Producción en **solo lectura** durante auditorías y verificaciones no autorizadas (sección 17, «Datos de producción»).
+- Separar siempre cuatro niveles: **Implementado · Probado** (ejecutado, con resultado) **· Verificado en Preview · Confirmado en producción.** Lo que no se verificó se marca «Por verificar».
+- Si una prueba falla: investigar la causa raíz; no ocultarla ni marcar el requerimiento como terminado.
+- Commit, push, merge o deploy solo con autorización para ese trabajo (sección 11); la autorización de uno no se extiende a los demás. Nunca `git add -A` sin autorización.
+- Si un cambio no es seguro o falta una decisión crítica: detenerse y consultar a la fundadora.
+- **Worktrees:** al iniciar un trabajo en un worktree (`.claude/worktrees/*`), comparar su `CLAUDE.md` con el de la raíz (solo lectura). Si difiere, **advertir** a la fundadora de que sus instrucciones pueden estar desactualizadas. No actualizarlo ni modificarlo automáticamente.
+- Trabajo solo documental: aplican los pasos 1, 2, 3, 5 y 10; los pasos 6 a 9 solo si hay algo que ejecutar, y nunca se declara ejecutado lo que no se ejecutó.
 
 ## Regla final para Claude
 

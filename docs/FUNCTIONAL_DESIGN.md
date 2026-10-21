@@ -154,6 +154,12 @@ Usuario ──▶ Next.js 14 (App Router, Vercel)
 ---
 ## 3. Requisitos Funcionales por Portal
 
+### 3.0 Control de requerimientos funcionales
+
+El registro versionado de requerimientos es la fuente de verdad funcional cuando exista una versión aprobada. El primer piloto es `DASH-001`: una propuesta crea una versión, una aprobación fija la definición vigente y reinicia su estado de validación. La evidencia de código, documentación, impacto, pruebas y desviaciones queda vinculada a esa versión. Solo `super_admin` puede consultar o modificar este registro; la ruta valida autorización en servidor y las tablas tienen RLS. La migración asociada debe aplicarse primero en un entorno de desarrollo autorizado.
+
+**DASH-001 — KPI real de influencers activos.** El Dashboard Admin debe contar solamente `influencers.is_active = true` de la organización SCENCE activa. Evidencia técnica: `GET /api/dashboard`; presentación: `DashboardClient.tsx`; regresión: `tests/requirements-dashboard-kpi.test.ts`. Estado al crear el piloto: **por verificar** hasta contrastar el resultado con datos reales del entorno autorizado.
+
 > Los mockups son reconstrucciones fieles (SVG, no screenshots literales) generadas a partir de la sesión en vivo del 2026-07-01, en `docs/mockups/*.svg`.
 
 ### 3.1 Portal Admin
@@ -168,7 +174,7 @@ Acceso: `role: super_admin`. Rutas: `admin-*`. Equipo interno de SCENCE — acce
 | Campo | Fuente | Para qué sirve |
 |---|---|---|
 | Campañas en curso | `count(campaigns) where status in (active,pending_influencers)` | KPI de carga operativa del mes |
-| Influencers en roster | `count(influencers) where is_active=true` | Tamaño total del roster disponible |
+| Influencers en roster | `count(influencers) where organization_id = sesión e is_active=true` | Tamaño total del roster operativo disponible |
 | Marcas registradas | `count(brands)` | Tamaño de la cartera de clientes |
 | Facturado (outbound) | `sum(invoices.total)` del mes | Ingreso reconocido |
 | Costos recibidos | `sum(payroll_runs.total)` del mes | Costo de payroll del mes |

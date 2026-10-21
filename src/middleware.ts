@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieOptions } from '@supabase/ssr'
 import { detectLocale, LOCALE_COOKIE } from '@/i18n/config'
+import { nonProductionDatabaseBlock } from '@/lib/runtime-env'
 
 const PUBLIC_ROUTES = [
   '/login', '/register', '/forgot-password', '/reset-password',
@@ -16,6 +17,14 @@ const PUBLIC_ROUTES = [
 ]
 
 export async function middleware(request: NextRequest) {
+  // Barrera de entorno: un entorno que no es producción (localhost, Preview)
+  // configurado con la base de datos de producción no atiende ninguna petición.
+  // En producción nonProductionDatabaseBlock() siempre devuelve null.
+  const dbBlock = nonProductionDatabaseBlock()
+  if (dbBlock) {
+    return NextResponse.json({ error: 'non_production_database_blocked', message: dbBlock }, { status: 503 })
+  }
+
   const path = request.nextUrl.pathname
   const isPublic = PUBLIC_ROUTES.some(route => path.startsWith(route))
   const existingLocale = request.cookies.get(LOCALE_COOKIE)?.value

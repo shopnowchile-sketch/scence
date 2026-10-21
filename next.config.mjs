@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
+// Marca de entorno inlineada en la compilación para el código de navegador
+// (que no ve VERCEL_ENV). Producción => 'production'; Preview => 'preview';
+// cualquier otro caso (next dev / build local) => 'development'.
+const appEnv = process.env.VERCEL_ENV === 'production' && process.env.NODE_ENV !== 'development'
+  ? 'production'
+  : process.env.VERCEL_ENV === 'preview' ? 'preview' : 'development'
+
 const nextConfig = {
+  env: { NEXT_PUBLIC_APP_ENV: appEnv },
   // @sparticuz/chromium (binario de Chromium para serverless) resuelve rutas
   // relativas a sus propios archivos — si el bundler lo empaqueta, se rompe
   // con "input directory /var/task/bin does not exist". Debe quedar externo.

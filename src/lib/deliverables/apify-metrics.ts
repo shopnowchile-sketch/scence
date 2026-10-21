@@ -26,9 +26,11 @@ import type {
   DeliverableMetricsResult,
   EngagementRateBasis,
 } from './metrics-types'
+import { productionEnv } from '@/lib/runtime-env'
 export type { DeliverableMetrics, DeliverableMetricsResult } from './metrics-types'
 
-const APIFY_TOKEN = process.env.APIFY_API_TOKEN
+// Fuera de producción el token no existe (reusa la rama "no configurado"): ni consume créditos de Apify ni llama a su API.
+const apifyToken = () => productionEnv('APIFY_API_TOKEN')
 const POST_ACTOR = 'apify/instagram-post-scraper'
 const REEL_ACTOR = 'apify/instagram-reel-scraper'
 
@@ -54,6 +56,7 @@ interface RawApifyItem {
 }
 
 export async function fetchDeliverablePostMetrics(url: string): Promise<DeliverableMetricsResult> {
+  const APIFY_TOKEN = apifyToken()
   if (!APIFY_TOKEN) return { error: 'APIFY_API_TOKEN no configurado' }
   if (!url) return { error: 'Sin link de publicación' }
 

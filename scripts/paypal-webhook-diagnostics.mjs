@@ -21,19 +21,23 @@
  * No imprime ningún secreto.
  */
 import { readFileSync } from 'node:fs'
+import { resolvePayPalTarget } from './lib/paypal-target.mjs'
 
-const envFile = process.argv[2] ?? '.env.local'
+const envFile = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? '.env.local'
 const env = {}
 for (const line of readFileSync(envFile, 'utf8').split('\n')) {
   const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)
   if (match) env[match[1]] = match[2].trim().replace(/^["']|["']$/g, '')
 }
 
-const base = env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'
+let target
+try { target = resolvePayPalTarget({ argv: process.argv.slice(2), env, processEnv: process.env }) } catch (e) { console.error(`✗ ${e.message}`); process.exit(1) }
+const base = target.base
+for (const note of target.notes) console.warn(note)
 const configuredId = env.PAYPAL_WEBHOOK_ID ?? env.PAYPAL_INFLUENCER_WEBHOOK_ID ?? null
 
 console.log(`Archivo de entorno : ${envFile}`)
-console.log(`PAYPAL_ENV         : ${env.PAYPAL_ENV ?? '(no definido)'} → ${base}`)
+console.log(`PAYPAL_ENV         : ${env.PAYPAL_ENV ?? '(no definido)'} → ${base} (modo efectivo: ${target.mode})`)
 console.log(`PAYPAL_WEBHOOK_ID            definido: ${Boolean(env.PAYPAL_WEBHOOK_ID)}`)
 console.log(`PAYPAL_INFLUENCER_WEBHOOK_ID definido: ${Boolean(env.PAYPAL_INFLUENCER_WEBHOOK_ID)}`)
 console.log(`Webhook id que usaría la app: ${configuredId ?? '(ninguno → la ruta responde 503 a todo evento)'}\n`)

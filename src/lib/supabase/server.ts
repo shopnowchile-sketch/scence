@@ -1,8 +1,10 @@
 import { createServerClient as _createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { CookieOptions } from '@supabase/ssr'
+import { assertDatabaseTargetAllowed } from '@/lib/runtime-env'
 
 function _buildClient(url: string, key: string) {
+  assertDatabaseTargetAllowed()
   const cookieStore = cookies()
   return _createServerClient(url, key, {
     cookies: {
@@ -31,6 +33,7 @@ export const createServerClient = createClient
 
 /** Admin client — service role key. Solo en API routes seguras, nunca en cliente. */
 export function createAdminClient() {
+  assertDatabaseTargetAllowed()
   return _createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,

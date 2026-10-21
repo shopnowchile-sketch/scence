@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { productionEnv } from '@/lib/runtime-env'
 import {
   createSupabaseSyncStore,
   instagramProfileIdsFor,
@@ -60,7 +61,7 @@ async function runBatch() {
 export async function GET(req: NextRequest) {
   const auth = await authorize(req)
   if (!auth.ok) return NextResponse.json({ error: auth.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: auth.status })
-  if (!process.env.META_IG_SYSTEM_TOKEN) return configError()
+  if (!productionEnv('META_IG_SYSTEM_TOKEN')) return configError()
   try {
     return NextResponse.json(await runBatch())
   } catch (error) {
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await authorize(req)
   if (!auth.ok) return NextResponse.json({ error: auth.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: auth.status })
-  if (!process.env.META_IG_SYSTEM_TOKEN) return configError()
+  if (!productionEnv('META_IG_SYSTEM_TOKEN')) return configError()
 
   let body: { influencer_ids?: string[]; campaign_id?: string } = {}
   try { body = await req.json() } catch { /* body vacío = un lote de la cola */ }

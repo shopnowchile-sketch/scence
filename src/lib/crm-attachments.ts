@@ -16,16 +16,21 @@ export const CRM_ATTACHMENT_TYPES: Record<string, string> = {
 
 export function hasAllowedFileSignature(bytes: Uint8Array, mimeType: string): boolean {
   const starts = (...signature: number[]) => signature.every((value, index) => bytes[index] === value)
+  const ascii = (start: number, end: number) => {
+    let value = ''
+    for (let index = start; index < end && index < bytes.length; index += 1) value += String.fromCharCode(bytes[index])
+    return value
+  }
   switch (mimeType) {
     case 'application/pdf':
-      return bytes.length >= 5 && String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-'
+      return bytes.length >= 5 && ascii(0, 5) === '%PDF-'
     case 'image/jpeg':
       return starts(0xff, 0xd8, 0xff)
     case 'image/png':
       return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
     case 'image/webp':
-      return bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF'
-        && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP'
+      return bytes.length >= 12 && ascii(0, 4) === 'RIFF'
+        && ascii(8, 12) === 'WEBP'
     case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
     case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
     case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':

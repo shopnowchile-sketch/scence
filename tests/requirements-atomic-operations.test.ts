@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 
 const route = readFileSync(new URL('../src/app/api/admin/requirements/[key]/route.ts', import.meta.url), 'utf8')
 const migration = readFileSync(new URL('../supabase/migrations/20261021120000_requirements_atomic_operations.sql', import.meta.url), 'utf8')
+const baseMigration = readFileSync(new URL('../supabase/migrations/20261010184627_requirements_source_of_truth.sql', import.meta.url), 'utf8')
 
 test('propuestas usan una operación SQL transaccional y no calculan version_number en la API', () => {
   assert.match(route, /rpc\('propose_requirement_version'/)
@@ -11,7 +12,7 @@ test('propuestas usan una operación SQL transaccional y no calculan version_num
   assert.match(migration, /FUNCTION public\.propose_requirement_version/)
   assert.match(migration, /FROM public\.requirements[\s\S]*FOR UPDATE/)
   assert.match(migration, /COALESCE\(MAX\(version_number\), 0\) \+ 1/)
-  assert.match(migration, /UNIQUE \(requirement_id, version_number\)/)
+  assert.match(baseMigration, /UNIQUE \(requirement_id, version_number\)/)
 })
 
 test('aprobación cambia versión anterior, nueva versión, puntero y auditoría en una única función', () => {
@@ -32,7 +33,7 @@ test('evidencia persistente se registra con RPC transaccional y evita duplicados
   assert.match(route, /error\.code === '23505'/)
   assert.match(migration, /FUNCTION public\.add_requirement_evidence/)
   assert.match(migration, /requirement\.evidence_added/)
-  assert.match(migration, /UNIQUE \(requirement_version_id, evidence_type, reference\)/)
+  assert.match(baseMigration, /UNIQUE \(requirement_version_id, evidence_type, reference\)/)
 })
 
 test('API valida cuerpo, longitud, arrays y UUID; errores de lectura de evidencia no se silencian', () => {

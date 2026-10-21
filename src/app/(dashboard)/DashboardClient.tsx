@@ -724,7 +724,7 @@ export function DashboardClient() {
               value={String(computed.activeInfluencers)}
               title="Influencers activos"
               subtitle="del roster operativo"
-              tone="cyan"
+              tone="purple"
               href="/admin-influencers"
             />
             <KpiCard

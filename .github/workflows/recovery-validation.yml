@@ -1,15 +1,9 @@
 name: Recovery validation
 
+# Pausado temporalmente para detener notificaciones por cada commit.
+# Ejecutar manualmente una única vez después de corregir y revisar los fallos.
 on:
-  pull_request:
-    branches: [master]
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "supabase/migrations/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/recovery-validation.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read

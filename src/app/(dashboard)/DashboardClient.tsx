@@ -171,6 +171,16 @@ function formatShortDate(value: unknown) {
   return new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short' }).format(date)
 }
 
+// Tiempo transcurrido desde la última señal real de conexión. Antes cada fila
+// de "Live influencers" mostraba "hace instantes" escrito a mano.
+function formatMinutesAgo(value: string) {
+  if (!value) return ''
+  const timestamp = new Date(value).getTime()
+  if (Number.isNaN(timestamp)) return ''
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000))
+  return minutes < 1 ? 'hace instantes' : `hace ${minutes} min`
+}
+
 function isRecentlyOnline(record: UnknownRecord) {
   const explicit =
     record.is_online === true ||
@@ -473,6 +483,14 @@ function PlatformsCard({ deliverables }: { deliverables: UnknownRecord[] }) {
 
 export function DashboardClient() {
   const [state, setState] = useState<DashboardState>(INITIAL_STATE)
+  // La fecha se calcula en el cliente (zona de Chile) tras montar, para no
+  // desfasar el HTML del servidor. Antes estaba escrita a mano.
+  const [todayLabel, setTodayLabel] = useState('')
+  useEffect(() => {
+    setTodayLabel(new Intl.DateTimeFormat('es-CL', {
+      timeZone: 'America/Santiago', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    }).format(new Date()))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -524,6 +542,9 @@ export function DashboardClient() {
 
     const influencersTotal =
       deepNumber(state.dashboard, ['totalInfluencers', 'influencersTotal', 'influencersRoster'], state.influencers.length)
+
+    const activeInfluencers =
+      deepNumber(state.dashboard, ['active_influencers', 'activeInfluencers'], influencersTotal)
 
     const brandsTotal =
       deepNumber(state.dashboard, ['total_brands', 'totalBrands', 'brandsTotal', 'registeredBrands'], 0)
@@ -586,7 +607,7 @@ export function DashboardClient() {
       id: readText(person, ['id'], String(index)),
       name: readText(person, ['name', 'full_name', 'display_name'], 'Influencer'),
       username: readText(person, ['instagram_username', 'username', 'handle'], ''),
-      time: 'hace instantes',
+      time: formatMinutesAgo(readText(person, ['last_seen_at', 'last_activity_at', 'last_sign_in_at'])),
     }))
 
     // Conteo real de conectados — puede ser mayor al largo de liveInfluencers,
@@ -634,6 +655,7 @@ export function DashboardClient() {
       proPlan,
       campaignCount,
       influencersTotal,
+      activeInfluencers,
       brandsTotal,
       revenue,
       payroll,
@@ -664,7 +686,7 @@ export function DashboardClient() {
         <header>
           <div className="mb-1 flex items-center gap-2 text-sm text-purple-400">
             <Activity className="h-4 w-4" />
-            <span>lunes 29 de junio, 2026</span>
+            <span className="first-letter:uppercase">{todayLabel}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-3xl font-black tracking-tight text-gray-950">Dashboard</h1>
@@ -680,7 +702,7 @@ export function DashboardClient() {
 
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Operación</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <KpiCard
               icon={<CalendarDays className="h-5 w-5" />}
               value={String(computed.campaignCount)}
@@ -695,6 +717,14 @@ export function DashboardClient() {
               title="Influencers en roster"
               subtitle="total (activos + inactivos)"
               tone="blue"
+              href="/admin-influencers"
+            />
+            <KpiCard
+              icon={<Users className="h-5 w-5" />}
+              value={String(computed.activeInfluencers)}
+              title="Influencers activos"
+              subtitle="del roster operativo"
+              tone="cyan"
               href="/admin-influencers"
             />
             <KpiCard

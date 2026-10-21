@@ -9,7 +9,7 @@ const requirementsMigration = readFileSync(new URL('../supabase/migrations/20261
 const picker = readFileSync(new URL('../src/app/(dashboard)/admin-crm/AttachmentPicker.tsx', import.meta.url), 'utf8')
 
 test('la prueba apunta al nombre vigente de la migración de Requerimientos', () => {
-  assert.match(requirementsMigration, /CREATE TABLE IF NOT EXISTS public\\.requirements/)
+  assert.match(requirementsMigration, /CREATE TABLE IF NOT EXISTS public\.requirements/)
 })
 
 test('upload exige sesión y rol CRM antes de recibir y guardar el archivo', () => {

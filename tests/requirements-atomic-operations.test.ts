@@ -38,7 +38,7 @@ test('evidencia persistente se registra con RPC transaccional y evita duplicados
 test('API valida cuerpo, longitud, arrays y UUID; errores de lectura de evidencia no se silencian', () => {
   assert.match(route, /El cuerpo JSON no es válido/)
   assert.match(route, /10\.000 caracteres/)
-  assert.match(route, /2000 caracteres/)
+  assert.match(route, /2\\.000 caracteres/)
   assert.match(route, /versionId debe ser un UUID válido/)
   assert.match(route, /No se pudo leer la evidencia/)
 })

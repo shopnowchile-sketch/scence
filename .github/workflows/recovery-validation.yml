@@ -1,12 +1,20 @@
 name: Recovery validation
 
-# Pausado temporalmente para detener notificaciones por cada commit.
-# Ejecutar manualmente una única vez después de corregir y revisar los fallos.
+# Evita una ejecución y un correo por cada commit de código.
+# Se activa manualmente o al cambiar este workflow para una validación controlada.
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [master]
+    paths:
+      - ".github/workflows/recovery-validation.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: recovery-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:

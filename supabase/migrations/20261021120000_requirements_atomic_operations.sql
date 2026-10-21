@@ -146,3 +146,65 @@ REVOKE ALL ON FUNCTION public.propose_requirement_version(text, text, jsonb, jso
 REVOKE ALL ON FUNCTION public.approve_requirement_version(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.propose_requirement_version(text, text, jsonb, jsonb, text, text, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.approve_requirement_version(text, uuid, uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.add_requirement_evidence(
+  p_requirement_key text,
+  p_version_id uuid,
+  p_evidence_type text,
+  p_reference text,
+  p_details text,
+  p_verification_status text,
+  p_created_by uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+DECLARE
+  v_requirement public.requirements%ROWTYPE;
+  v_evidence public.requirement_evidence%ROWTYPE;
+BEGIN
+  SELECT * INTO v_requirement
+  FROM public.requirements
+  WHERE requirement_key = p_requirement_key
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'requirement_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  PERFORM 1 FROM public.requirement_versions
+  WHERE id = p_version_id AND requirement_id = v_requirement.id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'version_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  INSERT INTO public.requirement_evidence (
+    requirement_version_id, evidence_type, reference, details, verification_status, created_by
+  ) VALUES (
+    p_version_id, p_evidence_type, p_reference, p_details, p_verification_status, p_created_by
+  )
+  RETURNING * INTO v_evidence;
+
+  INSERT INTO public.audit_logs (
+    actor_id, action, entity_type, entity_id, changes
+  ) VALUES (
+    p_created_by, 'requirement.evidence_added', 'requirement', v_requirement.id,
+    jsonb_build_object(
+      'requirement_key', p_requirement_key,
+      'version_id', p_version_id,
+      'evidence_id', v_evidence.id,
+      'evidence_type', p_evidence_type,
+      'reference', p_reference,
+      'verification_status', p_verification_status
+    )
+  );
+
+  RETURN jsonb_build_object('id', v_evidence.id, 'requirement_version_id', p_version_id);
+END;
+$;
+
+REVOKE ALL ON FUNCTION public.add_requirement_evidence(text, uuid, text, text, text, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.add_requirement_evidence(text, uuid, text, text, text, text, uuid) TO service_role;

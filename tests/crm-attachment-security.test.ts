@@ -27,7 +27,7 @@ test('adjuntos tienen límite de 4 MiB y lista MIME cerrada en servidor y bucket
 
 test('ruta de adjunto valida UUID y el bucket se usa por nombre constante privado', () => {
   assert.match(attachment, /CRM_ATTACHMENT_BUCKET = 'crm-email-attachments'/)
-  assert.match(attachment, /uploads\\\/[0-9a-f-]\{36\}/)
+  assert.ok(attachment.includes('/^uploads\\/[0-9a-f-]{36}\\/'))
   assert.match(attachment, /isValidAttachmentPath/)
   assert.match(upload, /upsert: false/)
   assert.doesNotMatch(migration, /public\s*=\s*true/i)

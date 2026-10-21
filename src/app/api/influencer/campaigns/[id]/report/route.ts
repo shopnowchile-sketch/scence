@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 
 type Params = { params: { id: string } }
 
@@ -68,7 +69,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Get ONLY this influencer's deliverables
   const { data: deliverables } = await admin
     .from('campaign_deliverables')
-    .select('id, title, type, status, due_date, platform, published_at, content_url, review_notes, progress')
+    .select('id, title, type, status, due_date, platform, published_at, content_url, published_url, attendance_response, review_notes, progress')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .order('due_date', { ascending: true })
@@ -103,9 +104,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     active: 'Activa', completed: 'Completada', draft: 'Borrador', paused: 'Pausada',
   }
 
-  const approved = delivs.filter(d => d.status === 'approved' || d.status === 'published').length
-  const pending  = delivs.filter(d => d.status === 'pending' || d.status === 'in_review').length
-  const progress = delivs.length > 0 ? Math.round((approved / delivs.length) * 100) : 0
+  // "Aprobados" es literal (aprobado/publicado). "Completado" y "Pendientes"
+  // usan el criterio único de la app (lib/deliverable-status), el mismo que ve
+  // la influencer en su dashboard; antes aquí se medía solo "aprobado".
+  const approved  = delivs.filter(d => d.status === 'approved' || d.status === 'published').length
+  const completed = delivs.filter(isDeliverableComplete).length
+  const pending   = delivs.length - completed
+  const progress  = delivs.length > 0 ? Math.round((completed / delivs.length) * 100) : 0
 
   const igProfile = (influencer.influencer_social_profiles as Array<{platform:string;username:string|null;followers:number;engagement_rate:number|null}>)
     ?.find(s => s.platform === 'instagram')
@@ -268,7 +273,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     <div class="progress-wrap">
       <div class="progress-label">
         <span>Avance de campaña</span>
-        <span>${approved} de ${delivs.length} entregables completados</span>
+        <span>${completed} de ${delivs.length} entregables completados</span>
       </div>
       <div class="progress-bar">
         <div class="progress-fill" style="width:${progress}%"></div>

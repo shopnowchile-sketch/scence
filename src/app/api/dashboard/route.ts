@@ -181,6 +181,7 @@ export async function GET() {
 
   // Totales mediante COUNT, sin descargar las aproximadamente 1.700 filas.
   const totalInfluencers = influencersCountRes.count ?? 0
+  const activeInfluencers = activeInfluencersCountRes.count ?? 0
   const totalBrands = brandsCountRes.count ?? 0
   const brandsEntered = brandsEnteredCountRes.count ?? 0
 
@@ -387,7 +388,7 @@ export async function GET() {
     kpis: {
       active_campaigns:  campaignsRes.count ?? 0,
       total_influencers: totalInfluencers,
-      active_influencers: activeInfluencersCountRes.count ?? 0,
+      active_influencers: activeInfluencers,
       total_brands:      totalBrands,
       brands_entered:    brandsEntered,
       brands_pending:    Math.max(0, totalBrands - brandsEntered),

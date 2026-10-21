@@ -18,6 +18,8 @@ test('adjuntos tienen límite de 4 MiB y lista MIME cerrada en servidor y bucket
   assert.match(attachment, /CRM_ATTACHMENT_MAX_BYTES = 4 \* 1024 \* 1024/)
   assert.match(upload, /file\.size > CRM_ATTACHMENT_MAX_BYTES/)
   assert.match(upload, /if \(!CRM_ATTACHMENT_TYPES\[file\.type\]\)/)
+  assert.match(upload, /hasAllowedFileSignature\(bytes, file\.type\)/)
+  assert.match(attachment, /case 'image\/jpeg':[\s\S]*?starts\(0xff, 0xd8, 0xff\)/)
   assert.match(migration, /'crm-email-attachments', 'crm-email-attachments', false, 4194304/)
   assert.match(migration, /allowed_mime_types/)
   assert.match(picker, /4 \* 1024 \* 1024/)

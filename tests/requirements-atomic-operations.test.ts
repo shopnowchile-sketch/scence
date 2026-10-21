@@ -26,6 +26,15 @@ test('aprobación cambia versión anterior, nueva versión, puntero y auditoría
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.approve_requirement_version[\s\S]*TO service_role/)
 })
 
+test('evidencia persistente se registra con RPC transaccional y evita duplicados', () => {
+  assert.match(route, /action === 'add_evidence'/)
+  assert.match(route, /rpc\('add_requirement_evidence'/)
+  assert.match(route, /error\.code === '23505'/)
+  assert.match(migration, /FUNCTION public\.add_requirement_evidence/)
+  assert.match(migration, /requirement\.evidence_added/)
+  assert.match(migration, /UNIQUE \(requirement_version_id, evidence_type, reference\)/)
+})
+
 test('API valida cuerpo, longitud, arrays y UUID; errores de lectura de evidencia no se silencian', () => {
   assert.match(route, /El cuerpo JSON no es válido/)
   assert.match(route, /10\.000 caracteres/)

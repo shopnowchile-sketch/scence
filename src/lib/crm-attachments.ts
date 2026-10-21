@@ -21,11 +21,6 @@ export function hasAllowedFileSignature(bytes: Uint8Array, mimeType: string): bo
     for (let index = start; index < end && index < bytes.length; index += 1) value += String.fromCharCode(bytes[index])
     return value
   }
-  const ascii = (start: number, end: number) => {
-    let value = ''
-    for (let index = start; index < end && index < bytes.length; index += 1) value += String.fromCharCode(bytes[index])
-    return value
-  }
   switch (mimeType) {
     case 'application/pdf':
       return bytes.length >= 5 && ascii(0, 5) === '%PDF-'

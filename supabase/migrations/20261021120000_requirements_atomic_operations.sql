@@ -2,6 +2,32 @@
 -- No ejecutar en producción durante la recuperación. Validar primero en entorno aislado.
 -- Las rutas verifican sesión y super_admin; estas funciones solo son ejecutables por service_role.
 
+-- El API usa service_role después de comprobar super_admin. Los usuarios
+-- autenticados solo necesitan lectura; revocar escrituras directas evita saltarse
+-- las operaciones transaccionales de propuesta/aprobación.
+REVOKE INSERT, UPDATE, DELETE ON public.requirements FROM authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.requirement_versions FROM authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.requirement_evidence FROM authenticated;
+GRANT SELECT ON public.requirements, public.requirement_versions, public.requirement_evidence TO authenticated;
+
+-- Mantener aprobaciones inmutables también para cualquier escritura futura
+-- que se haga con el rol authenticated; las operaciones oficiales usan RPC.
+DROP POLICY IF EXISTS "requirement_versions_platform_admin_update" ON public.requirement_versions;
+CREATE POLICY "requirement_versions_platform_admin_update" ON public.requirement_versions
+  FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.organization_members om
+      WHERE om.user_id = (select auth.uid()) AND om.is_active = true AND om.role = 'super_admin'
+    ) AND lifecycle_status = 'proposed'
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.organization_members om
+      WHERE om.user_id = (select auth.uid()) AND om.is_active = true AND om.role = 'super_admin'
+    ) AND lifecycle_status = 'proposed'
+  );
+
 CREATE OR REPLACE FUNCTION public.propose_requirement_version(
   p_requirement_key text,
   p_definition text,

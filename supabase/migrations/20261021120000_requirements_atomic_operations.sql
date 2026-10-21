@@ -159,7 +159,7 @@ CREATE OR REPLACE FUNCTION public.add_requirement_evidence(
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $$
 DECLARE
   v_requirement public.requirements%ROWTYPE;
   v_evidence public.requirement_evidence%ROWTYPE;
@@ -204,7 +204,7 @@ BEGIN
 
   RETURN jsonb_build_object('id', v_evidence.id, 'requirement_version_id', p_version_id);
 END;
-$;
+$$;
 
 REVOKE ALL ON FUNCTION public.add_requirement_evidence(text, uuid, text, text, text, text, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.add_requirement_evidence(text, uuid, text, text, text, text, uuid) TO service_role;

@@ -5,7 +5,12 @@ import { readFileSync } from 'node:fs'
 const upload = readFileSync(new URL('../src/app/api/crm-leads/attachments/route.ts', import.meta.url), 'utf8')
 const attachment = readFileSync(new URL('../src/lib/crm-attachments.ts', import.meta.url), 'utf8')
 const migration = readFileSync(new URL('../supabase/migrations/20261012230000_crm_email_attachments.sql', import.meta.url), 'utf8')
+const requirementsMigration = readFileSync(new URL('../supabase/migrations/20261010184627_requirements_source_of_truth.sql', import.meta.url), 'utf8')
 const picker = readFileSync(new URL('../src/app/(dashboard)/admin-crm/AttachmentPicker.tsx', import.meta.url), 'utf8')
+
+test('la prueba apunta al nombre vigente de la migración de Requerimientos', () => {
+  assert.match(requirementsMigration, /CREATE TABLE IF NOT EXISTS public\\.requirements/)
+})
 
 test('upload exige sesión y rol CRM antes de recibir y guardar el archivo', () => {
   assert.ok(upload.indexOf('auth.getUser()') < upload.indexOf('req.formData()'))

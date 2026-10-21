@@ -45,6 +45,24 @@ npm run dev
 # → http://localhost:3000
 ```
 
+## 7. Entornos y despliegue
+El proceso oficial es **LOCALHOST → PREVIEW → PRODUCCIÓN**. Las reglas viven en `CLAUDE.md`, sección 18 («Ruta de despliegue obligatoria»); aquí solo queda el detalle operativo de cada entorno.
+
+| Etapa | Dónde corre | Rama | Base de datos |
+|---|---|---|---|
+| LOCALHOST | `localhost:3000` (`npm run dev`) | rama o worktree de trabajo | Si la prueba escribe datos, no producción: comprobar antes el ref de Supabase de `.env.local`, que en el proyecto principal apunta a producción |
+| PREVIEW (DEV) | Vercel Preview, dirección fija `dev.scence.cl` | `staging` | Rama de Supabase `campaign-locations-test` (ref `dexpvoubiklgotuukrml`), separada de producción |
+| PRODUCCIÓN | Vercel Production | `master` | Producción |
+
+Reglas de variables de entorno en Vercel:
+- Preview no comparte con Producción las variables de Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`). Las variables generales (sin rama) aplican solo a Producción; `staging` define las suyas por rama, con la base DEV. Una rama sin variables propias queda sin base y falla en vez de escribir en producción.
+- Las claves de correo, pagos, mensajería y scraping existen en Producción; en Preview van vacías o en modo de prueba.
+- Comprobar el destino de una base solo por el ref del proyecto; nunca imprimir ni pegar claves.
+
+> Estado verificado al 2026-10-21 y pendientes de cierre: `CLAUDE.md`, sección 18 («Estado de la configuración»).
+
+Migraciones: el mismo archivo de `supabase/migrations/` se aplica primero en la base DEV y, con autorización, en producción. Supabase las registra con la fecha de aplicación, así que la versión del historial puede diferir del prefijo del archivo; se identifican por nombre.
+
 ## Estructura de archivos clave
 
 ```

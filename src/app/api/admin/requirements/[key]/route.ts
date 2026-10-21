@@ -9,6 +9,11 @@ type VersionPayload = {
   acceptanceCriteria?: unknown
   changeReason?: unknown
   impactSummary?: unknown
+  versionId?: unknown
+  evidenceType?: unknown
+  reference?: unknown
+  details?: unknown
+  verificationStatus?: unknown
   action?: unknown
 }
 
@@ -66,6 +71,43 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'El cuerpo JSON no es válido.' }, { status: 400 })
   }
   const body = parsed as VersionPayload
+
+  if (body.action === 'add_evidence') {
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (typeof body.versionId !== 'string' || !uuidPattern.test(body.versionId)) {
+      return NextResponse.json({ error: 'versionId debe ser un UUID válido.' }, { status: 422 })
+    }
+    const evidenceTypes = ['code', 'document', 'test', 'impact', 'deviation', 'validation']
+    if (typeof body.evidenceType !== 'string' || !evidenceTypes.includes(body.evidenceType)) {
+      return NextResponse.json({ error: 'Tipo de evidencia no válido.' }, { status: 422 })
+    }
+    if (typeof body.reference !== 'string' || !body.reference.trim() || body.reference.trim().length > 1000) {
+      return NextResponse.json({ error: 'La referencia es obligatoria y debe tener como máximo 1.000 caracteres.' }, { status: 422 })
+    }
+    if (body.details !== undefined && (typeof body.details !== 'string' || body.details.length > 3000)) {
+      return NextResponse.json({ error: 'El detalle debe tener como máximo 3.000 caracteres.' }, { status: 422 })
+    }
+    const verificationStatus = body.verificationStatus ?? 'pending'
+    if (typeof verificationStatus !== 'string' || !['pending', 'passed', 'failed'].includes(verificationStatus)) {
+      return NextResponse.json({ error: 'Estado de verificación no válido.' }, { status: 422 })
+    }
+    const { data, error } = await auth.admin.rpc('add_requirement_evidence', {
+      p_requirement_key: params.key,
+      p_version_id: body.versionId,
+      p_evidence_type: body.evidenceType,
+      p_reference: body.reference.trim(),
+      p_details: typeof body.details === 'string' ? body.details.trim() : '',
+      p_verification_status: verificationStatus,
+      p_created_by: auth.user.id,
+    })
+    if (error) {
+      console.error('[requirements POST] evidence write failed', error)
+      if (error.code === 'P0002') return NextResponse.json({ error: 'Requerimiento o versión no encontrados.' }, { status: 404 })
+      if (error.code === '23505') return NextResponse.json({ error: 'Esta evidencia ya está registrada para la versión.' }, { status: 409 })
+      return NextResponse.json({ error: 'No se pudo registrar la evidencia.' }, { status: 500 })
+    }
+    return NextResponse.json({ evidence: data }, { status: 201 })
+  }
 
   if (body.action === 'approve') {
     const versionId = new URL(request.url).searchParams.get('versionId')

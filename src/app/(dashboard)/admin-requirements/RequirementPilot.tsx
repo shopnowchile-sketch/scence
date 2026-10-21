@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, History, PencilLine, Save, X } from 'lucide-react'
 
 type Version = {
@@ -41,7 +41,7 @@ export function RequirementPilot() {
   const [evidenceReference, setEvidenceReference] = useState('')
   const [evidenceDetails, setEvidenceDetails] = useState('')
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const response = await fetch('/api/admin/requirements/DASH-001', { cache: 'no-store' })
     if (!response.ok) {
       setError(response.status === 404 ? 'El piloto estará disponible al aplicar la migración en un entorno de desarrollo autorizado.' : 'No se pudo cargar el registro versionado.')
@@ -52,9 +52,9 @@ export function RequirementPilot() {
     const approved = payload.versions.find(version => version.id === payload.requirement.approved_version_id)
     setDefinition(approved?.definition ?? '')
     setEvidenceVersionId(approved?.id ?? payload.versions[0]?.id ?? '')
-  }
+  }, [])
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load() }, [load])
 
   const propose = async () => {
     setSaving(true)

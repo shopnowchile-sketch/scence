@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import {
-  CRM_ATTACHMENT_BUCKET, CRM_ATTACHMENT_MAX_BYTES, CRM_ATTACHMENT_TYPES, safeAttachmentName,
+  CRM_ATTACHMENT_BUCKET, CRM_ATTACHMENT_MAX_BYTES, CRM_ATTACHMENT_TYPES, hasAllowedFileSignature, safeAttachmentName,
 } from '@/lib/crm-attachments'
 
 // POST /api/crm-leads/attachments — sube un archivo (multipart, campo "file")
@@ -27,11 +27,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Formato no permitido. Usa PDF, imagen (JPG/PNG/WEBP), Word, Excel o PowerPoint.' }, { status: 415 })
   }
 
+  const bytes = Buffer.from(await file.arrayBuffer())
+  if (!hasAllowedFileSignature(bytes, file.type)) {
+    return NextResponse.json({ error: 'El contenido del archivo no coincide con el formato declarado.' }, { status: 415 })
+  }
+
   const name = safeAttachmentName(file.name)
   const path = `uploads/${randomUUID()}/${name.replace(/[^\w.\- ]/g, '_')}`
   const { error } = await admin.storage
     .from(CRM_ATTACHMENT_BUCKET)
-    .upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type, upsert: false })
+    .upload(path, bytes, { contentType: file.type, upsert: false })
   if (error) {
     console.error('[crm attachments] upload', error)
     return NextResponse.json({ error: 'No se pudo subir el archivo' }, { status: 500 })

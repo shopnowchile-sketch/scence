@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 
 const dashboard = readFileSync(new URL('../src/app/api/dashboard/route.ts', import.meta.url), 'utf8')
 const route = readFileSync(new URL('../src/app/api/admin/requirements/[key]/route.ts', import.meta.url), 'utf8')
-const migration = readFileSync(new URL('../supabase/migrations/20261010150000_requirements_source_of_truth.sql', import.meta.url), 'utf8')
+const migration = readFileSync(new URL('../supabase/migrations/20261010184627_requirements_source_of_truth.sql', import.meta.url), 'utf8')
 
 test('DASH-001 separa el roster total del KPI de influencers activos', () => {
   assert.match(dashboard, /const totalInfluencers = influencersCountRes\.count \?\? 0/)

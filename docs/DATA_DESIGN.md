@@ -26,6 +26,9 @@ erDiagram
     brands }o--|| organizations : "belongs to"
     brands ||--o{ campaigns : "sponsors"
     brands ||--o{ invoices : "billed via"
+    brands ||--o{ invoices : "owns (owner_brand_id)"
+    invoices ||--o{ invoice_shares : "shared read-only via"
+    brands ||--o{ invoice_shares : "receives"
 
     influencers }o--|| organizations : "roster of"
     influencers ||--o{ influencer_social_profiles : "has"

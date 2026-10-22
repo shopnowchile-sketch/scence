@@ -104,6 +104,9 @@ La siguiente tabla resume las reglas de negocio activas del sistema — el equiv
 | BR-09 | Moneda CLP | Moneda por defecto en toda la UI (el schema soporta otras vía `currency_code`). |
 | BR-10 | Brand self-registration | `/register/brand` auto-crea `brands` vinculado a la organización SCENCE. Primer login dispara `POST /api/brand/register`. |
 | BR-11 | Middleware como última línea de defensa | El middleware bloquea correctamente el acceso cruzado entre portales incluso cuando el frontend expone un link/botón indebido (caso bug B-08) — pero eso no exime de limpiar la UI. |
+| BR-12 | Propiedad de facturas | La marca propietaria de una factura es `invoices.owner_brand_id`, derivada de la sesión al crearla; nunca de `organization_id`, de `brand_id` (marca receptora) ni del payload. `owner_brand_id` NULL = emitida por SCENCE o histórica sin propietario verificable: ninguna marca accede, solo la administración de plataforma. Inmutable una vez asignada. |
+| BR-13 | Acceso compartido de facturas | Una factura solo se comparte con otra marca mediante una fila explícita en `invoice_shares` (quién, cuándo, estado). Concede únicamente lectura (sin datos internos); nunca edición, envío, pago, borrado ni re-compartir. Revocar bloquea de inmediato. |
+| BR-14 | Pagos y estados de factura | La marca propietaria con `billing.manage` puede enviar, editar campos no financieros y marcar pagada su factura. `void` y `mark_overdue` son exclusivos de SCENCE. `paid` y `void` son terminales; un doble pago concurrente se aplica una sola vez. Los importes emitidos se corrigen anulando y reemitiendo. |
 
 ### 2.1 Mapa de Proceso
 
@@ -314,6 +317,8 @@ Vista mensual/lista sincronizada con Google Calendar. Agenda operativa de aparic
 | Payroll total | `sum(payroll_runs)` | Costo total a influencers |
 | Tabla Facturas | `invoices.*` join `brands`, `campaigns` | Gestión de cobranza (IVA 19% — BR-08) |
 
+**Alcance Admin (BR-12/13/14):** SCENCE (`super_admin`) ve y gestiona las facturas de todas las marcas, incluidas las sin propietario; es el único que anula, marca vencida o confirma el pago de una factura de colaboración (activa la colaboración solo si `campaign_brand_applications.invoice_id` coincide con la factura) y puede compartir cualquier factura en solo lectura vía `POST /api/invoices/[id]/shares`.
+
 #### AD-12 Contratos
 ![Contratos](mockups/admin-contracts.png)
 
@@ -502,7 +507,8 @@ Construido 2026-07-02. 3 tiers internos: Basic (99.000 CLP/mes), Growth (259.000
 `PlanUpgradeWall` (gating interno) apunta al CTA `/brand-settings/plan`.
 
 **MK-12b — Billing operativo**
-**Navegación:** `/brand-billing` — placeholder "Facturación próximamente". Historial de cobros y documentos tributarios entre Marca y SCENCE. **No implementado aún.** No confundir con Plan/Suscripción (MK-12a) ni con Payroll (módulo separado Admin).
+**Navegación:** `/brand-billing` (`BillingClient` en modo `invoicesOnly`) · **API:** `/api/invoices` · **Tablas:** `invoices`, `invoice_line_items`, `invoice_shares`.
+La marca crea, lista y consulta **sus** facturas (BR-12), las envía, edita campos no financieros y las marca como pagadas (BR-14). No puede anular ni marcar vencida. Las facturas compartidas con ella se obtienen con `GET /api/invoices?scope=shared` (solo lectura, BR-13) y nunca se mezclan con las propias. La pestaña de compartidas y el botón de compartir **aún no existen en la UI** (pendiente). La migración `20261022120000` está pendiente de revisión/aplicación. Las facturas históricas (10 a 2026-10-22, todas en la organización de la agencia) quedan sin propietario y solo las ve el Admin hasta que se decida su asignación. No confundir con Plan/Suscripción (MK-12a) ni con Payroll (módulo separado Admin).
 
 **Regla:** No tocar Stripe, Transbank, ni billing real hasta fase habilitada explícitamente por Pri.
 

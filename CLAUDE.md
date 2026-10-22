@@ -403,6 +403,17 @@ Una influencer con `is_active = false` no puede recibir ningún email enviado po
 - Consumidores (brands, campaigns, bookings, events) guardan **solo `location_id` → place**. Nunca volver a guardar country/region/city/commune/address en paralelo. País/región/comuna se derivan con `location_breadcrumb()`.
 - `brand_locations` es legado: se migra a `locations` y se elimina (Fase 2). No agregarle funcionalidad.
 
+### 16.12 Facturas: propiedad, aislamiento y acceso compartido
+
+La propiedad de una factura es `invoices.owner_brand_id` (migración `20261022120000`, pendiente de aplicar tras revisión). **No** es `organization_id` (organización contable) ni `brand_id` (marca receptora/pagadora).
+
+- Autorizar SIEMPRE con `authorizeInvoice()` / `decideInvoiceAccess()` (`src/lib/invoice-access.ts`); toda ruta de facturas la usa. No reintroducir comparaciones por `organization_id`.
+- `owner_brand_id` NULL (SCENCE o histórica) = ninguna marca accede. **Nunca** asignar propietario por suposición; solo por decisión de un administrador, con evidencia.
+- La propiedad la deriva el servidor de la sesión; un payload con otra marca u organización se rechaza (403).
+- Sin acceso → 404 (no revela existencia). Con lectura pero sin permiso para la acción → 403.
+- Acceso compartido = fila activa en `invoice_shares`; solo lectura, nunca re-compartir. `void` y `mark_overdue` son exclusivos de SCENCE.
+- `invoices` e `invoice_line_items` solo se escriben por rutas con service role; la lectura directa queda reservada al admin de plataforma.
+
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 
 La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.

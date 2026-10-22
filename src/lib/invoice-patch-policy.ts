@@ -1,18 +1,23 @@
 // Política de escritura de PATCH /api/invoices/[id] (pagos — Regla Cero).
 // Pura y sin I/O para poder probarla: la ruta solo aplica el resultado.
 //
+// Quién puede qué sobre ESTA factura lo decide src/lib/invoice-access.ts
+// (InvoiceCapabilities); aquí solo se traduce a lista blanca de campos y estados.
+//
 // - Los campos financieros (montos, impuestos, moneda, estado, paid_at, ids de
-//   organización/marca/campaña, numeración, metadata.kind/application_id) NUNCA
-//   se escriben por edición genérica. Un monto mal emitido se corrige anulando
+//   organización/marca/campaña, propietario, numeración, metadata.kind/application_id)
+//   NUNCA se escriben por edición genérica. Un monto mal emitido se corrige anulando
 //   y emitiendo otra factura (se conserva el histórico).
-// - mark_paid / void / mark_overdue son solo de admin de plataforma: una marca
-//   no puede declararse pagada.
+// - void y mark_overdue son solo de admin de plataforma (SCENCE).
+// - mark_paid: admin o marca PROPIETARIA con permiso de facturación. Una marca con
+//   acceso compartido es de solo lectura; sin acceso = 404.
 // - paid y void son estados terminales.
+
+import type { InvoiceCapabilities } from '@/lib/invoice-access'
 
 export const TERMINAL_INVOICE_STATUSES = ['paid', 'void'] as const
 export const MUTABLE_INVOICE_STATUSES = ['draft', 'sent', 'overdue', 'partially_paid'] as const
 
-const ADMIN_ONLY_ACTIONS = ['mark_paid', 'void', 'mark_overdue'] as const
 const ACTION_KEYS: Record<string, readonly string[]> = {
   send: ['send_to', 'note'],
   mark_paid: ['payment_reference'],
@@ -41,8 +46,14 @@ const fail = (status: number, error: string): InvoicePatchPlan => ({ ok: false, 
 
 export function planInvoicePatch(
   body: Record<string, unknown>,
-  ctx: { isAdmin: boolean; currentStatus: string; clientEmail: string | null; now: string },
+  ctx: { caps: InvoiceCapabilities; currentStatus: string; clientEmail: string | null; now: string },
 ): InvoicePatchPlan {
+  const { caps } = ctx
+
+  // Autorización primero: quien no puede ver la factura no debe aprender nada de su estado.
+  if (!caps.read) return fail(404, 'Factura no encontrada')
+  if (caps.actor === 'shared_brand') return fail(403, 'Una factura compartida es de solo lectura')
+
   if ((TERMINAL_INVOICE_STATUSES as readonly string[]).includes(ctx.currentStatus)) {
     return fail(409, 'La factura está pagada o anulada y no se puede modificar')
   }
@@ -55,8 +66,15 @@ export function planInvoicePatch(
     if (typeof action !== 'string' || !(action in ACTION_KEYS)) return fail(422, 'Acción no válida')
     const extra = keys.filter(k => !ACTION_KEYS[action].includes(k))
     if (extra.length) return fail(422, `Campos no permitidos para ${action}: ${extra.join(', ')}`)
-    if ((ADMIN_ONLY_ACTIONS as readonly string[]).includes(action) && !ctx.isAdmin) {
-      return fail(403, 'Solo el equipo SCENCE puede cambiar el estado de pago de una factura')
+
+    if ((action === 'void' || action === 'mark_overdue') && !caps.voidOrOverdue) {
+      return fail(403, 'Solo el equipo SCENCE puede anular o marcar como vencida una factura')
+    }
+    if (action === 'mark_paid' && !caps.markPaid) {
+      return fail(403, 'No tienes permiso para marcar esta factura como pagada')
+    }
+    if (action === 'send' && !caps.send) {
+      return fail(403, 'No tienes permiso para enviar esta factura')
     }
 
     const update: Record<string, unknown> = { updated_at: ctx.now }
@@ -69,7 +87,7 @@ export function planInvoicePatch(
       // destinatario libre es de admin (evita usar SCENCE para enviar a terceros).
       const requested = typeof body.send_to === 'string' ? body.send_to.trim() : ''
       if (requested && !EMAIL_RE.test(requested)) return fail(422, 'El email de destino no es válido')
-      sendTo = (ctx.isAdmin ? requested : '') || ctx.clientEmail
+      sendTo = (caps.actor === 'platform_admin' ? requested : '') || ctx.clientEmail
       if (body.note !== undefined && body.note !== null) {
         if (typeof body.note !== 'string' || body.note.length > 1000) return fail(422, 'La nota es demasiado larga')
         note = body.note.trim() || null
@@ -91,8 +109,8 @@ export function planInvoicePatch(
     return { ok: true, kind: 'action', action: action as 'send' | 'mark_paid' | 'void' | 'mark_overdue', update, sendTo, note }
   }
 
-  // ── Edición genérica: solo admin, solo campos no financieros ─────────────
-  if (!ctx.isAdmin) return fail(403, 'Solo el equipo SCENCE puede editar una factura')
+  // ── Edición genérica: solo campos no financieros ─────────────────────────
+  if (!caps.edit) return fail(403, 'No tienes permiso para editar esta factura')
   const allowed = [...EDIT_COLUMNS, ...EDIT_CLIENT_META] as readonly string[]
   const rejected = keys.filter(k => !allowed.includes(k))
   if (rejected.length) return fail(422, `Campos no editables: ${rejected.join(', ')}`)

@@ -106,8 +106,10 @@ function BillingKPIs({ invoices, payrolls }: { invoices: Invoice[]; payrolls: Pa
 }
 
 // ── Invoice Detail Panel ──────────────────────────────────────────────────────
-function InvoicePanel({ invoice, onClose, onAction, onSend }: {
+function InvoicePanel({ invoice, onClose, onAction, onSend, canVoid = true }: {
   invoice: Invoice; onClose: () => void; onAction: (action: string, id: string) => void; onSend: (invoice: Invoice) => void
+  /** Anular es exclusivo del equipo SCENCE: el portal Marca no lo muestra (el servidor también lo rechaza). */
+  canVoid?: boolean
 }) {
   const s = INVOICE_STATUS[invoice.status] ?? INVOICE_STATUS_FALLBACK
   return (
@@ -201,7 +203,7 @@ function InvoicePanel({ invoice, onClose, onAction, onSend }: {
               <CheckCircle2 className="h-4 w-4" /> Marcar como pagada
             </button>
           )}
-          {['draft', 'sent', 'overdue'].includes(invoice.status) && (
+          {canVoid && ['draft', 'sent', 'overdue'].includes(invoice.status) && (
             <button onClick={() => onAction('void', invoice.id)}
               className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium text-gray-500 rounded-xl hover:bg-gray-100 transition-colors">
               <Ban className="h-4 w-4" /> Anular factura
@@ -846,7 +848,7 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
 
       {/* Invoice detail panel */}
       {selected && (
-        <InvoicePanel invoice={selected} onClose={() => setSelected(null)} onAction={handleAction} onSend={inv => { setSendModal(inv); setSendEmail(inv.client_email ?? ''); setSendNote('') }} />
+        <InvoicePanel invoice={selected} onClose={() => setSelected(null)} onAction={handleAction} canVoid={!invoicesOnly} onSend={inv => { setSendModal(inv); setSendEmail(inv.client_email ?? ''); setSendNote('') }} />
       )}
 
       {/* Send invoice modal */}

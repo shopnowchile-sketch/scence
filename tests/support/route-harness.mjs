@@ -6,6 +6,8 @@ const STUB = new URL('./supabase-server-stub.ts', import.meta.url).href
 
 export async function resolve(specifier, context, nextResolve) {
   if (specifier === '@/lib/supabase/server') return nextResolve(STUB, context)
+  // ensureOrg.ts importa el cliente con ruta relativa ('./server'): mismo sustituto.
+  if (specifier === './server' && /\/src\/lib\/supabase\/[^/]+\.ts$/.test(context.parentURL ?? '')) return nextResolve(STUB, context)
   if (specifier === 'next/server') return nextResolve('next/server.js', context)
   return nextResolve(specifier, context)
 }

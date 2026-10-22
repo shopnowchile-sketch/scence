@@ -17,8 +17,12 @@
 -- (2026-10-22) había 10 facturas, todas en la organización de la agencia, 9
 -- emitidas por un administrador de plataforma; 6 con brand_id nulo y 2 con
 -- brand_id distinto de la marca de su campaña. Quedan con owner_brand_id NULL
--- (solo admin). Un propietario se asigna caso a caso, con evidencia, por un
--- administrador (el trigger permite NULL -> valor una sola vez).
+-- (solo admin). Decisión confirmada (2026-10-22): SCENCE es la propietaria de esas
+-- 10 facturas, y owner_brand_id = NULL representa propiedad de SCENCE. No hay
+-- backfill ni asignación a ninguna marca por suposición. Si en el futuro una
+-- factura debe pasar a una marca, se asigna caso a caso, con evidencia, por un
+-- administrador (el trigger permite NULL -> valor una sola vez); para dar
+-- visibilidad a una marca sin cambiar la propiedad se usa invoice_shares (solo lectura).
 
 -- ── 1. Propiedad explícita ──────────────────────────────────────────────────
 ALTER TABLE public.invoices

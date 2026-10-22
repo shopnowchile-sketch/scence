@@ -8,7 +8,7 @@ Rama: `fix/invoice-brand-ownership-2026-10-22` (sin commits). Migración NO apli
 - `invoices.brand_id` = marca receptora/pagadora, con semántica inconsistente. No es propietaria.
 
 ## Datos (agregados, solo lectura, sin datos personales)
-10 facturas, todas en la org de la agencia; 6 con `brand_id` nulo; 4 con `brand_id` en otra org (2 en conflicto con la marca de la campaña). Ninguna con propietario: quedan accesibles solo para Admin hasta decisión explícita.
+10 facturas, todas en la org de la agencia; 6 con `brand_id` nulo; 4 con `brand_id` en otra org (2 en conflicto con la marca de la campaña). Ninguna con propietario de marca. **Decisión confirmada (2026-10-22): SCENCE es la propietaria de estas 10 facturas; `owner_brand_id = NULL` representa propiedad de SCENCE.** No hay backfill ni asignación a marcas por suposición; solo el administrador de plataforma accede a ellas. Una marca solo las vería mediante un acceso compartido explícito de solo lectura (`invoice_shares`), sin cambiar la propiedad.
 
 ## Solución
 `invoices.owner_brand_id` (inmutable, NULL = SCENCE/histórica) + `invoice_shares` (solo lectura, RLS sin políticas, solo service_role) + `decideInvoiceAccess` (función pura) + `authorizeInvoice` en todas las rutas. 404 sin acceso, 403 con lectura sin permiso de acción.

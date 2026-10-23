@@ -34,6 +34,11 @@ const fresh = (): Record<string, Row[]> => ({
 const as = (user: string | null, db = fresh()) => { ;(globalThis as any).__routeHarness = { user: user ? { id: user, user_metadata: {} } : null, admin: makeAdmin(db, { projectColumns: true }) }; return db }
 const mk = (body: unknown = {}) => ({ url: 'http://x', json: async () => body, headers: new Headers(), nextUrl: new URL('http://x') }) as any
 
+// Capa A: fuera de producción getResend() devuelve un cliente sumidero y nada llega a fetch.
+// Esta prueba verifica el HTML real del correo, así que usa la ruta de producción con fetch
+// interceptado (abajo): no sale ninguna petición a Resend ni a Internet.
+process.env.VERCEL_ENV = 'production'
+
 const sent: string[] = []
 const realFetch = globalThis.fetch
 globalThis.fetch = (async (input: any, init?: any) => {

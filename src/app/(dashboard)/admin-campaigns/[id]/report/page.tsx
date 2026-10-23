@@ -20,6 +20,7 @@ interface CampaignInfluencer {
   id: string
   fee: number | null
   status: string | null
+  application_status: string | null
   notes: string | null
   influencer: Influencer | null
 }
@@ -34,6 +35,7 @@ interface Deliverable {
   published_at: string | null
   published_url: string | null
   content_url: string | null
+  attendance_response: string | null
   review_notes: string | null
   progress: number | null
   // Métricas reales (Apify) — solo views/likes/comments. reach/impressions/
@@ -155,7 +157,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
       *,
       brand:brands!brand_id (id, name, logo_url),
       campaign_influencers (
-        id, fee, status, notes,
+        id, fee, status, application_status, notes,
         influencer:influencers (
           id, display_name, avatar_url,
           influencer_social_profiles (platform, username, followers, engagement_rate)
@@ -164,7 +166,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
       campaign_deliverables (
         id, title, type, status, due_date, platform,
         published_at, published_url, review_notes, progress, content_url,
-        performance, engagement_rate,
+        attendance_response, performance, engagement_rate,
         influencer:influencers (id, display_name, avatar_url)
       )
     `)
@@ -193,11 +195,17 @@ export default async function CampaignReportPage({ params }: { params: { id: str
   const deliveredInfluencerIds = new Set(
     deliverables.filter(d => d.content_url || d.published_url).map(d => d.influencer?.id).filter(Boolean)
   )
-  const influencers = (campaign.campaign_influencers ?? []).filter(ci =>
+  // Solo participantes ACEPTADAS (mismo criterio que /api/campaigns/[id]/report):
+  // postulantes pendientes o rechazadas no son parte de la campaña.
+  const acceptedInfluencers = (campaign.campaign_influencers ?? []).filter(ci => ci.application_status === 'accepted')
+  const influencers = acceptedInfluencers.filter(ci =>
     ci.influencer && deliveredInfluencerIds.has(ci.influencer.id)
   )
 
-  const totalDone = deliverables.filter(d => d.status === 'published').length
+  // "Completado" = criterio único de la app (lib/deliverable-status): entregado
+  // o aprobado/publicado, nunca rechazado. Antes contaba solo status
+  // 'published', que casi ningún entregable alcanza.
+  const totalDone = deliverables.filter(isDeliverableComplete).length
   const totalCount = deliverables.length
   const progressPct = totalCount > 0 ? Math.round((totalDone / totalCount) * 100) : 0
 
@@ -344,7 +352,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
             <div className="section-title">Resumen ejecutivo</div>
             <div className="info-grid">
               <div className="info-card"><div className="info-label">Completado</div><div className="info-value">{progressPct}%</div></div>
-              <div className="info-card"><div className="info-label">Influencers</div><div className="info-value">{campaign.campaign_influencers?.length ?? 0}</div></div>
+              <div className="info-card"><div className="info-label">Influencers</div><div className="info-value">{acceptedInfluencers.length}</div></div>
               <div className="info-card"><div className="info-label">Visibilidad</div><div className="info-value">{campaign.visibility === 'open' || campaign.visibility === 'public' ? 'Pública' : 'Invitación'}</div></div>
               {campaign.commission_rate != null && campaign.commission_rate > 0 && (
                 <div className="info-card"><div className="info-label">Comisión</div><div className="info-value">{campaign.commission_rate}%</div></div>
@@ -417,7 +425,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                   <div className="progress-bar-fill" style={{ width: `${progressPct}%` }} />
                 </div>
                 <div className="progress-stats">
-                  {totalDone} de {totalCount} deliverables publicados
+                  {totalDone} de {totalCount} deliverables completados
                 </div>
               </div>
             </div>

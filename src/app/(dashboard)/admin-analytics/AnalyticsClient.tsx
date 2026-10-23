@@ -22,7 +22,7 @@ interface AnalyticsData {
     by_type: Record<string, number>
   }
   deliverable_stats: {
-    total: number; completion_rate: number
+    total: number; completed: number; completion_rate: number
     by_status: Record<string, number>
     by_platform: Record<string, number>
   }
@@ -50,7 +50,7 @@ interface CampaignComparisonRow {
 const FALLBACK: AnalyticsData = {
   revenue_trend: [],
   campaign_stats: { total: 0, active: 0, completed: 0, total_budget: 0, total_spent: 0, by_type: {} },
-  deliverable_stats: { total: 0, completion_rate: 0, by_status: {}, by_platform: {} },
+  deliverable_stats: { total: 0, completed: 0, completion_rate: 0, by_status: {}, by_platform: {} },
   top_influencers: [],
 }
 
@@ -185,7 +185,7 @@ export function AnalyticsClient() {
         <KPI icon={DollarSign}   color="violet"  label="Revenue total"      value={formatCurrency(totalRevenue, 'CLP')} sub={`${range} seleccionado`} />
         <KPI icon={TrendingUp}   color="emerald" label="Margen promedio"     value={`${avgMarginPct}%`} sub={formatCurrency(totalRevenue - totalPayroll, 'CLP')} />
         <KPI icon={Target}       color="blue"    label="Budget utilizado"    value={`${budgetUsedPct}%`} sub={`${formatCurrency(cs.total_spent, 'CLP')} de ${formatCurrency(cs.total_budget, 'CLP')}`} />
-        <KPI icon={CheckCircle2} color="amber"   label="Tasa de completion" value={`${ds.completion_rate}%`} sub={`${ds.by_status.published ?? 0} de ${ds.total} publicados`} />
+        <KPI icon={CheckCircle2} color="amber"   label="Tasa de completion" value={`${ds.completion_rate}%`} sub={`${ds.completed} de ${ds.total} completados`} />
       </div>
 
       {/* Comparación simple de KPI verificados por campaña */}

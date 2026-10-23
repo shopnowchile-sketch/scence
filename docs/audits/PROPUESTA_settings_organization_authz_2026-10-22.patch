@@ -1,0 +1,56 @@
+--- a/src/app/api/settings/organization/route.ts	2026-10-22 17:07:18.895340871 +0000
++++ b/src/app/api/settings/organization/route.ts
+@@ -1,6 +1,6 @@
+ import { NextRequest, NextResponse } from 'next/server'
+ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+-import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
++import { getOrgId, hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+ 
+ /**
+  * Columnas de `organizations` que esta ruta puede devolver. NUNCA `select('*')`:
+@@ -10,6 +10,19 @@
+ const ORGANIZATION_PUBLIC_COLUMNS =
+   'id, name, slug, logo_url, website, industry, country, tax_id, billing_email, currency, is_active, created_at, updated_at'
+ 
++/**
++ * Quién puede tocar la organización: el equipo SCENCE (admin de plataforma) o un usuario con acceso
++ * de marca verificado y el permiso pedido, SOLO sobre la organización de su propia marca. Antes, un
++ * usuario sin acceso de marca resuelto (p. ej. miembro de una organización con varias marcas y sin
++ * brand_id) caía a getOrgId y podía leer o editar la organización sin ser admin.
++ */
++async function resolveOrgAccess(userId: string, admin: ReturnType<typeof createAdminClient>, permission: 'brand.read' | 'brand.manage') {
++  if (await isPlatformAdmin(userId, admin)) return { orgId: await getOrgId(userId, undefined, admin) }
++  const brandAccess = await resolveBrandAccess(userId)
++  if (!brandAccess || !hasBrandPermission(brandAccess, permission)) return { forbidden: true as const }
++  return { orgId: brandAccess.organizationId }
++}
++
+ // ── GET /api/settings/organization ───────────────────────────────────────────
+ export async function GET() {
+   const supabase = createServerClient()
+@@ -17,9 +30,9 @@
+   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+ 
+   const admin = createAdminClient()
+-  const brandAccess = await resolveBrandAccess(user.id)
+-  if (brandAccess && !hasBrandPermission(brandAccess, 'brand.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
++  const access = await resolveOrgAccess(user.id, admin, 'brand.read')
++  if ('forbidden' in access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
++  const orgId = access.orgId
+   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
+ 
+   const { data, error } = await admin
+@@ -39,9 +52,9 @@
+   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+ 
+   const admin = createAdminClient()
+-  const brandAccess = await resolveBrandAccess(user.id)
+-  if (brandAccess && !hasBrandPermission(brandAccess, 'brand.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
++  const access = await resolveOrgAccess(user.id, admin, 'brand.manage')
++  if ('forbidden' in access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
++  const orgId = access.orgId
+   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
+ 
+   let body: Record<string, unknown>

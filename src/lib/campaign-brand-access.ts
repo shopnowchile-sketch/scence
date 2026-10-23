@@ -28,13 +28,16 @@ export async function authorizeCampaignBrandAction(
     .maybeSingle()
   if (!campaign) return null
 
-  const brandAccess = await resolveBrandAccess(userId)
-  if (brandAccess) {
-    const ownsCampaign = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
-    if (!ownsCampaign || !hasBrandPermission(brandAccess, permission)) return null
-    return { admin, brandAccess, isPlatformAdmin: false, campaign }
+  // Administración de plataforma primero: un super_admin que además es miembro de una marca conserva su
+  // acceso global (antes la membresía de marca lo reducía a SU marca y perdía el resto). No amplía a nadie más:
+  // isPlatformAdmin exige una membresía activa con rol super_admin.
+  if (await isPlatformAdmin(userId, admin)) {
+    return { admin, brandAccess: null, isPlatformAdmin: true, campaign }
   }
 
-  if (!(await isPlatformAdmin(userId, admin))) return null
-  return { admin, brandAccess: null, isPlatformAdmin: true, campaign }
+  const brandAccess = await resolveBrandAccess(userId)
+  if (!brandAccess) return null
+  const ownsCampaign = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
+  if (!ownsCampaign || !hasBrandPermission(brandAccess, permission)) return null
+  return { admin, brandAccess, isPlatformAdmin: false, campaign }
 }

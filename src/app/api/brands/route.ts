@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { registerBrandAtomic } from '@/lib/supabase/registerBrand'
+import { registrationKey } from '@/lib/brand-registration-policy'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import { resolveBrandPlanAccessMany } from '@/lib/plan-limits'
 
@@ -183,32 +185,34 @@ export async function POST(req: NextRequest) {
   // Cada marca vive en su propia organización (type=brand), nunca en la de la
   // agencia: si la marca queda en Scence SpA, sus usuarios verían los datos de
   // todas las demás marcas (causa del incidente de tenant 2026-09-23).
-  const brandOrgId = await provisionOrgForBrand(String(name))
-  if (!brandOrgId) return NextResponse.json({ error: 'No se pudo crear la organización de la marca' }, { status: 500 })
-
-  const { data, error } = await admin
-    .from('brands')
-    .insert({
-      organization_id: brandOrgId,
-      name,
-      logo_url:      logo_url ?? null,
-      website:       website ?? null,
-      instagram,
-      instagram_handle_normalized: instagram,
-      industry:      industry ?? null,
-      contact_name:  contact_name ?? null,
-      contact_email: contact_email ?? null,
-      contact_phone: contact_phone ?? null,
-      notes:         notes ?? null,
-      created_by:    user.id,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('[POST /api/brands]', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  // Organización + marca en una sola transacción, idempotente (register_brand).
+  const brandFields = {
+    name,
+    logo_url:      logo_url ?? null,
+    website:       website ?? null,
+    instagram,
+    instagram_handle_normalized: instagram,
+    industry:      industry ?? null,
+    contact_name:  contact_name ?? null,
+    contact_email: contact_email ?? null,
+    contact_phone: contact_phone ?? null,
+    notes:         notes ?? null,
   }
+  const registered = await registerBrandAtomic(admin, {
+    brand: brandFields,
+    registeredBy: user.id,
+    key: registrationKey(user.id, brandFields),
+  })
+  if (!registered.ok) {
+    console.error('[POST /api/brands]', registered.error)
+    return NextResponse.json({ error: 'No se pudo crear la marca' }, { status: 500 })
+  }
+  if (registered.outcome === 'conflict') {
+    return NextResponse.json({ error: 'Ya existe una marca con ese correo de contacto', existing_brand_id: registered.brandId }, { status: 409 })
+  }
+
+  const { data, error } = await admin.from('brands').select('*').eq('id', registered.brandId).single()
+  if (error || !data) return NextResponse.json({ error: 'No se pudo leer la marca creada' }, { status: 500 })
 
   return NextResponse.json({ data }, { status: 201 })
 }

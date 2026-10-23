@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
+import { findAuthUserByEmail, hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
@@ -152,8 +152,7 @@ export async function POST(request: NextRequest) {
     let actionLink: string | null = null
     let emailSent = false
     try {
-      const { data: existingUsers } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-      let memberUser = existingUsers?.users.find(existing => existing.email?.toLowerCase() === member.email.toLowerCase()) ?? null
+      let memberUser = await findAuthUserByEmail(admin, member.email)
       if (!memberUser) {
         const { data: created } = await admin.auth.admin.createUser({ email: member.email, email_confirm: true, user_metadata: { is_brand: true, full_name: member.email.split('@')[0] } })
         memberUser = created.user
@@ -209,8 +208,7 @@ export async function POST(request: NextRequest) {
   let emailSent = false
   let officialMembershipReady = false
   try {
-    const { data: existingUsers } = await admin.auth.admin.listUsers()
-    let existingUser = existingUsers?.users?.find(u => u.email === email) ?? null
+    let existingUser = await findAuthUserByEmail(admin, email)
 
     if (!existingUser) {
       const { data: createdUser, error: createUserError } = await admin.auth.admin.createUser({

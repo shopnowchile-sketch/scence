@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 
 type Params = { params: { id: string } }
@@ -23,16 +23,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
+  // Administración de plataforma primero (super_admin ACTIVO); el resto, solo la marca dueña/creadora con report.read.
   let authorized = false
-  const access = await resolveBrandAccess(user.id)
-  if (access) {
+  const platformAdmin = await isPlatformAdmin(user.id, admin)
+  const access = platformAdmin ? null : await resolveBrandAccess(user.id)
+  if (platformAdmin) {
+    authorized = true
+  } else if (access) {
     authorized = hasBrandPermission(access, 'report.read') && (
       campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
     )
-  } else {
-    const orgId = await getOrgId(user.id, user.user_metadata, admin)
-    const role = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-    authorized = role.isAdmin
   }
 
   if (!authorized) return NextResponse.json({ error: 'No tienes permiso para descargar estos datos' }, { status: 403 })

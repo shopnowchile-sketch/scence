@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { brandStatusAllows } from '@/lib/brand-status-access'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
@@ -98,6 +99,10 @@ export async function GET(request: NextRequest) {
     // sin filtro de organization_id: vista global
   } else {
     const brandAccess = await resolveBrandAccess(user.id)
+    if (brandAccess && !brandStatusAllows(brandAccess.status, 'operate')) {
+      // Marca pendiente, rechazada o suspendida: sin acceso a campañas.
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     if (brandAccess) {
       const { data: collaboratorRows, error: collaboratorError } = await admin
         .from('campaign_brands')

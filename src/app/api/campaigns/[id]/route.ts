@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { brandStatusAllows } from '@/lib/brand-status-access'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
@@ -35,6 +36,8 @@ async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient
   // Esto protege miembros antiguos cuyo JWT no tenga is_brand actualizado.
   const brandAccess = await resolveBrandAccess(userId)
   if (!brandAccess) return { isBrand: false, canView: false, canEdit: false, brandId: null }
+  // Marca pendiente, rechazada o suspendida: sin acceso a campañas.
+  if (!brandStatusAllows(brandAccess.status, 'operate')) return { isBrand: true, canView: false, canEdit: false, brandId: brandAccess.brandId }
 
   const { data: campaign } = await admin
     .from('campaigns')

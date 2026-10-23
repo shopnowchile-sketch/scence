@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface AIBuildInput {
@@ -154,6 +154,10 @@ export async function POST(request: NextRequest) {
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Solo plataforma (SCENCE), ANTES de llamar a Claude (gasta créditos): la pantalla existe únicamente en /admin-campaigns.
+  const admin = createAdminClient()
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   let body: AIBuildInput
   try { body = await request.json() }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
@@ -180,7 +184,6 @@ export async function POST(request: NextRequest) {
   }
 
   // Create campaign in DB (same schema as manual creation)
-  const admin = createAdminClient()
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   const campaignData = mapToCampaign(aiResult, orgId, user.id)
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -14,7 +14,6 @@ export async function POST(_request: NextRequest, { params }: Params) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
   const { data: source, error: sourceError } = await admin
     .from('campaigns')
     .select('*')
@@ -23,15 +22,16 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
   if (sourceError || !source) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  const brandAccess = await resolveBrandAccess(user.id)
+  // Administración de plataforma primero (super_admin ACTIVO). Los demás: solo la marca creadora con campaign.manage.
+  // Antes, cualquier usuario sin marca cuya organización coincidiera con la de la campaña también podía duplicarla.
+  const platformAdmin = await isPlatformAdmin(user.id, admin)
+  const brandAccess = platformAdmin ? null : await resolveBrandAccess(user.id)
+  if (!platformAdmin && !brandAccess) return NextResponse.json({ error: 'No tienes acceso a esta campaña' }, { status: 403 })
   if (brandAccess) {
     if (!hasBrandPermission(brandAccess, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (source.brand_id !== brandAccess.brandId && source.created_by_brand_id !== brandAccess.brandId) {
       return NextResponse.json({ error: 'Solo la marca creadora puede duplicar esta campaña' }, { status: 403 })
     }
-  } else if (!isAdmin && source.organization_id !== orgId) {
-    return NextResponse.json({ error: 'No tienes acceso a esta campaña' }, { status: 403 })
   }
 
   const copyName = `Copia de ${source.name}`

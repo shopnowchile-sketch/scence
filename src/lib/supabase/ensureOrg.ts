@@ -483,7 +483,7 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
       created_by:      user.id,
       status:          'pending_approval',
       referred_by_influencer_id: referredByInfluencerId,
-      metadata:        referredByInstagram ? { referred_by_instagram: referredByInstagram } : null,
+      metadata:        referredByInstagram ? { referred_by_instagram: referredByInstagram } : {},
     })
     .select('id, name, status')
     .single()

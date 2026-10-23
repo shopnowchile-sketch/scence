@@ -39,6 +39,9 @@ function OrgSettingsForm() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving]   = useState(false)
   const [orgId, setOrgId]     = useState('')
+  // Admin con varias organizaciones: la API devuelve la lista y se elige explícitamente (nunca al azar).
+  const [choices, setChoices] = useState<Array<{ id: string; name: string }>>([])
+  const [chosenOrg, setChosenOrg] = useState('')
 
   const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -46,9 +49,10 @@ function OrgSettingsForm() {
   })
 
   useEffect(() => {
-    fetch('/api/settings/organization')
+    fetch(chosenOrg ? `/api/settings/organization?organization_id=${encodeURIComponent(chosenOrg)}` : '/api/settings/organization')
       .then(r => r.json())
-      .then(({ data }) => {
+      .then(({ data, organizations }) => {
+        if (Array.isArray(organizations)) setChoices(organizations)
         if (data) {
           setOrgId(data.id)
           reset({
@@ -63,12 +67,12 @@ function OrgSettingsForm() {
         }
       })
       .finally(() => setLoading(false))
-  }, [reset])
+  }, [reset, chosenOrg])
 
   async function onSubmit(data: FormValues) {
     setSaving(true)
     try {
-      const res = await fetch('/api/settings/organization', {
+      const res = await fetch(orgId ? `/api/settings/organization?organization_id=${encodeURIComponent(orgId)}` : '/api/settings/organization', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -86,6 +90,16 @@ function OrgSettingsForm() {
   if (loading) return (
     <div className="flex items-center justify-center h-40">
       <Loader2 className="h-6 w-6 animate-spin text-violet-500" />
+    </div>
+  )
+
+  if (!orgId && choices.length > 1) return (
+    <div className="card p-6 space-y-3">
+      <p className="text-sm text-gray-700">Administras más de una organización. Elige cuál quieres editar:</p>
+      <select className="input-base" value={chosenOrg} onChange={e => { setLoading(true); setChosenOrg(e.target.value) }}>
+        <option value="">Selecciona una organización…</option>
+        {choices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
     </div>
   )
 

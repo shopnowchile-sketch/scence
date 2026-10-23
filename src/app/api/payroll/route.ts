@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
 // ── GET /api/payroll ──────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -20,9 +20,8 @@ export async function GET(request: NextRequest) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
-  // Payroll: solo admins (super_admin, finance)
-  const { isAdmin, role } = await getUserRole(user.id, orgId, admin)
-  if (!isAdmin && role !== 'finance') {
+  // Solo plataforma (SCENCE): la nómina paga a influencers; el rol `finance` de una marca no aplica.
+  if (!(await isPlatformAdmin(user.id, admin))) {
     return NextResponse.json({ error: 'No tienes permisos para ver nóminas' }, { status: 403 })
   }
 
@@ -100,8 +99,7 @@ export async function POST(request: NextRequest) {
   const orgId = (organization_id as string) ?? await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
-  const { isAdmin, role: userRole } = await getUserRole(user.id, orgId, admin)
-  if (!isAdmin && userRole !== 'finance') {
+  if (!(await isPlatformAdmin(user.id, admin))) {
     return NextResponse.json({ error: 'No tienes permisos para crear nóminas' }, { status: 403 })
   }
 
@@ -185,8 +183,7 @@ export async function PATCH(request: NextRequest) {
   // Organización y permiso obligatorios; la nómina debe pertenecer a esa org.
   const orgIdPatch = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgIdPatch) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
-  const { isAdmin: isAdminPatch, role: rolePatch } = await getUserRole(user.id, orgIdPatch, admin)
-  if (!isAdminPatch && rolePatch !== 'finance') {
+  if (!(await isPlatformAdmin(user.id, admin))) {
     return NextResponse.json({ error: 'No tienes permisos para modificar nóminas' }, { status: 403 })
   }
 

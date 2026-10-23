@@ -7,29 +7,35 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 import {
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,
 } from '@/lib/google-calendar'
 
-async function resolveCampaignWriteOrg(
+/**
+ * Organización sobre la que el usuario puede ESCRIBIR bookings, o null.
+ *  - Con campaña: admin de plataforma, o marca dueña de la campaña con `campaign.manage`
+ *    (owner y brand_manager; `member` y `finance` no) y estado de marca operativo
+ *    (lo comprueba hasBrandPermission). Pertenecer a la organización ya no basta.
+ *  - Sin campaña: solo admin de plataforma, y dentro de su propia organización.
+ */
+async function resolveBookingWriteOrg(
   admin: ReturnType<typeof createAdminClient>,
-  user: { id: string; user_metadata?: Record<string, unknown> },
-  campaignId: string,
+  userId: string,
+  campaignId: string | null,
   actorOrgId: string,
+  existingOrgId?: string | null,
 ) {
-  const { data: campaign } = await admin
-    .from('campaigns')
-    .select('organization_id')
-    .eq('id', campaignId)
-    .maybeSingle()
-  if (!campaign?.organization_id) return null
-  if (campaign.organization_id === actorOrgId) return campaign.organization_id
-
-  const { isAdmin } = await getUserRole(user.id, actorOrgId, admin)
-  return isAdmin ? campaign.organization_id : null
+  if (campaignId) {
+    const auth = await authorizeCampaignBrandAction(userId, campaignId, 'campaign.manage')
+    return auth?.campaign.organization_id ?? null
+  }
+  if (!(await isPlatformAdmin(userId, admin))) return null
+  if (existingOrgId !== undefined && existingOrgId !== actorOrgId) return null
+  return actorOrgId
 }
 
 // ── GET /api/bookings ─────────────────────────────────────────────────────────
@@ -39,6 +45,8 @@ export async function GET(req: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  // Agenda global de plataforma: ninguna pantalla de marca la consume.
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ data: [] })
 
@@ -108,9 +116,7 @@ export async function POST(req: NextRequest) {
     influencer_ids = [],  // multi-influencer support
   } = body
 
-  const campaignOrgId = campaign_id
-    ? await resolveCampaignWriteOrg(admin, user, String(campaign_id), orgId)
-    : orgId
+  const campaignOrgId = await resolveBookingWriteOrg(admin, user.id, campaign_id ? String(campaign_id) : null, orgId)
   if (!campaignOrgId) return NextResponse.json({ error: 'No tienes permiso para editar el evento de esta campaña' }, { status: 403 })
 
   // Merge influencer_id + influencer_ids into a unified list
@@ -225,7 +231,13 @@ export async function PUT(req: NextRequest) {
   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
 
   const body = await req.json()
-  const { id, title, description, location, starts_at, ends_at, timezone, ...rest } = body
+  // campaign_id / organization_id / created_by no se pueden reasignar por PUT: permitirlo dejaría
+  // mover un booking a una campaña u organización ajena tras autorizar solo la original.
+  const {
+    id, title, description, location, starts_at, ends_at, timezone,
+    campaign_id: _campaignId, organization_id: _organizationId, created_by: _createdBy, calendar_event_id: _calendarEventId,
+    ...rest
+  } = body
 
   // Obtain existing to get gcal ID
   const { data: existing } = await admin
@@ -235,9 +247,7 @@ export async function PUT(req: NextRequest) {
     .maybeSingle()
 
   if (!existing) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
-  const writeOrgId = existing.campaign_id
-    ? await resolveCampaignWriteOrg(admin, user, existing.campaign_id, orgId)
-    : (existing.organization_id === orgId ? orgId : null)
+  const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id)
   if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para editar este evento' }, { status: 403 })
 
   if (existing?.calendar_event_id) {
@@ -285,9 +295,7 @@ export async function DELETE(req: NextRequest) {
     .maybeSingle()
 
   if (!existing) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
-  const writeOrgId = existing.campaign_id
-    ? await resolveCampaignWriteOrg(admin, user, existing.campaign_id, orgId)
-    : (existing.organization_id === orgId ? orgId : null)
+  const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id)
   if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para quitar este evento' }, { status: 403 })
 
   if (existing?.calendar_event_id) {

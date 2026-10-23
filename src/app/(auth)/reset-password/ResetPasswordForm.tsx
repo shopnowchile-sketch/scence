@@ -49,18 +49,9 @@ export function ResetPasswordForm() {
       return
     }
 
-    // FIX: redirigir directo al portal correcto en vez de "/" (dejaba a la
-    // persona en el inicio en vez de mandarla a su dashboard). Mismo
-    // criterio de rol que middleware.ts (user_metadata.is_influencer /
-    // is_brand; sin esos flags es cuenta admin interna).
-    const { data: { user } } = await supabase.auth.getUser()
-    const destination = user?.user_metadata?.is_influencer
-      ? '/inf-dash'
-      : user?.user_metadata?.is_brand
-        ? '/brand-dash'
-        : user
-          ? '/admin-dash'
-          : '/login'
+    // El dashboard resuelve el portal con memberships e influencer.user_id.
+    // No usar metadata: una identidad puede tener ambas funciones.
+    const destination = '/'
 
     setLoading(false)
     setDone(true)

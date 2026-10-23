@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { findAuthUserByEmail, getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
@@ -82,17 +82,14 @@ export async function POST(req: NextRequest) {
   const name = display_name?.trim() || email.split('@')[0]
 
   // Find or create auth user
-  const { data: existingUsers } = await admin.auth.admin.listUsers()
-  const existing = existingUsers?.users?.find(u => u.email === email)
+  const existing = await findAuthUserByEmail(admin, email)
 
   let authUserId: string
 
   if (existing) {
     authUserId = existing.id
-    // Update metadata to keep org context
-    await admin.auth.admin.updateUserById(authUserId, {
-      user_metadata: { ...existing.user_metadata, full_name: name },
-    })
+    // La identidad preexistente puede ser influencer: no se cambian sus
+    // metadata ni perfiles al sumarla a un equipo.
   } else {
     const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
       email,

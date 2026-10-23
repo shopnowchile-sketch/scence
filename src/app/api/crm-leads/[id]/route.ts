@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { registerBrandAtomic } from '@/lib/supabase/registerBrand'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { canonicalCommune } from '@/lib/crm-commune'
 import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
@@ -250,30 +250,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }, { status: 422 })
     }
 
-    const orgId = await getOrgId(user.id, user.user_metadata, admin)
-    if (!orgId) {
-      return NextResponse.json({
-        data,
-        error: 'Estado actualizado, pero no se encontró organización para crear la marca.',
-      }, { status: 400 })
-    }
-
     const noteParts = [
       data.qualification_notes ? String(data.qualification_notes).trim() : null,
       `Creada automáticamente desde el CRM al pasar a "${body.qualification_status}" (lead ${data.id}, fuente: ${data.source ?? 'desconocida'}).`,
     ].filter(Boolean)
 
     // La marca convertida recibe su propia organización (nunca la del admin).
-    const brandOrgId = await provisionOrgForBrand(brandName)
-    if (!brandOrgId) {
-      return NextResponse.json({ data, error: 'Estado actualizado, pero no se pudo crear la organización de la marca.' }, { status: 500 })
-    }
-
-    const { data: brand, error: brandError } = await admin
-      .from('brands')
-      .insert({
-        organization_id: brandOrgId,
-        created_by: user.id,
+    // Una sola transacción e idempotente por lead (register_brand): dos PATCH
+    // simultáneos del mismo lead no crean dos marcas ni organizaciones huérfanas.
+    const leadBrandFields = {
         name: brandName,
         website: data.website ?? null,
         industry: data.industry ?? null,
@@ -303,20 +288,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             region: data.region ?? null,
           },
         },
-      })
-      .select('id')
-      .single()
-
-    if (brandError) {
-      console.error('[PATCH /api/crm-leads/[id]] error creando marca desde lead convertido', brandError)
+      }
+    const registered = await registerBrandAtomic(admin, { brand: leadBrandFields, registeredBy: user.id, key: `crm_lead:${params.id}` })
+    if (!registered.ok || registered.outcome === 'conflict') {
+      const detail = registered.ok ? 'ya existe una marca con ese correo o Instagram' : registered.error
+      console.error('[PATCH /api/crm-leads/[id]] error creando marca desde lead convertido', detail)
       return NextResponse.json({
         data,
-        error: `Estado actualizado, pero no se pudo crear la marca: ${brandError.message}`,
-      }, { status: 500 })
+        error: `Estado actualizado, pero no se pudo crear la marca: ${detail}`,
+      }, { status: registered.ok ? 409 : 500 })
     }
+    const brand = { id: registered.brandId }
 
     convertedBrandId = brand.id
-    brandCreated = true
+    brandCreated = registered.outcome === 'created'
 
     await admin.from('crm_leads').update({ converted_brand_id: convertedBrandId }).eq('id', params.id)
 

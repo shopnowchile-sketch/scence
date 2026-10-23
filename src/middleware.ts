@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { CookieOptions } from '@supabase/ssr'
 import { detectLocale, LOCALE_COOKIE } from '@/i18n/config'
+import { decidePortalRedirect, needsBrandMembershipCheck } from '@/lib/portal-navigation'
 
 const PUBLIC_ROUTES = [
   '/login', '/register', '/forgot-password', '/reset-password',
@@ -83,66 +84,32 @@ export async function middleware(request: NextRequest) {
     return withLocale(NextResponse.redirect(url))
   }
 
-  // Determinar rol del usuario autenticado
-  const isInfluencer = claims.user_metadata?.is_influencer === true
-  const isBrand      = claims.user_metadata?.is_brand === true
-
-  // Rutas exclusivas de admin (inaccesibles para influencers y marcas)
-  const ADMIN_ONLY = [
-    '/admin-campaigns', '/admin-influencers', '/admin-analytics', '/admin-settings',
-    '/admin-billing', '/admin-bookings', '/admin-brands', '/admin-payroll',
-    '/admin-affiliates', '/admin-contracts', '/admin-events', '/admin-support',
-    '/admin-dash', '/admin-crm',
-  ]
-
-  // Rutas exclusivas del portal influencer
-  const INFLUENCER_ONLY = [
-    '/inf-dash', '/inf-deliverables', '/inf-profile', '/inf-campaign', '/inf-campaigns',
-    '/inf-bookings', '/inf-support', '/inf-brands',
-    // legacy — keep for redirect safety
-    '/dashboard', '/tasks', '/profile', '/my-campaigns', '/my-bookings',
-  ]
-
-  // Rutas exclusivas del portal de marcas
-  const BRAND_ONLY = [
-    '/brand-dash', '/brand-campaigns', '/brand-influencers', '/brand-support', '/brand-profile',
-    // legacy
-    '/brand',
-  ]
-
-  if (claims) {
-    if (isBrand) {
-      // Marca → solo puede acceder al portal de marcas
-      if (path === '/login' || path === '/' || path === '/brand/dashboard') {
-        return withLocale(NextResponse.redirect(new URL('/brand-dash', request.url)))
-      }
-      if (ADMIN_ONLY.some(r => path.startsWith(r)) || INFLUENCER_ONLY.some(r => path.startsWith(r))) {
-        return withLocale(NextResponse.redirect(new URL('/brand-dash', request.url)))
-      }
-    } else if (isInfluencer) {
-      if (path === '/login' || path === '/' || path === '/dashboard') {
-        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
-      }
-      // /influencers/support es accesible para influencers aunque /influencers esté en ADMIN_ONLY
-      if (ADMIN_ONLY.some(r => path.startsWith(r)) && path !== '/influencers/support') {
-        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
-      }
-      if (BRAND_ONLY.some(r => path.startsWith(r))) {
-        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
-      }
-    } else {
-      // Admin
-      if (path === '/login' || path === '/') {
-        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
-      }
-      if (INFLUENCER_ONLY.some(r => path === r || path.startsWith(r + '/'))) {
-        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
-      }
-      if (BRAND_ONLY.some(r => path.startsWith(r))) {
-        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
-      }
-    }
+  // Banderas de metadata: solo orientan la NAVEGACIÓN entre portales, nunca
+  // autorizan. Una misma identidad puede ser influencer y miembro de una marca
+  // (ver src/lib/portal-navigation.ts); las páginas y APIs verifican en servidor.
+  const flags = {
+    isInfluencer: claims.user_metadata?.is_influencer === true,
+    isBrand: claims.user_metadata?.is_brand === true,
   }
+
+  // Solo si una cuenta con is_influencer (sin is_brand) abre el portal de marca:
+  // se comprueba su membresía activa real (su propia fila, con su sesión).
+  // Cualquier error o ausencia equivale a "sin membresía" (comportamiento histórico).
+  let hasBrandMembership = false
+  if (needsBrandMembershipCheck(flags, path)) {
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('id')
+      .eq('user_id', claims.sub)
+      .eq('is_active', true)
+      .in('role', ['brand_manager', 'finance', 'member'])
+      .limit(1)
+      .maybeSingle()
+    hasBrandMembership = Boolean(membership)
+  }
+
+  const redirectTo = decidePortalRedirect(flags, path, hasBrandMembership)
+  if (redirectTo) return withLocale(NextResponse.redirect(new URL(redirectTo, request.url)))
 
   return withLocale(supabaseResponse)
 }

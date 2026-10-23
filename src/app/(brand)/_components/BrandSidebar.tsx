@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
   Target,
@@ -10,6 +11,7 @@ import {
   Bug,
   FileText,
   Sparkles,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { AppSidebar, type NavSection } from '@/components/layout/AppSidebar'
 
@@ -41,5 +43,21 @@ const navSections: NavSection[] = [
 ]
 
 export function BrandSidebar({ plan }: { plan?: string | null }) {
-  return <AppSidebar portal="brand" navSections={navSections} plan={plan} />
+  const [hasInfluencerProfile, setHasInfluencerProfile] = useState(false)
+
+  // Solo controla la visibilidad del enlace (GET de solo lectura: 200 si existe
+  // ficha propia, 404 si no). No autoriza nada: /inf-* vuelve a verificarlo.
+  useEffect(() => {
+    let active = true
+    void fetch('/api/influencer/me', { cache: 'no-store' })
+      .then(response => { if (active) setHasInfluencerProfile(response.ok) })
+      .catch(() => { if (active) setHasInfluencerProfile(false) })
+    return () => { active = false }
+  }, [])
+
+  const sections: NavSection[] = hasInfluencerProfile
+    ? [...navSections, { title: 'Cambiar portal', items: [{ href: '/inf-dash', label: 'Portal de influencer', icon: ArrowLeftRight }] }]
+    : navSections
+
+  return <AppSidebar portal="brand" navSections={sections} plan={plan} />
 }

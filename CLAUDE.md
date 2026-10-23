@@ -371,13 +371,63 @@ Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `
 
 `npx tsc --noEmit`, `npx next lint` y `next build`. En un sandbox sin salida a `fonts.googleapis.com`, el build se valida con la fuente simulada (`NEXT_FONT_GOOGLE_MOCKED_RESPONSES`); el build real lo confirma Vercel al desplegar. La validación final del protocolo (sección 18, paso 9) añade `npm test`.
 
-### 16.9 Tenant: una marca = una organización
+### 16.9 Modelo de marcas y organizaciones (una marca = una organización técnica)
 
-`Scence SpA` (`d23d88ee-…`) es la **agencia**: solo admin de plataforma + roster de influencers + campañas que opera SCENCE. **Nunca** debe contener marcas ni usuarios de marca.
+**Modelo de negocio oficial** (decisión de la fundadora, 2026-10-22; reemplaza la redacción anterior de esta sección).
 
-- Toda marca vive en su propia organización `type='brand'` (crear con `provisionOrgForBrand()`), y su usuario tiene `organization_members` en esa org con `brand_id`.
+- **SCENCE** es la plataforma administradora. Es la única que puede ver, crear, editar, aprobar, suspender y borrar marcas, y lo hace mediante permisos administrativos (`super_admin` vía `organization_members`), nunca por el nombre de una marca. SCENCE (plataforma) **no** es lo mismo que SCENCE SpA.
+- **Todo lo demás son marcas.** **SCENCE SpA es simplemente una marca de pruebas**: no es la plataforma, no es superior a las demás y **ninguna marca tiene privilegios especiales por su nombre**.
+- **Cada marca tiene su propio perfil** y puede consultar las marcas que ella misma registró, según los permisos correspondientes (Marca A registra X e Y; Marca B registra Z). Las marcas registradas pertenecen igualmente al conjunto global administrado por SCENCE. «A registró a X» solo indica quién la registró: no hace a A plataforma ni crea otra categoría de marca.
+- **Registro, confirmación de correo y aprobación son etapas distintas.** Toda marca pasa por la aprobación de SCENCE (`pending_approval` → `approved` | `rejected` | `suspended`). La aprobación cambia el estado de la marca; **no crea ni cambia una organización** (comprobado en `PATCH /api/brands/[id]`, solo `super_admin`).
+- **Quién registra:** los usuarios autorizados, **incluidas las influencers**, pueden registrar marcas. Registrar **no** concede `brand_manager` ni permisos sobre otras marcas. La persona que registra consulta lista, estado de aprobación y datos básicos de las marcas que registró; campañas, facturas, contactos privados e información interna solo con permiso explícito.
+- **Qué puede hacer una marca según su estado (el servidor lo aplica, no solo la interfaz):** `pending_approval`: completar perfil, ver estado y hacer los pasos de aprobación, sin funciones operativas; `approved`: lo que permitan su rol y plan; `rejected`: ver el resultado y pedir revisión, sin funciones operativas; `suspended`: operaciones bloqueadas, solo lo expresamente autorizado para resolver la suspensión u obligaciones pendientes. *(Regla de negocio; **no implementada** en el servidor, ver pendiente 3.)*
+- **Borrado:** archivar o desactivar por defecto; el borrado definitivo es excepcional, autorizado y con revisión de dependencias. *(Hoy `DELETE /api/brands/[id]` es físico; pendiente 8.)*
+- **Toda marca nueva nace `pending_approval`**, también las colaboradoras de campaña: ser colaboradora no equivale a estar aprobada.
+- **Aislamiento:** las marcas no se ven entre sí; datos y permisos se separan por marca.
+
+**Cómo lo representa hoy el sistema** (comprobado en código y esquema el 2026-10-22). La organización técnica es un detalle de implementación, no un concepto de negocio.
+
+- Toda marca vive en su propia organización técnica `type='brand'` (crear con `provisionOrgForBrand()`), y su usuario tiene `organization_members` en esa org con `brand_id`. Hoy eso aísla a las marcas en RLS y rutas.
+- La organización técnica `Scence SpA` (`d23d88ee-…`, `type='agency'`) concentra la operación de plataforma (admin de plataforma, roster de influencers y campañas que opera SCENCE). Tiene 0 marcas. Su nombre **no** debe leerse como «la marca SCENCE SpA».
 - Las campañas pueden seguir en la org de la agencia; la marca accede por `brand_id` (`resolveBrandAccess` / `authorizeCampaignBrandAction`), nunca por `organization_id`.
+- **Quién registró una marca (auditado 2026-10-22):** `created_by` es el usuario de Auth que ejecutó la creación; **no** es una relación marca→marca ni identifica de forma uniforme al registrante (en un autorregistro es la propia dueña; en altas administrativas, un admin; en colaboradoras, quien las añadió). `POST /api/brand/brands` guarda además `metadata.invited_by_organization_id` (primera membresía por antigüedad, no necesariamente de marca) y `campaigns/[id]/brands` guarda `metadata.invited_by_brand_id` (la marca *de la campaña*); ninguna marca de producción probable tiene esos campos. Solo el flujo de influencer deja un vínculo fiable (`referred_by_influencer_id`). No existe clave marca→marca ni persona→marca uniforme. Detalle por flujo: `docs/audits/brand_model_hardening_proposal_2026-10-22.md` §3.
+- **Registro de marca:** `POST /api/auth/register-brand` crea el usuario y, vía `ensureBrandRow()`, la marca en `pending_approval` con su propia organización técnica. `POST /api/brand/register` no crea nada: confirma el acceso o vincula una invitación pendiente.
 - Migración 2026-09-23: 15 marcas separadas (mapeo en `ops.tenant_split_20260923`; 13 recibieron `subscription_plan_override='pro'` para preservar el plan que heredaban de suscripciones de influencers — decisión comercial pendiente).
+
+**Cifras: fuente y entorno (no mezclar).**
+
+| Fuente | Entorno | Estado de verificación | Cifras (2026-10-22, solo lectura) |
+|---|---|---|---|
+| Proyecto Supabase `xzzbishzfyovrladcaeb` (rama `main`) | Producción **probable** | Indirecta: único proyecto de la cuenta; 2.722 usuarios y 2.873 influencers; login el mismo día; sin datos `.invalid`. Falta confirmar que el `NEXT_PUBLIC_SUPABASE_URL` de producción en Vercel (valor oculto) apunta a este proyecto. | 71 marcas (61 `approved`, 10 `pending_approval`); 97 organizaciones `brand` y 28 `agency`; 19 campañas; 26 orgs `brand` y 28 orgs `agency` sin marca; 4 orgs con «gmail» en el nombre; las 71 marcas con `created_by` (27 usuarios distintos; 45 del usuario administrador) y 0 con `metadata.invited_by_organization_id`; 41 con `user_id` y 30 sin él. |
+| Rama `dexpvoubiklgotuukrml` (`campaign-locations-test`) | **Prueba, no producción** | Comprobada (rama de `xzzbishzfyovrladcaeb`; Vercel la rotula «NO produccion»). | 73 marcas (63 `approved`, 10 `pending_approval`); 2 con `created_by`. **No usar como cifra de producción.** |
+
+**Hechos comprobados sobre `Scence` e `Influencers.snc`** (producción probable; lectura):
+
+- `Scence` (`04eab544-…`, `approved`, creada 2026-07-26): usuario `hola@scence.cl`, sitio `scence.cl`, organización `Scence` con 2 miembros, 8 campañas vinculadas.
+- `Influencers.snc` (`fb04fffe-…`, `approved`, creada 2026-06-23): sin usuario ni contacto, organización `Influencers SCence` con 0 miembros, 7 campañas vinculadas y 1 factura borrador de 0 CLP.
+- 5 campañas incluyen a ambas marcas. Ninguna tiene `invited_by_organization_id`.
+- Existe una organización `SCENCE SpA` (`4dfdb20c-…`, `type='brand'`, creada 2026-06-26) con 0 marcas y 0 campañas; su slug alude a un id de marca (`3bf3ab62…`) que no existe en esa base.
+- Las suscripciones (muchas `incomplete`) cuelgan de la organización `Scence SpA` (agency), no de estas marcas.
+
+**Hipótesis (no comprobadas; no usar como regla).** `Influencers.snc` sería un registro operativo interno; `Scence` tendría la presencia comercial; la org `SCENCE SpA` (brand) sería un residuo de un registro anterior. **No se ha decidido** qué registro (si alguno) es la marca de pruebas SCENCE SpA; la fundadora indicó que no hace falta decidirlo ahora. No renombrar, fusionar ni borrar.
+
+**Pendiente de decisión o de verificación (no vigente ni implementado).** Detalle, SQL propuesto, riesgos y reversión: `docs/audits/brand_model_hardening_proposal_2026-10-22.md`.
+
+1. *Producción:* confirmar que `xzzbishzfyovrladcaeb` es la base de producción (valor de la variable en Vercel o consola del proveedor).
+2. *Linaje entre marcas:* `created_by` está en las 71 marcas (27 usuarios, 45 del usuario administrador) pero identifica a un **usuario**, no a una marca, y `invited_by_organization_id` e `invited_by_brand_id` están vacíos en todas: **no registra qué marca registró a cuál**. Falta una relación marca→marca explícita y su permiso de consulta (decisión de modelo).
+3. *Estado de la marca:* ni `resolveBrandAccess` ni RLS leen `brands.status`; una marca `pending_approval`, `rejected` o `suspended` conserva acceso a datos en el servidor. La regla ya está decidida (arriba); falta implementarla (plan P3, requiere aprobación).
+4. *Quién registra marcas:* `POST /api/brand/brands` exige cualquier membresía y registra la «org del registrante» como la primera por antigüedad; no hay antiduplicados atómicos ni vínculo fiable persona→marca. La regla ya está decidida (influencers incluidas; sin `brand_manager` automático); falta el registro del registrante y la función atómica (P4, P6).
+5. *Aprobación:* las 14 marcas colaboradoras sin correo ya existentes están `approved` sin revisión de SCENCE; se revisan una a una (P8). La ruta ya crea las nuevas como `pending_approval` (corregido en local).
+6. *Organizaciones huérfanas y carrera:* cinco rutas crean la organización y luego la marca; un fallo o un registro simultáneo deja organizaciones sin marca (hoy 26 `brand` y 28 `agency`, 4 con «gmail»). No hay índice único de correo de contacto. Limpieza y corrección atómica requieren autorización.
+7. *RLS:* `user_can_access_brand` consulta `profiles` (contra §16.2) y conserva cláusulas heredadas; hay políticas de `brand_members` con rol `public`.
+8. *Borrado de marcas:* `DELETE /api/brands/[id]` es físico, con cascada amplia, y deja la organización y el usuario de Auth. Decisión: archivar por defecto (P7).
+9. *Permisos:* 148 de 154 rutas usan service role; la auditoría de este día cubrió las rutas de marcas, no todas.
+10. *Vinculación por correo no verificado:* `ensureBrandRow` vincula una marca sin dueño por correo; falta verificar si producción exige confirmar el correo.
+11. *Nombre confuso:* la org `agency` `Scence SpA` se lee como una marca; evaluar un nombre que indique «operación de plataforma» (cambio de datos no autorizado).
+12. *Migraciones sin aplicar:* `20261012230000`, `20261021120000`, `20261022120000` y `20261022150000` (esta última sin aplicar y sin revisar en base aislada); falta la comparación completa repo↔base.
+
+**Corregido en local (sin commit):** (a) la búsqueda por correo de contacto en `ensureBrandRow`, `POST /api/brand/brands` y `POST /api/campaigns/[id]/brands`, y por nombre en `influencer/owned-brands`, usa coincidencia exacta (`src/lib/email-match.ts`); antes `_`, `%` y `*` actuaban como comodines; (b) las marcas colaboradoras nuevas nacen `pending_approval`.
+
 
 ### 16.10 Influencer inactiva = cero emails
 

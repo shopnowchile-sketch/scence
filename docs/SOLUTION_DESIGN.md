@@ -206,6 +206,8 @@ Función `ensureOrg()` en `src/lib/supabase/ensureOrg.ts`:
 - Para brand users: `POST /api/brand/register` crea el registro en `brands` table.
 - El trigger de signup (`handle_new_user`, en `auth.users`) también crea un perfil + org de tipo `agency` como fallback; en la práctica casi siempre se sobreescribe por `ensureOrg()` en el primer login real. Su default de rol se corrigió a `brand_manager` (antes `agency_manager`).
 
+> **Corrección documental 2026-10-22 (histórico, junio 2026):** lo descrito arriba sobre la creación automática de organizaciones ya no es vigente. Comprobado en código y en la base consultada: `handle_new_user` no crea organizaciones (para influencers solo asigna la organización de SCENCE) y `ensureOrg()` es interna: solo la llama `ensureBrandRow()` durante el registro de una marca; ningún login, layout ni middleware la invoca. Ver `CLAUDE.md` §16.9.
+
 ---
 
 ## 6. Arquitectura Portal Admin

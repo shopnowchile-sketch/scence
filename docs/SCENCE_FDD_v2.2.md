@@ -6,6 +6,8 @@
 
 **Versión:** 2.4 | **Fecha de emisión:** 2026-07-08
 
+> **Nota documental 2026-10-22:** en el modelo de marcas, este documento es histórico (julio 2026). Su BR-10 («vinculado a la organización SCENCE») y su supuesto 1 de §2.3 no reflejan el modelo vigente: SCENCE es la plataforma, SCENCE SpA es una marca de pruebas y cada marca registrada tiene su propia organización técnica. La regla vigente está en `CLAUDE.md` §16.9 y `docs/FUNCTIONAL_DESIGN.md` (BR-10 y BR-15). El contenido original no se modificó.
+
 ## Control de Documento
 
 ### Lista de distribución

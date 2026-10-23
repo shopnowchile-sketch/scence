@@ -25,6 +25,8 @@
 | C-11 | Versión de migración repetida `20261005180000` | El par correcto es `feat/locations-source-of-truth` `a1f0d59` (`campaigns_locations_source_of_truth`) y `fix/data-quality-geography-drilldown` `48adfea` (`drop_legacy_influencer_geography_final`). El Anexo A del README lo asocia a `fix/locations-single-source-reports` (`88270d2`), que usa `20261005130000`–`160000`, no `180000`. Hallazgo del repositorio (ramas); no es un cambio aplicado en producción (producción: no verificado). | Código revisado (`git diff --name-status`) |
 | C-12 | TSV frente a índice | Las 206 filas de `docs/00-MASTER/data/ramas_sha_completo.tsv` coinciden con `docs/00-MASTER/00-INDICE-MAESTRO.md` en referencia, SHA y `+adelante/-atrás`. | Código revisado |
 | C-13 | Respaldos con contenido propio | La regla de `GUIA` §3 da **10 SHA** (14 referencias) con contenido propio entre los 41 respaldos. Coincide con `docs/00-MASTER/08-RESPALDOS-STASHES/README.md` ("10 con contenido propio"). | Código revisado |
+| C-14 | «Las marcas se vinculan a la organización SCENCE» (`FUNCTIONAL_DESIGN.md` BR-10; `SCENCE_FDD_v2.2.md`) | Corregido 2026-10-22: el registro crea una marca en `pending_approval` con su propia organización técnica; SCENCE es la plataforma administradora y SCENCE SpA es una marca de pruebas. Regla en `CLAUDE.md` §16.9; BR-10 y BR-15 en `FUNCTIONAL_DESIGN.md`. `SCENCE_FDD_v2.2.md` queda como histórico con nota. | Código revisado (`register-brand`, `ensureBrandRow`, `PATCH /api/brands/[id]`) y esquema consultado |
+| C-15 | «El trigger de signup crea la organización» y «`ensureOrg()` corre en el primer login» (`SOLUTION_DESIGN.md`, `DATA_DESIGN.md`, historial del FDD) | Superado: el trigger no crea organizaciones y `ensureOrg()` es interna (solo `ensureBrandRow()`). Notas de corrección agregadas; el texto original se conserva como histórico. | Código revisado y definición de `handle_new_user` en la base consultada |
 
 ## B. Hallazgo nuevo (no estaba en los documentos)
 
@@ -47,7 +49,19 @@
 | P-09 | Estado real en producción: migraciones, RLS de `subscriptions`, 13 marcas Pro, columnas de campañas, envío a ~2.400 influencers, métricas de Instagram | No hay consulta a Supabase ni Vercel. |
 | P-10 | Ningún test se ha ejecutado | Esta etapa no ejecuta pruebas. |
 | P-11 | Si N-01 está aplicada o no en producción | Por verificar. |
+| P-12 | Qué registro representa a SCENCE SpA como marca de pruebas | Sin decidir (la fundadora indicó que no es necesario ahora). Hechos y datos por confirmar: `CLAUDE.md` §16.9 (`Scence` e `Influencers.snc`, aprobadas; hipótesis no comprobadas). No renombrar, fusionar ni borrar. |
+| P-13 | Linaje «quién registró una marca» | Auditado: `created_by` es el usuario que ejecutó la creación (autorregistro, admin, influencer o quien añadió una colaboradora); no es relación marca→marca. Solo el flujo de influencer deja vínculo fiable. Plan P6 en `docs/audits/brand_model_hardening_proposal_2026-10-22.md` (requiere aprobación). |
+| P-14 | Qué puede hacer una marca según su estado | Regla decidida el 2026-10-22 (ver `CLAUDE.md` §16.9). El servidor aún no la aplica (`resolveBrandAccess` no lee `brands.status`); plan P3 pendiente de aprobación. |
+| P-15 | Producción verificada | `xzzbishzfyovrladcaeb` es producción probable por evidencia indirecta; falta confirmar la variable en Vercel. Las cifras de la rama `dexpvoubiklgotuukrml` (73 marcas) no son de producción. |
 
 ## D. Qué no se cambió
 
 Código, ramas, stashes, migraciones, documentos existentes, Supabase, Vercel y producción. Las 206 referencias y los 5 stashes siguen intactos. Cualquier corrección de cifras vive solo en este archivo. El archivo derivado `docs/00-MASTER/data/ramas_clasificacion_v2.tsv` agrega una fila de encabezado y 12 columnas; conserva íntegras las 8 columnas y las 206 filas del original.
+
+## E. Actualización 2026-10-22 (solo documental)
+
+Por instrucción de la fundadora se corrigieron `CLAUDE.md` §16.9, `docs/FUNCTIONAL_DESIGN.md`, `docs/SOLUTION_DESIGN.md`, `docs/DATA_DESIGN.md`, `docs/00-MASTER/FICHAS-MODULOS_v1.0_2026-10-19.md` y se anotó `docs/SCENCE_FDD_v2.2.md` como histórico en lo que respecta al modelo de marcas. Los textos antiguos se conservaron con notas fechadas. No se modificaron código, base de datos, migraciones ni producción. Las copias `.docx` y `.pdf` de los FDD no se editaron.
+
+**Segunda actualización 2026-10-22 (solo documental).** Se ajustó el modelo a las reglas de la fundadora (SCENCE única administradora; SCENCE SpA = marca de pruebas; sin privilegios por nombre) y se separaron las cifras por entorno: producción probable (`xzzbishzfyovrladcaeb`: 71 marcas, 61 aprobadas, 10 pendientes) frente a la rama de pruebas (73/63/10, ya no se cita como producción). Detalle en `CLAUDE.md` §16.9 y `docs/audits/identity_multi_role_audit_2026-10-22.md`. Sin cambios de código, base de datos, membresías, configuraciones ni migraciones.
+
+**Tercera actualización 2026-10-22.** Se incorporaron las decisiones de estados, visibilidad de marcas registradas, colaboradoras `pending_approval`, archivado y registro por influencers. Corregido en local (sin commit): comparación exacta de correos/nombres y estado inicial de colaboradoras. Sin cambios en base de datos, RLS, roles, membresías, migraciones ni producción.

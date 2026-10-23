@@ -18,7 +18,7 @@
 
 ## 2. Marcas
 - **Para qué sirve.** Cuentas de marca, equipos, planes y qué ve cada marca.
-- **Cómo funciona.** Una marca es una organización propia (SCENCE SpA es solo la agencia). Roles: dueño, gerente, finanzas, miembro. Planes básico, growth y pro (69.990 / 259.000 / 699.000 CLP según el código).
+- **Cómo funciona.** Todas las marcas están al mismo nivel dentro de la plataforma SCENCE; SCENCE SpA es una marca de pruebas; SCENCE administra todas y una marca puede registrar otras (el registro de quién registró cada marca y su consulta aún no están implementados; las influencers también pueden registrar marcas). Técnicamente, cada marca tiene su propia organización, y la organización `Scence SpA` (tipo agencia) concentra la operación de plataforma (ver `CLAUDE.md` §16.9). Roles: dueño, gerente, finanzas, miembro. Planes básico, growth y pro (69.990 / 259.000 / 699.000 CLP según el código).
 - **Pantallas y procesos.** Portal de marca (27 pantallas), `POST /api/auth/register-brand`, `/api/brand/*`.
 - **Datos y permisos.** La marca solo ve sus campañas y solo a influencers aceptadas; no hay catálogo global. Colaboraciones entre marcas: solo Admin.
 - **Qué está comprobado.** *Código revisado:* separación por organización, permisos por rol, plan y override. *Test existe:* 1 (`brand-plan-access`). *Solo documentado:* 13 marcas con Pro heredado. *Por verificar:* `campaigns.brand_id` sin migración visible (R-07).

@@ -98,6 +98,8 @@ Extiende `auth.users` de Supabase.
 ### 2.2 `organizations`
 Unidad multi-tenant raíz. Cada instancia de SCENCE para un cliente es una org.
 
+> **Nota documental 2026-10-22:** la organización es un concepto técnico del modelo multiempresa, no un concepto de negocio. En el modelo de negocio todas las marcas están al mismo nivel y SCENCE SpA es una marca de pruebas; hoy cada marca vive en su propia organización `type='brand'` y la organización `Scence SpA` (`type='agency'`) concentra la operación de plataforma (0 marcas). Cifras con su fuente y pendientes de RLS/relaciones: `CLAUDE.md` §16.9.
+
 | Columna | Tipo | Constraints | Descripción |
 |---|---|---|---|
 | id | UUID | PK DEFAULT uuid_generate_v4() | |
@@ -584,6 +586,8 @@ Notificaciones in-app (tabla existe, UI pendiente).
 | Sync deliverable tasks | `POST /api/campaigns/[id]/influencers` | Add influencer | syncDeliverableTask() |
 | Crear brands record | `POST /api/brand/register` | Primer login de marca | INSERT brands si no existe |
 | Crear org | `ensureOrg()` | Primer login de admin | INSERT organizations + organization_members |
+
+> **Corrección documental 2026-10-22:** las dos filas anteriores describen el estado de junio 2026. Hoy la marca y su organización se crean en el registro (`POST /api/auth/register-brand` → `ensureBrandRow()`), y `ensureOrg()` es interna: ningún login (admin, marca o influencer) crea organizaciones. `POST /api/brand/register` solo confirma el acceso o vincula una invitación pendiente.
 
 ---
 

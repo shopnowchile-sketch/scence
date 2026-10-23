@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
-import { acceptCampaignApplication, rejectCampaignApplications } from '@/lib/campaign-applications'
+import { acceptCampaignApplication, rejectCampaignApplications, reopenCampaignApplication } from '@/lib/campaign-applications'
 
 type Params = { params: { id: string } }
 
@@ -23,13 +23,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!auth) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   const { admin } = auth
 
-  let body: { application_id?: string; application_ids?: string[]; action: 'accept' | 'reject'; agreed_fee?: number }
+  let body: { application_id?: string; application_ids?: string[]; action: 'accept' | 'reject' | 'reopen'; agreed_fee?: number }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
   const { application_id, application_ids, action, agreed_fee } = body
-  if (!['accept', 'reject'].includes(action)) return NextResponse.json({ error: 'action debe ser accept o reject' }, { status: 422 })
+  if (!['accept', 'reject', 'reopen'].includes(action)) return NextResponse.json({ error: 'action debe ser accept, reject o reopen' }, { status: 422 })
 
   if (action === 'reject') {
     const result = await rejectCampaignApplications(admin, {
@@ -41,6 +41,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   if (!application_id) return NextResponse.json({ error: 'application_id requerido' }, { status: 422 })
+
+  if (action === 'reopen') {
+    const result = await reopenCampaignApplication(admin, { campaignId: params.id, applicationId: application_id })
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ ok: true, status: 'pending' })
+  }
 
   const { data: application } = await admin
     .from('campaign_influencers')

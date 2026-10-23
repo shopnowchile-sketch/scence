@@ -1,3 +1,5 @@
+import { isDeliverableComplete } from '@/lib/deliverable-status'
+
 export type RankingSortBy =
   | 'followers'
   | 'engagement'
@@ -48,7 +50,11 @@ type CampaignInfluencerRow = {
 type DeliverableRow = {
   influencer_id?: string | null
   campaign_influencer_id?: string | null
+  type?: string | null
   status?: string | null
+  content_url?: string | null
+  published_url?: string | null
+  attendance_response?: string | null
 }
 
 export function getPrimarySocial(inf: RankingInfluencerRow) {
@@ -109,7 +115,9 @@ export function buildRankingRows(
     const current = deliverablesByInfluencer.get(influencerId) ?? { total: 0, completed: 0 }
     current.total += 1
 
-    if (['published', 'approved', 'completed'].includes(String(d.status ?? ''))) {
+    // Criterio único de "completado" (lib/deliverable-status): el mismo que
+    // ve la influencer y que usan las listas de campañas.
+    if (isDeliverableComplete(d)) {
       current.completed += 1
     }
 

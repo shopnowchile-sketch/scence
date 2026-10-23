@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 
+// Next.js 14 can prerender GET Route Handlers that appear cacheable. This endpoint
+// reads the database per request and must never run during static generation.
+export const dynamic = 'force-dynamic'
+
 // Public, read-only geography picker. Only canonical country/region/city/commune
 // nodes are exposed; private places are never returned.
 export async function GET(req: NextRequest) {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { BILLED_INVOICE_STATUSES } from '@/lib/invoice-kpis'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
 export async function GET(request: NextRequest) {
@@ -36,7 +38,6 @@ export async function GET(request: NextRequest) {
 
   const [
     campaignStats,
-    influencerStats,
     deliverableStats,
     topInfluencers,
     platformBreakdown,
@@ -49,30 +50,20 @@ export async function GET(request: NextRequest) {
       .eq('organization_id', orgId ?? 'none')
       .order('created_at', { ascending: false }),
 
-    // Influencer stats — top by campaigns (scoped by org via campaign join)
-    admin.from('campaign_influencers')
-      .select(`
-        influencer_id, fee,
-        influencer:influencers (id, display_name, avatar_url,
-          influencer_social_profiles (platform, followers, engagement_rate, is_primary)),
-        campaign:campaigns!inner (organization_id)
-      `)
-      .eq('campaign.organization_id', orgId ?? 'none')
-      // Solo participantes aceptados — no postulantes/invitados pendientes.
-      .eq('application_status', 'accepted')
-      .limit(100),
-
     // Deliverable stats (scoped by org via campaign join)
     // Paginado: PostgREST corta a 1000 filas y ya hay más de 1.100 entregables.
-    fetchAllRows<{ id: string; status: string; type: string; platform: string | null; campaign_id: string }>((from, to) => admin.from('campaign_deliverables')
-      .select('id, status, type, platform, campaign_id, campaign:campaigns!inner(organization_id)')
+    fetchAllRows<{ id: string; status: string; type: string; platform: string | null; campaign_id: string; content_url: string | null; published_url: string | null; attendance_response: string | null }>((from, to) => admin.from('campaign_deliverables')
+      .select('id, status, type, platform, campaign_id, content_url, published_url, attendance_response, campaign:campaigns!inner(organization_id)')
       .eq('campaign.organization_id', orgId ?? 'none')
       .not('campaign_id', 'is', null)
       .order('id')
       .range(from, to)),
 
-    // Top performing influencers by total fees (scoped by org via campaign join)
-    admin.from('campaign_influencers')
+    // Top influencers por total de fees. Antes se leían solo las 10 filas con
+    // fee más alto (.limit(10)) y se sumaban por influencer, por lo que el
+    // total de quien tenía varias campañas quedaba truncado. Ahora se agregan
+    // TODAS las participaciones aceptadas (no postulantes/rechazadas) de la org.
+    fetchAllRows<{ influencer_id: string; fee: number | null; influencer: unknown }>((from, to) => admin.from('campaign_influencers')
       .select(`
         influencer_id, fee,
         influencer:influencers (id, display_name, avatar_url,
@@ -80,15 +71,16 @@ export async function GET(request: NextRequest) {
         campaign:campaigns!inner (organization_id)
       `)
       .eq('campaign.organization_id', orgId ?? 'none')
+      .eq('application_status', 'accepted')
       .not('fee', 'is', null)
-      .order('fee', { ascending: false })
-      .limit(10),
+      .order('id')
+      .range(from, to)),
 
     // Revenue by month
     Promise.all(months.map(async m => {
       const [rev, pay, cmp] = await Promise.all([
         admin.from('invoices').select('total')
-          .eq('organization_id', orgId ?? 'none').in('status', ['paid', 'sent'])
+          .eq('organization_id', orgId ?? 'none').in('status', [...BILLED_INVOICE_STATUSES])
           .gte('issue_date', m.start).lte('issue_date', m.end),
         admin.from('payroll_runs').select('total_amount')
           .eq('organization_id', orgId ?? 'none').in('status', ['approved', 'processing', 'paid'])
@@ -116,6 +108,8 @@ export async function GET(request: NextRequest) {
     published: allDeliverables.filter(d => d.status === 'published').length,
   }
 
+  const completed = allDeliverables.filter(isDeliverableComplete).length
+
   // Platform distribution from deliverables
   const byPlatform = allDeliverables.reduce<Record<string, number>>((acc, d) => {
     if (d.platform) acc[d.platform] = (acc[d.platform] ?? 0) + 1
@@ -130,19 +124,19 @@ export async function GET(request: NextRequest) {
   }, {})
 
   // Top influencers aggregated fees
-  type InfRow = { id: string; display_name: string; avatar_url: string | null; social_profiles: Array<{ platform: string; followers: number; followers_count?: number; engagement_rate: number; is_primary: boolean }> }
+  type InfRow = { id: string; display_name: string; avatar_url: string | null; influencer_social_profiles: Array<{ platform: string; followers: number | null; engagement_rate: number | null; is_primary: boolean }> }
   const influencerFees = (topInfluencers.data ?? []).reduce<Record<string, { name: string; avatar: string | null; total: number; engagement: number; followers: number }>>((acc, ci) => {
     const inf = (ci.influencer as unknown as InfRow | InfRow[])
     const infObj = Array.isArray(inf) ? inf[0] : inf
     if (!infObj) return acc
-    const primary = infObj.social_profiles?.find(sp => sp.is_primary) ?? infObj.social_profiles?.[0]
+    const primary = infObj.influencer_social_profiles?.find(sp => sp.is_primary) ?? infObj.influencer_social_profiles?.[0]
     if (!acc[infObj.id]) {
       acc[infObj.id] = {
         name:       infObj.display_name,
         avatar:     infObj.avatar_url,
         total:      0,
         engagement: primary?.engagement_rate ?? 0,
-        followers:  primary?.followers_count ?? primary?.followers ?? 0,
+        followers:  primary?.followers ?? 0,
       }
     }
     acc[infObj.id].total += (ci.fee as number | null) ?? 0
@@ -161,8 +155,11 @@ export async function GET(request: NextRequest) {
     },
     deliverable_stats: {
       total: allDeliverables.length,
+      // Criterio único de "completado" (lib/deliverable-status). Antes se
+      // contaba solo status 'published', que casi ningún entregable alcanza.
+      completed,
       completion_rate: allDeliverables.length > 0
-        ? Math.round((byStatus.published / allDeliverables.length) * 100)
+        ? Math.round((completed / allDeliverables.length) * 100)
         : 0,
       by_status:   byStatus,
       by_platform: byPlatform,

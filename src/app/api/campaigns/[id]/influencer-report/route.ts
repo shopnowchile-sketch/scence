@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { isDeliverableComplete } from '@/lib/deliverable-status'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Get influencer's deliverables
   const { data: deliverables } = await admin
     .from('campaign_deliverables')
-    .select('id, title, type, status, due_date, platform, published_at, content_url, published_url, review_notes, progress')
+    .select('id, title, type, status, due_date, platform, published_at, content_url, published_url, attendance_response, review_notes, progress')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer_id)
     .order('due_date', { ascending: true })
@@ -99,8 +100,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     return n.toString()
   }
 
-  const published = delivs.filter(d => d.status === 'published').length
-  const progress  = delivs.length > 0 ? Math.round((published / delivs.length) * 100) : 0
+  // Criterio único de "completado" (lib/deliverable-status); antes contaba
+  // solo status 'published'.
+  const completed = delivs.filter(isDeliverableComplete).length
+  const progress  = delivs.length > 0 ? Math.round((completed / delivs.length) * 100) : 0
   const igProfile = (influencer.influencer_social_profiles as Array<{platform:string;username:string|null;followers:number;engagement_rate:number|null}>)?.find(s => s.platform === 'instagram')
   const hasBrief  = !!campaign!.description
 

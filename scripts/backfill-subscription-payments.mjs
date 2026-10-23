@@ -18,6 +18,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
+import { resolvePayPalTarget } from './lib/paypal-target.mjs'
 
 const APPLY = process.argv.includes('--apply')
 const CURRENCIES = new Set(['USD', 'EUR', 'MXN', 'CLP', 'COP', 'ARS', 'BRL', 'GBP'])
@@ -36,9 +37,10 @@ const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY
 if (!supabaseUrl || !serviceKey) throw new Error(`Faltan NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY en ${ENV_FILE}.`)
 const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
-const paypalBase = env.PAYPAL_ENV === 'live'
-  ? 'https://api-m.paypal.com'
-  : 'https://api-m.sandbox.paypal.com'
+let target
+try { target = resolvePayPalTarget({ argv: process.argv.slice(2), env, processEnv: process.env, writesSupabase: true }) } catch (e) { console.error(`✗ ${e.message}`); process.exit(1) }
+const paypalBase = target.base
+for (const note of target.notes) console.warn(note)
 
 async function paypalToken() {
   const id = env.PAYPAL_CLIENT_ID, secret = env.PAYPAL_CLIENT_SECRET

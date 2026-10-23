@@ -3450,9 +3450,37 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               </td>,
                               status: <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
-                                <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                                  {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
-                                </span>
+                                {!isBrandPortal && ci.origin === 'application' && !ci.metadata?.removal_reason ? (
+                                  <select
+                                    value={ci.application_status === 'rejected' ? 'rejected' : 'pending'}
+                                    aria-label={`Estado de la postulación de ${inf.display_name}`}
+                                    onChange={async event => {
+                                      const next = event.target.value
+                                      const current = ci.application_status === 'rejected' ? 'rejected' : 'pending'
+                                      if (next === current) return
+                                      const action = next === 'pending' ? 'reopen' : 'reject'
+                                      if (action === 'reject' && !confirm(`¿Marcar como no seleccionada la postulación de ${inf.display_name}?`)) { event.target.value = current; return }
+                                      const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action }) })
+                                      const json = await response.json().catch(() => ({}))
+                                      if (response.ok) {
+                                        toast.success(action === 'reopen' ? `Postulación de ${inf.display_name} devuelta a pendiente` : `Postulación de ${inf.display_name} no seleccionada`)
+                                        setPendingSelection(previous => { const set = new Set(previous); set.delete(ci.id); return set })
+                                      } else {
+                                        event.target.value = current
+                                        toast.error(json.error ?? 'No se pudo cambiar el estado')
+                                      }
+                                      void refetch()
+                                    }}
+                                    className={cn('text-[11px] font-semibold rounded-full px-2 py-1 border-0 cursor-pointer outline-none focus:ring-2 focus:ring-violet-300', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}
+                                  >
+                                    <option value="pending">Pendiente</option>
+                                    <option value="rejected">No seleccionada</option>
+                                  </select>
+                                ) : (
+                                  <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                                    {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
+                                  </span>
+                                )}
                               </div>
                             </td>,
                               platform: <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>,

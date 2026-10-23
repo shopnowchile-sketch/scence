@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { sendLeadBatch, BATCH_SIZE } from '@/lib/crm-bulk-send'
 import { getResend, FROM_EMAIL, bulkSendCompleteEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { loadCrmAttachment, type LoadedAttachment } from '@/lib/crm-attachments'
 import { claimJobBatch, finishJobBatch, failJobBatch, type BatchLead } from '@/lib/crm-send-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
@@ -85,6 +86,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: leadsError.message }, { status: 500 })
   }
 
+  // Adjunto del job: si está definido y no se puede leer, la tanda se aborta sin
+  // enviar (nunca se manda el email sin el archivo prometido).
+  let attachment: LoadedAttachment | null = null
+  if (job.attachment_path) {
+    try {
+      attachment = await loadCrmAttachment(admin, job.attachment_path, job.attachment_name ?? 'adjunto')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'error desconocido'
+      console.error('[bulk-send/process] adjunto ilegible — tanda abortada', error)
+      await failJobBatch(admin, jobId, marker, `Tanda abortada sin enviar (cursor ${job.cursor} intacto): ${message}`)
+      return NextResponse.json({ error: message }, { status: 503 })
+    }
+  }
+
   // FAIL CLOSED: sendLeadBatch consulta la lista de bajas y el ledger del job ANTES
   // de mandar nada. Si alguna consulta falla lanza, y acá se aborta la tanda con el
   // `cursor` intacto. Nunca se avanza en silencio.
@@ -98,7 +113,8 @@ export async function POST(request: NextRequest) {
       job.message ?? '',
       job.created_by,
       job.template_key ?? 'crm_intro',
-      job.created_at
+      job.created_at,
+      attachment
     )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'error desconocido'

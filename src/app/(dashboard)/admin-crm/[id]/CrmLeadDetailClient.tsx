@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2 } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2, Pencil } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import AttachmentPicker, { type CrmAttachment } from '../AttachmentPicker'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 
 type Activity = {
@@ -142,6 +143,10 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   const [emailTemplateKey, setEmailTemplateKey] = useState(DEFAULT_CRM_TEMPLATE.key)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
+  const [emailAttachment, setEmailAttachment] = useState<CrmAttachment | null>(null)
+  const [editingContact, setEditingContact] = useState(false)
+  const [savingContact, setSavingContact] = useState(false)
+  const [contactForm, setContactForm] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -154,6 +159,47 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  const CONTACT_FIELDS: Array<[string, string]> = [
+    ['contact_name', 'Contacto'], ['company_name', 'Empresa'], ['email', 'Email'], ['phone_1', 'Teléfono'],
+    ['phone_2', 'Teléfono 2'], ['instagram', 'Instagram'], ['website', 'Sitio web'], ['address', 'Dirección'],
+    ['commune', 'Comuna'], ['region', 'Región'], ['industry', 'Rubro'],
+  ]
+
+  function startEditingContact() {
+    if (!lead) return
+    const form: Record<string, string> = {}
+    for (const [key] of CONTACT_FIELDS) form[key] = ((lead as unknown as Record<string, string | null>)[key] ?? '')
+    setContactForm(form)
+    setEditingContact(true)
+  }
+
+  async function saveContact() {
+    if (!lead) return
+    const changed: Record<string, string> = {}
+    for (const [key] of CONTACT_FIELDS) {
+      const before = ((lead as unknown as Record<string, string | null>)[key] ?? '')
+      if ((contactForm[key] ?? '').trim() !== before.trim()) changed[key] = contactForm[key] ?? ''
+    }
+    if (Object.keys(changed).length === 0) { setEditingContact(false); return }
+    setSavingContact(true)
+    try {
+      const r = await fetch(`/api/crm-leads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changed),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error ?? 'No se pudo guardar')
+      toast.success('Datos actualizados')
+      setEditingContact(false)
+      await load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo guardar')
+    } finally {
+      setSavingContact(false)
+    }
+  }
 
   function openEmailEditor() {
     if (!lead?.email) {
@@ -209,11 +255,12 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
       const r = await fetch(`/api/crm-leads/${id}/send-intro`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: emailSubject, message: emailMessage, template_key: emailTemplateKey }),
+        body: JSON.stringify({ subject: emailSubject, message: emailMessage, template_key: emailTemplateKey, ...(emailAttachment ? { attachment_path: emailAttachment.path, attachment_name: emailAttachment.name } : {}) }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'Error al enviar')
       toast.success('Email enviado')
+      setEmailAttachment(null)
       setShowEmailEditor(false)
       load()
     } catch (e) {
@@ -289,16 +336,28 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
           <span className="text-gray-200">/</span>
           <span className="text-sm font-semibold text-gray-800 truncate max-w-[240px]">{lead.company_name}</span>
         </div>
-        <button
-          type="button"
-          onClick={deleteLead}
-          disabled={deleting}
-          title="Eliminar lead"
-          aria-label="Eliminar lead"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-        >
-          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={startEditingContact}
+            disabled={editingContact}
+            title="Editar datos de la empresa"
+            aria-label="Editar datos de la empresa"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 disabled:opacity-40"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={deleteLead}
+            disabled={deleting}
+            title="Eliminar lead"
+            aria-label="Eliminar lead"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -332,7 +391,35 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
               </Link>
             )}
 
-            <div className="grid grid-cols-2 gap-4 mt-5 text-sm">
+            <div className="mt-5 flex justify-end">
+              {!editingContact && (
+                <button type="button" onClick={startEditingContact} className="text-xs font-semibold text-violet-600 hover:underline">Editar datos</button>
+              )}
+            </div>
+
+            {editingContact && (
+              <div className="mt-2 rounded-xl border border-violet-100 bg-violet-50/40 p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {CONTACT_FIELDS.map(([key, label]) => (
+                    <label key={key} className="block text-xs font-semibold text-gray-500">
+                      {label}
+                      <input
+                        value={contactForm[key] ?? ''}
+                        onChange={e => setContactForm(previous => ({ ...previous, [key]: e.target.value }))}
+                        type={key === 'email' ? 'email' : 'text'}
+                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-normal text-gray-800 outline-none focus:border-violet-400"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" disabled={savingContact} onClick={() => setEditingContact(false)} className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+                  <button type="button" disabled={savingContact} onClick={() => void saveContact()} className="px-4 py-2 rounded-lg bg-violet-600 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{savingContact ? 'Guardando…' : 'Guardar'}</button>
+                </div>
+              </div>
+            )}
+
+            {!editingContact && <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
               <div className="flex items-center gap-2 text-gray-600"><Mail className="h-3.5 w-3.5 text-gray-300" /> {lead.email || '—'}</div>
               <div className="flex items-center gap-2 text-gray-600"><Phone className="h-3.5 w-3.5 text-gray-300" /> {lead.phone_1 || '—'}</div>
               <div className="flex items-center gap-2 text-gray-600">
@@ -350,7 +437,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
               </div>
               <div className="flex items-center gap-2 text-gray-600"><MapPin className="h-3.5 w-3.5 text-gray-300" /> {[lead.commune, lead.region].filter(Boolean).join(' · ') || '—'}</div>
               <div className="flex items-center gap-2 text-gray-600"><Briefcase className="h-3.5 w-3.5 text-gray-300" /> {lead.industry || '—'}</div>
-            </div>
+            </div>}
 
             {lead.economic_activity && (
               <p className="mt-4 text-xs text-gray-400 leading-relaxed">{lead.economic_activity}</p>
@@ -446,6 +533,8 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
                     className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none focus:border-violet-400 min-h-[260px]"
                   />
                 </div>
+
+                <AttachmentPicker value={emailAttachment} onChange={setEmailAttachment} disabled={sending} />
 
                 <div className="flex items-center gap-2 justify-end">
                   <button

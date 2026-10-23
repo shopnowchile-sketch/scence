@@ -3,6 +3,7 @@ import { waitUntil } from '@vercel/functions'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { isValidAttachmentPath, safeAttachmentName, CRM_ATTACHMENT_BUCKET } from '@/lib/crm-attachments'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -51,6 +52,20 @@ export async function POST(request: NextRequest) {
     ? body.message.trim().slice(0, 10000)
     : template.defaultMessage ?? ''
 
+  let attachmentPath: string | null = null
+  let attachmentName: string | null = null
+  if (body.attachment_path) {
+    if (!isValidAttachmentPath(body.attachment_path)) {
+      return NextResponse.json({ error: 'Adjunto inválido' }, { status: 422 })
+    }
+    const slash = body.attachment_path.lastIndexOf('/')
+    const { data: listed } = await admin.storage.from(CRM_ATTACHMENT_BUCKET)
+      .list(body.attachment_path.slice(0, slash), { search: body.attachment_path.slice(slash + 1), limit: 1 })
+    if (!listed?.length) return NextResponse.json({ error: 'El adjunto no existe. Súbelo de nuevo.' }, { status: 422 })
+    attachmentPath = body.attachment_path
+    attachmentName = safeAttachmentName(typeof body.attachment_name === 'string' ? body.attachment_name : 'adjunto')
+  }
+
   const { data: job, error: jobError } = await admin
     .from('crm_bulk_send_jobs')
     .insert({
@@ -62,6 +77,7 @@ export async function POST(request: NextRequest) {
       message: customMessage || null,
       total: uniqueIds.length,
       status: 'pending',
+      ...(attachmentPath ? { attachment_path: attachmentPath, attachment_name: attachmentName } : {}),
     })
     .select('id')
     .single()

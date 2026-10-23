@@ -1999,7 +1999,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
   const reelDeliverables = campaignDeliverables.filter(d => d.type === 'reel')
   const deliverableCount = reelDeliverables.length
   const pendingDeliverableReviewCount = campaignDeliverables.filter(d => d.type !== 'event_attendance' && d.status === 'in_review').length
-  const deliverableDone  = reelDeliverables.filter(d => d.status === 'published').length
+  const deliverableDone  = reelDeliverables.filter(isDeliverableComplete).length
   // Fuente canónica para las fechas mostradas en "Deliverables requeridos por
   // campaña" (Overview): campaign_deliverables reales (una fila por entregable
   // asignado), no la plantilla. Si aún no hay entregables reales generados para
@@ -2945,7 +2945,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </button>}
             {deliverableCount > 0 && <button type="button" onClick={() => goToKpiSection('deliverables')} className="rounded-lg bg-gray-50 px-2 py-1.5 text-center transition hover:bg-violet-50 hover:ring-1 hover:ring-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-300" title="Ver entregables">
               <div className="text-sm font-bold text-gray-900">{deliverableDone}/{deliverableCount}</div>
-              <div className="text-[10px] font-medium text-gray-500">Entregables publicados</div>
+              <div className="text-[10px] font-medium text-gray-500">Reels completados</div>
             </button>}
           </div>
         </div>
@@ -3450,9 +3450,37 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               </td>,
                               status: <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
-                                <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
-                                  {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
-                                </span>
+                                {!isBrandPortal && ci.origin === 'application' && !ci.metadata?.removal_reason ? (
+                                  <select
+                                    value={ci.application_status === 'rejected' ? 'rejected' : 'pending'}
+                                    aria-label={`Estado de la postulación de ${inf.display_name}`}
+                                    onChange={async event => {
+                                      const next = event.target.value
+                                      const current = ci.application_status === 'rejected' ? 'rejected' : 'pending'
+                                      if (next === current) return
+                                      const action = next === 'pending' ? 'reopen' : 'reject'
+                                      if (action === 'reject' && !confirm(`¿Marcar como no seleccionada la postulación de ${inf.display_name}?`)) { event.target.value = current; return }
+                                      const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action }) })
+                                      const json = await response.json().catch(() => ({}))
+                                      if (response.ok) {
+                                        toast.success(action === 'reopen' ? `Postulación de ${inf.display_name} devuelta a pendiente` : `Postulación de ${inf.display_name} no seleccionada`)
+                                        setPendingSelection(previous => { const set = new Set(previous); set.delete(ci.id); return set })
+                                      } else {
+                                        event.target.value = current
+                                        toast.error(json.error ?? 'No se pudo cambiar el estado')
+                                      }
+                                      void refetch()
+                                    }}
+                                    className={cn('text-[11px] font-semibold rounded-full px-2 py-1 border-0 cursor-pointer outline-none focus:ring-2 focus:ring-violet-300', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}
+                                  >
+                                    <option value="pending">Pendiente</option>
+                                    <option value="rejected">No seleccionada</option>
+                                  </select>
+                                ) : (
+                                  <span className={cn('text-[11px] font-semibold rounded-full px-2 py-1', ci.application_status === 'rejected' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700')}>
+                                    {ci.application_status === 'rejected' ? 'No seleccionada' : 'Pendiente'}
+                                  </span>
+                                )}
                               </div>
                             </td>,
                               platform: <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>,
@@ -3800,7 +3828,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const instagramSP = inf.influencer_social_profiles?.find(profile => profile.platform === 'instagram' && profile.username)
                     const instagramUrl = instagramSP?.username ? buildProfileUrl('instagram', instagramSP.username) : null
                     const myDelivs    = campaignDeliverables.filter(d => d.influencer?.id === inf.id)
-                    const delivsDone  = myDelivs.filter(d => d.status === 'published').length
+                    const delivsDone  = myDelivs.filter(isDeliverableComplete).length
                     const delivsTotal = myDelivs.length
                     const attendance = myDelivs.find(d => d.type === 'event_attendance')
                     const attendanceConfirmed = attendance?.attendance_response === 'confirmed'
@@ -3809,12 +3837,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     const attendancePending = attendanceState === 'unconfirmed'
                     const attendanceNoConfirmed = attendanceState === 'no_confirmed'
                     const noShow = attendance?.attendance_outcome === 'no_show'
-                    const p = delivsTotal > 0
-                      ? Math.round(myDelivs.reduce((sum, d) => {
-                          if (d.status === 'published') return sum + 100
-                          return sum + (d.progress ?? 0)
-                        }, 0) / delivsTotal)
-                      : 0
+                    // Mismo criterio que "Deliverables" (done/total). La columna
+                    // `progress` ya no la escribe ninguna pantalla (siempre 0).
+                    const p = delivsTotal > 0 ? Math.round((delivsDone / delivsTotal) * 100) : 0
                     const gradient = GRADIENTS[i % GRADIENTS.length]
                     const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
                     const approvedCells: Record<ApprovedColumnKey, React.ReactNode> = {

@@ -4,6 +4,7 @@ import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+import { BILLED_INVOICE_STATUSES } from '@/lib/invoice-kpis'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
 // ── GET /api/dashboard — aggregated KPIs ──────────────────────────────────────
@@ -55,11 +56,22 @@ export async function GET() {
     pendingCampaignsRes,
     pendingBrandsRes,
   ] = await Promise.all([
-    // Solo el CONTEO de campañas activas (no se descargan las filas).
+    // "Campañas en curso · este mes": solo campañas ACTIVAS (nunca borradores,
+    // en revisión ni pausadas) cuyo rango de fechas toca el mes actual. Una
+    // campaña sin fecha de inicio/término se considera abierta en ese extremo.
+    // Solo el CONTEO (no se descargan las filas).
     db.from('campaigns')
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId)
-      .not('status', 'in', '("canceled","completed")'),
+      .eq('status', 'active')
+      // Un solo filtro `or` con las cuatro combinaciones (sin depender de cómo
+      // PostgREST combine varios `or` repetidos).
+      .or([
+        'and(start_date.is.null,end_date.is.null)',
+        `and(start_date.is.null,end_date.gte.${monthStart})`,
+        `and(start_date.lte.${monthEnd},end_date.is.null)`,
+        `and(start_date.lte.${monthEnd},end_date.gte.${monthStart})`,
+      ].join(',')),
 
     // Conteo exacto real (sin cap de fila) — usado para el KPI "Influencers en roster"
     db.from('influencers')
@@ -95,7 +107,7 @@ export async function GET() {
     db.from('invoices')
       .select('total, currency, issue_date')
       .eq('organization_id', orgId)
-      .in('status', ['paid', 'sent'])
+      .in('status', [...BILLED_INVOICE_STATUSES])
       .gte('issue_date', chartStart)
       .lte('issue_date', monthEnd),
 
@@ -200,10 +212,20 @@ export async function GET() {
   }> = []
 
   if (liveProfileIds.length > 0) {
-    const liveInfluencersRes = await db.from('influencers')
-      .select('id, user_id, display_name')
-      .eq('organization_id', orgId)
-      .in('user_id', liveProfileIds)
+    // En lotes de 200: un `.in()` con cientos de UUID excede el largo de URL de
+    // PostgREST y fallaba en silencio (mismo criterio que resolveLastSeen).
+    const liveInfluencerRows: Array<{ id: string; user_id: string | null; display_name: string | null }> = []
+    for (let offset = 0; offset < liveProfileIds.length; offset += 200) {
+      const { data, error } = await db.from('influencers')
+        .select('id, user_id, display_name')
+        .eq('organization_id', orgId)
+        .in('user_id', liveProfileIds.slice(offset, offset + 200))
+      if (error) {
+        console.error('[GET /api/dashboard] influencers conectadas:', error)
+        break
+      }
+      liveInfluencerRows.push(...(data ?? []))
+    }
 
     const lastSeenMap = Object.fromEntries(
       (liveProfilesRes.data ?? []).map(profile => [
@@ -212,7 +234,7 @@ export async function GET() {
       ])
     )
 
-    liveInfluencers = (liveInfluencersRes.data ?? [])
+    liveInfluencers = liveInfluencerRows
       .map(influencer => ({
         id: influencer.id,
         name: influencer.display_name,
@@ -237,11 +259,27 @@ export async function GET() {
   // Importante: todo queda limitado a la organización del admin. Antes esta
   // consulta leía TODAS las suscripciones de la plataforma y además contaba
   // filas de suscripción, no influencers únicas.
-  const { data: proSubscriptions } = await db
+  // Paginado: PostgREST corta a 1000 filas y los intentos incompletos crecen
+  // con cada influencer que abandona el checkout. Orden estable (created_at
+  // desc, id) porque el primer intento de cada influencer debe ser el último.
+  const { data: proSubscriptions, error: proSubscriptionsError } = await fetchAllRows<{
+    id: string
+    status: string
+    paypal_subscription_id: string | null
+    created_at: string
+    updated_at: string
+    current_period_end: string | null
+    metadata: unknown
+  }>((from, to) => db
     .from('subscriptions')
     .select('id, status, paypal_subscription_id, created_at, updated_at, current_period_end, metadata')
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
+    .order('id')
+    .range(from, to))
+  if (proSubscriptionsError) {
+    console.error('[GET /api/dashboard] suscripciones Pro:', proSubscriptionsError)
+  }
 
   const influencerSubscriptions = (proSubscriptions ?? []).filter(row => {
     const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
@@ -276,6 +314,13 @@ export async function GET() {
   }
   const attemptInfluencerIds = Array.from(latestAttemptByInfluencer.keys()).filter(influencerId => proStatuses.get(influencerId) === 'free')
 
+  // Intentos = solo filas de las influencers que siguen sin ser Pro. Contar
+  // todas las filas incompletas incluía a quienes ya completaron el pago.
+  const attemptInfluencerIdSet = new Set(attemptInfluencerIds)
+  const attemptSubscriptionsCount = attemptRows.filter(row => attemptInfluencerIdSet.has(
+    (row.metadata as Record<string, unknown>).influencer_id as string
+  )).length
+
   // Past due = una suscripción que sí llegó a existir pero perdió el cobro.
   // No se mezcla con los intentos iniciales.
   const pastDueRows = influencerSubscriptions.filter(row => row.status === 'past_due')
@@ -309,7 +354,7 @@ export async function GET() {
     manual: proManualCount,
     roster: totalInfluencers,
     attempts: attemptInfluencerIds.length,
-    attempt_subscriptions: attemptRows.length,
+    attempt_subscriptions: attemptSubscriptionsCount,
     past_due: pastDueInfluencerIds.length,
     paid_influencers: paidInfluencerIds.size,
     payments_count: (completedProPayments ?? []).length,

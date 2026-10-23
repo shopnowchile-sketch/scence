@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { ensureOrg, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { defaultPortalPath } from '@/lib/portal-access'
+import { resolvePortalAccess } from '@/lib/portal-access-server'
 import { Sidebar } from '@/components/layout/Sidebar'
 
 export const dynamic = 'force-dynamic'
@@ -10,13 +11,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Defensa en servidor: el middleware sólo conoce el JWT. Cuentas antiguas
-  // pueden tener is_brand ausente o desactualizado; la membresía real de
-  // brands/brand_members es la que decide si puede entrar a Admin.
-  if (await resolveBrandAccess(user.id)) redirect('/brand-dash')
-
-  // Auto-provision org on first login (no-op if org already exists)
-  await ensureOrg(user)
+  // Admin no es el fallback de una identidad dual. El acceso se decide por
+  // memberships e influencer.user_id; auth metadata nunca concede un portal.
+  const access = await resolvePortalAccess(user.id)
+  if (!access.isPlatformAdmin) redirect(defaultPortalPath(access))
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">

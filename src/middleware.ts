@@ -83,65 +83,40 @@ export async function middleware(request: NextRequest) {
     return withLocale(NextResponse.redirect(url))
   }
 
-  // Determinar rol del usuario autenticado
-  const isInfluencer = claims.user_metadata?.is_influencer === true
-  const isBrand      = claims.user_metadata?.is_brand === true
-
-  // Rutas exclusivas de admin (inaccesibles para influencers y marcas)
+  // El middleware solo autentica. No usa user_metadata para decidir roles:
+  // una misma identidad puede ser influencer y miembro de una o más marcas.
+  // Los layouts y las APIs resuelven sus permisos en el servidor usando las
+  // tablas canónicas. Aquí solo bloqueamos una navegación de marca cuando no
+  // existe ninguna membresía activa de marca; la autorización del recurso
+  // continúa en resolveBrandAccess()/hasBrandPermission() dentro de cada API.
+  // La lista se conserva para clasificar rutas de plataforma; su autorización
+  // efectiva se verifica en el layout y las APIs con isPlatformAdmin().
   const ADMIN_ONLY = [
     '/admin-campaigns', '/admin-influencers', '/admin-analytics', '/admin-settings',
     '/admin-billing', '/admin-bookings', '/admin-brands', '/admin-payroll',
     '/admin-affiliates', '/admin-contracts', '/admin-events', '/admin-support',
     '/admin-dash', '/admin-crm', '/admin-requirements',
   ]
-
-  // Rutas exclusivas del portal influencer
-  const INFLUENCER_ONLY = [
-    '/inf-dash', '/inf-deliverables', '/inf-profile', '/inf-campaign', '/inf-campaigns',
-    '/inf-bookings', '/inf-support', '/inf-brands',
-    // legacy — keep for redirect safety
-    '/dashboard', '/tasks', '/profile', '/my-campaigns', '/my-bookings',
-  ]
-
-  // Rutas exclusivas del portal de marcas
   const BRAND_ONLY = [
-    '/brand-dash', '/brand-campaigns', '/brand-influencers', '/brand-support', '/brand-profile',
+    '/brand-dash', '/brand-campaigns', '/brand-influencers', '/brand-opportunities',
+    '/brand-billing', '/brand-brands', '/brand-documents', '/brand-settings',
+    '/brand-support', '/brand-profile',
     // legacy
     '/brand',
   ]
 
-  if (claims) {
-    if (isBrand) {
-      // Marca → solo puede acceder al portal de marcas
-      if (path === '/login' || path === '/' || path === '/brand/dashboard') {
-        return withLocale(NextResponse.redirect(new URL('/brand-dash', request.url)))
-      }
-      if (ADMIN_ONLY.some(r => path.startsWith(r)) || INFLUENCER_ONLY.some(r => path.startsWith(r))) {
-        return withLocale(NextResponse.redirect(new URL('/brand-dash', request.url)))
-      }
-    } else if (isInfluencer) {
-      if (path === '/login' || path === '/' || path === '/dashboard') {
-        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
-      }
-      // /influencers/support es accesible para influencers aunque /influencers esté en ADMIN_ONLY
-      if (ADMIN_ONLY.some(r => path.startsWith(r)) && path !== '/influencers/support') {
-        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
-      }
-      if (BRAND_ONLY.some(r => path.startsWith(r))) {
-        return withLocale(NextResponse.redirect(new URL('/inf-dash', request.url)))
-      }
-    } else {
-      // Admin
-      if (path === '/login' || path === '/') {
-        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
-      }
-      if (INFLUENCER_ONLY.some(r => path === r || path.startsWith(r + '/'))) {
-        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
-      }
-      if (BRAND_ONLY.some(r => path.startsWith(r))) {
-        return withLocale(NextResponse.redirect(new URL('/admin-dash', request.url)))
-      }
-    }
+  const isKnownPortalPath = ADMIN_ONLY.some(r => path.startsWith(r)) || BRAND_ONLY.some(r => path.startsWith(r))
+
+  if (isKnownPortalPath && BRAND_ONLY.some(r => path.startsWith(r))) {
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('id')
+      .eq('user_id', claims.sub)
+      .eq('is_active', true)
+      .in('role', ['brand_manager', 'finance', 'member'])
+      .limit(1)
+      .maybeSingle()
+    if (!membership) return withLocale(NextResponse.redirect(new URL('/', request.url)))
   }
 
   return withLocale(supabaseResponse)

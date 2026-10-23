@@ -10,11 +10,12 @@ export async function GET() {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  // organization_id (tenant interno) NO se devuelve: el portal no lo usa (auditoría 2026-10-22).
   const { data, error } = await admin
     .from('influencers')
     .select(`
       id, display_name, avatar_url, bio, email, phone,
-      address, location_id, birth_date, categories, tags, is_verified, organization_id,
+      address, location_id, birth_date, categories, tags, is_verified,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('user_id', user.id)
@@ -47,7 +48,9 @@ export async function GET() {
     referred_brands_count = count ?? 0
   }
 
-  return NextResponse.json({ data: { ...data, ...officialLocation, referred_brands_count } })
+  // Defensa adicional: aunque el select cambie, el tenant interno no sale al navegador.
+  const { organization_id: _tenant, ...ownProfile } = data as typeof data & { organization_id?: unknown }
+  return NextResponse.json({ data: { ...ownProfile, ...officialLocation, referred_brands_count } })
 }
 
 // PATCH /api/influencer/me

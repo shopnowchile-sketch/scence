@@ -1,6 +1,6 @@
 'use client'
 
-import { LayoutDashboard, CheckSquare, Briefcase, Calendar, Bug, Building2 } from 'lucide-react'
+import { LayoutDashboard, CheckSquare, Briefcase, Calendar, Bug, Building2, ArrowLeftRight } from 'lucide-react'
 import { AppSidebar, type NavSection } from '@/components/layout/AppSidebar'
 
 const navSections: NavSection[] = [
@@ -17,6 +17,10 @@ const navSections: NavSection[] = [
   },
 ]
 
-export function InfluencerSidebar() {
-  return <AppSidebar portal="influencer" navSections={navSections} />
+export function InfluencerSidebar({ hasBrandAccess = false }: { hasBrandAccess?: boolean }) {
+  // Solo facilita la navegación: el acceso a /brand-* se verifica en el servidor.
+  const sections: NavSection[] = hasBrandAccess
+    ? [...navSections, { title: 'Cambiar portal', items: [{ href: '/brand-dash', label: 'Portal de marca', icon: ArrowLeftRight }] }]
+    : navSections
+  return <AppSidebar portal="influencer" navSections={sections} />
 }

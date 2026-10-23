@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-import { ensureInfluencerRow } from '@/lib/supabase/ensureOrg'
+import { ensureInfluencerRow, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { InfluencerSidebar } from './_components/InfluencerSidebar'
 import { PresenceHeartbeat } from './_components/PresenceHeartbeat'
 import { ProfileCompletionGate } from './_components/ProfileCompletionGate'
@@ -58,12 +58,16 @@ export default async function InfluencerLayout({ children }: { children: React.R
   // `influencers` (ver ensureInfluencerRow en ensureOrg.ts). No-op para
   // cuentas que ya tienen su fila.
   await ensureInfluencerRow(user)
-  const profileState = await isInfluencerProfileComplete(user.id)
+  const [profileState, brandAccess] = await Promise.all([
+    isInfluencerProfileComplete(user.id),
+    // Solo para mostrar «Cambiar portal»; el portal de marca decide su propio acceso.
+    resolveBrandAccess(user.id),
+  ])
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <PresenceHeartbeat />
-      <InfluencerSidebar />
+      <InfluencerSidebar hasBrandAccess={brandAccess !== null} />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="w-full p-4 lg:p-8 max-w-[1440px] mx-auto">
           <InactiveAccountGate active={profileState.active}>

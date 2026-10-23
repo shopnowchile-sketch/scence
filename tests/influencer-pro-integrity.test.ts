@@ -191,7 +191,8 @@ test('reconciliación idempotente: correr dos veces no mueve nada más', () => {
 })
 
 test('la ficha nueva y la pantalla del plan reconcilian el Pro del mismo usuario', () => {
-  assert.match(ensureOrg, /reconcileOrphanProSubscriptions\(admin, \{ id: influencer\.id, user_id: user\.id \}\)/)
+  // ensureInfluencerRow ya no crea fichas (antes asignaba la organización más antigua); la conciliación vive en la pantalla del plan.
+  assert.doesNotMatch(ensureOrg, /\.from\('influencers'\)\s*\.insert\(/)
   assert.match(billing, /reconcileOrphanProSubscriptions\(admin, influencer\)/)
   assert.match(webhook, /eq\('user_id', linkedMetadata\.user_id\)/)
 })

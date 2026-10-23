@@ -28,9 +28,9 @@ function freshDb(): Db {
   return {
     organizations: [{ id: 'org-agency', name: 'Agencia ficticia' }, { id: 'org-A', name: 'Marca A ficticia' }, { id: 'org-B', name: 'Marca B ficticia' }],
     brands: [
-      { id: BRAND_A, organization_id: 'org-A', name: 'Marca A' },
-      { id: BRAND_B, organization_id: 'org-B', name: 'Marca B' },
-      { id: BRAND_C, organization_id: 'org-C', name: 'Marca C' },
+      { id: BRAND_A, organization_id: 'org-A', name: 'Marca A', status: 'approved' },
+      { id: BRAND_B, organization_id: 'org-B', name: 'Marca B', status: 'approved' },
+      { id: BRAND_C, organization_id: 'org-C', name: 'Marca C', status: 'approved' },
     ],
     organization_members: [
       { id: 'm1', user_id: 'u-admin', organization_id: 'org-agency', role: 'super_admin', is_active: true, brand_id: null, is_owner: true },

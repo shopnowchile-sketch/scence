@@ -45,6 +45,11 @@ export type InvoiceAccessInput = {
   ownerBrandId: string | null
   /** Existe una fila ACTIVA en invoice_shares para (factura, brand.brandId). */
   shareActive: boolean
+  /**
+   * El estado de la marca permite gestionar facturación (aprobada o suspendida). Una
+   * marca pendiente solo consulta. Por defecto true: lo calcula authorizeInvoice.
+   */
+  brandCanManage?: boolean
 }
 
 export function decideInvoiceAccess(input: InvoiceAccessInput): InvoiceCapabilities {
@@ -58,7 +63,7 @@ export function decideInvoiceAccess(input: InvoiceAccessInput): InvoiceCapabilit
   const { brand, ownerBrandId } = input
   if (!brand) return NO_ACCESS
   const canRead = roleHasBrandPermission(brand.role, 'billing.read')
-  const canManage = roleHasBrandPermission(brand.role, 'billing.manage')
+  const canManage = roleHasBrandPermission(brand.role, 'billing.manage') && (input.brandCanManage ?? true)
 
   if (ownerBrandId !== null && brand.brandId === ownerBrandId) {
     if (!canRead) return NO_ACCESS

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { payPalBaseUrl } from '@/lib/paypal-env'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import { BRAND_PLAN_USD_PRICING, PLAN_LIMITS, isInfluencerSubscription, type PlanTier } from '@/lib/plan-limits'
 
-function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
+function baseUrl() { return payPalBaseUrl() }
 const ADMIN_PAYMENT_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
 
 export async function POST(request: NextRequest) {

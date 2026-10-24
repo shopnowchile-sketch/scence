@@ -1,10 +1,13 @@
 import { escapeHtml } from '@/lib/utils'
 import { Resend } from 'resend'
+import { isProductionRuntime } from '@/lib/runtime-env'
+import { createBlockedResend } from '@/lib/resend-blocked'
 import { applyInactiveInfluencerRule, getInactiveInfluencers } from '@/lib/inactive-influencer-email-guard'
 
 // Lazy — only instantiated at request time, never at build time
 let _resend: Resend | null = null
 let _guarded: Resend | null = null
+let _blocked: Resend | null = null
 
 /**
  * Cliente Resend con la barrera final "INFLUENCER INACTIVA = CERO EMAILS"
@@ -15,6 +18,11 @@ let _guarded: Resend | null = null
  * queda destinatario, no se envía. Si la verificación falla, se devuelve `error` (falla cerrado).
  */
 export function getResend(): Resend {
+  // Fuera de producción no existe cliente real: ni se lee RESEND_API_KEY.
+  if (!isProductionRuntime()) {
+    if (!_blocked) _blocked = createBlockedResend()
+    return _blocked
+  }
   if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY ?? 'placeholder')
   if (!_guarded) _guarded = guardInactiveInfluencers(_resend)
   return _guarded

@@ -11,12 +11,15 @@
  */
 
 import { google } from 'googleapis'
+import { assertProductionRuntime } from '@/lib/runtime-env'
 import type { CreateCalendarEventInput, GoogleCalendarEvent } from '@/types'
 
 const SCENCE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID!
 const SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 function getAuth() {
+  // Choke point: toda operación de Calendar pasa por aquí. Fuera de producción falla antes de crear credenciales.
+  assertProductionRuntime('Google Calendar')
   return new google.auth.JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
     key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n'),

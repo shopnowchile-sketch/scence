@@ -11,6 +11,7 @@
  *   liberan los locks pendientes.
  * - Reanudable: el lote toma nunca-intentados primero y luego los más antiguos.
  */
+import { productionEnv } from '@/lib/runtime-env'
 import {
   buildSyncPatch,
   cleanInstagramHandle,
@@ -84,7 +85,7 @@ function log(event: string, data: Record<string, unknown>) {
 
 export async function syncInstagramFollowers(store: SyncStore, options: SyncOptions = {}): Promise<SyncReport> {
   const now = options.now ?? (() => new Date())
-  const token = options.token ?? process.env.META_IG_SYSTEM_TOKEN
+  const token = options.token ?? productionEnv('META_IG_SYSTEM_TOKEN')
   const discover = options.discover ?? (token
     ? (handle: string) => fetchBusinessDiscovery(handle, { token, sourceAccountId: options.sourceAccountId ?? process.env.META_IG_SOURCE_ACCOUNT_ID })
     : null)
@@ -251,7 +252,7 @@ export async function instagramProfileIdsFor(admin: SupabaseLike, influencerIds:
  * cola (pending) y lo toma el lote programado.
  */
 export async function syncProfilesNow(admin: SupabaseLike, profileIds: string[]): Promise<SyncReport | null> {
-  if (!profileIds.length || !process.env.META_IG_SYSTEM_TOKEN) return null
+  if (!profileIds.length || !productionEnv('META_IG_SYSTEM_TOKEN')) return null
   try {
     return await syncInstagramFollowers(createSupabaseSyncStore(admin), { profileIds, limit: profileIds.length, deadlineMs: 15_000 })
   } catch (error) {

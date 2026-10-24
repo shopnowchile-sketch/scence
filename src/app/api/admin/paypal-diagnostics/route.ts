@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { resolvePayPalMode } from '@/lib/paypal-env'
 import { getInfluencerPayPalToken, influencerPayPalBaseUrl, parseInfluencerReference } from '@/lib/influencer-paypal'
 
 export const maxDuration = 60
@@ -28,7 +29,7 @@ export async function GET() {
   if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const config = {
-    paypal_env: process.env.PAYPAL_ENV === 'live' ? 'live' : 'sandbox',
+    paypal_env: resolvePayPalMode(),
     api_base: influencerPayPalBaseUrl(),
     has_client_id: Boolean(process.env.PAYPAL_CLIENT_ID),
     has_client_secret: Boolean(process.env.PAYPAL_CLIENT_SECRET),

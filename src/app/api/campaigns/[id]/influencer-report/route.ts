@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
 
 type Params = { params: { id: string } }
 
@@ -16,20 +17,19 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!influencer_id) return new NextResponse('influencer_id requerido', { status: 400 })
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  // Admin de plataforma: cualquier campaña. Marca: solo SU campaña (brand_id / created_by_brand_id), con el permiso
+  // `report.read` y el estado que lo permita. Antes: cualquier miembro de la organización, de cualquier rol.
+  const isAdmin = await isPlatformAdmin(user.id, admin)
+  if (!isAdmin && !(await authorizeCampaignBrandAction(user.id, params.id, 'report.read'))) {
+    return new NextResponse('Campaña no encontrada', { status: 404 })
+  }
 
-  // admin/super_admin/owner de Scence puede generar el reporte de cualquier
-  // campaña, sin filtrar por organization_id. Mismo criterio que /api/campaigns/[id].
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-
-  let campaignQuery = admin
+  const campaignQuery = admin
     .from('campaigns')
     .select(`
       id, name, description, type, status, start_date, end_date, currency
     `)
     .eq('id', params.id)
-
-  if (!isAdmin) campaignQuery = campaignQuery.eq('organization_id', orgId)
 
   const { data: campaign } = await campaignQuery.single()
 
@@ -46,6 +46,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   ])
 
   if (!influencer) return new NextResponse('Influencer no encontrado', { status: 404 })
+  // La marca solo obtiene datos de influencers que participan en SU campaña (no de cualquier id).
+  if (!isAdmin && !membership) return new NextResponse('Influencer no encontrado', { status: 404 })
 
   // Get influencer's deliverables
   const { data: deliverables } = await admin

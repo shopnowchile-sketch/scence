@@ -24,6 +24,13 @@
 
 ## 2. Funcionalidades completadas
 
+### Fuente de verdad funcional — piloto DASH-001 (requiere validación de entorno)
+- [x] Migración aditiva versionada para requerimientos, versiones y evidencias.
+- [x] API Admin-only con propuesta, aprobación, historial y bitácora complementaria en `audit_logs`.
+- [x] Corrección de la consulta del KPI para excluir influencers inactivos.
+- [x] Prueba de regresión de contrato para autorización, RLS y filtro `is_active`.
+- [ ] Aplicar la migración únicamente en un entorno de desarrollo autorizado y contrastar el KPI con datos reales antes de marcar DASH-001 como validado.
+
 ### Portal Admin ✅
 - [x] Dashboard con KPIs reales (revenue, payroll, margen, campañas, influencers)
 - [x] Gráfico revenue vs payroll 6 meses

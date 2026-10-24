@@ -4428,10 +4428,26 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       })
                     }
 
+                    const contentCompletionForId = (influencerId: string) => {
+                      const ownContent = campaignDeliverables.filter(
+                        deliverable => deliverable.type !== 'event_attendance' && deliverable.influencer?.id === influencerId,
+                      )
+                      const done = ownContent.filter(isDeliverableComplete).length
+                      return { done, total: ownContent.length, ratio: ownContent.length ? done / ownContent.length : 0 }
+                    }
                     const orderedGroups = Array.from(groups.values()).sort((left, right) => {
                       const leftNoShow = noShowInfluencerIds.has(left.influencer.id)
                       const rightNoShow = noShowInfluencerIds.has(right.influencer.id)
                       if (leftNoShow !== rightNoShow) return leftNoShow ? 1 : -1
+
+                      // Primero las influencers con 100% completado; luego las parciales/en revisión;
+                      // al final quienes aún no han entregado contenido. Después se aplica el orden elegido.
+                      const leftCompletion = contentCompletionForId(left.influencer.id)
+                      const rightCompletion = contentCompletionForId(right.influencer.id)
+                      if (leftCompletion.ratio !== rightCompletion.ratio) return rightCompletion.ratio - leftCompletion.ratio
+                      if (leftCompletion.done !== rightCompletion.done) return rightCompletion.done - leftCompletion.done
+                      if (leftCompletion.total !== rightCompletion.total) return rightCompletion.total - leftCompletion.total
+
                       const leftStats = statsByInfluencerId.get(left.influencer.id)
                       const rightStats = statsByInfluencerId.get(right.influencer.id)
                       if (deliverableSort === 'results_desc') return (rightStats?.views ?? -1) - (leftStats?.views ?? -1)

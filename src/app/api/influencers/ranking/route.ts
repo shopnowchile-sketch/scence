@@ -82,13 +82,18 @@ export async function GET(req: NextRequest) {
       (from, to) => admin
         .from('campaign_influencers')
         .select('id, influencer_id, campaign:campaigns(name)')
+        // Solo participaciones ACEPTADAS: las postulaciones pendientes o
+        // rechazadas no son campañas de la influencer (mismo criterio que el
+        // ranking del portal de marca).
+        .eq('application_status', 'accepted')
+        .order('id')
         .range(from, to),
       { maxRows: 5000 }
     ),
     fetchAllRows(
       (from, to) => admin
         .from('campaign_deliverables')
-        .select('influencer_id, campaign_influencer_id, status')
+        .select('influencer_id, campaign_influencer_id, type, status, content_url, published_url, attendance_response')
         .range(from, to),
       { maxRows: 10000 }
     ),

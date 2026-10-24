@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, provisionOrgForBrand, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 
 type Params = { params: { id: string } }
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: campaign, error: campaignError } = await admin
     .from('campaigns')
-    .select('id, organization_id, brand_id')
+    .select('id, organization_id, brand_id, created_by_brand_id')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -56,7 +57,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   // campaña) puede administrar marcas colaboradoras. Una co-marca (org propia
   // distinta) NO pasa este check — solo la principal o admin gestionan.
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  const ownsCampaign = brandAccess?.brandId === campaign?.brand_id && hasBrandPermission(brandAccess, 'campaign.manage')
+  const isCollaborator = Boolean(campaign && brandAccess?.brandId && hasBrandPermission(brandAccess, 'campaign.manage')
+    && await isCampaignBrandCollaborator(admin, params.id, brandAccess.brandId))
+  const ownsCampaign = Boolean(brandAccess && hasBrandPermission(brandAccess, 'campaign.manage')
+    && (brandAccess.brandId === campaign?.brand_id || brandAccess.brandId === campaign?.created_by_brand_id || isCollaborator))
   if (!campaign || (!isAdmin && !ownsCampaign && (!orgId || campaign.organization_id !== orgId))) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
@@ -250,12 +254,15 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, organization_id, brand_id')
+    .select('id, organization_id, brand_id, created_by_brand_id')
     .eq('id', params.id)
     .maybeSingle()
 
   const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  const ownsCampaign = brandAccess?.brandId === campaign?.brand_id
+  const isCollaborator = Boolean(campaign && brandAccess?.brandId && hasBrandPermission(brandAccess, 'campaign.manage')
+    && await isCampaignBrandCollaborator(admin, params.id, brandAccess.brandId))
+  const ownsCampaign = Boolean(brandAccess && hasBrandPermission(brandAccess, 'campaign.manage')
+    && (brandAccess.brandId === campaign?.brand_id || brandAccess.brandId === campaign?.created_by_brand_id || isCollaborator))
   if (!campaign || (!isAdmin && !ownsCampaign && (!orgId || campaign.organization_id !== orgId))) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }

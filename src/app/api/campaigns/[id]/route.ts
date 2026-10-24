@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import { notifyAllInfluencersOfOpenCampaign, notifyEligibleBrandsOfSponsorOpportunity, notifyPreassignedInfluencersOnActivation } from '@/lib/campaign-notifications'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { getInfluencerCampaignHistory, type InfluencerCampaignHistory } from '@/lib/influencer-campaign-history'
@@ -45,10 +46,12 @@ async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient
 
   const isMain = campaign.brand_id === brandAccess.brandId
   const isCreator = campaign.created_by_brand_id === brandAccess.brandId
+  const isCollaborator = await isCampaignBrandCollaborator(admin, campaignId, brandAccess.brandId)
+  const canAccessCampaign = isMain || isCreator || isCollaborator
   return {
     isBrand: true,
-    canView: isMain || isCreator,
-    canEdit: isMain || isCreator,
+    canView: canAccessCampaign,
+    canEdit: canAccessCampaign,
     brandId: brandAccess.brandId,
   }
 }

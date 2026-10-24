@@ -1852,13 +1852,38 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return attendance && attendanceStateFor(ci) === 'no_confirmed' && attendance.attendance_outcome !== 'no_show'
   })
   const noShowInfluencerIds = new Set(noShowInfluencers.map(ci => ci.influencer?.id).filter((id): id is string => Boolean(id)))
+  // Priorizar arriba a las influencers con mayor porcentaje de entregables de contenido completados.
+  // La asistencia a eventos no cuenta como contenido; los perfiles sin entregables quedan al final.
+  const contentCompletionFor = (ci: typeof attendanceRosterInfluencers[number]) => {
+    const influencerId = ci.influencer?.id
+    if (!influencerId) return { done: 0, total: 0, ratio: 0 }
+    const contentDeliverables = campaignDeliverables.filter(
+      deliverable => deliverable.type !== 'event_attendance' && deliverable.influencer?.id === influencerId,
+    )
+    const done = contentDeliverables.filter(isDeliverableComplete).length
+    return {
+      done,
+      total: contentDeliverables.length,
+      ratio: contentDeliverables.length ? done / contentDeliverables.length : 0,
+    }
+  }
   const attendanceFilteredInfluencers = filteredInfluencers.filter(ci => {
     if (attendanceFilter === 'all') return true
     if (attendanceFilter === 'confirmed') return attendanceConfirmedInfluencers.some(candidate => candidate.id === ci.id)
     if (attendanceFilter === 'declined') return attendanceDeclinedInfluencers.some(candidate => candidate.id === ci.id)
     if (attendanceFilter === 'no_show') return noShowInfluencers.some(candidate => candidate.id === ci.id)
     return noConfirmedInfluencers.some(candidate => candidate.id === ci.id)
-  }).sort((left, right) => Number(attendanceFor(left)?.attendance_outcome === 'no_show') - Number(attendanceFor(right)?.attendance_outcome === 'no_show'))
+  }).sort((left, right) => {
+    // Los no-show siguen al final; dentro del resto, ordenar por porcentaje y luego cantidad completada.
+    const noShowOrder = Number(attendanceFor(left)?.attendance_outcome === 'no_show')
+      - Number(attendanceFor(right)?.attendance_outcome === 'no_show')
+    if (noShowOrder !== 0) return noShowOrder
+    const leftCompletion = contentCompletionFor(left)
+    const rightCompletion = contentCompletionFor(right)
+    if (leftCompletion.ratio !== rightCompletion.ratio) return rightCompletion.ratio - leftCompletion.ratio
+    if (leftCompletion.done !== rightCompletion.done) return rightCompletion.done - leftCompletion.done
+    return rightCompletion.total - leftCompletion.total
+  })
   const visibleAcceptedInfluencerIds = attendanceFilteredInfluencers
     .filter(ci => {
       const attendance = attendanceFor(ci)
@@ -4403,10 +4428,26 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       })
                     }
 
+                    const contentCompletionForId = (influencerId: string) => {
+                      const ownContent = campaignDeliverables.filter(
+                        deliverable => deliverable.type !== 'event_attendance' && deliverable.influencer?.id === influencerId,
+                      )
+                      const done = ownContent.filter(isDeliverableComplete).length
+                      return { done, total: ownContent.length, ratio: ownContent.length ? done / ownContent.length : 0 }
+                    }
                     const orderedGroups = Array.from(groups.values()).sort((left, right) => {
                       const leftNoShow = noShowInfluencerIds.has(left.influencer.id)
                       const rightNoShow = noShowInfluencerIds.has(right.influencer.id)
                       if (leftNoShow !== rightNoShow) return leftNoShow ? 1 : -1
+
+                      // Primero las influencers con 100% completado; luego las parciales/en revisión;
+                      // al final quienes aún no han entregado contenido. Después se aplica el orden elegido.
+                      const leftCompletion = contentCompletionForId(left.influencer.id)
+                      const rightCompletion = contentCompletionForId(right.influencer.id)
+                      if (leftCompletion.ratio !== rightCompletion.ratio) return rightCompletion.ratio - leftCompletion.ratio
+                      if (leftCompletion.done !== rightCompletion.done) return rightCompletion.done - leftCompletion.done
+                      if (leftCompletion.total !== rightCompletion.total) return rightCompletion.total - leftCompletion.total
+
                       const leftStats = statsByInfluencerId.get(left.influencer.id)
                       const rightStats = statsByInfluencerId.get(right.influencer.id)
                       if (deliverableSort === 'results_desc') return (rightStats?.views ?? -1) - (leftStats?.views ?? -1)

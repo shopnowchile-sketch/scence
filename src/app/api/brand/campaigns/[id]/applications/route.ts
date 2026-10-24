@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { acceptCampaignApplication, rejectCampaignApplications } from '@/lib/campaign-applications'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 
 type Params = { params: { id: string } }
@@ -20,10 +21,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!hasBrandPermission(access, 'application.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const brand = { id: access.brandId }
 
-  // Verificar ownership de la campaña
+  // La marca principal, creadora o colaboradora vinculada puede gestionar esta campaña.
   const { data: campaign } = await admin
-    .from('campaigns').select('id, visibility, application_questions').eq('id', params.id).eq('brand_id', brand.id).single()
+    .from('campaigns')
+    .select('id, brand_id, created_by_brand_id, visibility, application_questions')
+    .eq('id', params.id)
+    .maybeSingle()
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  const isCollaborator = await isCampaignBrandCollaborator(admin, params.id, brand.id)
+  if (campaign.brand_id !== brand.id && campaign.created_by_brand_id !== brand.id && !isCollaborator) {
+    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
 
   const { data, error } = await admin
     .from('campaign_influencers')
@@ -70,11 +78,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, brand_id, organization_id, status')
+    .select('id, name, brand_id, created_by_brand_id, organization_id, status')
     .eq('id', params.id)
-    .eq('brand_id', brand.id)
-    .single()
+    .maybeSingle()
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  const isCollaborator = await isCampaignBrandCollaborator(admin, params.id, brand.id)
+  if (campaign.brand_id !== brand.id && campaign.created_by_brand_id !== brand.id && !isCollaborator) {
+    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
 
   let body: { application_id?: string; application_ids?: string[]; action: 'accept' | 'reject'; agreed_fee?: number }
   try { body = await req.json() } catch {

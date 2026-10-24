@@ -14,6 +14,21 @@ export type CampaignBrandAuthorization = {
   campaign: { id: string; organization_id: string; brand_id: string | null; created_by_brand_id: string | null }
 }
 
+/** A linked collaborating brand is a campaign participant, just like the primary/creating brand. */
+export async function isCampaignBrandCollaborator(
+  admin: ReturnType<typeof createAdminClient>,
+  campaignId: string,
+  brandId: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from('campaign_brands')
+    .select('id')
+    .eq('campaign_id', campaignId)
+    .eq('brand_id', brandId)
+    .maybeSingle()
+  return Boolean(data)
+}
+
 /** Central authorization for Admin/Marca routes that operate on one campaign. */
 export async function authorizeCampaignBrandAction(
   userId: string,
@@ -30,8 +45,9 @@ export async function authorizeCampaignBrandAction(
 
   const brandAccess = await resolveBrandAccess(userId)
   if (brandAccess) {
-    const ownsCampaign = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
-    if (!ownsCampaign || !hasBrandPermission(brandAccess, permission)) return null
+    const isPrimaryOrCreator = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
+    const isCollaborator = await isCampaignBrandCollaborator(admin, campaignId, brandAccess.brandId)
+    if ((!isPrimaryOrCreator && !isCollaborator) || !hasBrandPermission(brandAccess, permission)) return null
     return { admin, brandAccess, isPlatformAdmin: false, campaign }
   }
 

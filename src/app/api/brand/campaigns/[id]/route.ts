@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import {
   campaignLimitMessage,
   getPlanLimits,
@@ -44,9 +45,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: baseError.message }, { status: 500 })
   }
 
+  const isCollaborator = await isCampaignBrandCollaborator(admin, params.id, brand.id)
   const canEdit =
     campaignBase.brand_id === brand.id ||
-    campaignBase.created_by_brand_id === brand.id
+    campaignBase.created_by_brand_id === brand.id ||
+    isCollaborator
 
   if (!canEdit) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
 
@@ -236,9 +239,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: baseError.message }, { status: 500 })
   }
 
+  const isCollaborator = await isCampaignBrandCollaborator(admin, params.id, brand.id)
   const canEdit =
     campaignBase.brand_id === brand.id ||
-    campaignBase.created_by_brand_id === brand.id
+    campaignBase.created_by_brand_id === brand.id ||
+    isCollaborator
 
   if (!canEdit) {
     return NextResponse.json(

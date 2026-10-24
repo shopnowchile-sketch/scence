@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
 import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 
 type Params = { params: { id: string } }
@@ -35,12 +36,15 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, status, brand_id, organization_id')
+    .select('id, name, status, brand_id, created_by_brand_id, organization_id')
     .eq('id', params.id)
-    .eq('brand_id', brand.id)
-    .single()
+    .maybeSingle()
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  const isCollaborator = await isCampaignBrandCollaborator(admin, params.id, brand.id)
+  if (campaign.brand_id !== brand.id && campaign.created_by_brand_id !== brand.id && !isCollaborator) {
+    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
   if (campaign.status === 'completed' || campaign.status === 'canceled') {
     return NextResponse.json({ error: 'No se puede invitar a una campaña finalizada' }, { status: 422 })
   }
@@ -65,13 +69,16 @@ export async function POST(req: NextRequest, { params }: Params) {
   const orgPlan = await resolveBrandPlan(admin, brand.id)
   const limits  = getPlanLimits(orgPlan)
 
-  // IDs de todas las campañas de esta marca
-  const { data: brandCampaigns } = await admin
-    .from('campaigns')
-    .select('id')
-    .eq('brand_id', brand.id)
+  // IDs de campañas propias y compartidas con esta marca.
+  const [{ data: brandCampaigns }, { data: sharedCampaigns }] = await Promise.all([
+    admin.from('campaigns').select('id').or(`brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`),
+    admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
+  ])
 
-  const campaignIds = (brandCampaigns ?? []).map(c => c.id)
+  const campaignIds = [...new Set([
+    ...(brandCampaigns ?? []).map(c => c.id),
+    ...(sharedCampaigns ?? []).map(c => c.campaign_id),
+  ])]
 
   if (campaignIds.length > 0) {
     // Influencers únicos en el roster (excluir rechazados)

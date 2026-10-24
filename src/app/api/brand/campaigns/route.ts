@@ -49,7 +49,10 @@ export async function GET(req: NextRequest) {
     console.error('[GET /api/brand-campaigns] collaborations', collaborationsError)
     return NextResponse.json({ error: collaborationsError.message }, { status: 500 })
   }
-  const collaboratorCampaignIds = [...new Set((collaborations ?? []).map(row => row.campaign_id).filter(Boolean))]
+  const collaboratorIdCandidates = (collaborations ?? []).map(row => row.campaign_id).filter(Boolean)
+  const collaboratorCampaignIds = collaboratorIdCandidates.filter(
+    (id, index) => collaboratorIdCandidates.indexOf(id) === index,
+  )
   const collaboratorFilter = collaboratorCampaignIds.length
     ? `,id.in.(${collaboratorCampaignIds.join(',')})`
     : ''

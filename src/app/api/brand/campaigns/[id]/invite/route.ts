@@ -75,10 +75,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
   ])
 
-  const campaignIds = [...new Set([
+  const campaignIdCandidates = [
     ...(brandCampaigns ?? []).map(c => c.id),
     ...(sharedCampaigns ?? []).map(c => c.campaign_id),
-  ])]
+  ]
+  const campaignIds = campaignIdCandidates.filter(
+    (id, index) => campaignIdCandidates.indexOf(id) === index,
+  )
 
   if (campaignIds.length > 0) {
     // Influencers únicos en el roster (excluir rechazados)

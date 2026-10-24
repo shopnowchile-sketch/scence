@@ -515,6 +515,15 @@ La marca crea, lista y consulta **sus** facturas (BR-12), las envía, edita camp
 **Regla:** No tocar Stripe, Transbank, ni billing real hasta fase habilitada explícitamente por Pri.
 
 #### MK-13 Marcas colaboradoras — 🔜 pendiente
+**Estado M5 (2026-10-23):** API `GET|POST|DELETE /api/brand/collaborators` (sin UI): relación **direccional** (A agregó a B), solo con marcas **ya existentes y `approved`** identificadas por Instagram normalizado (se reutiliza su `brand_id`; no se crea ni fusiona nada). Agregar/quitar: solo `owner` y `super_admin`; el resto de roles autorizados de la marca (`member`, `brand_manager`, `finance`) solo consulta la lista de su propia marca; la marca debe estar `approved`. Una marca inexistente o no aprobada responde igual (404) y **no se revela su estado**. La lista expone solo `id`, nombre, logo e Instagram. Crear marcas nuevas desde aquí queda **deshabilitado** hasta resolver M3 (`register_brand`). Colaborar **no concede acceso** a campañas, influencers ni datos privados de la otra marca; sin backfill desde `campaign_brands`. Regla de negocio en `CLAUDE.md` §16.9.
+
+| Nivel de verificación | Estado |
+|---|---|
+| 1. Implementado en local | Sí, sin commit (migración, API y helper; sin UI). |
+| 2. Probado en local | Solo **simulado**: 13 pruebas puras/estáticas + 29 que ejecutan los handlers sobre una base en memoria (no es PostgreSQL); `tsc` y `lint` sin errores. **Pruebas reales contra PostgreSQL: ninguna.** `next build`: no ejecutado (falta binario SWC de Linux). |
+| 3. Verificado en Preview | No (sin evidencia). |
+| 4. Confirmado en producción | No (migración no aplicada en ningún entorno). |
+
 **Navegación:** `brand-brands` — marcado "soon" en v2.1 (antes 404 real — bug B-05). Requiere decisión de producto: alcance de "solo nombre" de otras marcas por campaña compartida (BR-06).
 
 ---

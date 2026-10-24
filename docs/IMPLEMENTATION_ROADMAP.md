@@ -110,6 +110,7 @@
 | P-03 | `/opportunities` — Portal Influencer | `src/app/(influencer)/opportunities/page.tsx` |
 | P-04 | Email al invitar influencer | `src/app/api/brand/campaigns/[id]/invite/route.ts` |
 | P-05 | `ANTHROPIC_API_KEY` en Vercel | Dashboard Vercel → Settings |
+| M5 | Marcas colaboradoras persistentes (direccional; solo `owner`/`super_admin` escriben; búsqueda solo de marcas `approved`) — *1 implementado en local (sin commit) · 2 probado solo con pruebas simuladas en memoria (sin PostgreSQL real; `next build` no ejecutado) · 3 Preview: no · 4 producción: no.* Migración sin aplicar; UI pendiente; creación de marcas nuevas bloqueada hasta M3 | `supabase/migrations/20261023120000_brand_collaborators.sql`, `src/app/api/brand/collaborators/route.ts`, `src/lib/brand-collaborators.ts`, `tests/brand-collaborators.test.ts`, `tests/brand-collaborators-routes.test.ts` |
 
 ### Media prioridad
 | # | Funcionalidad | Descripción |

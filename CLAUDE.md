@@ -384,6 +384,20 @@ Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `
 - **Borrado:** archivar o desactivar por defecto; el borrado definitivo es excepcional, autorizado y con revisión de dependencias. *(Hoy `DELETE /api/brands/[id]` es físico; pendiente 8.)*
 - **Toda marca nueva nace `pending_approval`**, también las colaboradoras de campaña: ser colaboradora no equivale a estar aprobada.
 - **Aislamiento:** las marcas no se ven entre sí; datos y permisos se separan por marca.
+- **Marcas colaboradoras persistentes (M5, decisión de la fundadora 2026-10-23).** Una marca puede registrar tantas marcas colaboradoras como necesite en `brand_collaborators` (fila = «A agregó a B»).
+  - **Direccional:** no crea la relación inversa ni jerarquía comercial; B no ve a A por eso.
+  - **Quién:** solo `owner` (permiso `team.manage`) y `super_admin` agregan o quitan colaboradoras. Los demás roles autorizados de la marca (`member`, `brand_manager`, `finance`, vía `brand.read`) solo **consultan** la lista de su propia marca. Para los usuarios de marca, toda operación exige marca `approved` según las reglas de acceso existentes (rol + estado, `hasBrandPermission`); `super_admin` conserva la excepción vigente de admin de plataforma (no depende del estado de la marca) y debe indicar `brand_id`. Para usuarios de marca, la marca sale de la sesión, nunca del payload.
+  - **Identidad:** Instagram normalizado (`normalizeInstagramHandle`). Se vincula únicamente una marca **ya existente y `approved`**, reutilizando su `brand_id`. Marca inexistente o no aprobada = misma respuesta 404, sin revelar existencia ni estado. Varias coincidencias = 409, sin fusión automática. **Crear marcas nuevas desde esta función está deshabilitado** hasta resolver M3 (`register_brand`).
+  - **Sin acceso cruzado:** colaborar no otorga acceso a campañas, influencers, facturas, contactos ni datos privados de la otra marca, y no toca membresías, roles ni `campaign_brands`. La lista expone solo `id`, nombre, logo e Instagram, **nunca el estado**. No hay backfill desde `campaign_brands` (colaborar en una campaña no implica relación permanente).
+  - La tabla no tiene políticas RLS ni privilegios para `anon`/`authenticated`; `service_role` solo `SELECT, INSERT, DELETE` (GRANT explícito en la migración). La protección real es el chequeo de cada ruta.
+  - **Estado de verificación (no marcar un nivel sin evidencia):**
+
+    | Estado | Situación (2026-10-23) | Evidencia |
+    |---|---|---|
+    | 1. Implementado en local | **Sí**, sin commit. Migración `20261023120000_brand_collaborators.sql`, API `GET/POST/DELETE /api/brand/collaborators`, helper `src/lib/brand-collaborators.ts`. Sin UI. | Archivos en el árbol de trabajo. |
+    | 2. Probado en local | **Parcial: solo simulado.** 13 pruebas puras/estáticas (`tests/brand-collaborators.test.ts`) + 29 que ejecutan los handlers reales sobre una **base en memoria simulada** (`tests/brand-collaborators-routes.test.ts`); `tsc --noEmit` y `next lint` sin errores. **Pruebas reales contra PostgreSQL: ninguna** (RLS, privilegios, claves foráneas, índices y concurrencia real sin verificar). `next build`: **no ejecutado** (el `node_modules` es de macOS y falta el binario SWC de Linux). | Salida de `node --test`, `tsc` y `next lint`. |
+    | 3. Verificado en Preview | **No.** Sin evidencia. | — |
+    | 4. Confirmado en producción | **No.** La migración no está aplicada en ningún entorno. | — |
 
 **Cómo lo representa hoy el sistema** (comprobado en código y esquema el 2026-10-22). La organización técnica es un detalle de implementación, no un concepto de negocio.
 
@@ -414,7 +428,7 @@ Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `
 **Pendiente de decisión o de verificación (no vigente ni implementado).** Detalle, SQL propuesto, riesgos y reversión: `docs/audits/brand_model_hardening_proposal_2026-10-22.md`.
 
 1. *Producción:* confirmar que `xzzbishzfyovrladcaeb` es la base de producción (valor de la variable en Vercel o consola del proveedor).
-2. *Linaje entre marcas:* `created_by` está en las 71 marcas (27 usuarios, 45 del usuario administrador) pero identifica a un **usuario**, no a una marca, y `invited_by_organization_id` e `invited_by_brand_id` están vacíos en todas: **no registra qué marca registró a cuál**. Falta una relación marca→marca explícita y su permiso de consulta (decisión de modelo).
+2. *Linaje entre marcas:* `created_by` está en las 71 marcas (27 usuarios, 45 del usuario administrador) pero identifica a un **usuario**, no a una marca, y `invited_by_organization_id` e `invited_by_brand_id` están vacíos en todas: **no registra qué marca registró a cuál**. Falta una relación marca→marca explícita y su permiso de consulta (decisión de modelo). *M5 la implementa en local como `brand_collaborators` (direccional, ver arriba): migración sin aplicar y sin backfill histórico, por lo que las 71 marcas actuales siguen sin linaje.*
 3. *Estado de la marca:* ni `resolveBrandAccess` ni RLS leen `brands.status`; una marca `pending_approval`, `rejected` o `suspended` conserva acceso a datos en el servidor. La regla ya está decidida (arriba); falta implementarla (plan P3, requiere aprobación).
 4. *Quién registra marcas:* `POST /api/brand/brands` exige cualquier membresía y registra la «org del registrante» como la primera por antigüedad; no hay antiduplicados atómicos ni vínculo fiable persona→marca. La regla ya está decidida (influencers incluidas; sin `brand_manager` automático); falta el registro del registrante y la función atómica (P4, P6).
 5. *Aprobación:* las 14 marcas colaboradoras sin correo ya existentes están `approved` sin revisión de SCENCE; se revisan una a una (P8). La ruta ya crea las nuevas como `pending_approval` (corregido en local).

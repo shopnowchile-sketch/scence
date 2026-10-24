@@ -106,3 +106,44 @@ test('POST /api/influencers: solo admin; organization_id ajena del body → 403;
   const src = readFileSync(new URL('../src/app/api/influencers/route.ts', import.meta.url), 'utf8').replace(/\/\/.*$/gm, '')
   assert.doesNotMatch(src.slice(src.indexOf('export async function POST')), /user\.user_metadata\?\.organization_id/)
 })
+
+// ── influencer-report: casos límite de estado de marca y de propiedad de la campaña (2026-10-24) ──
+// Complementa la prueba anterior: report.read es una operación, así que el estado de la marca la bloquea en el servidor.
+test('influencer-report: marca pendiente/rechazada/suspendida → 404 aunque sea dueña; colaboradora de campaña_brands → 404; created_by_brand_id sí es dueña; super_admin con membresía de otra marca conserva acceso', async () => {
+  const route = await import('../src/app/api/campaigns/[id]/influencer-report/route.ts')
+  const db = () => {
+    const d = fresh()
+    d.brands.push({ id: 'brand-S', organization_id: 'org-S', status: 'suspended', created_by: 'uS' })
+    d.organization_members.push(
+      m('uS', 'org-S', 'brand_manager', 'brand-S', true),
+      m('uAdminB', 'org-B', 'super_admin', 'brand-B'), // admin de plataforma que además pertenece a una marca
+    )
+    d.campaigns.push(
+      { id: 'camp-P', organization_id: 'org-P', brand_id: 'brand-P', created_by_brand_id: null, name: 'Camp P', status: 'active' },
+      { id: 'camp-R', organization_id: 'org-R', brand_id: 'brand-R', created_by_brand_id: null, name: 'Camp R', status: 'active' },
+      { id: 'camp-S', organization_id: 'org-S', brand_id: 'brand-S', created_by_brand_id: null, name: 'Camp S', status: 'active' },
+      { id: 'camp-C', organization_id: 'org-A', brand_id: null, created_by_brand_id: 'brand-A', name: 'Camp C', status: 'active' },
+    )
+    for (const c of ['camp-P', 'camp-R', 'camp-S', 'camp-C']) d.campaign_influencers.push({ id: `ci-${c}`, campaign_id: c, influencer_id: 'inf-in', fee: 1, currency: 'CLP', notes: null })
+    // brand-B solo colabora en camp-A (campaign_brands); no es dueña ni creadora.
+    d.campaign_brands.push({ brand_id: 'brand-B', campaign_id: 'camp-A', role: 'collab', brand: { id: 'brand-B', name: 'B' } })
+    return d
+  }
+  const call = async (u: string, camp: string) => {
+    ;(globalThis as any).__routeHarness = { user: { id: u }, admin: makeAdmin(db(), { projectColumns: true }) }
+    try { return (await (route as any).GET(req(`http://localhost/x?influencer_id=inf-in`), { params: { id: camp } })).status } catch { return -1 }
+  }
+  // Estado de la marca: el dueño con rol suficiente queda bloqueado si la marca no está aprobada.
+  assert.equal(await call('uP', 'camp-P'), 404, 'pendiente')
+  assert.equal(await call('uR', 'camp-R'), 404, 'rechazada')
+  assert.equal(await call('uS', 'camp-S'), 404, 'suspendida')
+  // Colaboradora en campaign_brands: no da acceso al reporte de la campaña de otra marca.
+  assert.equal(await call('uOwnerB', 'camp-A'), 404, 'marca solo colaboradora')
+  // Propiedad por created_by_brand_id (brand_id nulo): el dueño sigue pasando; otra marca no.
+  assert.ok(![401, 403, 404].includes(await call('uOwnerA', 'camp-C')), 'dueña por created_by_brand_id')
+  assert.equal(await call('uOwnerB', 'camp-C'), 404, 'otra marca en camp-C')
+  // Marca aprobada pero influencer inexistente en la campaña: ya cubierto arriba; aquí, id de campaña inexistente.
+  assert.equal(await call('uOwnerA', 'camp-NOEXISTE'), 404, 'campaña inexistente')
+  // super_admin con membresía de marca: acceso global (el admin se evalúa antes que la marca).
+  assert.ok(![401, 403, 404].includes(await call('uAdminB', 'camp-A')), 'super_admin con membresía de otra marca')
+})

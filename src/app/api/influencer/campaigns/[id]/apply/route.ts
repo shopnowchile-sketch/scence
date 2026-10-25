@@ -4,6 +4,7 @@ import { acceptCampaignApplication } from '@/lib/campaign-applications'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
+import { canReapplyAfterProExpiry } from '@/lib/campaign-pro-reapply'
 
 type Params = { params: { id: string } }
 
@@ -141,10 +142,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verificar que no haya postulación previa
   const { data: existing } = await admin
     .from('campaign_influencers')
-    .select('id, application_status, origin')
+    .select('id, application_status, origin, notes, rejected_at, rejection_reason, metadata')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
-    .single()
+    .maybeSingle()
 
   // Una invitación ya rechazada quedó cerrada, pero no inhabilita a la
   // influencer: con Plan Pro puede postular por su cuenta a esa misma campaña
@@ -153,8 +154,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   // reutiliza más abajo en vez de insertar una nueva.
   const reusableRejectedInvitation =
     existing?.application_status === 'rejected' && existing.origin === 'invitation'
+  const reusableProExpiredApplication = canReapplyAfterProExpiry(existing)
 
-  if (existing && !reusableRejectedInvitation) {
+  if (existing && !reusableRejectedInvitation && !reusableProExpiredApplication) {
     return NextResponse.json({
       error: existing.application_status === 'pending'
         ? 'Ya enviaste una postulación a esta campaña'
@@ -199,11 +201,27 @@ export async function POST(req: NextRequest, { params }: Params) {
       : [],
   }
 
-  const { data, error } = reusableRejectedInvitation
+  const reusable = reusableRejectedInvitation || reusableProExpiredApplication
+  const previousMetadata = existing?.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+    ? existing.metadata as Record<string, unknown> : {}
+  const previousHistory = Array.isArray(previousMetadata.application_history) ? previousMetadata.application_history : []
+  const history = reusable ? [...previousHistory, {
+    status: existing!.application_status,
+    origin: existing!.origin,
+    notes: existing!.notes,
+    rejection_reason: existing!.rejection_reason,
+    rejected_at: existing!.rejected_at,
+    reopened_at: new Date().toISOString(),
+    reason: reusableProExpiredApplication ? 'pro_reactivated' : 'declined_invitation',
+  }] : previousHistory
+
+  const { data, error } = reusable
     ? await admin
         .from('campaign_influencers')
-        .update({ ...applicationRow, rejected_at: null, rejection_reason: null, notes: null, updated_at: new Date().toISOString() })
+        .update({ ...applicationRow, metadata: { ...previousMetadata, application_history: history }, rejected_at: null, rejection_reason: null, notes: null, updated_at: new Date().toISOString() })
         .eq('id', existing!.id)
+        .eq('application_status', 'rejected')
+        .eq('origin', existing!.origin)
         .select('id')
         .single()
     : await admin

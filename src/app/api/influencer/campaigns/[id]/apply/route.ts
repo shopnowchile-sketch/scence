@@ -222,7 +222,6 @@ export async function POST(req: NextRequest, { params }: Params) {
         .eq('id', existing!.id)
         .eq('application_status', 'rejected')
         .eq('origin', existing!.origin)
-        .eq('notes', existing!.notes)
         .select('id')
         .single()
     : await admin

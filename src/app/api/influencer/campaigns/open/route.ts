@@ -4,6 +4,7 @@ import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { getCampaignDateKey } from '@/lib/attendance-state'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
+import { canReapplyAfterProExpiry } from '@/lib/campaign-pro-reapply'
 
 // GET /api/influencer/campaigns/open
 // Returns active campaigns the influencer is NOT yet part of (open to apply)
@@ -30,7 +31,7 @@ export async function GET() {
   // Campañas donde la influencer ya tiene alguna relación (invitada, postulando, aceptada, etc.)
   const { data: myRows } = await admin
     .from('campaign_influencers')
-    .select('campaign_id, application_status, origin')
+    .select('campaign_id, application_status, origin, notes')
     .eq('influencer_id', influencer.id)
 
   // Las que siguen "pendiente" se DEJAN ver en Disponibles (con badge de
@@ -51,7 +52,7 @@ export async function GET() {
   // ocultando igual que antes.
   const excludeIds = (myRows ?? [])
     .filter(r => r.application_status !== 'pending')
-    .filter(r => !(r.application_status === 'rejected' && r.origin === 'invitation'))
+    .filter(r => !(r.application_status === 'rejected' && r.origin === 'invitation') && !canReapplyAfterProExpiry(r))
     .map(r => r.campaign_id as string)
 
   // Marketplace público: una campaña abierta y activa puede ser descubierta por

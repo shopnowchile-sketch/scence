@@ -14,6 +14,7 @@ import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { deliverableTemplateTitle } from '@/lib/deliverable-template-title'
 import { isAttendanceDeadlineExpired, getCampaignDateKey } from '@/lib/attendance-state'
 import Link from 'next/link'
 import { acceptCurrentInfluencerProTerms, hasAcceptedCurrentInfluencerProTerms } from '@/lib/influencer-pro-terms'
@@ -80,7 +81,7 @@ type PreviewCampaign = {
   event_booking?: { id: string | null; starts_at: string | null; ends_at: string | null; location?: string | null; location_details?: { venue_name?: string; commune?: string; region?: string; country?: string; instructions?: string; address_hidden?: boolean } | null } | null
   budget_total: number | null; currency: string
   hashtags: string[] | null; platforms: string[] | null
-  deliverable_templates: Array<{ type: string; quantity?: number; description?: string; due_date?: string | null }> | null
+  deliverable_templates: Array<{ type: string; quantity?: number; title?: string; description?: string; due_date?: string | null }> | null
   application_questions: string[] | null
   application_deadline: string | null
   applications_closed_at: string | null
@@ -973,7 +974,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
                 return (
                   <div key={i} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
                     <Circle className="h-3 w-3 text-gray-300 flex-shrink-0" />
-                    <span>{t.quantity ?? 1}× {t.description || t.type}</span>
+                    <span>{t.quantity ?? 1}× {deliverableTemplateTitle(t)}</span>
                     {dateLabel && t.due_date && <span className="ml-auto text-xs text-gray-400 flex-shrink-0">{dateLabel}: {fmtDate(t.due_date)}</span>}
                   </div>
                 )

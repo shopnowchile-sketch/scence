@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 interface BrandMember {
   id:          string
   email:       string
-  role:        'owner' | 'brand_manager' | 'finance' | 'member'
+  role:        'owner' | 'member'
   invited_at:  string
   joined_at:   string | null
   is_active:   boolean
@@ -22,8 +22,6 @@ interface BrandMember {
 
 const ROLE_LABELS: Record<BrandMember['role'], string> = {
   owner:         'Owner',
-  brand_manager: 'Brand manager',
-  finance:       'Finanzas',
   member:        'Miembro',
 }
 
@@ -39,7 +37,6 @@ export function BrandMembersSection() {
   const [members,  setMembers]  = useState<BrandMember[]>([])
   const [loading,  setLoading]  = useState(true)
   const [newEmail, setNewEmail] = useState('')
-  const [newRole,  setNewRole]  = useState<'brand_manager' | 'finance' | 'member'>('member')
   const [inviting, setInviting] = useState(false)
   const [resendingId, setResendingId] = useState<string | null>(null)
 
@@ -65,7 +62,7 @@ export function BrandMembersSection() {
       const res  = await fetch('/api/brand/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: newEmail, role: newRole }),
+        body: JSON.stringify({ email: newEmail, role: 'member' }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
@@ -127,15 +124,6 @@ export function BrandMembersSection() {
           className="input-base flex-1"
           onKeyDown={e => e.key === 'Enter' && handleInvite()}
         />
-        <select
-          value={newRole}
-          onChange={e => setNewRole(e.target.value as 'brand_manager' | 'finance' | 'member')}
-          className="input-base w-36"
-        >
-          <option value="member">Miembro</option>
-          <option value="brand_manager">Brand manager</option>
-          <option value="finance">Finanzas</option>
-        </select>
         <button
           onClick={handleInvite}
           disabled={inviting || !newEmail}

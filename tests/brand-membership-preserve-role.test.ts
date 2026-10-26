@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { makeAdmin } from './support/memory-supabase.ts'
 import { ensureBrandMembership, brandMemberRoleFor, officialRoleFor } from '../src/lib/brand-membership.ts'
+import { normalizeBrandRole, roleHasBrandPermission } from '../src/lib/brand-permissions.ts'
 
 type Row = Record<string, any>
 const om = (user_id: string, role: string, extra: Row = {}): Row =>
@@ -15,12 +16,12 @@ const run = (rows: Row[], userId: string, requestedRole: string, brandId: string
   return ensureBrandMembership(makeAdmin(db), { organizationId: 'org-A', brandId, userId, requestedRole }).then(r => ({ r, rows: db.organization_members }))
 }
 
-test('caso Catalina: brand_manager existente + reenvío como "member" conserva brand_manager', async () => {
+test('caso Catalina: brand_manager existente + reenvío como "member" conserva el acceso operativo', async () => {
   const { r, rows } = await run([om('cata', 'brand_manager')], 'cata', 'member')
   assert.deepEqual([r.role, r.preserved, r.created], ['brand_manager', true, false])
   assert.equal(rows.length, 1, 'sin filas duplicadas')
   assert.equal(rows[0].role, 'brand_manager')
-  assert.equal(brandMemberRoleFor(r.role, r.is_owner), 'brand_manager', 'brand_members se alinea al rol real')
+  assert.equal(brandMemberRoleFor(r.role, r.is_owner), 'member', 'brand_members se alinea: solo owner o member')
 })
 
 test('owner activo conserva rol e is_owner (antes el upsert lo dejaba is_owner=false)', async () => {
@@ -30,27 +31,27 @@ test('owner activo conserva rol e is_owner (antes el upsert lo dejaba is_owner=f
   assert.equal(brandMemberRoleFor(r.role, r.is_owner), 'owner')
 })
 
-test('un miembro con menos permisos no sube en silencio al re-invitar con rol mayor', async () => {
-  const { r, rows } = await run([om('fin', 'finance')], 'fin', 'brand_manager')
-  assert.equal(r.role, 'finance'); assert.equal(rows[0].role, 'finance')
+test('un miembro existente no cambia de rol al re-invitar', async () => {
+  const { r, rows } = await run([om('mem', 'member')], 'mem', 'brand_manager')
+  assert.equal(r.role, 'member'); assert.equal(rows[0].role, 'member')
 })
 
 test('usuario nuevo (p. ej. influencer sin membresía de marca): se crea con el rol pedido, sin owner', async () => {
   const { r, rows } = await run([om('otro', 'member')], 'infl', 'brand_manager')
-  assert.deepEqual([r.role, r.created, r.is_owner], ['brand_manager', true, false])
+  assert.deepEqual([r.role, r.created, r.is_owner], ['brand_manager', true, false], 'todo no-owner se guarda como brand_manager (igual que el trigger)')
   assert.equal(rows.length, 2)
   assert.equal(rows.find(x => x.user_id === 'otro')!.role, 'member', 'no toca a otros usuarios')
 })
 
 test('acceso revocado (is_active=false) y re-invitado: nuevo otorgamiento con el rol pedido, nunca owner', async () => {
   const { r, rows } = await run([om('rev', 'brand_manager', { is_owner: true, is_active: false })], 'rev', 'member')
-  assert.deepEqual([r.role, r.is_owner, r.preserved], ['member', false, false])
-  assert.deepEqual([rows[0].is_active, rows[0].role, rows[0].is_owner], [true, 'member', false])
+  assert.deepEqual([r.role, r.is_owner, r.preserved], ['brand_manager', false, false])
+  assert.deepEqual([rows[0].is_active, rows[0].role, rows[0].is_owner], [true, 'brand_manager', false])
 })
 
 test('fila activa sin brand_id: se completa brand_id y se conserva el rol', async () => {
-  const { rows } = await run([om('sinb', 'finance', { brand_id: null })], 'sinb', 'member')
-  assert.deepEqual([rows[0].brand_id, rows[0].role], ['brand-A', 'finance'])
+  const { rows } = await run([om('sinb', 'member', { brand_id: null })], 'sinb', 'member')
+  assert.deepEqual([rows[0].brand_id, rows[0].role], ['brand-A', 'member'])
 })
 
 test('falla cerrado: error de lectura/escritura se lanza, no se ignora', async () => {
@@ -60,11 +61,16 @@ test('falla cerrado: error de lectura/escritura se lanza, no se ignora', async (
   await assert.rejects(() => ensureBrandMembership(makeAdmin({ organization_members: [] }, { failInsertOn: 'organization_members' }), { organizationId: 'org-A', brandId: 'brand-A', userId: 'n', requestedRole: 'member' }), (e: any) => /insert fallido/.test(e?.message))
 })
 
-test('mapeo de roles: roles desconocidos no escalan a owner y owner siempre se refleja como owner', () => {
-  assert.equal(officialRoleFor('owner'), 'brand_manager')
-  assert.equal(officialRoleFor('finance'), 'finance')
+test('solo existen owner y member: cualquier valor heredado se trata como member, owner solo si is_owner', () => {
+  for (const legacy of ['brand_manager', 'finance', 'member', 'super_admin', '', null, undefined]) assert.equal(normalizeBrandRole(legacy as any), 'member', String(legacy))
+  assert.equal(normalizeBrandRole('member', true), 'owner')
+  assert.equal(officialRoleFor('finance'), 'brand_manager')
   assert.equal(brandMemberRoleFor('brand_manager', true), 'owner')
-  assert.equal(brandMemberRoleFor('super_admin', false), 'brand_manager')
+  assert.equal(brandMemberRoleFor('finance', false), 'member')
+  // member tiene lo operativo y nada de equipo/facturación/datos de la marca (igual que el antiguo brand_manager)
+  for (const p of ['campaign.manage', 'application.manage', 'influencer.manage', 'location.manage', 'report.read'] as const) assert.equal(roleHasBrandPermission('member', p), true, p)
+  for (const p of ['team.manage', 'billing.manage', 'brand.manage', 'financial_document.read', 'legal_document.manage'] as const) assert.equal(roleHasBrandPermission('member', p), false, p)
+  assert.equal(roleHasBrandPermission('owner', 'team.manage'), true)
 })
 
 test('guardia: invitar/reenviar de marca no hace upsert directo de organization_members (solo transfer_owner)', () => {

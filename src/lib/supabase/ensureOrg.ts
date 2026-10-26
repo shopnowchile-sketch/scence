@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { roleHasBrandPermission, type BrandPermission } from '@/lib/brand-permissions'
+import { roleHasBrandPermission, normalizeBrandRole, type BrandPermission, type BrandRole } from '@/lib/brand-permissions'
 import { reconcileOrphanProSubscriptions } from '@/lib/influencer-pro'
 export type { BrandPermission } from '@/lib/brand-permissions'
 
@@ -524,7 +524,7 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
 export type BrandAccess = {
   brandId: string
   organizationId: string
-  role: 'owner' | 'brand_manager' | 'finance' | 'member'
+  role: BrandRole
   isOwner: boolean
 }
 
@@ -540,7 +540,8 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
     .select('organization_id, brand_id, role, is_owner')
     .eq('user_id', userId)
     .eq('is_active', true)
-    .in('role', ['brand_manager', 'member', 'finance'])
+    // 'finance' ya no es un rol de marca: no concede acceso (falla cerrado).
+    .in('role', ['brand_manager', 'member'])
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
 
@@ -559,7 +560,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
       return {
         brandId: brand.id,
         organizationId: brand.organization_id,
-        role: membership.is_owner ? 'owner' : ((membership.role as BrandAccess['role']) ?? 'brand_manager'),
+        role: normalizeBrandRole(membership.role, membership.is_owner === true),
         isOwner: membership.is_owner === true,
       }
     }
@@ -611,11 +612,8 @@ export async function linkPendingBrandMembership(user: User): Promise<boolean> {
     return false
   }
 
-  const orgRole: OrgRole = pending.role === 'finance'
-    ? 'finance'
-    : pending.role === 'member'
-      ? 'member'
-      : 'brand_manager'
+  // Una marca tiene solo owner y member; todo no-owner se guarda como 'brand_manager' (igual que el trigger).
+  const orgRole: OrgRole = 'brand_manager'
   const { error: membershipError } = await admin.from('organization_members').upsert({
     organization_id: brand.organization_id,
     brand_id: pending.brand_id,

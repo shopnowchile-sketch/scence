@@ -56,8 +56,9 @@ test('sin sesión → 401; sin influencer_id → 400', async () => {
   assert.equal(await call('uAdmin', 'camp-A', ''), 400)
 })
 
-test('roles de la marca dueña sin report.read (member, finance) → 404', async () => {
-  for (const u of ['uMemA', 'uFinA']) assert.equal(await call(u, 'camp-A', 'inf-in'), 404, u)
+test('marca con solo owner y member: member opera el reporte (200); rol heredado finance ya no da acceso (404)', async () => {
+  assert.equal(await call('uMemA', 'camp-A', 'inf-in'), 200, 'member = operación completa')
+  assert.equal(await call('uFinA', 'camp-A', 'inf-in'), 404, 'finance ya no es rol de marca: falla cerrado')
 })
 
 test('marca colaboradora (campaign_brands): mismo acceso que la principal, solo en SUS campañas; otras marcas y sin vínculo → 404', async () => {
@@ -66,16 +67,17 @@ test('marca colaboradora (campaign_brands): mismo acceso que la principal, solo 
   assert.equal(await call('uNadie', 'camp-A', 'inf-in'), 404, 'sin membresía')
 })
 
-test('el rol de la colaboradora sigue mandando: member/finance de la marca colaboradora → 404', async () => {
-  ;(globalThis as any).__routeHarness = null
+test('la colaboradora aplica las mismas reglas: member de la marca colaboradora (200) solo donde colabora; finance heredado → 404', async () => {
   const data = fresh()
   data.organization_members.push(m('uMemB', 'org-B', 'member', 'brand-B'), m('uFinB', 'org-B', 'finance', 'brand-B'))
-  for (const u of ['uMemB', 'uFinB']) {
+  const res = async (u: string, camp: string) => {
     ;(globalThis as any).__routeHarness = { user: { id: u }, admin: makeAdmin(data) }
     const route = await import('../src/app/api/campaigns/[id]/influencer-report/route.ts')
-    const res = await (route as any).GET(req('http://localhost/x?influencer_id=inf-in'), { params: { id: 'camp-A' } })
-    assert.equal(res.status, 404, u)
+    return (await (route as any).GET(req('http://localhost/x?influencer_id=inf-in'), { params: { id: camp } })).status as number
   }
+  assert.equal(await res('uMemB', 'camp-A'), 200)
+  assert.equal(await res('uMemB', 'camp-C'), 404, 'campaña ajena donde no colabora')
+  assert.equal(await res('uFinB', 'camp-A'), 404)
 })
 
 test('la marca dueña solo obtiene influencers que participan en SU campaña; campaña inexistente → 404', async () => {

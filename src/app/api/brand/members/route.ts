@@ -9,8 +9,8 @@ import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-// Solo dos roles de marca: owner (único, se transfiere) y member. 'brand_manager' es alias heredado de member.
-const MEMBER_ROLES = ['member', 'brand_manager'] as const
+// Solo dos roles de marca: owner (único, se transfiere) y member.
+const MEMBER_ROLES = ['member'] as const
 
 function brandMemberInviteEmail({ brandName, actionLink }: { brandName: string; actionLink: string }) {
   return `<!DOCTYPE html>

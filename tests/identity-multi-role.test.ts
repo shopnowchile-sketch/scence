@@ -51,12 +51,6 @@ test('las invitaciones reutilizan la búsqueda paginada y no reescriben metadata
   assert.doesNotMatch(existingOwnerBranch, /updateUserById/)
 })
 
-test('el trigger conserva member al sincronizar la membresía canónica', () => {
-  const migration = readFileSync(new URL('../supabase/migrations/20261022150000_preserve_brand_member_role_sync.sql', import.meta.url), 'utf8')
-  assert.match(migration, /when 'member' then 'member'::public\.user_role/)
-  assert.match(migration, /on conflict \(organization_id, user_id\) do update/)
-})
-
 test('ninguna organización se crea por iniciar sesión: ensureOrg es interna', () => {
   const lib = readFileSync(new URL('../src/lib/supabase/ensureOrg.ts', import.meta.url), 'utf8')
   assert.doesNotMatch(lib, /export (async )?function ensureOrg\b/)

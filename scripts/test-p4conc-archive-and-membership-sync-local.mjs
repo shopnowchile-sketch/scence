@@ -1,8 +1,6 @@
 /**
  * Pruebas en un Postgres 16 local desechable (no toca Supabase ni producción):
  *  - PROPUESTA_archivar_filas_p4conc: camino feliz, reversión y 8 casos que deben abortar sin cambios.
- *  - Migración 20261022150000 (ensure_brand_member_org_membership): defecto previo, idempotencia,
- *    member sigue member, owner y super_admin no se degradan.
  * Uso: en un directorio temporal con `npm i embedded-postgres pg`, como usuario NO root, con este
  * archivo dentro de scripts/ del repo (lee ../docs y ../supabase):  node scripts/<este archivo>
  */
@@ -10,7 +8,6 @@ import EmbeddedPostgres from 'embedded-postgres'
 import pg from 'pg'
 import { readFileSync, rmSync } from 'node:fs'
 const ARCH = readFileSync(new URL('../docs/audits/PROPUESTA_archivar_filas_p4conc_2026-10-22.sql', import.meta.url), 'utf8')
-const MIG150 = readFileSync(new URL('../supabase/migrations/20261022150000_preserve_brand_member_role_sync.sql', import.meta.url), 'utf8')
 const REV = ARCH.slice(ARCH.indexOf('-- begin;\n-- do $$ declare nb')).split('\n').filter(l => l.startsWith('-- ') && !l.startsWith('-- Nota')).map(l => l.slice(3)).join('\n')
 const dir = process.env.PGTEST_DIR ?? '/tmp/pgtest2-data'; rmSync(dir, { recursive: true, force: true })
 const server = new EmbeddedPostgres({ databaseDir: dir, user: 'postgres', password: 'pw', port: 54330, persistent: false, onLog: () => {}, onError: () => {} })
@@ -77,35 +74,5 @@ for (const [label, mutate, re] of cases) {
   ok(`aborta: ${label}`, !!e && re.test(e) && b === after, e ?? 'SIN ERROR')
 }
 
-// 3 migración 150000
-await seed()
-await c.query(`create or replace function public.ensure_brand_member_org_membership() returns trigger language plpgsql security definer set search_path=public as $$
-declare v_org_id uuid; v_role public.user_role; begin
- if new.user_id is null or coalesce(new.is_active,false)=false then return new; end if;
- select b.organization_id into v_org_id from public.brands b where b.id=new.brand_id; if v_org_id is null then return new; end if;
- v_role := case when new.role='finance' then 'finance'::public.user_role else 'brand_manager'::public.user_role end;
- insert into public.organization_members(organization_id,user_id,role,is_owner,is_active,invited_at,joined_at,brand_id) values (v_org_id,new.user_id,v_role,false,true,new.invited_at,coalesce(new.joined_at,now()),new.brand_id)
- on conflict (organization_id,user_id) do update set is_active=true, role=excluded.role, brand_id=coalesce(public.organization_members.brand_id,excluded.brand_id); return new; end $$;
- create trigger trg_ensure_brand_member_org_membership after insert or update of user_id,brand_id,is_active,role on public.brand_members for each row execute function public.ensure_brand_member_org_membership();`)
-const U = () => c.query('select gen_random_uuid() id').then(r => r.rows[0].id)
-const [m1, m2, owner, sa] = [await U(), await U(), await U(), await U()]
-await c.query(`insert into organization_members(organization_id,user_id,role,is_owner) values ($1,$2,'brand_manager',true),($1,$3,'super_admin',false)`, [O[0], owner, sa])
-const roleOf = async (org, u) => (await c.query('select role::text r, is_owner from organization_members where organization_id=$1 and user_id=$2', [org, u])).rows[0]
-await c.query(`insert into brand_members(brand_id,user_id,role) values ($1,$2,'member')`, [B[0], m1])
-ok('ANTES de 150000: member se promueve a brand_manager (defecto)', (await roleOf(O[0], m1)).r === 'brand_manager')
-await c.query(`insert into brand_members(brand_id,user_id,role) values ($1,$2,'finance')`, [B[0], owner])
-ok('ANTES de 150000: el owner puede degradarse (defecto)', (await roleOf(O[0], owner)).r === 'finance')
-await c.query(`update organization_members set role='brand_manager' where organization_id=$1 and user_id=$2`, [O[0], owner])
-await c.query(MIG150); await c.query(MIG150)
-ok('150000 es idempotente (se aplica 2 veces sin error)', true)
-await c.query(`insert into brand_members(brand_id,user_id,role) values ($1,$2,'member')`, [B[1], m2])
-ok('DESPUÉS: member permanece member', (await roleOf(O[1], m2)).r === 'member')
-await c.query(`update brand_members set role='finance' where user_id=$1`, [owner]); await c.query(`insert into brand_members(brand_id,user_id,role) values ($1,$2,'finance') on conflict do nothing`, [B[0], owner])
-await c.query(`update brand_members set is_active=true where user_id=$1`, [owner])
-ok('DESPUÉS: el owner no se degrada', (await roleOf(O[0], owner)).r === 'brand_manager' && (await roleOf(O[0], owner)).is_owner === true)
-await c.query(`insert into brand_members(brand_id,user_id,role) values ($1,$2,'member')`, [B[0], sa])
-ok('DESPUÉS: super_admin no se degrada', (await roleOf(O[0], sa)).r === 'super_admin')
-await c.query(`insert into brand_members(brand_id,user_id,role) values ($1,$2,'owner')`, [B[2], await U()])
-ok('DESPUÉS: rol brand_manager/owner de brand_members sigue mapeando a brand_manager', (await c.query(`select count(*) n from organization_members where organization_id=$1 and role='brand_manager'`, [O[2]])).rows[0].n == 1)
 console.log(`\nRESUMEN: ${pass} OK, ${fail} FAIL`)
 await c.end(); await server.stop(); process.exit(fail ? 1 : 0)

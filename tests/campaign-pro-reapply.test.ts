@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { canReapplyAfterProExpiry, PRO_EXPIRED_APPLICATION_NOTE } from '../src/lib/campaign-pro-reapply'
+import { canReapplyAfterProExpiry, PRO_EXPIRED_APPLICATION_NOTE } from '../src/lib/campaign-pro-reapply.ts'
 
 test('automated Plan Pro expiry allows a new application on the same row', () => {
   assert.equal(canReapplyAfterProExpiry({ application_status: 'rejected', origin: 'application', notes: PRO_EXPIRED_APPLICATION_NOTE }), true)

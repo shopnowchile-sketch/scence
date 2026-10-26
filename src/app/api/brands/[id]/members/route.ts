@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
+import { normalizeBrandRole } from '@/lib/brand-permissions'
 import { ensureBrandMembership, brandMemberRoleFor, officialRoleFor } from '@/lib/brand-membership'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
@@ -9,7 +10,8 @@ import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 type Params = { params: { id: string } }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-const MEMBER_ROLES = ['brand_manager', 'finance', 'member'] as const
+// Solo dos roles de marca: owner (único, se transfiere) y member. 'brand_manager' es alias heredado de member.
+const MEMBER_ROLES = ['member', 'brand_manager'] as const
 
 const officialRole = officialRoleFor
 
@@ -100,7 +102,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return 0
   })
 
-  return NextResponse.json({ data: sorted })
+  // Solo existen owner y member: roles heredados (brand_manager/finance) se muestran como member.
+  return NextResponse.json({ data: sorted.map(row => ({ ...row, role: normalizeBrandRole(row.role) })) })
 }
 
 function memberResendEmail({ brandName, actionLink }: { brandName: string; actionLink: string }) {
@@ -153,7 +156,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const { data: member, error: insertError } = await admin
       .from('brand_members')
-      .insert({ brand_id: params.id, email, role, invited_by: user.id })
+      .insert({ brand_id: params.id, email, role: 'member', invited_by: user.id })
       .select('id, email, role, invited_at, joined_at, is_active')
       .single()
     if (insertError) {
@@ -378,7 +381,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { data, error } = await admin
     .from('brand_members')
-    .update({ role: body.role })
+    .update({ role: 'member' })
     .eq('id', body.member_id)
     .eq('brand_id', params.id)
     .select('id, email, role, invited_at, joined_at, is_active')

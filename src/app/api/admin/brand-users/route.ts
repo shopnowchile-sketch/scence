@@ -1,3 +1,4 @@
+import { normalizeBrandRole } from '@/lib/brand-permissions'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
@@ -43,7 +44,7 @@ export async function GET(_req: NextRequest) {
         brand_id: m.brand_id,
         brand_name: brand?.name ?? 'Marca eliminada',
         email: m.email,
-        role: m.role,
+        role: normalizeBrandRole(m.role),
         status: m.is_active ? (m.joined_at ? 'activo' : 'pendiente') : 'desactivado',
         invited_at: m.invited_at,
         member_id: m.id,

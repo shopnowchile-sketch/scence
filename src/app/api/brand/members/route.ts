@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
+import { normalizeBrandRole } from '@/lib/brand-permissions'
 import { ensureBrandMembership, brandMemberRoleFor, officialRoleFor } from '@/lib/brand-membership'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
@@ -8,7 +9,8 @@ import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-const MEMBER_ROLES = ['brand_manager', 'finance', 'member'] as const
+// Solo dos roles de marca: owner (único, se transfiere) y member. 'brand_manager' es alias heredado de member.
+const MEMBER_ROLES = ['member', 'brand_manager'] as const
 
 function brandMemberInviteEmail({ brandName, actionLink }: { brandName: string; actionLink: string }) {
   return `<!DOCTYPE html>
@@ -128,11 +130,12 @@ export async function GET() {
     return 0
   })
 
-  return NextResponse.json({ data: sorted })
+  // Solo existen owner y member: roles heredados (brand_manager/finance) se muestran como member.
+  return NextResponse.json({ data: sorted.map(row => ({ ...row, role: normalizeBrandRole(row.role) })) })
 }
 
 // POST /api/brand/members — invitar nuevo usuario (solo owner)
-// Roles mínimos: brand_manager, finance, member (spec Pri 2026-07-10). Crea
+// Roles: solo owner y member (brand_manager es alias de member; 2026-10-26). Crea
 // la fila de invitación en brand_members y, a diferencia de la versión
 // anterior, envía el email de invitación y crea/reutiliza el usuario de
 // Auth — mismo patrón token_hash ya validado en /api/brands/[id]/invite.
@@ -185,7 +188,7 @@ export async function POST(request: NextRequest) {
     .insert({
       brand_id:   brand.id,
       email,
-      role,
+      role: 'member',
       invited_by: user.id,
     })
     .select('id, email, role, invited_at, joined_at, is_active')

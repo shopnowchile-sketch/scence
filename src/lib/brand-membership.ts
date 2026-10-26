@@ -1,16 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type OrgMemberRole = 'brand_manager' | 'member' | 'finance'
+export type OrgMemberRole = 'brand_manager'
 
-/** Rol que se otorga al INVITAR a alguien nuevo (brand_members.role → organization_members.role). */
-export function officialRoleFor(role: string): OrgMemberRole {
-  return role === 'finance' ? 'finance' : role === 'member' ? 'member' : 'brand_manager'
+/** Una marca tiene solo owner y member: todo no-owner se guarda en organization_members como 'brand_manager'. */
+export function officialRoleFor(_role?: string): OrgMemberRole {
+  return 'brand_manager'
 }
 
-/** Valor de brand_members.role que refleja el rol real de organization_members. */
-export function brandMemberRoleFor(role: string, isOwner: boolean): string {
-  if (isOwner) return 'owner'
-  return role === 'finance' || role === 'member' ? role : 'brand_manager'
+/** Valor de brand_members.role que refleja el rol real: 'owner' o 'member'. */
+export function brandMemberRoleFor(_role: string, isOwner: boolean): 'owner' | 'member' {
+  return isOwner ? 'owner' : 'member'
 }
 
 export type EnsuredMembership = { role: string; is_owner: boolean; created: boolean; preserved: boolean }

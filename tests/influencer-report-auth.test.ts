@@ -1,7 +1,7 @@
 // Hotfix influencer-report: la autorización exige rol (report.read) y propiedad de la campaña.
 // Antes: cualquier miembro de la organización, de cualquier rol, obtenía el reporte de cualquier campaña de su org.
 // Ejecuta el handler REAL contra una base en memoria (sin red ni producción). LÍMITES: no prueba RLS real ni el HTML
-// completo. NO cubre el estado de la marca (pendiente/rechazada/suspendida): master aún no tiene esa lógica
+// completo. Marcas colaboradoras (campaign_brands): mismo acceso que la principal solo en sus campañas. NO cubre el estado de la marca (pendiente/rechazada/suspendida): master aún no tiene esa lógica
 // (brand-status-access); esa cobertura llega con la promoción de staging.
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -60,10 +60,22 @@ test('roles de la marca dueña sin report.read (member, finance) → 404', async
   for (const u of ['uMemA', 'uFinA']) assert.equal(await call(u, 'camp-A', 'inf-in'), 404, u)
 })
 
-test('otra marca, marca solo colaboradora (campaign_brands) y usuario sin vínculo → 404', async () => {
-  assert.equal(await call('uOwnerB', 'camp-A', 'inf-in'), 404, 'otra marca / colaboradora')
-  assert.equal(await call('uOwnerB', 'camp-C', 'inf-in'), 404, 'otra marca en campaña por created_by_brand_id')
+test('marca colaboradora (campaign_brands): mismo acceso que la principal, solo en SUS campañas; otras marcas y sin vínculo → 404', async () => {
+  assert.equal(await call('uOwnerB', 'camp-A', 'inf-in'), 200, 'colaboradora en la campaña donde está registrada')
+  assert.equal(await call('uOwnerB', 'camp-C', 'inf-in'), 404, 'misma marca, campaña ajena donde NO colabora')
   assert.equal(await call('uNadie', 'camp-A', 'inf-in'), 404, 'sin membresía')
+})
+
+test('el rol de la colaboradora sigue mandando: member/finance de la marca colaboradora → 404', async () => {
+  ;(globalThis as any).__routeHarness = null
+  const data = fresh()
+  data.organization_members.push(m('uMemB', 'org-B', 'member', 'brand-B'), m('uFinB', 'org-B', 'finance', 'brand-B'))
+  for (const u of ['uMemB', 'uFinB']) {
+    ;(globalThis as any).__routeHarness = { user: { id: u }, admin: makeAdmin(data) }
+    const route = await import('../src/app/api/campaigns/[id]/influencer-report/route.ts')
+    const res = await (route as any).GET(req('http://localhost/x?influencer_id=inf-in'), { params: { id: 'camp-A' } })
+    assert.equal(res.status, 404, u)
+  }
 })
 
 test('la marca dueña solo obtiene influencers que participan en SU campaña; campaña inexistente → 404', async () => {

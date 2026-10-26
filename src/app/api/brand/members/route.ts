@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
+import { ensureBrandMembership, brandMemberRoleFor, officialRoleFor } from '@/lib/brand-membership'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
@@ -159,18 +160,10 @@ export async function POST(request: NextRequest) {
         memberUser = created.user
       }
       if (!memberUser) throw new Error('No se pudo resolver el usuario invitado')
-      const orgRole = member.role === 'finance' ? 'finance' : member.role === 'member' ? 'member' : 'brand_manager'
-      const { error: officialError } = await admin.from('organization_members').upsert({
-        organization_id: brand.organization_id,
-        brand_id: brand.id,
-        user_id: memberUser.id,
-        role: orgRole,
-        is_owner: false,
-        is_active: true,
-        joined_at: new Date().toISOString(),
-      }, { onConflict: 'organization_id,user_id' })
-      if (officialError) throw officialError
-      await admin.from('brand_members').update({ user_id: memberUser.id, joined_at: new Date().toISOString() }).eq('id', member.id)
+      const ensured = await ensureBrandMembership(admin, { organizationId: brand.organization_id, brandId: brand.id, userId: memberUser.id, requestedRole: member.role })
+      const { error: linkMemberError } = await admin.from('brand_members')
+        .update({ user_id: memberUser.id, joined_at: new Date().toISOString(), role: brandMemberRoleFor(ensured.role, ensured.is_owner) }).eq('id', member.id)
+      if (linkMemberError) throw linkMemberError
       const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email: member.email, options: { redirectTo: `${APP_URL}/brand-dash` } })
       if (linkError || !linkData?.properties?.hashed_token) throw linkError ?? new Error('No se pudo generar el link')
       actionLink = `${APP_URL}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=magiclink&next=/brand-dash`
@@ -222,18 +215,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (!existingUser) throw new Error('No se pudo resolver el usuario invitado')
-    const orgRole = role === 'finance' ? 'finance' : role === 'member' ? 'member' : 'brand_manager'
-    const { error: officialError } = await admin.from('organization_members').upsert({
-      organization_id: brand.organization_id,
-      brand_id: brand.id,
-      user_id: existingUser.id,
-      role: orgRole,
-      is_owner: false,
-      is_active: true,
-      joined_at: new Date().toISOString(),
-    }, { onConflict: 'organization_id,user_id' })
-    if (officialError) throw officialError
-    await admin.from('brand_members').update({ user_id: existingUser.id, joined_at: new Date().toISOString() }).eq('id', data.id)
+    const ensured = await ensureBrandMembership(admin, { organizationId: brand.organization_id, brandId: brand.id, userId: existingUser.id, requestedRole: role })
+    const { error: linkMemberError } = await admin.from('brand_members')
+      .update({ user_id: existingUser.id, joined_at: new Date().toISOString(), role: brandMemberRoleFor(ensured.role, ensured.is_owner) }).eq('id', data.id)
+    if (linkMemberError) throw linkMemberError
     officialMembershipReady = true
 
     const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({

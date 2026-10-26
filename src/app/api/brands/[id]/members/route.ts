@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
+import { ensureBrandMembership, brandMemberRoleFor, officialRoleFor } from '@/lib/brand-membership'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
@@ -10,9 +11,7 @@ type Params = { params: { id: string } }
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const MEMBER_ROLES = ['brand_manager', 'finance', 'member'] as const
 
-function officialRole(role: string) {
-  return role === 'finance' ? 'finance' : role === 'member' ? 'member' : 'brand_manager'
-}
+const officialRole = officialRoleFor
 
 async function getAdminBrand(userId: string, brandId: string) {
   const admin = createAdminClient()
@@ -171,17 +170,10 @@ export async function POST(req: NextRequest, { params }: Params) {
         if (createError || !created.user) throw createError ?? new Error('No se pudo crear el usuario')
         existing = created.user
       }
-      const { error: officialError } = await admin.from('organization_members').upsert({
-        organization_id: brand.organization_id,
-        brand_id: brand.id,
-        user_id: existing.id,
-        role: officialRole(role),
-        is_owner: false,
-        is_active: true,
-        joined_at: new Date().toISOString(),
-      }, { onConflict: 'organization_id,user_id' })
-      if (officialError) throw officialError
-      await admin.from('brand_members').update({ user_id: existing.id, joined_at: new Date().toISOString() }).eq('id', member.id)
+      const ensured = await ensureBrandMembership(admin, { organizationId: brand.organization_id, brandId: brand.id, userId: existing.id, requestedRole: role })
+      const { error: linkMemberError } = await admin.from('brand_members')
+        .update({ user_id: existing.id, joined_at: new Date().toISOString(), role: brandMemberRoleFor(ensured.role, ensured.is_owner) }).eq('id', member.id)
+      if (linkMemberError) throw linkMemberError
       officialMembershipReady = true
       const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email, options: { redirectTo: `${APP_URL}/brand-dash` } })
       if (!linkError && linkData?.properties?.hashed_token) {
@@ -244,17 +236,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     existingUser = created.user
   }
 
-  const { error: officialError } = await admin.from('organization_members').upsert({
-    organization_id: brand.organization_id,
-    brand_id: brand.id,
-    user_id: existingUser.id,
-    role: officialRole(member.role),
-    is_owner: false,
-    is_active: true,
-    joined_at: new Date().toISOString(),
-  }, { onConflict: 'organization_id,user_id' })
-  if (officialError) return NextResponse.json({ error: officialError.message }, { status: 500 })
-  await admin.from('brand_members').update({ user_id: existingUser.id, joined_at: new Date().toISOString() }).eq('id', member.id)
+  // organization_members manda: reenviar nunca reduce el rol existente; brand_members se alinea a él.
+  try {
+    const ensured = await ensureBrandMembership(admin, { organizationId: brand.organization_id, brandId: brand.id, userId: existingUser.id, requestedRole: member.role })
+    const { error: linkMemberError } = await admin.from('brand_members')
+      .update({ user_id: existingUser.id, joined_at: new Date().toISOString(), role: brandMemberRoleFor(ensured.role, ensured.is_owner) }).eq('id', member.id)
+    if (linkMemberError) throw linkMemberError
+  } catch (membershipErr) {
+    return NextResponse.json({ error: membershipErr instanceof Error ? membershipErr.message : 'No se pudo asegurar el acceso' }, { status: 500 })
+  }
 
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: 'magiclink',

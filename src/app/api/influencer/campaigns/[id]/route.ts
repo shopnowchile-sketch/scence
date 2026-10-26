@@ -4,6 +4,7 @@ import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign, publicCampaignMetadata } from '@/lib/campaign-field-guards'
 import { canReapplyAfterProExpiry } from '@/lib/campaign-pro-reapply'
+import { publicDeliverableTemplates } from '@/lib/deliverable-template-title'
 
 type Params = { params: { id: string } }
 
@@ -129,6 +130,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // colaboradoras también son operativas: misma regla que my-campaigns.
     delete payload.brief_url
     delete payload.campaign_brands
+    // Solo el título de cada entregable; las instrucciones se liberan al aceptar.
+    payload.deliverable_templates = publicDeliverableTemplates(payload.deliverable_templates)
     payload.metadata = publicCampaignMetadata(campaign.metadata)
   }
 

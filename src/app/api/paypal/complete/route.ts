@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
-  if (!hasBrandPermission(access, 'billing.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Pagar el plan de suscripción sigue siendo exclusivo del owner (brand.manage), con la misma regla de estado de antes.
+  if (!hasBrandPermission(access, 'brand.manage', 'billing_manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const clientId = process.env.PAYPAL_CLIENT_ID, secret = process.env.PAYPAL_CLIENT_SECRET
   if (!clientId || !secret) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
   const authorization = Buffer.from(`${clientId}:${secret}`).toString('base64')

@@ -1,5 +1,6 @@
-// Una marca tiene solo DOS roles: owner y member (brand_manager y member son lo mismo: operación completa
-// de campañas, postulaciones, influencers, lugares y reportes; sin equipo, facturación ni datos de la marca).
+// Una marca tiene solo DOS roles: owner y member. member = operación completa (campañas, postulaciones,
+// influencers, lugares, reportes) y facturación/finanzas de su propia marca. owner = además equipo, datos de la
+// marca, documentos legales (solo el owner firma NDA) y el pago del plan de suscripción.
 // Valores heredados de la base ('brand_manager', 'finance') se tratan como 'member' vía normalizeBrandRole.
 export type BrandRole = 'owner' | 'member'
 
@@ -40,6 +41,7 @@ const BRAND_ROLE_PERMISSIONS: Record<BrandRole, ReadonlySet<BrandPermission>> = 
     'brand.read', 'campaign.read', 'campaign.manage', 'application.read',
     'application.manage', 'influencer.read', 'influencer.manage',
     'location.read', 'location.manage', 'report.read',
+    'billing.read', 'billing.manage', 'financial_document.read', 'financial_document.manage',
   ]),
 }
 

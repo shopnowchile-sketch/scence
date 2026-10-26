@@ -49,9 +49,10 @@ test('void y mark_overdue siguen siendo EXCLUSIVOS de SCENCE (también para la m
   }
 })
 
-test('una marca propietaria SIN permiso de facturación no puede pagar, enviar ni editar (403)', () => {
-  // role=member tiene lectura de marca pero no billing.*; no ve la factura → 404 (no revela existencia)
-  assert.equal(bad(planInvoicePatch({ action: 'mark_paid' }, ctx('owner-readonly'))).status, 404)
+test('member (misma facturación que owner) puede pagar, enviar y editar las facturas de su marca', () => {
+  const caps = capsOf('owner-readonly')
+  assert.ok(caps.read && caps.markPaid && caps.send && caps.edit)
+  assert.equal(caps.voidOrOverdue, false)
 })
 
 test('marca con acceso compartido: SOLO lectura, ninguna acción ni edición (403)', () => {

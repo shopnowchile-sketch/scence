@@ -67,9 +67,9 @@ test('solo existen owner y member: cualquier valor heredado se trata como member
   assert.equal(officialRoleFor('finance'), 'brand_manager')
   assert.equal(brandMemberRoleFor('brand_manager', true), 'owner')
   assert.equal(brandMemberRoleFor('finance', false), 'member')
-  // member tiene lo operativo y nada de equipo/facturación/datos de la marca (igual que el antiguo brand_manager)
-  for (const p of ['campaign.manage', 'application.manage', 'influencer.manage', 'location.manage', 'report.read'] as const) assert.equal(roleHasBrandPermission('member', p), true, p)
-  for (const p of ['team.manage', 'billing.manage', 'brand.manage', 'financial_document.read', 'legal_document.manage'] as const) assert.equal(roleHasBrandPermission('member', p), false, p)
+  // member tiene lo operativo y la facturación/finanzas de su marca; nada de equipo, datos de la marca ni documentos legales
+  for (const p of ['campaign.manage', 'application.manage', 'influencer.manage', 'location.manage', 'report.read', 'billing.read', 'billing.manage', 'financial_document.read', 'financial_document.manage'] as const) assert.equal(roleHasBrandPermission('member', p), true, p)
+  for (const p of ['team.manage', 'brand.manage', 'legal_document.read', 'legal_document.manage'] as const) assert.equal(roleHasBrandPermission('member', p), false, p)
   assert.equal(roleHasBrandPermission('owner', 'team.manage'), true)
 })
 

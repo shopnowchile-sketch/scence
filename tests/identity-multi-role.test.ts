@@ -25,8 +25,11 @@ test('los permisos de marca preservan los límites de cada rol', () => {
   assert.equal(roleHasBrandPermission('owner', 'billing.read'), true)
   assert.equal(roleHasBrandPermission('member', 'campaign.manage'), true)
   assert.equal(roleHasBrandPermission('brand_manager', 'campaign.manage'), true)
-  assert.equal(roleHasBrandPermission('finance', 'billing.read'), false)
+  assert.equal(roleHasBrandPermission('member', 'billing.read'), true)
+  assert.equal(roleHasBrandPermission('finance', 'billing.read'), true) // valor heredado = member (el acceso real lo corta resolveBrandAccess)
   assert.equal(roleHasBrandPermission('member', 'team.manage'), false)
+  assert.equal(roleHasBrandPermission('member', 'legal_document.manage'), false) // solo owner firma NDA
+  assert.equal(roleHasBrandPermission('owner', 'legal_document.manage'), true)
 })
 
 test('middleware no usa metadata de Auth para autorizar portales', () => {

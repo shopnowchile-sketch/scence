@@ -482,7 +482,7 @@ La propiedad de una factura es `invoices.owner_brand_id` (migración `2026102212
 
 Una marca tiene **dos** roles: `owner` (`organization_members.is_owner`) y `member`. No existen `brand_manager` ni `finance` como roles de marca.
 
-- `member` = operación completa (campañas, postulaciones, influencers, lugares, reportes). `owner` = además equipo, facturación y datos de la marca. Fuente: `src/lib/brand-permissions.ts`.
+- `member` = operación completa (campañas, postulaciones, influencers, lugares, reportes) **y facturación/finanzas de su propia marca** (`billing.*`, `financial_document.*`; actualizado 2026-10-26). `owner` = además equipo, datos de la marca y documentos legales: **solo `owner` firma NDA** (`legal_document.manage`) y paga el plan de suscripción (PayPal `checkout`/`complete`, `brand.manage`). `void` y `mark_overdue` de facturas siguen siendo exclusivos de SCENCE. Fuente: `src/lib/brand-permissions.ts`.
 - Valores heredados en la base (`brand_manager`, `finance`, `member`) se **normalizan** con `normalizeBrandRole()`; todo no-owner se guarda en `organization_members.role` como `brand_manager` (igual que el trigger). `finance` no concede acceso a una marca.
 - Invitar, reenviar y cambiar rol pasan por `ensureBrandMembership()` y solo aceptan `member`; reenviar nunca baja permisos existentes.
 - La migración `preserve_brand_member_role_sync` se retiró: no se aplica. No re-crearla.

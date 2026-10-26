@@ -101,11 +101,12 @@ test('la marca B solo ve las suyas; SCENCE ve todas', async () => {
   assert.deepEqual(ids(admin), ['inv-A1', 'inv-A2', 'inv-B1', 'inv-collab', 'inv-legacy', 'inv-other'])
 })
 
-test('sin sesión 401; usuario sin marca ni admin (otra organización/influencer) 403; rol sin billing 403', async () => {
+test('sin sesión 401; usuario sin marca ni admin (otra organización/influencer) 403; finance (ya no es rol de marca) 403; member 200', async () => {
   const db = freshDb()
   assert.equal((await call(list, 'GET', { user: null, db })).status, 401)
   assert.equal((await call(list, 'GET', { user: 'u-stranger', db })).status, 403)
-  assert.equal((await call(list, 'GET', { user: 'u-A-member', db })).status, 403)
+  assert.equal((await call(list, 'GET', { user: 'u-A-finance', db })).status, 403) // 'finance' ya no es rol de marca
+  assert.equal((await call(list, 'GET', { user: 'u-A-member', db })).status, 200) // member ve la facturación de su marca
 })
 
 test('un parámetro brand_id/owner_brand_id/organization_id en la URL no cambia el alcance de la marca', async () => {
@@ -164,10 +165,10 @@ test('la marca propietaria marca pagada SU factura: status, paid_at y referencia
   assert.equal(r2.status, 404)
 })
 
-test('una marca propietaria SIN permiso de facturación no puede marcarla pagada', async () => {
+test('un usuario sin rol de marca válido (finance heredado) no puede marcar pagada la factura', async () => {
   const db = freshDb()
   const before = snapshot(db)
-  const r = await call(one, 'PATCH', { user: 'u-A-member', db, id: 'inv-A1', body: { action: 'mark_paid' } })
+  const r = await call(one, 'PATCH', { user: 'u-A-finance', db, id: 'inv-A1', body: { action: 'mark_paid' } })
   assert.ok([403, 404].includes(r.status))
   assert.deepEqual(snapshot(db), before)
 })
@@ -299,10 +300,11 @@ test('compartir con una marca no concede acceso a las demás; SCENCE comparte fa
   assert.equal((await call(one, 'PATCH', { user: 'u-A-owner', db, id: 'inv-legacy', body: { action: 'mark_paid' } })).status, 403)
 })
 
-test('un rol sin billing.read en la marca destinataria no ve la factura compartida', async () => {
+test('la factura compartida la ve el member de la marca destinataria; un rol heredado sin acceso no', async () => {
   const db = freshDb()
   await call(shares, 'POST', { user: 'u-B-owner', db, id: 'inv-B1', body: { brand_id: BRAND_A } })
-  assert.equal((await call(one, 'GET', { user: 'u-A-member', db, id: 'inv-B1' })).status, 404)
+  assert.equal((await call(one, 'GET', { user: 'u-A-member', db, id: 'inv-B1' })).status, 200)
+  assert.equal((await call(one, 'GET', { user: 'u-A-finance', db, id: 'inv-B1' })).status, 404)
 })
 
 test('compartir: validaciones (propia marca, marca inexistente, UUID inválido)', async () => {
@@ -380,7 +382,7 @@ test('POST: campaña ajena 403, sin campaña 422, sin billing.manage 403, ítems
   const before = snapshot(db)
   assert.equal((await call(list, 'POST', { user: 'u-A-owner', db, body: newInvoice({ campaign_id: 'camp-B' }) })).status, 403)
   assert.equal((await call(list, 'POST', { user: 'u-A-owner', db, body: newInvoice({ campaign_id: undefined }) })).status, 422)
-  assert.equal((await call(list, 'POST', { user: 'u-A-member', db, body: newInvoice() })).status, 403)
+  assert.equal((await call(list, 'POST', { user: 'u-A-finance', db, body: newInvoice() })).status, 403)
   assert.equal((await call(list, 'POST', { user: 'u-A-owner', db, body: newInvoice({ items: [{ quantity: -1, unit_price: 10 }] }) })).status, 422)
   assert.equal((await call(list, 'POST', { user: 'u-A-owner', db, body: newInvoice({ tax_rate: 500 }) })).status, 422)
   assert.equal((await call(list, 'POST', { user: 'u-A-owner', db, body: newInvoice({ items: [{ quantity: 'abc', unit_price: 10 }] }) })).status, 422)

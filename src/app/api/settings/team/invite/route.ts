@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
 import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
@@ -82,8 +83,12 @@ export async function POST(req: NextRequest) {
   const name = display_name?.trim() || email.split('@')[0]
 
   // Find or create auth user
-  const { data: existingUsers } = await admin.auth.admin.listUsers()
-  const existing = existingUsers?.users?.find(u => u.email === email)
+  let existing: Awaited<ReturnType<typeof findAuthUserByEmail>>
+  try {
+    existing = await findAuthUserByEmail(admin, email)
+  } catch (lookupErr) {
+    return NextResponse.json({ error: lookupErr instanceof Error ? lookupErr.message : 'No se pudo consultar el usuario' }, { status: 500 })
+  }
 
   let authUserId: string
 

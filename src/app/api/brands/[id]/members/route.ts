@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
@@ -164,8 +165,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     let emailSent = false
     let officialMembershipReady = false
     try {
-      const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-      let existing = users?.users?.find(u => u.email?.toLowerCase() === email) ?? null
+      let existing = await findAuthUserByEmail(admin, email)
       if (!existing) {
         const { data: created, error: createError } = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { is_brand: true, full_name: email.split('@')[0] } })
         if (createError || !created.user) throw createError ?? new Error('No se pudo crear el usuario')
@@ -227,8 +227,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!member.is_active) return NextResponse.json({ error: 'Este usuario está desactivado' }, { status: 422 })
 
   // Crear/reutilizar el usuario de Auth — mismo patrón que POST /api/brand/members.
-  const { data: existingUsers } = await admin.auth.admin.listUsers()
-  let existingUser = existingUsers?.users?.find(u => u.email === member.email) ?? null
+  let existingUser: Awaited<ReturnType<typeof findAuthUserByEmail>>
+  try {
+    existingUser = await findAuthUserByEmail(admin, member.email)
+  } catch (lookupErr) {
+    return NextResponse.json({ error: lookupErr instanceof Error ? lookupErr.message : 'No se pudo consultar el usuario' }, { status: 500 })
+  }
 
   if (!existingUser) {
     const { data: created, error: createError } = await admin.auth.admin.createUser({

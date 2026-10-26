@@ -126,11 +126,13 @@ const listedIds = (r: { json: any }) => (r.json.data as Row[]).map(x => x.brand.
 // ── GET ──────────────────────────────────────────────────────────────────
 
 test('GET: todos los roles autorizados de la marca A consultan SU lista (y solo la suya)', async () => {
-  for (const user of ['u-A-owner', 'u-A-member', 'u-A-manager', 'u-A-finance']) {
+  for (const user of ['u-A-owner', 'u-A-member', 'u-A-manager']) {
     const r = await call('GET', { user, db: freshDb() })
     assert.equal(r.status, 200, user)
     assert.deepEqual(listedIds(r), [B, F1].sort(), `${user}: no incluye r3 (B→G) ni r4 (C→B)`)
   }
+  // 'finance' ya no es un rol de marca (owner/member): no concede acceso.
+  assert.equal((await call('GET', { user: 'u-A-finance', db: freshDb() })).status, 403, 'u-A-finance')
 })
 
 test('GET: solo expone id, nombre, logo e Instagram; nunca estado ni datos privados', async () => {

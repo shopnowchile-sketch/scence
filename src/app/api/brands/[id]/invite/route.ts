@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
-import { findAuthUserByEmail, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
 type Params = { params: { id: string } }

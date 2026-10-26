@@ -3,6 +3,8 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign, publicCampaignMetadata } from '@/lib/campaign-field-guards'
+import { canReapplyAfterProExpiry } from '@/lib/campaign-pro-reapply'
+import { publicDeliverableTemplates } from '@/lib/deliverable-template-title'
 
 type Params = { params: { id: string } }
 
@@ -67,7 +69,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: existing } = await admin
     .from('campaign_influencers')
-    .select('id, application_status, origin')
+    .select('id, application_status, origin, notes')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .maybeSingle()
@@ -76,6 +78,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // rechazada no deja rastro que bloquee la campaña — sigue visible y, con
   // Plan Pro, postulable por cuenta propia.
   const rejectedInvitation = existing?.application_status === 'rejected' && existing.origin === 'invitation'
+  const proExpiredApplication = canReapplyAfterProExpiry(existing)
+  const canReapply = rejectedInvitation || proExpiredApplication
 
   if (!existing && campaign.visibility !== 'open' && campaign.visibility !== 'private') {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
@@ -94,7 +98,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // 'rejected' y no hay deliverables, booking, contrato ni pago asociado,
   // se bloquea el acceso al detalle igual que si no existiera (pedido de
   // Pri 2026-07-13). No se toca la fila en la base.
-  if (existing?.application_status === 'rejected' && !rejectedInvitation) {
+  if (existing?.application_status === 'rejected' && !canReapply) {
     const [delivRes, contractRes, invoiceRes, bookingRes] = await Promise.all([
       admin.from('campaign_deliverables').select('id').eq('campaign_influencer_id', existing.id).limit(1),
       admin.from('contracts').select('id').eq('campaign_influencer_id', existing.id).limit(1),
@@ -126,6 +130,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // colaboradoras también son operativas: misma regla que my-campaigns.
     delete payload.brief_url
     delete payload.campaign_brands
+    // Solo el título de cada entregable; las instrucciones se liberan al aceptar.
+    payload.deliverable_templates = publicDeliverableTemplates(payload.deliverable_templates)
     payload.metadata = publicCampaignMetadata(campaign.metadata)
   }
 
@@ -190,8 +196,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     data: {
       ...payload,
       accepted_count: acceptedCount ?? 0,
-      _applied: !!existing && !rejectedInvitation,
-      application_status: rejectedInvitation ? null : (existing?.application_status ?? null),
+      _applied: !!existing && !canReapply,
+      application_status: canReapply ? null : (existing?.application_status ?? null),
       event_booking: visibleEventBooking,
       can_apply: campaign.visibility === 'open' || isPro,
       requires_pro: campaign.visibility === 'private' && !isPro,

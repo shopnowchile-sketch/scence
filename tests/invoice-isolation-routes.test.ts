@@ -159,9 +159,9 @@ test('la marca propietaria marca pagada SU factura: status, paid_at y referencia
   assert.ok(row.paid_at)
   assert.equal(row.payment_reference, 'TRX-9')
   assert.equal(inv(db, 'inv-B1').status, 'sent', 'la factura de B no se toca')
-  // Con rol finance de la misma marca también corresponde (billing.manage).
+  // 'finance' ya no es un rol de marca (solo owner/member): no concede facturación.
   const r2 = await call(one, 'PATCH', { user: 'u-A-finance', db: freshDb(), id: 'inv-A1', body: { action: 'mark_paid' } })
-  assert.equal(r2.status, 200)
+  assert.equal(r2.status, 404)
 })
 
 test('una marca propietaria SIN permiso de facturación no puede marcarla pagada', async () => {

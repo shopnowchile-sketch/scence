@@ -40,7 +40,23 @@ export async function GET(req: NextRequest) {
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  const orFilter = `brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`
+  // Include all campaigns where this brand is primary, creator or linked collaborator.
+  const { data: collaborations, error: collaborationsError } = await admin
+    .from('campaign_brands')
+    .select('campaign_id')
+    .eq('brand_id', brand.id)
+  if (collaborationsError) {
+    console.error('[GET /api/brand-campaigns] collaborations', collaborationsError)
+    return NextResponse.json({ error: collaborationsError.message }, { status: 500 })
+  }
+  const collaboratorIdCandidates = (collaborations ?? []).map(row => row.campaign_id).filter(Boolean)
+  const collaboratorCampaignIds = collaboratorIdCandidates.filter(
+    (id, index) => collaboratorIdCandidates.indexOf(id) === index,
+  )
+  const collaboratorFilter = collaboratorCampaignIds.length
+    ? `,id.in.(${collaboratorCampaignIds.join(',')})`
+    : ''
+  const orFilter = `brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}${collaboratorFilter}`
 
   let query = admin
     .from('campaigns')

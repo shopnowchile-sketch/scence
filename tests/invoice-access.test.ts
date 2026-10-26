@@ -6,7 +6,7 @@ import { register } from 'node:module'
 register('./support/ts-resolve.mjs', import.meta.url)
 const { decideInvoiceAccess, redactInvoiceForShare, isUuid } = await import('../src/lib/invoice-access.ts')
 
-type Role = 'owner' | 'brand_manager' | 'member' | 'finance'
+type Role = 'owner' | 'brand_manager' | 'member' | 'finance' // brand_manager y finance son valores heredados: se tratan como member
 const brand = (brandId: string, role: Role) => ({ brandId, role })
 const base = { isPlatformAdmin: false, brand: null, ownerBrandId: 'brand-A' as string | null, shareActive: false }
 const NONE = { read: false, edit: false, send: false, markPaid: false, voidOrOverdue: false, delete: false, share: false }
@@ -19,8 +19,8 @@ test('admin de plataforma: todo, también sobre facturas sin propietario', () =>
   }
 })
 
-test('marca propietaria con billing (owner/finance): gestiona, pero NUNCA void ni mark_overdue', () => {
-  for (const role of ['owner', 'finance'] as Role[]) {
+test('marca propietaria con billing (solo owner): gestiona, pero NUNCA void ni mark_overdue', () => {
+  for (const role of ['owner'] as Role[]) {
     const c = decideInvoiceAccess({ ...base, brand: brand('brand-A', role) })
     assert.equal(c.actor, 'owner_brand', role)
     assert.ok(c.read && c.edit && c.send && c.markPaid && c.delete && c.share, role)
@@ -28,8 +28,8 @@ test('marca propietaria con billing (owner/finance): gestiona, pero NUNCA void n
   }
 })
 
-test('marca propietaria sin permiso de facturación (brand_manager/member): sin acceso', () => {
-  for (const role of ['brand_manager', 'member'] as Role[]) {
+test('marca propietaria sin permiso de facturación (member y valores heredados brand_manager/finance): sin acceso', () => {
+  for (const role of ['brand_manager', 'member', 'finance'] as Role[]) {
     const c = decideInvoiceAccess({ ...base, brand: brand('brand-A', role) })
     assert.deepEqual({ ...c, actor: undefined }, { ...NONE, actor: undefined }, role)
     assert.equal(c.actor, 'none')
@@ -51,7 +51,7 @@ test('factura sin propietario (SCENCE o histórica): ninguna marca accede, ni si
 })
 
 test('acceso compartido activo: SOLO lectura; no edita, no paga, no envía, no borra y NO re-comparte', () => {
-  for (const role of ['owner', 'finance'] as Role[]) {
+  for (const role of ['owner'] as Role[]) {
     const c = decideInvoiceAccess({ ...base, brand: brand('brand-B', role), shareActive: true })
     assert.equal(c.actor, 'shared_brand', role)
     assert.equal(c.read, true)
@@ -61,7 +61,7 @@ test('acceso compartido activo: SOLO lectura; no edita, no paga, no envía, no b
 })
 
 test('acceso compartido exige billing.read de la marca destinataria', () => {
-  for (const role of ['brand_manager', 'member'] as Role[]) {
+  for (const role of ['brand_manager', 'member', 'finance'] as Role[]) {
     assert.equal(decideInvoiceAccess({ ...base, brand: brand('brand-B', role), shareActive: true }).actor, 'none', role)
   }
 })

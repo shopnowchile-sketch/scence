@@ -88,11 +88,11 @@ test('influencer-report: roles sin report.read, otra marca e influencer ajena a 
   const route = await import('../src/app/api/campaigns/[id]/influencer-report/route.ts')
   const call = async (u: string | null, camp: string, inf: string) => { as(u); try { return (await (route as any).GET(req(`http://localhost/x?influencer_id=${inf}`), { params: { id: camp } })).status } catch { return -1 } }
   assert.equal(await call(null, 'camp-A', 'inf-in'), 401)
-  for (const u of ['uMemA', 'uFinA']) assert.equal(await call(u, 'camp-A', 'inf-in'), 404, `${u} sin report.read`)
+  assert.equal(await call('uFinA', 'camp-A', 'inf-in'), 404, 'finance ya no es rol de marca: sin acceso')
   assert.equal(await call('uOwnerB', 'camp-A', 'inf-in'), 404, 'otra marca')
   assert.equal(await call('uOwnerA', 'camp-A', 'inf-out'), 404, 'influencer que no participa en la campaña')
   assert.equal(await call('uNadie', 'camp-A', 'inf-in'), 404)
-  for (const u of ['uOwnerA', 'uMgrA', 'uAdmin']) { const s = await call(u, 'camp-A', 'inf-in'); assert.ok(![401, 403, 404].includes(s), `${u} debe pasar la autorización (status ${s})`) }
+  for (const u of ['uOwnerA', 'uMgrA', 'uMemA', 'uAdmin']) { const s = await call(u, 'camp-A', 'inf-in'); assert.ok(![401, 403, 404].includes(s), `${u} debe pasar la autorización (status ${s})`) }
 })
 
 // ── POST /api/influencers: antes sin autorización y con la organización tomada del body/metadata ──
@@ -137,8 +137,8 @@ test('influencer-report: marca pendiente/rechazada/suspendida → 404 aunque sea
   assert.equal(await call('uP', 'camp-P'), 404, 'pendiente')
   assert.equal(await call('uR', 'camp-R'), 404, 'rechazada')
   assert.equal(await call('uS', 'camp-S'), 404, 'suspendida')
-  // Colaboradora en campaign_brands: no da acceso al reporte de la campaña de otra marca.
-  assert.equal(await call('uOwnerB', 'camp-A'), 404, 'marca solo colaboradora')
+  // Colaboradora en campaign_brands (opción A): mismo acceso que la principal, solo en las campañas donde está vinculada.
+  assert.ok(![401, 403, 404].includes(await call('uOwnerB', 'camp-A')), 'marca colaboradora vinculada a la campaña')
   // Propiedad por created_by_brand_id (brand_id nulo): el dueño sigue pasando; otra marca no.
   assert.ok(![401, 403, 404].includes(await call('uOwnerA', 'camp-C')), 'dueña por created_by_brand_id')
   assert.equal(await call('uOwnerB', 'camp-C'), 404, 'otra marca en camp-C')

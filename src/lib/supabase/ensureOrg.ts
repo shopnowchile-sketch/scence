@@ -1,33 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { roleHasBrandPermission, type BrandPermission } from '@/lib/brand-permissions'
+import { roleHasBrandPermission, normalizeBrandRole, type BrandPermission, type BrandRole } from '@/lib/brand-permissions'
 import { brandStatusAllows, capabilityForPermission, type BrandCapability } from '@/lib/brand-status-access'
 import { exactEmailPattern } from '@/lib/email-match'
+import { reconcileOrphanProSubscriptions } from '@/lib/influencer-pro'
 export type { BrandPermission } from '@/lib/brand-permissions'
 
 export type OrgRole = 'super_admin' | 'brand_manager' | 'member' | 'finance' | 'influencer'
 
 /** Roles con acceso global de plataforma (SCENCE). */
 export const ADMIN_ROLES: OrgRole[] = ['super_admin']
-
-/** Busca por correo en todas las páginas de Auth. Nunca crear una identidad
- * nueva sin agotar la búsqueda: el mismo auth.users.id puede tener funciones
- * de influencer y de marca. */
-export async function findAuthUserByEmail(admin: SupabaseClient, email: string) {
-  const normalized = email.trim().toLowerCase()
-  let page = 1
-  const perPage = 1000
-  for (;;) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
-    // Falla cerrado: `null` significa "se recorrió Auth y no existe". Si la
-    // consulta falla, crear una cuenta sería arriesgar una identidad duplicada.
-    if (error) throw new Error(`[findAuthUserByEmail] listUsers failed: ${error.message}`)
-    if (!data?.users?.length) return null
-    const match = data.users.find(candidate => candidate.email?.trim().toLowerCase() === normalized)
-    if (match) return match
-    if (data.users.length < perPage) return null
-    page += 1
-  }
-}
 
 /**
  * getUserRole — obtiene el rol del usuario en su organización.
@@ -375,7 +356,7 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
 export type BrandAccess = {
   brandId: string
   organizationId: string
-  role: 'owner' | 'brand_manager' | 'finance' | 'member'
+  role: BrandRole
   isOwner: boolean
   /** Estado de aprobación de la marca (brands.status). Gobierna qué puede hacer. */
   status: string | null
@@ -405,7 +386,8 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
     .select('organization_id, brand_id, role, is_owner')
     .eq('user_id', userId)
     .eq('is_active', true)
-    .in('role', ['brand_manager', 'member', 'finance'])
+    // 'finance' ya no es un rol de marca: no concede acceso (falla cerrado).
+    .in('role', ['brand_manager', 'member'])
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
 
@@ -424,7 +406,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
       return {
         brandId: brand.id,
         organizationId: brand.organization_id,
-        role: membership.is_owner ? 'owner' : ((membership.role as BrandAccess['role']) ?? 'brand_manager'),
+        role: normalizeBrandRole(membership.role, membership.is_owner === true),
         isOwner: membership.is_owner === true,
         status: (brand.status as string | null) ?? null,
       }
@@ -477,11 +459,8 @@ export async function linkPendingBrandMembership(user: User): Promise<boolean> {
     return false
   }
 
-  const orgRole: OrgRole = pending.role === 'finance'
-    ? 'finance'
-    : pending.role === 'member'
-      ? 'member'
-      : 'brand_manager'
+  // Una marca tiene solo owner y member; todo no-owner se guarda como 'brand_manager' (igual que el trigger).
+  const orgRole: OrgRole = 'brand_manager'
   const { error: membershipError } = await admin.from('organization_members').upsert({
     organization_id: brand.organization_id,
     brand_id: pending.brand_id,

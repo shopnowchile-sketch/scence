@@ -11,7 +11,7 @@ const NOW = '2026-10-13T12:00:00.000Z'
 type Actor = 'admin' | 'owner' | 'owner-readonly' | 'shared' | 'none'
 const capsOf = (actor: Actor) => decideInvoiceAccess({
   isPlatformAdmin: actor === 'admin',
-  brand: actor === 'none' ? null : { brandId: 'brand-A', role: actor === 'owner-readonly' ? 'member' : 'finance' },
+  brand: actor === 'none' ? null : { brandId: 'brand-A', role: actor === 'owner-readonly' ? 'member' : 'owner' },
   ownerBrandId: actor === 'shared' ? 'brand-B' : 'brand-A',
   shareActive: actor === 'shared',
 })

@@ -62,13 +62,14 @@ test('GET: sin sesión 401; sin membresía, influencer o acceso de marca no resu
 
 test('GET: cada rol de marca lee SOLO su organización y la respuesta no trae tokens ni datos de pasarela', async () => {
   const db = freshDb()
-  for (const user of ['uA-owner', 'uA-manager', 'uA-member', 'uA-fin']) {
+  for (const user of ['uA-owner', 'uA-manager', 'uA-member']) {
     const r = await call('GET', { user, db })
     assert.equal(r.status, 200, user)
     assert.equal(r.json.data.id, 'org-A', user)
     assert.equal(r.json.data.billing_email, 'org-A@facturas.test')
     noSecrets(r.json.data)
   }
+  assert.equal((await call('GET', { user: 'uA-fin', db })).status, 403, 'finance ya no es rol de marca')
   assert.equal((await call('GET', { user: 'uB-owner', db })).json.data.id, 'org-B')
 })
 

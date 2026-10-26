@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
+import { publicDeliverableTemplates } from '@/lib/deliverable-template-title'
 
 // GET /api/influencer/campaigns
 // Returns campaigns this influencer is assigned to.
@@ -50,5 +51,13 @@ export async function GET() {
     return campaignStatus !== 'completed' || ci.application_status === 'accepted'
   })
 
-  return NextResponse.json({ data: filtered })
+  // Antes de aceptar solo el título de cada entregable (las instrucciones son privadas hasta la aceptación).
+  const data_out = filtered.map(ci => {
+    if (ci.application_status === 'accepted') return ci
+    const campaign = ci.campaign as unknown as Record<string, unknown> | null
+    if (!campaign) return ci
+    return { ...ci, campaign: { ...campaign, deliverable_templates: publicDeliverableTemplates(campaign.deliverable_templates) } }
+  })
+
+  return NextResponse.json({ data: data_out })
 }

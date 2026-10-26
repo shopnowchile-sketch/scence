@@ -82,13 +82,13 @@ test('bookings GET (agenda): sin sesión 401; ningún rol de marca → 403; admi
   assert.deepEqual(((await r.json()).data as Row[]).map(b => b.id), ['bk-adm'])
 })
 test('bookings escritura: owner y brand_manager de la marca dueña de la campaña pasan (DELETE y PUT)', async () => {
-  for (const u of ['uOwnerA', 'uMgrA']) {
+  for (const u of ['uOwnerA', 'uMgrA', 'uMemA']) {
     as(u); assert.ok(ALLOWED(await status(() => bDel('bk-A'))), `DELETE ${u}`)
     as(u); assert.ok(ALLOWED(await status(() => bPut({ id: 'bk-A', title: 'x' }))), `PUT ${u}`)
   }
 })
-test('bookings escritura: member y finance de la marca → 403 en POST/PUT/DELETE', async () => {
-  for (const u of ['uMemA', 'uFinA']) {
+test('bookings escritura: finance (ya no es rol de marca) → 403 en POST/PUT/DELETE', async () => {
+  for (const u of ['uFinA']) {
     as(u); assert.equal((await bDel('bk-A')).status, 403, `DELETE ${u}`)
     as(u); assert.equal((await bPut({ id: 'bk-A', title: 'x' })).status, 403, `PUT ${u}`)
     as(u); assert.equal((await bPost({ campaign_id: 'camp-A' })).status, 403, `POST ${u}`)

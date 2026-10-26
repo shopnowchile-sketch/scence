@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 
 export async function resolveCampaignAssetAccess(
   userId: string,
@@ -24,25 +25,20 @@ export async function resolveCampaignAssetAccess(
   if (access) {
 
     const ownsCampaign = campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
-    if (ownsCampaign) return {
-      admin,
-      campaign,
-      canView: hasBrandPermission(access, 'campaign.read'),
-      canViewBrief: hasBrandPermission(access, 'campaign.read'),
-      canViewSponsorBrief: hasBrandPermission(access, 'campaign.read'),
-      canViewBrandGuide: hasBrandPermission(access, 'campaign.read'),
-      canManage: hasBrandPermission(access, 'campaign.manage'),
+    const isCollaborator = await isCampaignBrandCollaborator(admin, campaignId, access.brandId)
+    if (ownsCampaign || isCollaborator) {
+      const canRead = hasBrandPermission(access, 'campaign.read')
+      const canManage = hasBrandPermission(access, 'campaign.manage')
+      return {
+        admin,
+        campaign,
+        canView: canRead,
+        canViewBrief: canRead,
+        canViewSponsorBrief: canRead,
+        canViewBrandGuide: canRead,
+        canManage,
+      }
     }
-
-    const { data: coBrand } = await admin
-      .from('campaign_brands')
-      .select('campaign_id')
-      .eq('campaign_id', campaignId)
-      .eq('brand_id', access.brandId)
-      .maybeSingle()
-
-    const canRead = !!coBrand && hasBrandPermission(access, 'campaign.read')
-    if (canRead) return { admin, campaign, canView: true, canViewBrief: true, canViewSponsorBrief: true, canViewBrandGuide: true, canManage: false }
 
     const { data: opportunityCampaign } = await admin
       .from('campaigns')

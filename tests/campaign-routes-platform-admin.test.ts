@@ -50,17 +50,17 @@ const ROUTES: Record<string, () => Promise<Response>> = {
 }
 // quién puede cada operación: report/export → report.read; collab/duplicate → campaign.manage
 const WHO: Record<string, { yes: string[]; no: string[] }> = {
-  report:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA'], no: ['uExAdmin', 'uMemA', 'uFinA', 'uMgrB', 'uNoBrand'] },
-  export:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA'], no: ['uExAdmin', 'uMemA', 'uFinA', 'uMgrB', 'uNoBrand'] },
-  collab:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA'], no: ['uExAdmin', 'uMemA', 'uFinA', 'uMgrB', 'uNoBrand'] },
-  duplicate: { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA'], no: ['uExAdmin', 'uMemA', 'uFinA', 'uMgrB', 'uNoBrand'] },
+  report:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
+  export:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
+  collab:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
+  duplicate: { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
 }
 for (const [name, call] of Object.entries(ROUTES)) {
   test(`${name}: sin sesión → 401`, async () => { as(null); assert.equal((await call()).status, 401) })
-  test(`${name}: permitidos (admin activo, admin activo con marca ajena, owner, brand_manager)`, async () => {
+  test(`${name}: permitidos (admin activo, admin activo con marca ajena, owner, member)`, async () => {
     for (const u of WHO[name].yes) { as(u); const s = await st(call); assert.ok(allowed(s), `${u} → ${s}`) }
   })
-  test(`${name}: denegados 403 (admin inactivo, member, finance, otra marca, usuario sin marca)`, async () => {
+  test(`${name}: denegados 403 (admin inactivo, finance sin acceso, otra marca, usuario sin marca)`, async () => {
     for (const u of WHO[name].no) { as(u); assert.equal((await call()).status, 403, u) }
   })
 }

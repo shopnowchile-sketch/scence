@@ -21,9 +21,11 @@ test('la membresía de marca no convierte a una influencer en admin de plataform
 })
 
 test('los permisos de marca preservan los límites de cada rol', () => {
+  // Una marca tiene solo owner y member; 'brand_manager' y 'finance' heredados se tratan como member.
+  assert.equal(roleHasBrandPermission('owner', 'billing.read'), true)
+  assert.equal(roleHasBrandPermission('member', 'campaign.manage'), true)
   assert.equal(roleHasBrandPermission('brand_manager', 'campaign.manage'), true)
-  assert.equal(roleHasBrandPermission('finance', 'billing.read'), true)
-  assert.equal(roleHasBrandPermission('member', 'campaign.manage'), false)
+  assert.equal(roleHasBrandPermission('finance', 'billing.read'), false)
   assert.equal(roleHasBrandPermission('member', 'team.manage'), false)
 })
 

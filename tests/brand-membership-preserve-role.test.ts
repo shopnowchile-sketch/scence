@@ -81,3 +81,14 @@ test('guardia: invitar/reenviar de marca no hace upsert directo de organization_
     assert.ok(readFileSync(f, 'utf8').includes('ensureBrandMembership'), `${f}: debe usar ensureBrandMembership`)
   }
 })
+
+test('guardia: ninguna ruta de marca acepta brand_manager/finance como rol invitable', () => {
+  for (const f of ['src/app/api/brand/members/route.ts', 'src/app/api/brands/[id]/members/route.ts']) {
+    assert.match(readFileSync(f, 'utf8'), /const MEMBER_ROLES = \['member'\] as const/, f)
+  }
+  const invite = readFileSync('src/app/api/settings/team/invite/route.ts', 'utf8')
+  assert.match(invite, /brandAccess && role !== 'member'/)
+  assert.match(invite, /ensureBrandMembership/)
+  const team = readFileSync('src/app/api/settings/team/route.ts', 'utf8')
+  assert.match(team, /brandAccess\s*\?\s*\['member'\]/)
+})

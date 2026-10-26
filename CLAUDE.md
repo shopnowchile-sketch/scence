@@ -403,6 +403,16 @@ Una influencer con `is_active = false` no puede recibir ningún email enviado po
 - Consumidores (brands, campaigns, bookings, events) guardan **solo `location_id` → place**. Nunca volver a guardar country/region/city/commune/address en paralelo. País/región/comuna se derivan con `location_breadcrumb()`.
 - `brand_locations` es legado: se migra a `locations` y se elimina (Fase 2). No agregarle funcionalidad.
 
+### 16.12 Roles de marca: solo owner y member (2026-10-26)
+
+Una marca tiene **dos** roles: `owner` (`organization_members.is_owner`) y `member`. No existen `brand_manager` ni `finance` como roles de marca.
+
+- `member` = operación completa (campañas, postulaciones, influencers, lugares, reportes). `owner` = además equipo, facturación y datos de la marca. Fuente: `src/lib/brand-permissions.ts`.
+- Valores heredados en la base (`brand_manager`, `finance`, `member`) se **normalizan** con `normalizeBrandRole()`; todo no-owner se guarda en `organization_members.role` como `brand_manager` (igual que el trigger). `finance` no concede acceso a una marca.
+- Invitar, reenviar y cambiar rol pasan por `ensureBrandMembership()` y solo aceptan `member`; reenviar nunca baja permisos existentes.
+- La migración `preserve_brand_member_role_sync` se retiró: no se aplica. No re-crearla.
+- El enum `user_role` y los datos existentes no se tocaron; limpiarlos requiere migración y aprobación explícita. Los roles de plataforma (`super_admin`, `influencer`, `finance` de nómina) no cambian.
+
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 
 La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12.

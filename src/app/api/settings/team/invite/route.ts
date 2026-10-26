@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
+import { ensureBrandMembership } from '@/lib/brand-membership'
 import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isOrgAdmin } from '@/lib/influencers/authz'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   if (!email || !role) return NextResponse.json({ error: 'email y role son requeridos' }, { status: 422 })
   if (!VALID_ROLES.includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
-  if (brandAccess && !['brand_manager', 'member', 'finance'].includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
+  if (brandAccess && role !== 'member') return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
 
   const name = display_name?.trim() || email.split('@')[0]
 
@@ -126,16 +127,24 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Upsert organization_members
-  const { error: memberErr } = await admin
-    .from('organization_members')
-    .upsert(
-      { organization_id: orgId, brand_id: brandAccess?.brandId ?? null, user_id: authUserId, role, is_owner: false, is_active: true },
-      { onConflict: 'organization_id,user_id', ignoreDuplicates: false }
-    )
+  // Membresía: en una marca (solo owner y member) nunca se baja un rol existente; el equipo de plataforma conserva su upsert.
+  if (brandAccess) {
+    try {
+      await ensureBrandMembership(admin, { organizationId: orgId, brandId: brandAccess.brandId, userId: authUserId, requestedRole: role })
+    } catch (membershipErr) {
+      return NextResponse.json({ error: membershipErr instanceof Error ? membershipErr.message : 'No se pudo asegurar el acceso' }, { status: 500 })
+    }
+  } else {
+    const { error: memberErr } = await admin
+      .from('organization_members')
+      .upsert(
+        { organization_id: orgId, brand_id: null, user_id: authUserId, role, is_owner: false, is_active: true },
+        { onConflict: 'organization_id,user_id', ignoreDuplicates: false }
+      )
 
-  if (memberErr) {
-    return NextResponse.json({ error: memberErr.message }, { status: 500 })
+    if (memberErr) {
+      return NextResponse.json({ error: memberErr.message }, { status: 500 })
+    }
   }
 
   // Generate magic link

@@ -5,12 +5,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { decideCollaboratorAccess, COLLABORATOR_BRAND_FIELDS, UUID_RE } from '../src/lib/brand-collaborators.ts'
 import { roleHasBrandPermission, type BrandRole } from '../src/lib/brand-permissions.ts'
 import { brandStatusAllows } from '../src/lib/brand-status-access.ts'
 import { normalizeInstagramHandle } from '../src/lib/brands/instagram.ts'
 
-const root = new URL('../', import.meta.url).pathname
+const root = fileURLToPath(new URL('../', import.meta.url))
 const read = (p: string) => readFileSync(join(root, p), 'utf8')
 const A = '11111111-1111-4111-8111-111111111111'
 const B = '22222222-2222-4222-8222-222222222222'

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { exactEmailPattern, exactIlikePattern, isPlausibleEmail } from '../src/lib/email-match.ts'
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -86,7 +87,7 @@ function walk(dir: string, out: string[] = []): string[] {
 test('ninguna ruta inserta marcas ya aprobadas: toda marca nueva pasa por SCENCE', () => {
   // Regla de negocio (2026-10-22): ser colaboradora de una campaña no equivale
   // a estar aprobada. Si aparece una inserción con 'approved', revisar.
-  const root = new URL('../src', import.meta.url).pathname
+  const root = fileURLToPath(new URL('../src', import.meta.url))
   const offenders: string[] = []
   for (const file of walk(root)) {
     const source = readFileSync(file, 'utf8')

@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { BRAND_STATUSES, brandStatusAllows, capabilityForPermission } from '../src/lib/brand-status-access.ts'
 import { decideBrandRegistration, registrationKey, type RegistrationActor } from '../src/lib/brand-registration-policy.ts'
 
-const root = new URL('../', import.meta.url).pathname
+const root = fileURLToPath(new URL('../', import.meta.url))
 const read = (path: string) => readFileSync(join(root, path), 'utf8')
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(join(root, dir))) {

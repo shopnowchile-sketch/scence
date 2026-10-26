@@ -1,11 +1,12 @@
 // T1 — análisis estático: no existen vías alternativas a las barreras. Sin red.
 //   node --test tests/nonprod-safety-static.test.ts
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-const ROOT = new URL('..', import.meta.url).pathname
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name === '.next' || name === '.git' || name === '.claude') continue

@@ -684,7 +684,7 @@ SCENCE no usa temas visuales sobre planos (no aplica, a diferencia de un sistema
 | INT-01 | Google Calendar (Service Account) | Sincroniza `bookings` con eventos de calendario para la agenda operativa de Admin. | Entrada/Salida |
 | INT-02 | Apify (Instagram Sync) | Actualiza followers/engagement de `influencer_social_profiles` bajo demanda desde Data Quality. | Entrada |
 | INT-03 | Resend | Envío de emails transaccionales (ver §9). | Salida |
-| INT-04 | Stripe | Checkout/Webhook/Portal plan-aware, conectados a `subscription_plans`/`subscriptions`. **v2.2:** UI de plan movida a `/brand-settings/plan` (MK-12a); `/brand-billing` es ahora solo el placeholder de billing operativo (MK-12b). Cobro real no habilitado en esta fase — botones de contratación disparan `mailto:` a ventas. | Entrada/Salida |
+| INT-04 | PayPal | Checkout y webhook de suscripciones (`/api/paypal/*`) conectados a `subscriptions`/`subscription_payments`. Stripe y MercadoPago quedaron descartados (sin datos en producción; CLAUDE.md §16.5). **v2.2:** UI de plan en `/brand-settings/plan` (MK-12a); `/brand-billing` es solo el placeholder de billing operativo (MK-12b). El cobro de suscripciones de marca no está habilitado y su modelo comercial queda pendiente (requerimiento INT-001): los botones de contratación disparan `mailto:` a ventas. | Entrada/Salida |
 | INT-05 | Supabase Auth | Autenticación y sesión; `user_metadata` determina el portal (`is_brand`, `is_influencer`). | Entrada/Salida |
 
 ---

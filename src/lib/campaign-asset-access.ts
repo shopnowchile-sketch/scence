@@ -80,7 +80,8 @@ export async function resolveCampaignAssetAccess(
         .eq('influencer_id', influencer.id)
         .eq('type', 'event_attendance')
         .maybeSingle()
-      attendanceConfirmed = attendance?.attendance_response === 'confirmed'
+      // Sin entregable de asistencia no hay confirmación que exigir: rige solo la aceptación.
+      attendanceConfirmed = !attendance || attendance.attendance_response === 'confirmed'
     }
     const canView = isSelfCreated || (membership?.application_status === 'accepted' && attendanceConfirmed)
     // Briefs and operational files are private until the influencer confirms

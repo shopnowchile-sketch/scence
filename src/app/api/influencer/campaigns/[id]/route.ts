@@ -128,7 +128,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('influencer_id', influencer.id)
       .eq('type', 'event_attendance')
       .maybeSingle()
-    attendanceConfirmed = attendance?.attendance_response === 'confirmed'
+    // Sin entregable de asistencia no hay confirmación que exigir (campañas sin evento): rige solo la aceptación.
+    attendanceConfirmed = !attendance || attendance.attendance_response === 'confirmed'
   }
   const operationalAccess = isAccepted && attendanceConfirmed
   const payload: Record<string, unknown> = { ...campaign }

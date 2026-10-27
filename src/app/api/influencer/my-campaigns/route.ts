@@ -258,8 +258,10 @@ export async function GET() {
       const booking = byCampaign.get(campaign.id as string) ?? campaignEventByCampaign.get(campaign.id as string)
       if (!booking) continue
       const accepted = row.application_status === 'accepted'
-      const attendanceConfirmed = ((row.campaign_deliverables as Array<Record<string, unknown>> | null) ?? [])
-        .some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')
+      // Sin entregable de asistencia no hay confirmación que exigir: rige solo la aceptación.
+      const attendanceItems = ((row.campaign_deliverables as Array<Record<string, unknown>> | null) ?? [])
+        .filter(d => d.type === 'event_attendance')
+      const attendanceConfirmed = attendanceItems.length === 0 || attendanceItems.some(d => d.attendance_response === 'confirmed')
       const operationalAccess = row._self_created === true || (accepted && attendanceConfirmed)
       if (operationalAccess) {
         // La dirección exacta, instrucciones y demás datos operativos quedan

@@ -7,7 +7,7 @@ import {
   TrendingUp, Users, Calendar, ChevronRight, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { isDeliverableComplete, isAttendanceDeliverable, isAwaitingContentReview, isContentRejected, effectiveDeliverableStatus } from '@/lib/deliverable-status'
 import { toast } from 'sonner'
 
 type DeliverableStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'published'
@@ -106,7 +106,7 @@ export default function BrandDashboard() {
     [campaigns, isCompletedCampaign],
   )
   const pendingDeliverables = campaigns.flatMap(c =>
-    c.campaign_deliverables.filter(d => d.status === 'in_review')
+    c.campaign_deliverables.filter(isAwaitingContentReview)
   )
   const totalPendingItems = pendingDeliverables.length + pendingDocuments.length
   // Solo cuenta influencers con postulación/invitación aceptada — antes
@@ -230,7 +230,7 @@ export default function BrandDashboard() {
               const StatusIcon = cfg.icon
               const delTotal  = c.campaign_deliverables.length
               const delDone   = c.campaign_deliverables.filter(isDeliverableComplete).length
-              const delReview = c.campaign_deliverables.filter(d => d.status === 'in_review').length
+              const delReview = c.campaign_deliverables.filter(isAwaitingContentReview).length
               const pct = delTotal > 0 ? Math.round((delDone / delTotal) * 100) : 0
 
               return (

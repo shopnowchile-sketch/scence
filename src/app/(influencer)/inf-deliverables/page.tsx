@@ -8,7 +8,8 @@ import {
   Film, Layers, Video, Radio, FileText, Sparkles, CalendarCheck, MapPin, Send, Image as ImageIcon, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { isDeliverableComplete, effectiveDeliverableStatus } from '@/lib/deliverable-status'
+import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
 import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ type Deliverable = {
   status: string
   content_url: string | null
   published_url: string | null
+  attendance_response: string | null
   campaign_id: string
   campaign_name: string
   campaign_status: string
@@ -129,9 +131,15 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
   const [url, setUrl] = useState(d.content_url ?? '')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
-  const cfg = DELIVERABLE_STATUS[d.status] ?? { label: d.status, color: 'bg-gray-100 text-gray-500' }
+  const isAttendance = d.type === 'event_attendance'
+  const cfg = isAttendance
+    ? (d.attendance_response === 'confirmed' ? { label: 'Confirmada', color: 'bg-green-100 text-green-700' }
+      : d.attendance_response === 'declined' ? { label: 'No asistirás', color: 'bg-gray-100 text-gray-600' }
+      : isAttendanceDeadlineExpired(d.due_date) ? { label: 'Plazo vencido', color: 'bg-amber-100 text-amber-700' }
+      : { label: 'Por confirmar', color: 'bg-amber-100 text-amber-700' })
+    : DELIVERABLE_STATUS[d.status] ?? { label: d.status, color: 'bg-gray-100 text-gray-500' }
   const canSubmit = d.type !== 'event_attendance' && (d.status === 'pending' || d.status === 'rejected')
-  const isDone = d.status === 'approved' || d.status === 'published'
+  const isDone = d.status === 'approved' || d.status === 'published' || (isAttendance && !!d.attendance_response)
 
   async function submit() {
     if (!url) { toast.error('Agrega el link del contenido'); return }
@@ -158,9 +166,9 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
   // más abajo, esto solo la refuerza con color).
   const avatarCls = isDone
     ? 'bg-green-50 text-green-500'
-    : d.status === 'in_review'
+    : !isAttendance && d.status === 'in_review'
     ? 'bg-blue-50 text-blue-500'
-    : d.status === 'rejected'
+    : !isAttendance && d.status === 'rejected'
     ? 'bg-amber-50 text-amber-500'
     : 'bg-amber-50 text-amber-500'
 
@@ -232,7 +240,7 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
               {d.status === 'rejected' ? 'Subir nuevamente' : d.content_url ? 'Actualizar' : 'Subir'}
             </button>
           )}
-          {d.status === 'in_review' && (
+          {!isAttendance && d.status === 'in_review' && (
             <span className="text-[10px] text-blue-500 font-medium">En revisión</span>
           )}
         </div>
@@ -338,7 +346,9 @@ function DeliverablesPageInner() {
             due_date: d.due_date,
             scheduled_at: d.scheduled_at ?? null,
             sequence_number: d.sequence_number ?? null,
-            status: d.status,
+            // En asistencia manda la respuesta (confirmada / no asistirá), no un estado de revisión.
+            status: effectiveDeliverableStatus(d),
+            attendance_response: d.attendance_response ?? null,
             content_url: d.content_url ?? null,
             published_url: d.published_url ?? null,
             campaign_id: c.id,

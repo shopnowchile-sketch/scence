@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
-import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { isDeliverableComplete, isAttendanceDeliverable, isAwaitingContentReview, isContentRejected, effectiveDeliverableStatus } from '@/lib/deliverable-status'
 import { deliverableTemplateTitle } from '@/lib/deliverable-template-title'
 import { isAttendanceDeadlineExpired, getCampaignDateKey } from '@/lib/attendance-state'
 import Link from 'next/link'
@@ -344,9 +344,9 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
   const [attendanceSaving, setAttendanceSaving] = useState<string | null>(null)
   const total = items.length
   const submitted = items.filter(d => isDeliverableComplete(d)).length
-  const awaitingReview = items.filter(d => d.status === 'in_review').length
-  const rejected = items.filter(d => d.status === 'rejected').length
-  const approved = items.filter(d => ['approved', 'published', 'completed'].includes(d.status)).length
+  const awaitingReview = items.filter(isAwaitingContentReview).length
+  const rejected = items.filter(isContentRejected).length
+  const approved = items.filter(d => ['approved', 'published', 'completed'].includes(effectiveDeliverableStatus(d))).length
   const isAttendanceExpired = (deliverable: Deliverable) => {
     if (deliverable.type !== 'event_attendance' || deliverable.attendance_response || !deliverable.due_date) return false
     return isAttendanceDeadlineExpired(deliverable.due_date)
@@ -447,10 +447,11 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
           const isNoShow = isAttendance && d.attendance_outcome === 'no_show'
           const attendanceExpired = isAttendanceExpired(d)
           const contentOverdue = isContentOverdue(d)
-          const canSubmit = d.status === 'pending' || d.status === 'rejected'
-          const isReview = d.status === 'in_review'
+          // La asistencia no se envía ni se revisa: se confirma y queda registrada. Solo el contenido pasa por revisión.
+          const canSubmit = !isAttendance && (d.status === 'pending' || d.status === 'rejected')
+          const isReview = isAwaitingContentReview(d)
           const complete = isDeliverableComplete(d) && !isReview
-          const isRejected = d.status === 'rejected'
+          const isRejected = isContentRejected(d)
           const opened = openId === d.id
           const attendanceLabel = isNoShow ? 'Participación no registrada' : d.attendance_response === 'confirmed' ? 'Asistencia confirmada' : d.attendance_response === 'declined' ? 'No asistiré' : null
           const dueDays = d.due_date && !complete ? daysRemaining(d.due_date) : null

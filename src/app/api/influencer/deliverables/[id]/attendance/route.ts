@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
+import { attendanceStatusForResponse } from '@/lib/deliverable-status'
 import { attendanceConfirmedEmail, FROM_EMAIL, getResend } from '@/lib/resend'
 
 type Params = { params: { id: string } }
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const { data, error } = await admin.from('campaign_deliverables').update({
-    status: body.response === 'confirmed' ? 'approved' : 'rejected',
+    status: attendanceStatusForResponse(body.response),
     attendance_response: body.response,
     attendance_note: body.note?.trim() || null,
     attendance_responded_at: new Date().toISOString(),

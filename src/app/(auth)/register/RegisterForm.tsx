@@ -290,6 +290,7 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [emailSent, setEmailSent] = useState(true)
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<InfluencerValues>({
     resolver: zodResolver(influencerSchema),
@@ -299,33 +300,31 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
   async function onSubmit({ display_name, instagram_username, location_id, address, birth_date, email, password }: InfluencerValues) {
     const instagramHandle = normalizeInstagramHandle(instagram_username)
     setLoading(true); setError(null)
-    const { error: e } = await supabase.auth.signUp({
-      email, password,
-      options: {
-        // Datos transitorios para handle_new_user(). El trigger los valida y
-        // crea influencer + Instagram en la misma transacción de Auth; luego
-        // los retira de raw_user_meta_data para no duplicar el perfil ahí.
-        data: {
-          full_name: display_name,
-          display_name,
-          is_influencer: true,
-          instagram_username: instagramHandle,
-          location_id,
-          address,
-          birth_date,
-        },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (e) {
-      setError(e.message === 'User already registered' ? 'Este email ya está registrado' : e.message)
+    let res: Response
+    try {
+      res = await fetch('/api/auth/register-influencer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name, instagram_username: instagramHandle, location_id, address, birth_date, email, password,
+        }),
+      })
+    } catch {
+      setError('No pudimos conectar. Revisa tu conexión e intenta de nuevo.')
       setLoading(false)
       return
     }
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setError(json.error ?? 'No pudimos crear tu cuenta. Intenta nuevamente.')
+      setLoading(false)
+      return
+    }
+    setEmailSent(json.email_sent !== false)
     setSuccess(true); setLoading(false)
   }
 
-  if (success) return <SuccessScreen type="influencer" />
+  if (success) return <SuccessScreen type="influencer" emailSent={emailSent} />
 
   return (
     <div className="card p-8 shadow-card-md">

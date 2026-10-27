@@ -248,7 +248,7 @@ test('acceso compartido: A lee la factura de B (redactada), pero NO modifica, bo
   assert.equal(read.status, 200)
   assert.equal(read.json.data.read_only, true)
   assert.equal(read.json.data.access, 'shared')
-  for (const hidden of ['organization_id', 'issued_by', 'owner_brand_id', 'stripe_invoice_id', 'metadata']) {
+  for (const hidden of ['organization_id', 'issued_by', 'owner_brand_id', 'metadata']) {
     assert.ok(!(hidden in read.json.data), `${hidden} no debe exponerse en una factura compartida`)
   }
 

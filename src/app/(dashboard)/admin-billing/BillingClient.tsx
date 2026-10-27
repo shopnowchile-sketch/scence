@@ -593,6 +593,20 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [showNewInvoice, setShowNewInvoice] = useState(false)
   const [showNewPayroll, setShowNewPayroll] = useState(false)
+  // Portal de marca: una marca pendiente o rechazada consulta su facturación pero no emite (el servidor responde 403).
+  const [brandCanIssue, setBrandCanIssue] = useState(true)
+  useEffect(() => {
+    if (!invoicesOnly) return
+    let cancelled = false
+    fetch('/api/brand/me', { cache: 'no-store' })
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => {
+        const status = json?.data?.status as string | undefined
+        if (!cancelled && status) setBrandCanIssue(status === 'approved' || status === 'suspended')
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [invoicesOnly])
 
   // 'Vencidas' se deriva (impagas con vencimiento pasado) y no existe como filtro
   // de servidor fiable: casi ninguna factura vencida llega a tener status 'overdue'.
@@ -661,12 +675,12 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Billing</h1>
           <p className="text-sm text-gray-500 mt-0.5">{invoicesOnly ? 'Facturas asociadas a tus campañas' : 'Facturación a clientes y pagos a influencers'}</p>
         </div>
-        <button
+        {(!invoicesOnly || brandCanIssue) && <button
           onClick={() => invoicesOnly || tab === 'invoices' ? setShowNewInvoice(true) : setShowNewPayroll(true)}
           className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors">
           <Plus className="h-4 w-4" />
           {invoicesOnly || tab === 'invoices' ? 'Nueva factura' : 'Nuevo payroll'}
-        </button>
+        </button>}
       </div>
 
       {!invoicesOnly && <MonthFinanceCards />}

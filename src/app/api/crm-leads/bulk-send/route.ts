@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Tope de seguridad — mismo límite que ya existe para "seleccionar todos".
-  if (uniqueIds.length > 20000) {
+  if (uniqueIds.length > 50000) {
     return NextResponse.json({ error: 'Máximo 20.000 leads por job' }, { status: 422 })
   }
 

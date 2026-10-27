@@ -228,13 +228,13 @@ export async function GET(request: NextRequest) {
         }
         if (!rows || rows.length === 0) break
         for (const r of rows as Array<{ id: string }>) allIds.add(r.id)
-        if (rows.length < PAGE || allIds.size >= 20000) break
+        if (rows.length < PAGE || allIds.size >= 50000) break
         from += PAGE
       }
-      if (allIds.size >= 20000) break
+      if (allIds.size >= 50000) break
     }
 
-    return NextResponse.json({ ids: Array.from(allIds).slice(0, 20000) })
+    return NextResponse.json({ ids: Array.from(allIds).slice(0, 50000) })
   }
 
   // Auth map y catálogo no dependen de la página: se piden en paralelo con la query de leads (y con caché).

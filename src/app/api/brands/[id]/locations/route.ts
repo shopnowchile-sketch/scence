@@ -1,92 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess, type BrandPermission } from '@/lib/supabase/ensureOrg'
+import { readEcommerceLinks, validateEcommerceLinks } from '@/lib/brand-ecommerce'
 
 type Params = { params: { id: string } }
 
-async function canAccessBrand(user: any, brand: any, admin: any, permission: BrandPermission) {
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-  const role = orgId ? await getUserRole(user.id, orgId, admin) : null
+// Puntos de venta de una marca: tiendas físicas = public.locations (level='place', brand_id) y canales
+// e-commerce = enlaces en brands.metadata. Reemplaza el uso de brand_locations (legado).
+
+async function canAccessBrand(userId: string, userMetadata: Record<string, unknown> | undefined, brandId: string, admin: ReturnType<typeof createAdminClient>, permission: BrandPermission) {
+  const orgId = await getOrgId(userId, userMetadata, admin)
+  const role = orgId ? await getUserRole(userId, orgId, admin) : null
   if (role?.isAdmin) return true
-  const brandAccess = await resolveBrandAccess(user.id)
-  return brandAccess?.brandId === brand.id && hasBrandPermission(brandAccess, permission)
+  const brandAccess = await resolveBrandAccess(userId)
+  return brandAccess?.brandId === brandId && hasBrandPermission(brandAccess, permission)
 }
 
+async function authorize(permission: BrandPermission, brandId: string) {
+  const supabase = createServerClient()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error || !user) return { res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  const admin = createAdminClient()
+  const { data: brand } = await admin.from('brands').select('id, metadata').eq('id', brandId).maybeSingle()
+  if (!brand) return { res: NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 }) }
+  if (!(await canAccessBrand(user.id, user.user_metadata, brandId, admin, permission))) {
+    return { res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+  return { admin, brand }
+}
+
+// GET → puntos de venta físicos (con geografía) + e-commerce de la marca.
 export async function GET(_req: NextRequest, { params }: Params) {
-  const supabase = createServerClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
-
-  const { data: brand, error: brandError } = await admin
-    .from('brands')
-    .select('id, user_id, organization_id')
-    .eq('id', params.id)
-    .single()
-
-  if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-
-  if (!(await canAccessBrand(user, brand, admin, 'location.read'))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  const query = admin
-    .from('brand_locations')
-    .select('*')
-    .eq('brand_id', params.id)
-    .order('created_at', { ascending: false })
-
-  const { data, error } = await query
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data: data ?? [] })
-}
-
-export async function POST(req: NextRequest, { params }: Params) {
-  const supabase = createServerClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
-
-  const { data: brand, error: brandError } = await admin
-    .from('brands')
-    .select('id, user_id, organization_id')
-    .eq('id', params.id)
-    .single()
-
-  if (brandError || !brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!(await canAccessBrand(user, brand, admin, 'location.manage'))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  const body = await req.json().catch(() => null)
-  if (!body?.name) return NextResponse.json({ error: 'Nombre requerido' }, { status: 422 })
-
-  const locationType = typeof body.location_type === 'string' ? body.location_type : 'store'
-  const validTypes = ['store', 'event', 'restaurant', 'home', 'virtual', 'other']
-  if (!validTypes.includes(locationType)) {
-    return NextResponse.json({ error: 'Tipo de lugar inválido' }, { status: 422 })
-  }
+  const auth = await authorize('location.read', params.id)
+  if ('res' in auth) return auth.res
+  const { admin, brand } = auth
 
   const { data, error } = await admin
-    .from('brand_locations')
-    .insert({
-      brand_id: params.id,
-      name: body.name,
-      address: body.address || null,
-      city: body.city || null,
-      region: body.region || null,
-      country: body.country || 'Chile',
-      location_type: locationType,
-      is_sensitive: locationType === 'home',
-      is_public: locationType === 'home' ? false : !!body.is_public,
-      notes: body.notes || null,
-    })
-    .select()
-    .single()
-
+    .from('locations')
+    .select('id, name, address, type, notes')
+    .eq('level', 'place').eq('brand_id', params.id).eq('is_active', true)
+    .neq('type', 'influencer_home')
+    .order('name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data }, { status: 201 })
+
+  const places = await Promise.all((data ?? []).map(async place => {
+    const { data: breadcrumb } = await admin.rpc('location_breadcrumb', { p_id: place.id })
+    const byLevel = (level: string) => (breadcrumb ?? []).find((i: { level: string; name: string }) => i.level === level)?.name ?? null
+    return { ...place, city: byLevel('commune'), region: byLevel('region'), country: byLevel('country') }
+  }))
+  return NextResponse.json({ data: places, ecommerce: readEcommerceLinks(brand.metadata) })
+}
+
+// PUT { ecommerce: [{ name, url }] } → reemplaza los enlaces e-commerce (conserva el resto de metadata).
+export async function PUT(req: NextRequest, { params }: Params) {
+  const auth = await authorize('location.manage', params.id)
+  if ('res' in auth) return auth.res
+  const { admin, brand } = auth
+
+  const body = await req.json().catch(() => null)
+  const parsed = validateEcommerceLinks(body?.ecommerce)
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 422 })
+
+  const base = brand.metadata && typeof brand.metadata === 'object' && !Array.isArray(brand.metadata) ? brand.metadata : {}
+  const { error } = await admin.from('brands').update({ metadata: { ...base, ecommerce_links: parsed.value } }).eq('id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ecommerce: parsed.value })
 }

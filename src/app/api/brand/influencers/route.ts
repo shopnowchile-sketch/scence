@@ -79,8 +79,8 @@ export async function GET(req: NextRequest) {
   const isLocationSort = rawSort === 'country' || rawSort === 'city' || rawSort === 'commune'
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
-  // La marca nunca ve el catálogo global: solo creadoras que ya fueron
-  // aprobadas y participaron en campañas propias o colaborativas.
+  // La marca nunca ve el catálogo global: solo creadoras con las que trabajó (aceptadas), que postularon a sus
+  // campañas (pendientes) o que su marca agregó / SCENCE le asignó (brand_influencers). Nunca datos de otras marcas.
   let restrictedInfluencerIds: string[] | null = null
 
   {
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
         .from('campaign_influencers')
         .select('influencer_id')
         .in('campaign_id', campaignIds)
-        .eq('application_status', 'accepted')
+        .in('application_status', ['accepted', 'pending'])
 
       if (acceptedError) {
         return NextResponse.json({ error: acceptedError.message }, { status: 500 })
@@ -111,8 +111,15 @@ export async function GET(req: NextRequest) {
         .filter(Boolean)
     }
 
+    const { data: ownRosterRows, error: ownRosterError } = await admin
+      .from('brand_influencers')
+      .select('influencer_id')
+      .eq('brand_id', brand.id)
+    if (ownRosterError) return NextResponse.json({ error: ownRosterError.message }, { status: 500 })
+
     restrictedInfluencerIds = Array.from(new Set([
       ...acceptedInfluencerIds,
+      ...(ownRosterRows ?? []).map(row => row.influencer_id).filter(Boolean),
     ]))
 
     if (restrictedInfluencerIds.length === 0) {

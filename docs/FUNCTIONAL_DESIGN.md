@@ -2,7 +2,7 @@
 
 **Plataforma de gestión de campañas de influencer marketing**
 
-**Versión:** 2.4 | **Fecha de emisión:** 2026-07-04
+**Versión:** 2.5 | **Fecha de actualización:** 2026-10-27
 
 ---
 
@@ -19,6 +19,7 @@
 
 | Versión | Detalle del cambio | Fecha |
 |---|---|---|
+| 2.5 | Recuperación selectiva de #95: estado actual de Locations y corrección de G-13. Limpieza de cinco tablas vacías y nueve columnas sin datos aplicada en producción con rollback contrastado en DEV. Detalle y límites en AD-17.1. Las reglas de negocio oficiales siguen en `CLAUDE.md`. | 2026-10-27 |
 | 1.0 | Versión inicial del FDD | (previa a esta auditoría) |
 | 2.0 | Auditoría en vivo contra producción (`scence-app.vercel.app`), 3 portales, 25 pantallas documentadas con mockups fieles, 9 bugs encontrados | 2026-07-01 |
 | 2.1 | Reestructurado a formato ejecutivo (control de documento, mapa de proceso, requisitos funcionales por portal, reportes, no-funcionales, notificaciones, glosario). Se corrigieron 6 de los 9 bugs encontrados (ver §12, Bugs) | 2026-07-01 |
@@ -366,7 +367,42 @@ Triage por prioridad (P1-P3), estado (Abierto/En progreso/Cerrado), remitente y 
 | Mi perfil | `profiles.*` | ✅ OK |
 | Organización | `organizations.*` | ✅ OK |
 | Usuarios | Reusa `TeamMembers` (ya construido en `organization`) | ✅ desbloqueado en v2.4 — estaba "soon" (bug B-02) aunque el componente ya existía, solo faltaba montarlo en `admin-settings/users` |
-| Lugares | `locations` | ✅ CRUD completo — ver G-13 |
+| Lugares | `public.locations` + `/api/locations` | Administración jerárquica y baja lógica; ver AD-17.1 y G-13. |
+
+#### AD-17.1 Locations y recuperación de pendientes — verificación 2026-10-27
+
+Las reglas oficiales viven en `CLAUDE.md`; esta sección registra evidencia del código y verificaciones concretas, sin oficializar otros apartados históricos del FDD.
+
+- `public.locations` representa `country → region → [city] → commune → place`. La ciudad es opcional. La jerarquía se valida en PostgreSQL.
+- Administración: `admin-settings/locations`, `GET/POST /api/locations` y `GET/PATCH /api/locations/[id]`, autorizados con `locations-server.ts`. No existe DELETE: se desactiva con `is_active`.
+- `influencer-location.ts` deriva geografía exclusivamente de `location_id`; no inventa ubicación a partir de texto antiguo. Excluye lugares privados del catálogo geográfico.
+- El selector físico de #85 ya fue adaptado en `PhysicalLocationPicker.tsx`, reutilizado por `CampaignLocationsEditor.tsx` para Admin y Marca. No recuperar el selector antiguo sobre este componente.
+- Campañas usan `campaign_locations`; Bookings deriva la dirección canónica para eventos de campaña mediante `campaign-locations.ts`. La API de Events todavía recibe texto. #85 sigue parcial: falta adaptar Events y los casos restantes de Bookings al flujo existente sin reemplazar permisos ni duplicar resolutores.
+- #60 está superado por el sincronizador de Meta Business Discovery (`instagram/followers-sync.ts` y `api/influencers/sync-instagram`); no reintroducir Apify/Playwright del PR antiguo. No se disparó una sincronización real en esta revisión.
+- #77 ya tiene navegación país → región → comuna/ciudad → influencers en `DataQualityClient.tsx`. No recuperar su migración destructiva antigua ni sustituir la implementación vigente. Revisión visual autenticada pendiente.
+- #37 sigue pendiente: la ruta DELETE de postulación todavía elimina la fila. Producción admite `withdrawn`, pero conservarla exige adaptar también repostulación e historial; no fusionar el PR antiguo sobre los controles actuales.
+- #33 sigue pendiente: no añadir `online` a lugares físicos sin adaptar el flujo al modelo canónico y a los datos comerciales existentes.
+- Cobertura existente: `campaign-locations*.test.ts` e `influencer-locations-dynamic.test.ts`. No afirmar validación visual de portales sin sesión autenticada.
+
+**Limpieza aplicada en producción.** Proyecto `xzzbishzfyovrladcaeb`, migración `drop_unused_payment_columns_and_empty_tables`, archivo `20261027120000_drop_unused_payment_columns_and_empty_tables.sql`. Antes de ejecutarla: cinco tablas vacías y nueve columnas completamente NULL, sin consumidores en `src`/`scripts` ni funciones PostgreSQL que las referencien. La migración bloquea las tablas antes de revalidar y no usa CASCADE.
+
+Respaldo físico visible en Supabase: **2026-10-26 08:43:54 UTC**, con acción Restore disponible. No se ejecutó una restauración del backup completo ni se afirma que incluya archivos de Storage. El rollback SQL fue contrastado con el catálogo original (RLS activo, cero políticas, nueve FK, índices parciales, restricciones únicas, propietario y permisos). Prueba transaccional en DEV `dexpvoubiklgotuukrml`: restaurar → limpiar → restaurar → comparar → ROLLBACK; esquema coincidente y datos conservados. Huella del esquema de las cinco tablas: `143c98ae85a01d84e0be1dffe2703db9`.
+
+Después de la limpieza, cero tablas/columnas objetivo restantes. Cantidades y hashes completos de filas (excluidas solo las columnas retiradas) idénticos antes/después: 10 bookings, 10 invoices, 2.915 influencers, 129 organizations, 118 subscriptions, 4 subscription_plans y 2.752 campaign_influencers. No se borraron datos de esas tablas.
+
+**#34:** commit `64a53d9`, publicado separadamente en `staging`; producción pendiente de verificación visual autenticada. TypeScript y lint pasan (advertencias preexistentes); build local pasa con 8 GB de heap. Suite: 679 PASS, cero FAIL, dos omitidos y tres TODO existentes; cuatro pruebas adicionales de handlers de roster pasan. Estas últimas usan base en memoria, no reemplazan comprobaciones visuales ni RLS real.
+
+**Solicitud de ubicación preparada; no enviada.** Se conservan las 290 influencers sin `location_id`: 289 activas y una inactiva excluida. Las activas tienen 289 correos distintos, no vacíos y de formato válido; ninguno coincide con una influencer inactiva. Esto no prueba entregabilidad. 222 tienen `user_id`; 67 no lo tienen (tres coinciden por email con Auth, sin vincularlas automáticamente). Validar acceso antes de mandar a esas 67 a completar un perfil.
+
+Contenido propuesto para las cuentas vinculadas:
+
+> Asunto: Completa la ubicación de tu perfil en SCENCE
+>
+> Hola, necesitamos que completes tu país, región y comuna en tu perfil de SCENCE para mostrar correctamente tu ubicación. Ingresa a tu cuenta, abre Mi perfil, completa tu ubicación y guarda los cambios. Si necesitas ayuda para acceder, contacta a Soporte SCENCE. Tu historial de campañas se conserva.
+>
+> Botón: Completar mi perfil → `/inf-profile` en el dominio de producción verificado.
+
+Reutilizar `getResend()` y el flujo existente de actualización de perfil. **No ejecutar `notify-no-instagram` tal cual:** selecciona también perfiles sin Instagram/dirección fuera de estas 289 y su texto comunica un bloqueo del portal, distinto de esta solicitud. Antes de enviar, revisar listado exacto, acceso de las 67 no vinculadas, URL final, contenido y deduplicación; volver a comprobar que siguen activas y sin ubicación. No se crean cuentas ni se modifican ubicaciones por inferencia.
 
 #### AD-18 CRM (Prospectos)
 **Navegación:** `admin-crm`, `admin-crm/[id]` · **Tablas:** `crm_leads`, `crm_lead_activities` · **Acceso:** solo `super_admin`/`brand_manager`
@@ -985,7 +1021,7 @@ flowchart TD
 | G-09 | No hay perfil público de influencer para marcas (`/brand-influencers/[id]`) | Bajo |
 | G-10 | Sin onboarding guiado para marcas nuevas | Bajo |
 | G-11 | "Campañas propias" del influencer no está en el modelo de permisos documentado | Medio — requiere decisión de producto |
-| G-13 | ~~Configuración → Lugares es un stub...~~ **Resuelto 2026-07-01:** la tabla `locations` existía (RLS incluida) pero 0 endpoints la usaban — no era "conectar UI a API existente" como se pensó al inicio, había que construir el API completo. Se construyó `GET/POST /api/locations` + `PATCH/DELETE /api/locations/[id]` (org-scoped, solo `super_admin`) y la UI (lista + modal crear/editar + borrar) en `admin-settings/locations` | Cerrado |
+| G-13 | El registro de 2026-07-01 quedó obsoleto. Locations tiene administración jerárquica para plataforma y baja lógica mediante PATCH (`is_active`); la ruta actual no expone DELETE. Ver AD-17.1. | Código revisado; flujo visual autenticado pendiente |
 | G-14 | ~~Duplicación de plantillas de email de booking...~~ **Resuelto 2026-07-01:** no era duplicación, eran 2 pasos de un mismo flujo (solicitud de confirmación + recibo). Se conectó el recibo (`bookingConfirmEmail`) que estaba muerto | Cerrado |
 | G-15 | ~~Migraciones del repo no reflejan `brands`...~~ **Resuelto 2026-07-01:** agregada migración baseline (`20260701000001_baseline_brands_table.sql`) documentando columnas, constraints, índices y RLS reales de `brands`, sin tocar producción (tabla ya existe ahí). **Hallazgo nuevo durante esta tarea (no corregido, requiere aprobación aparte):** las 4 RLS policies de `brands` comparan `organization_id` contra una subquery que también selecciona `brands.organization_id` (no `profiles.organization_id`, columna que no existe) — la condición es tautológica y en la práctica no filtra por organización a nivel RLS. Bajo riesgo real hoy porque las 20 rutas que tocan `brands` usan `createAdminClient()` (service role, bypassea RLS) con su propia lógica de autorización — pero es una brecha de defensa en profundidad si algo llega a consultar `brands` desde el browser con la key anon/authenticated | Cerrado (baseline). RLS de `brands` queda como hallazgo de seguridad pendiente de decisión — ver nota. |
 | G-16 | ~~`CampaignDetailView.tsx` soporta `mode="brand"`...~~ **Resuelto 2026-07-01:** confirmado por grep que ninguna ruta real usaba `mode="brand"` (Marca usa `CampaignDetail` directo). Se eliminó la rama y el archivo `CampaignDetailView.brand.tsx`, validado con script exhaustivo de imports (0 rotos) + `tsc --noEmit` (0 errores) antes de commitear | Cerrado |

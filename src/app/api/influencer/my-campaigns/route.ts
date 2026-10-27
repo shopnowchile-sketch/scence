@@ -257,10 +257,15 @@ export async function GET() {
       if (!campaign?.id) continue
       const booking = byCampaign.get(campaign.id as string) ?? campaignEventByCampaign.get(campaign.id as string)
       if (!booking) continue
-      const accepted = row.application_status === 'accepted' || row._self_created === true
-      if (accepted) {
-        // La dirección permite a la influencer decidir si puede asistir. Brief y
-        // materiales privados continúan protegidos por el estado de aceptación.
+      const accepted = row.application_status === 'accepted'
+      // Sin entregable de asistencia no hay confirmación que exigir: rige solo la aceptación.
+      const attendanceItems = ((row.campaign_deliverables as Array<Record<string, unknown>> | null) ?? [])
+        .filter(d => d.type === 'event_attendance')
+      const attendanceConfirmed = attendanceItems.length === 0 || attendanceItems.some(d => d.attendance_response === 'confirmed')
+      const operationalAccess = row._self_created === true || (accepted && attendanceConfirmed)
+      if (operationalAccess) {
+        // La dirección exacta, instrucciones y demás datos operativos quedan
+        // disponibles solo después de confirmar asistencia.
         row.event_booking = booking
         continue
       }

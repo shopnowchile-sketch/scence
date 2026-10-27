@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
   // Tope de seguridad — mismo límite que ya existe para "seleccionar todos".
   if (uniqueIds.length > 50000) {
-    return NextResponse.json({ error: 'Máximo 20.000 leads por job' }, { status: 422 })
+    return NextResponse.json({ error: 'Máximo 50.000 leads por job' }, { status: 422 })
   }
 
   const templateKey = typeof body.template_key === 'string' ? body.template_key : 'crm_intro'

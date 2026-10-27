@@ -13,5 +13,14 @@ const TONE: Record<IgSyncTone, string> = {
 export function InstagramSyncHint({ profile, className = '' }: { profile: IgSyncFields; className?: string }) {
   const label = igSyncLabel(profile)
   if (!label) return null
-  return <div className={`text-[11px] leading-tight ${TONE[label.tone]} ${className}`}>{label.text}</div>
+  return (
+    <div className={className}>
+      <div className={`text-[11px] leading-tight ${TONE[label.tone]}`}>{label.text}</div>
+      {profile.platform === 'instagram' && profile.sync_status === 'not_found' && (
+        <div className="text-[11px] leading-tight text-amber-700 mt-1 max-w-[240px]">
+          Para actualizar tus seguidores, tu perfil de Instagram debe estar público y el @ debe ser correcto. Esto no impide postular a campañas.
+        </div>
+      )}
+    </div>
+  )
 }

@@ -70,7 +70,7 @@
 - **Para qué sirve.** Un catálogo único: país, región, comuna y lugar.
 - **Cómo funciona.** Tabla `locations` autorreferenciada; la base valida la jerarquía. Solo el Admin la gestiona.
 - **Pantallas y procesos.** `/api/locations` (admin de plataforma).
-- **Datos y permisos.** Los domicilios de influencers son privados. `brand_locations` es legado.
+- **Datos y permisos.** Los domicilios de influencers son privados. `brand_locations` se migró a `locations` y se eliminó (2026-10-28).
 - **Qué está comprobado.** *Código revisado:* jerarquía y acceso admin; en `master` solo el perfil de influencer lo usa. *Test existe:* parcial. *Por verificar:* estado real en producción.
 - **Problemas y dudas.** Dos modelos compiten (R-15). Versión de migración repetida (R-06; hallazgo del repositorio en ramas, no aplicado en producción).
 - **Próxima acción.** Pendiente (D-04): primero comprobar el comportamiento actual de campañas y su efecto en reservas, postulaciones y eventos.

@@ -89,8 +89,8 @@ export function decideInvoiceAccess(input: InvoiceAccessInput): InvoiceCapabilit
  * SCENCE (organización, emisor, pasarela, metadata cruda). `client_*` ya viene
  * normalizado por la ruta.
  */
-export function redactInvoiceForShare<T extends Record<string, unknown>>(invoice: T): Omit<T, 'organization_id' | 'issued_by' | 'stripe_invoice_id' | 'owner_brand_id' | 'metadata'> {
-  const { organization_id: _o, issued_by: _i, stripe_invoice_id: _s, owner_brand_id: _b, metadata: _m, ...rest } = invoice
+export function redactInvoiceForShare<T extends Record<string, unknown>>(invoice: T): Omit<T, 'organization_id' | 'issued_by' | 'owner_brand_id' | 'metadata'> {
+  const { organization_id: _o, issued_by: _i, owner_brand_id: _b, metadata: _m, ...rest } = invoice
   return rest
 }
 

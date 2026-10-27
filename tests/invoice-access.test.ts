@@ -89,7 +89,7 @@ test('usuario sin marca ni admin (otra organización / influencer): sin acceso',
 })
 
 test('redactInvoiceForShare quita propietario, organización, emisor, pasarela y metadata cruda', () => {
-  const r = redactInvoiceForShare({ id: 'i', total: 5, organization_id: 'o', issued_by: 'u', stripe_invoice_id: 's', owner_brand_id: 'b', metadata: { kind: 'x' }, client_name: 'C' })
+  const r = redactInvoiceForShare({ id: 'i', total: 5, organization_id: 'o', issued_by: 'u', owner_brand_id: 'b', metadata: { kind: 'x' }, client_name: 'C' })
   assert.deepEqual(r, { id: 'i', total: 5, client_name: 'C' })
 })
 

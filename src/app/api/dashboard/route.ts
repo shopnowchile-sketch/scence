@@ -132,6 +132,7 @@ export async function GET() {
         campaign:campaigns (id, name)
       `, { count: 'exact' })
       .in('status', ['in_review'])
+      .neq('type', 'event_attendance') // la asistencia no se revisa
       .order('due_date', { ascending: true })
       .limit(5),
 

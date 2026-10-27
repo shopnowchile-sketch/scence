@@ -28,3 +28,32 @@ export function isDeliverableComplete(d: DeliverableStatusFields): boolean {
     (d.status ?? '') as (typeof DELIVERABLE_COMPLETE_STATUSES)[number]
   )
 }
+
+// ── Asistencia ≠ contenido ──────────────────────────────────────────────────
+// Confirmar asistencia es una decisión de la influencer y se registra de inmediato; NO pasa por revisión
+// (la aprobación de la postulación es otro flujo: campaign_influencers.application_status). Solo los
+// entregables de contenido (reel, story, etc.) usan pending → in_review → approved/rejected.
+export const ATTENDANCE_TYPE = 'event_attendance'
+
+export const isAttendanceDeliverable = (d: { type?: string | null }): boolean => d.type === ATTENDANCE_TYPE
+
+/** Estado que corresponde a una respuesta de asistencia (confirmed → approved, declined → rejected). */
+export function attendanceStatusForResponse(response: string | null | undefined): 'approved' | 'rejected' | 'pending' {
+  if (response === 'confirmed') return 'approved'
+  if (response === 'declined') return 'rejected'
+  return 'pending'
+}
+
+/** Estado efectivo para contar o mostrar: en asistencia manda la respuesta; el resto, su status. */
+export function effectiveDeliverableStatus(d: DeliverableStatusFields): string {
+  if (isAttendanceDeliverable(d) && d.attendance_response) return attendanceStatusForResponse(d.attendance_response)
+  return d.status ?? 'pending'
+}
+
+/** Solo el contenido espera revisión de la marca/SCENCE; la asistencia nunca. */
+export const isAwaitingContentReview = (d: DeliverableStatusFields): boolean =>
+  !isAttendanceDeliverable(d) && d.status === 'in_review'
+
+/** Corrección pendiente = contenido rechazado. Una asistencia "No asistiré" no es una corrección. */
+export const isContentRejected = (d: DeliverableStatusFields): boolean =>
+  !isAttendanceDeliverable(d) && d.status === 'rejected'

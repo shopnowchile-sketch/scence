@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
-import { isDeliverableComplete } from '@/lib/deliverable-status'
+import { isDeliverableComplete, isAttendanceDeliverable, isAwaitingContentReview, isContentRejected, effectiveDeliverableStatus } from '@/lib/deliverable-status'
 import { BILLED_INVOICE_STATUSES } from '@/lib/invoice-kpis'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
@@ -100,12 +100,14 @@ export async function GET(request: NextRequest) {
 
   // Deliverable completion rates
   const allDeliverables = deliverableStats.data ?? []
+  // Estados de CONTENIDO: la asistencia (confirmada/no asistirá) no es un entregable por revisar.
+  const contentDeliverables = allDeliverables.filter(d => !isAttendanceDeliverable(d))
   const byStatus = {
-    pending:   allDeliverables.filter(d => d.status === 'pending').length,
-    in_review: allDeliverables.filter(d => d.status === 'in_review').length,
-    approved:  allDeliverables.filter(d => d.status === 'approved').length,
-    rejected:  allDeliverables.filter(d => d.status === 'rejected').length,
-    published: allDeliverables.filter(d => d.status === 'published').length,
+    pending:   contentDeliverables.filter(d => d.status === 'pending').length,
+    in_review: contentDeliverables.filter(d => d.status === 'in_review').length,
+    approved:  contentDeliverables.filter(d => d.status === 'approved').length,
+    rejected:  contentDeliverables.filter(d => d.status === 'rejected').length,
+    published: contentDeliverables.filter(d => d.status === 'published').length,
   }
 
   const completed = allDeliverables.filter(isDeliverableComplete).length

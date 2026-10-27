@@ -209,6 +209,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Deliverable not found in this campaign' }, { status: 404 })
   }
 
+  // La asistencia no se aprueba, rechaza, publica ni califica: la decide la influencer (o el equipo con las
+  // acciones manuales de asistencia). Solo el contenido pasa por revisión.
+  if (existing.type === 'event_attendance' && action !== 'mark_no_show') {
+    return NextResponse.json({ error: 'La asistencia no requiere revisión: se registra al confirmarla.' }, { status: 422 })
+  }
+
   if (action === 'mark_no_show' && (existing.type !== 'event_attendance' || existing.attendance_response !== 'confirmed')) {
     return NextResponse.json({ error: 'Solo puedes marcar como no asistió una asistencia previamente confirmada.' }, { status: 422 })
   }

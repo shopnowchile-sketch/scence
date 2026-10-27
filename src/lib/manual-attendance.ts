@@ -1,3 +1,5 @@
+import { attendanceStatusForResponse } from './deliverable-status'
+
 export type ManualAttendanceAction = 'confirmed_client' | 'attended' | 'no_show' | 'no_show_unconfirmed' | 'revert_no_show'
 
 export function buildManualAttendanceUpdate({
@@ -16,19 +18,21 @@ export function buildManualAttendanceUpdate({
     update.attendance_response = 'confirmed'
     update.attendance_responded_at = now
     update.attendance_note = 'Confirmó con el cliente · confirmación registrada manualmente'
+    update.status = attendanceStatusForResponse('confirmed')
   } else if (action === 'attended') {
     update.attendance_response = 'confirmed'
     if (currentResponse !== 'confirmed') update.attendance_responded_at = now
     update.attendance_outcome = 'attended'
     update.attendance_outcome_at = now
     update.attendance_note = currentNote || 'Asistencia registrada manualmente'
-    update.status = 'approved'
+    update.status = attendanceStatusForResponse('confirmed')
   } else if (action === 'no_show') {
     update.attendance_response = 'confirmed'
     if (currentResponse !== 'confirmed') update.attendance_responded_at = now
     update.attendance_outcome = 'no_show'
     update.attendance_outcome_at = now
     update.attendance_note = 'Confirmó con el cliente · No asistió'
+    update.status = attendanceStatusForResponse('confirmed')
   } else if (action === 'revert_no_show') {
     update.attendance_outcome = null
     update.attendance_outcome_at = null

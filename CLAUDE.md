@@ -465,7 +465,7 @@ Una influencer con `is_active = false` no puede recibir ningún email enviado po
 - Sin DELETE: soft delete con `is_active` (bloqueado si hay hijos activos).
 - `/api/locations` es solo admin de plataforma (`isPlatformAdmin`). Incluye domicilios privados: cualquier consumidor no-admin debe filtrar por dueño + `is_private`.
 - Consumidores (brands, campaigns, bookings, events) guardan **solo `location_id` → place**. Nunca volver a guardar country/region/city/commune/address en paralelo. País/región/comuna se derivan con `location_breadcrumb()`.
-- `brand_locations` es legado: se migra a `locations` y se elimina (Fase 2). No agregarle funcionalidad.
+- `brand_locations` se migró a `locations` y se eliminó (2026-10-28; respaldo `ops.backup_brand_locations_20261028`). Puntos de venta = places `type='store'` con `brand_id`; enlaces e-commerce = `brands.metadata.ecommerce_links` (no son lugares físicos).
 
 ### 16.12 Facturas: propiedad, aislamiento y acceso compartido
 

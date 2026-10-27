@@ -116,7 +116,7 @@ export function GenerateContractModal({
   const [eventEndTime, setEventEndTime] = useState('')
   const [eventLocation, setEventLocation] = useState('')
   const [eventFromBooking, setEventFromBooking] = useState(false)
-  // Lugares guardados de la marca (brand_locations) — mismo catalogo que el
+  // Lugares guardados de la marca (locations, vía API de la marca) — mismo catalogo que el
   // tab "Lugares" de la campana y el picker de "Editar ubicacion". Solo
   // lectura: nunca se escribe aqui, solo se usa para componer eventLocation.
   const [brandLocations, setBrandLocations] = useState<Array<{ id: string; name: string; address: string | null; city: string | null }>>([])

@@ -9,7 +9,7 @@ import {
   Search, X, Loader2, UserPlus, ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { PhysicalLocationPicker } from '@/components/locations/PhysicalLocationPicker'
+import { SalesPointsPanel } from '@/components/brand/SalesPointsPanel'
 import { cn } from '@/lib/utils'
 import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
@@ -43,16 +43,6 @@ type Brand = {
   direct_influencers?: Array<{ id: string; display_name: string; avatar_url: string | null }>
 }
 
-type BrandLocation = {
-  id: string
-  name: string
-  address: string | null
-  city: string | null
-  region: string | null
-  country: string | null
-  notes: string | null
-}
-type EcommerceLink = { name: string; url: string }
 
 type BrandInfluencer = {
   id: string
@@ -128,8 +118,6 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [creatingInvoice, setCreatingInvoice] = useState(false)
   const [planOverride, setPlanOverride] = useState<'' | 'basic' | 'growth' | 'pro'>('')
   const [savingPlan, setSavingPlan] = useState(false)
-  const [locations, setLocations] = useState<BrandLocation[]>([])
-  const [loadingLocations, setLoadingLocations] = useState(false)
   const [members, setMembers] = useState<BrandMember[]>([])
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [resendingMemberId, setResendingMemberId] = useState<string | null>(null)
@@ -138,8 +126,6 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [invitingMember, setInvitingMember] = useState(false)
   const [ownerEmail, setOwnerEmail] = useState('')
   const [savingOwner, setSavingOwner] = useState(false)
-  const [ecommerce, setEcommerce] = useState<EcommerceLink[]>([])
-  const [newEcommerce, setNewEcommerce] = useState({ name: '', url: '' })
 
   const campaigns = useMemo(() => brand?.campaigns ?? [], [brand?.campaigns])
   const activeCampaigns = useMemo(() => campaigns.filter(c => c.status === 'active'), [campaigns])
@@ -301,7 +287,6 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (tab === 'influencers') loadInfluencers() }, [tab, loadInfluencers])
-  useEffect(() => { if (tab === 'locations') loadLocations() }, [tab, brand?.id])
   useEffect(() => { if (tab === 'members') loadMembers() }, [tab, loadMembers])
 
   useEffect(() => {
@@ -470,53 +455,6 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     }
   }
 
-
-  async function loadLocations() {
-    if (!brand) return
-    setLoadingLocations(true)
-    try {
-      const res = await fetch(`/api/brands/${brand.id}/locations`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error cargando puntos de venta')
-      setLocations(json.data ?? [])
-      setEcommerce(json.ecommerce ?? [])
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      setLoadingLocations(false)
-    }
-  }
-
-  // El punto de venta ya se creó/eligió en el selector canónico (locations, con la marca como dueña): solo se recarga la lista.
-  async function onStoreSelected() {
-    await loadLocations()
-    toast.success('Punto de venta agregado')
-  }
-
-  async function deleteLocation(location: BrandLocation) {
-    if (!brand) return
-    if (!confirm(`¿Quitar el punto de venta "${location.name}"?`)) return
-
-    const res = await fetch(`/api/brands/${brand.id}/locations/${location.id}`, { method: 'DELETE' })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) return toast.error(json.error ?? 'No se pudo quitar')
-
-    setLocations(prev => prev.filter(l => l.id !== location.id))
-    toast.success('Punto de venta quitado')
-  }
-
-  async function saveEcommerce(next: EcommerceLink[]) {
-    if (!brand) return
-    const res = await fetch(`/api/brands/${brand.id}/locations`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ecommerce: next }),
-    })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) return toast.error(json.error ?? 'No se pudo guardar el e-commerce')
-    setEcommerce(json.ecommerce ?? next)
-    setNewEcommerce({ name: '', url: '' })
-  }
 
   async function savePlanOverride() {
     if (!brand) return
@@ -1045,81 +983,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
 
 
-      {tab === 'locations' && (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <section className="card space-y-4 p-5">
-            <div>
-              <h2 className="font-bold text-gray-900">Agregar punto de venta</h2>
-              <p className="mt-1 text-sm text-gray-500">Busca una tienda ya registrada o crea una nueva para {brand.name}.</p>
-            </div>
-            <PhysicalLocationPicker apiBase="/api/locations" brandId={brand.id} placeType="store" onSelect={onStoreSelected} />
-            <div className="space-y-2 border-t border-gray-100 pt-4">
-              <h3 className="text-sm font-bold text-gray-900">Agregar e-commerce</h3>
-              <input className="input-base" placeholder="Nombre (ej: Tienda online)" value={newEcommerce.name} onChange={e => setNewEcommerce(v => ({ ...v, name: e.target.value }))} />
-              <input className="input-base" placeholder="https://..." value={newEcommerce.url} onChange={e => setNewEcommerce(v => ({ ...v, url: e.target.value }))} />
-              <button
-                type="button"
-                disabled={!newEcommerce.name.trim() || !newEcommerce.url.trim()}
-                onClick={() => saveEcommerce([...ecommerce, newEcommerce])}
-                className="w-full rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-              >
-                Agregar e-commerce
-              </button>
-            </div>
-          </section>
-
-          <section className="card space-y-5 p-5 lg:col-span-2">
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="font-bold text-gray-900">Tiendas físicas</h2>
-                <span className="text-sm text-gray-400">{locations.length}</span>
-              </div>
-              {loadingLocations ? (
-                <p className="text-sm text-gray-400">Cargando…</p>
-              ) : locations.length === 0 ? (
-                <p className="text-sm text-gray-400">Aún no hay tiendas físicas.</p>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {locations.map(location => (
-                    <div key={location.id} className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
-                      <div className="min-w-0">
-                        <p className="truncate font-bold text-gray-900">{location.name}</p>
-                        <p className="mt-1 text-sm text-gray-500">{location.address || 'Sin dirección'}</p>
-                        {(location.city || location.region) && (
-                          <p className="mt-1 text-xs text-gray-400">{[location.city, location.region, location.country].filter(Boolean).join(', ')}</p>
-                        )}
-                      </div>
-                      <button type="button" onClick={() => deleteLocation(location)} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <h2 className="mb-3 font-bold text-gray-900">E-commerce</h2>
-              {ecommerce.length === 0 ? (
-                <p className="text-sm text-gray-400">Aún no hay enlaces de e-commerce.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {ecommerce.map((link, i) => (
-                    <li key={`${link.url}-${i}`} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="min-w-0 truncate text-sm font-semibold text-violet-700 hover:underline">
-                        {link.name} <span className="font-normal text-gray-400">· {link.url}</span>
-                      </a>
-                      <button type="button" onClick={() => saveEcommerce(ecommerce.filter((_, j) => j !== i))} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-        </div>
-      )}
+      {tab === 'locations' && <SalesPointsPanel brandId={brand.id} brandName={brand.name} portal="admin" />}
 
       {tab === 'plan' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

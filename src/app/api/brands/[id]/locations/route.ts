@@ -6,7 +6,7 @@ import { readEcommerceLinks, validateEcommerceLinks } from '@/lib/brand-ecommerc
 type Params = { params: { id: string } }
 
 // Puntos de venta de una marca: tiendas físicas = public.locations (level='place', brand_id) y canales
-// e-commerce = enlaces en brands.metadata. Reemplaza el uso de brand_locations (legado).
+// e-commerce = enlaces en brands.metadata. brand_locations ya no existe.
 
 async function canAccessBrand(userId: string, userMetadata: Record<string, unknown> | undefined, brandId: string, admin: ReturnType<typeof createAdminClient>, permission: BrandPermission) {
   const orgId = await getOrgId(userId, userMetadata, admin)

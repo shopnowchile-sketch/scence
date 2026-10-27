@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { exactEmailPattern, isPlausibleEmail } from '@/lib/email-match'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, hasBrandPermission, provisionOrgForBrand, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { getOrgId, getUserRole, hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { registerBrandAtomic } from '@/lib/supabase/registerBrand'
+import { registrationKey } from '@/lib/brand-registration-policy'
+import { brandStatusAllows } from '@/lib/brand-status-access'
 import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 
@@ -10,8 +14,10 @@ type Params = { params: { id: string } }
 // Alta de marca colaboradora. Tres modos de body:
 //   { instagram, name } — flujo principal: identifica la marca por Instagram.
 //     Si no existe, crea su organización y la vincula inmediatamente a la
-//     campaña. Sin email queda aprobada; con email queda pendiente sólo para
-//     habilitar su portal, sin afectar la campaña ni los tags.
+//     campaña. Toda marca nueva queda en pending_approval (con o sin email):
+//     ser colaboradora de una campaña no equivale a estar aprobada por SCENCE
+//     (decisión de la fundadora 2026-10-22). La aprobación controla su portal;
+//     la marca igual forma parte de la campaña y de los tags.
 //   { email, name } — flujo nuevo (2026-07-12, pedido de Pri): busca por email
 //     (dedup). Si existe una marca con ese email, se asigna directo. Si no
 //     existe, se crea una marca liviana + organización propia en
@@ -28,7 +34,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const brandAccess = await resolveBrandAccess(user.id)
+  // Una marca pendiente, rechazada o suspendida no opera (CLAUDE.md §16.9): solo
+  // un admin de plataforma puede seguir usando esta ruta aunque tenga esa membresía.
+  const resolvedBrand = await resolveBrandAccess(user.id)
+  const brandBlocked = !!resolvedBrand && !brandStatusAllows(resolvedBrand.status, 'operate')
+  if (brandBlocked && !(await isPlatformAdmin(user.id, admin))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const brandAccess = brandBlocked ? null : resolvedBrand
   const orgId = brandAccess?.organizationId ?? await getOrgId(user.id, user.user_metadata, admin)
 
   let body: { brand_id?: string; role?: string; email?: string; instagram?: string; name?: string } = {}
@@ -93,23 +106,24 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ data, matched: true, approved: existingBrand.status === 'approved', pending: existingBrand.status !== 'approved' })
     }
 
-    const newOrgId = await provisionOrgForBrand(name)
-    if (!newOrgId) return NextResponse.json({ error: 'No se pudo crear la organización de la marca' }, { status: 500 })
-    const { data: newBrand, error: newBrandError } = await admin
-      .from('brands')
-      .insert({
-        organization_id: newOrgId,
-        name,
-        instagram,
-        instagram_handle_normalized: instagram,
-        contact_email: email,
-        status: email ? 'pending_approval' : 'approved',
-        created_by: user.id,
-        metadata: email ? { pending_collab_campaign_id: params.id, invited_by_brand_id: campaign.brand_id, source: 'campaign_collaborator' } : { source: 'campaign_collaborator' },
-      })
-      .select('id, name, instagram, status')
-      .single()
-    if (newBrandError) return NextResponse.json({ error: newBrandError.message }, { status: 500 })
+    // Toda marca nueva nace pending_approval. Organización + marca en una sola
+    // transacción e idempotente (register_brand): sin duplicados ni organizaciones huérfanas.
+    const collaboratorFields = {
+      name,
+      instagram,
+      instagram_handle_normalized: instagram,
+      contact_email: email,
+      metadata: email ? { pending_collab_campaign_id: params.id, invited_by_brand_id: campaign.brand_id, source: 'campaign_collaborator' } : { source: 'campaign_collaborator' },
+    }
+    const registered = await registerBrandAtomic(admin, { brand: collaboratorFields, registeredBy: user.id, key: registrationKey(user.id, collaboratorFields) })
+    if (!registered.ok) {
+      console.error('[POST /api/campaigns/[id]/brands]', registered.error)
+      return NextResponse.json({ error: 'No se pudo crear la marca colaboradora' }, { status: 500 })
+    }
+    if (registered.outcome === 'conflict') {
+      return NextResponse.json({ error: 'La marca ya existe; vuelve a intentarlo para vincularla' }, { status: 409 })
+    }
+    const newBrand = { id: registered.brandId }
 
     // La marca colaboradora debe formar parte de la campaña de inmediato para
     // que aparezca en el brief y en las instrucciones de tag. Su aprobación
@@ -120,7 +134,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .select('id, campaign_id, brand_id, role, brand:brands(id, name, logo_url, instagram)')
       .single()
     if (assignmentError) return NextResponse.json({ error: assignmentError.message }, { status: 500 })
-    return NextResponse.json({ data: assignment, matched: false, pending: Boolean(email) }, { status: 201 })
+    return NextResponse.json({ data: assignment, matched: false, pending: true }, { status: 201 })
   }
 
   // ── Modo anterior: por email (compatibilidad de API) ─────────────────────
@@ -128,7 +142,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const email = body.email.trim().toLowerCase()
     const name = (body.name ?? '').trim()
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const emailPattern = isPlausibleEmail(email) ? exactEmailPattern(email) : null
+    if (!emailPattern) {
       return NextResponse.json({ error: 'Email inválido' }, { status: 422 })
     }
 
@@ -137,7 +152,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { data: existingBrand } = await admin
       .from('brands')
       .select('id, name, status')
-      .ilike('contact_email', email)
+      .ilike('contact_email', emailPattern)
       .maybeSingle()
 
     if (existingBrand) {
@@ -166,32 +181,22 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'name es requerido para crear una marca nueva' }, { status: 422 })
     }
 
-    const newOrgId = await provisionOrgForBrand(name)
-    if (!newOrgId) {
-      return NextResponse.json({ error: 'No se pudo crear la organización de la marca' }, { status: 500 })
+    // Sin `status` explícito a propósito: la función register_brand fija
+    // pending_approval y este endpoint NUNCA acepta status desde el body.
+    const collaboratorFields = {
+      name,
+      contact_email: email,
+      metadata: { pending_collab_campaign_id: params.id, invited_by_brand_id: campaign.brand_id },
     }
-
-    const { data: newBrand, error: newBrandError } = await admin
-      .from('brands')
-      .insert({
-        organization_id: newOrgId,
-        name,
-        contact_email: email,
-        created_by: user.id,
-        // Sin `status` explícito a propósito — cae en el default de la
-        // columna ('pending_approval'). Este endpoint NUNCA acepta
-        // status='approved' desde el body (pedido explícito de Pri).
-        metadata: {
-          pending_collab_campaign_id: params.id,
-          invited_by_brand_id: campaign.brand_id,
-        },
-      })
-      .select('id, name, status')
-      .single()
-
-    if (newBrandError) {
-      return NextResponse.json({ error: newBrandError.message }, { status: 500 })
+    const registered = await registerBrandAtomic(admin, { brand: collaboratorFields, registeredBy: user.id, key: registrationKey(user.id, collaboratorFields) })
+    if (!registered.ok) {
+      console.error('[POST /api/campaigns/[id]/brands]', registered.error)
+      return NextResponse.json({ error: 'No se pudo crear la marca colaboradora' }, { status: 500 })
     }
+    if (registered.outcome === 'conflict') {
+      return NextResponse.json({ error: 'La marca ya existe; vuelve a intentarlo para vincularla' }, { status: 409 })
+    }
+    const newBrand = { id: registered.brandId }
 
     const { data: assignment, error: assignmentError } = await admin
       .from('campaign_brands')
@@ -244,7 +249,14 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  const brandAccess = await resolveBrandAccess(user.id)
+  // Una marca pendiente, rechazada o suspendida no opera (CLAUDE.md §16.9): solo
+  // un admin de plataforma puede seguir usando esta ruta aunque tenga esa membresía.
+  const resolvedBrand = await resolveBrandAccess(user.id)
+  const brandBlocked = !!resolvedBrand && !brandStatusAllows(resolvedBrand.status, 'operate')
+  if (brandBlocked && !(await isPlatformAdmin(user.id, admin))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const brandAccess = brandBlocked ? null : resolvedBrand
   const orgId = brandAccess?.organizationId ?? await getOrgId(user.id, user.user_metadata, admin)
   const brandId = new URL(req.url).searchParams.get('brand_id')
 

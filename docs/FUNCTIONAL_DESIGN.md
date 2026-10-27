@@ -47,6 +47,7 @@
 | 2.4 (Marcas — cuenta creada, última conexión, Instagram obligatorio, referidos) | Nueva columna "Cuenta creada" en `admin-brands` (prioriza `auth.users.created_at`, cae a `brands.created_at` si no tiene usuario — mismo request que ya resolvía `last_sign_in_at`, sin queries nuevas); "Última conexión" agregada también al detalle `admin-brands/[id]` (antes solo estaba en la lista). **Instagram obligatorio en portal Marca:** mismo patrón que ya existía para influencer (`ProfileCompletionGate`) — gate en `(brand)/layout.tsx` + validación server-side en `PATCH /api/brand/me`; redirige a `/brand-profile?complete=1` si falta. Impacto real: 10 de 14 marcas con login ya activo no tienen Instagram cargado, quedarán redirigidas la próxima vez que entren. **Tracking de referidos:** nuevo campo "¿Quién te invitó? (Instagram)" en el registro de marca — guardado en `brands.metadata` (jsonb existente, sin columna ni tabla nueva), conteo en vivo de "Marcas referidas" agregado al perfil de la influencer (`GET /api/influencer/me`), columna "Referido por" visible en `admin-brands` | 2026-07-04 |
 | 2.4 (tablas — sort/columnas/resize global) | Pri pidió que ordenar por header, mostrar/ocultar columnas y ajustar su ancho sea "regla global" para todas las tablas admin. Se extrajeron 2 primitivos reutilizables: `useColumnWidths` (drag-resize persistido en localStorage) y `ColumnVisibilityMenu` (dropdown de checkboxes, antes cableado a mano solo en Campañas); `SortableTH` se extendió con un handle de resize opcional. Aplicado completo (sort + columnas + resize) a Marcas, que antes tenía un `<select>` de orden en vez de headers clickeables. Influencers ya tenía sort y columnas — se le agregó el resize que faltaba. Pendiente extender el mismo patrón a otras tablas si Pri lo pide (CRM leads, Bookings, Contratos, Eventos, Soporte, Afiliados, Payroll) | 2026-07-04 |
 | 2.4 (deliverables — rediseño agrupado + rating) | Segundo ajuste al tab Deliverables: Pri pidió que solo se vea en grande nombre + Instagram (clickeable) + link de contenido, sin descripciones — el título de un deliverable a veces contenía el brief completo. Rediseñado: agrupado por influencer (si tiene más de un entregable, es un dropdown colapsable; si tiene uno solo, se muestra directo), cada línea reducida a `Tipo: Ver contenido ↗`. Se agregó rating de 1-5 estrellas por deliverable, editable ahí mismo, para poder filtrar por calidad de contenido más adelante — columna nueva `campaign_deliverables.content_rating` (smallint, check 1-5), sin tabla nueva. Nuevo componente reutilizable `StarRating` | 2026-07-04 |
+| 2.5 (documental, sin cambios de código) | Corrección del modelo de marcas: SCENCE es la plataforma; todas las marcas, incluida SCENCE SpA (marca de pruebas), están al mismo nivel; SCENCE administra todas; una marca puede registrar otras. Se corrige BR-10, se agrega BR-15 y se aclaran los supuestos 2.3. **Las filas 2.1 y 2.3 de este historial que dicen que el trigger de signup crea la organización, o que «Scence SpA» tiene varias marcas, describen el estado de julio 2026 y están superadas** (hoy el trigger no crea organizaciones y `Scence SpA` tiene 0 marcas; ver `CLAUDE.md` §16.9). Se conservan como histórico. | 2026-10-22 |
 
 ### Sign-off
 
@@ -102,8 +103,12 @@ La siguiente tabla resume las reglas de negocio activas del sistema — el equiv
 | BR-07 | Status de campaña | Pasa a `active` con el primer influencer aceptado. No se puede invitar sobre campañas `completed`/`canceled`. |
 | BR-08 | IVA en facturación | Todas las facturas incluyen IVA 19% (Chile): `tax_amount = subtotal * 0.19`. |
 | BR-09 | Moneda CLP | Moneda por defecto en toda la UI (el schema soporta otras vía `currency_code`). |
-| BR-10 | Brand self-registration | `/register/brand` auto-crea `brands` vinculado a la organización SCENCE. Primer login dispara `POST /api/brand/register`. |
+| BR-10 | Brand self-registration | `/register/brand` (`POST /api/auth/register-brand`) crea el usuario y una marca en `pending_approval` con su propia organización técnica; la plataforma SCENCE la administra y solo `super_admin` la aprueba, rechaza o suspende (`PATCH /api/brands/[id]`). `POST /api/brand/register` ya no crea nada: confirma el acceso o vincula una invitación pendiente. **Corregido 2026-10-22:** antes decía «vinculado a la organización SCENCE», lo que el código no hace. |
 | BR-11 | Middleware como última línea de defensa | El middleware bloquea correctamente el acceso cruzado entre portales incluso cuando el frontend expone un link/botón indebido (caso bug B-08) — pero eso no exime de limpiar la UI. |
+| BR-12 | Propiedad de facturas | La marca propietaria de una factura es `invoices.owner_brand_id`, derivada de la sesión al crearla; nunca de `organization_id`, de `brand_id` (marca receptora) ni del payload. `owner_brand_id` NULL = emitida por SCENCE o histórica sin propietario verificable: ninguna marca accede, solo la administración de plataforma. Inmutable una vez asignada. Decisión 2026-10-22: las 10 facturas históricas pertenecen a SCENCE (`owner_brand_id` NULL); no hay backfill ni asignación a marcas por suposición. |
+| BR-13 | Acceso compartido de facturas | Una factura solo se comparte con otra marca mediante una fila explícita en `invoice_shares` (quién, cuándo, estado). Concede únicamente lectura (sin datos internos); nunca edición, envío, pago, borrado ni re-compartir. Revocar bloquea de inmediato. |
+| BR-14 | Pagos y estados de factura | La marca propietaria con `billing.manage` puede enviar, editar campos no financieros y marcar pagada su factura. `void` y `mark_overdue` son exclusivos de SCENCE. `paid` y `void` son terminales; un doble pago concurrente se aplica una sola vez. Los importes emitidos se corrigen anulando y reemitiendo. |
+| BR-15 | Modelo de marcas | SCENCE es la plataforma administradora: es la única que ve, crea, edita, aprueba, suspende y archiva marcas, mediante permisos administrativos. Todo lo demás son marcas; **SCENCE SpA es una marca de pruebas** y ninguna marca tiene privilegios por su nombre. Los usuarios autorizados, **incluidas las influencers**, pueden registrar marcas; registrar no concede `brand_manager` ni permisos sobre otras marcas, y toda marca nueva (también la colaboradora de campaña) pasa por la aprobación de SCENCE. Quien registra consulta lista, estado y datos básicos de lo que registró; lo demás requiere permiso explícito. Estados: `pending_approval` (perfil, estado y pasos de aprobación; sin operación), `approved` (según rol y plan), `rejected` (resultado y solicitud de revisión), `suspended` (operación bloqueada; solo lo autorizado para resolverla). Se archiva por defecto; el borrado definitivo es excepcional. Las marcas no se ven entre sí. Cifras con fuente, auditoría de «quién registró» y pendientes (restricción por estado en servidor, registro del registrante, antiduplicados atómicos, RLS): `CLAUDE.md` §16.9 y `docs/audits/brand_model_hardening_proposal_2026-10-22.md`. *(Reglas de negocio incorporadas 2026-10-22. **Implementado localmente (sin desplegar):** restricción por estado en el servidor y creación atómica e idempotente (`register_brand`). **Sin implementar:** registro persona→marca (P6), archivado (P7). Pueden registrar marcas influencers y usuarios de marcas aprobadas con cuenta verificada y activa, y administradores autorizados; el autorregistro deja a la persona como responsable solo de su propia marca.)* |
 
 ### 2.1 Mapa de Proceso
 
@@ -136,8 +141,8 @@ Usuario ──▶ Next.js 14 (App Router, Vercel)
 
 ### 2.3 Supuestos
 
-1. El equipo de SCENCE (Admin) actúa como agencia intermediaria y como operador de la plataforma a la vez.
-2. Las marcas se auto-registran y operan en modo self-service; el Admin puede intervenir en cualquier campaña.
+1. El equipo de SCENCE (Admin) actúa como agencia intermediaria y como operador de la plataforma a la vez. *(Aclaración 2026-10-22: «SCENCE» es la plataforma que administra todas las marcas; SCENCE SpA es una marca de pruebas dentro de ella. Ver BR-15.)*
+2. Las marcas se auto-registran y operan en modo self-service; el Admin puede intervenir en cualquier campaña. Toda marca registrada pasa por la aprobación de SCENCE (BR-10).
 3. Los influencers son gestionados centralmente por el roster de SCENCE (Admin), no por cada marca individualmente.
 4. La moneda de referencia para toda la operación comercial es CLP.
 5. El middleware de Next.js es la capa de control de acceso entre portales; el frontend debe reflejar esas restricciones en la UI, no reemplazarlas.
@@ -154,6 +159,12 @@ Usuario ──▶ Next.js 14 (App Router, Vercel)
 ---
 ## 3. Requisitos Funcionales por Portal
 
+### 3.0 Control de requerimientos funcionales
+
+El registro versionado de requerimientos es la fuente de verdad funcional cuando exista una versión aprobada. El primer piloto es `DASH-001`: una propuesta crea una versión, una aprobación fija la definición vigente y reinicia su estado de validación. La evidencia de código, documentación, impacto, pruebas y desviaciones queda vinculada a esa versión. Solo `super_admin` puede consultar o modificar este registro; la ruta valida autorización en servidor y las tablas tienen RLS. La migración asociada debe aplicarse primero en un entorno de desarrollo autorizado.
+
+**DASH-001 — KPI real de influencers activos.** El Dashboard Admin debe contar solamente `influencers.is_active = true` de la organización SCENCE activa. Evidencia técnica: `GET /api/dashboard`; presentación: `DashboardClient.tsx`; regresión: `tests/requirements-dashboard-kpi.test.ts`. Estado al crear el piloto: **por verificar** hasta contrastar el resultado con datos reales del entorno autorizado.
+
 > Los mockups son reconstrucciones fieles (SVG, no screenshots literales) generadas a partir de la sesión en vivo del 2026-07-01, en `docs/mockups/*.svg`.
 
 ### 3.1 Portal Admin
@@ -168,7 +179,7 @@ Acceso: `role: super_admin`. Rutas: `admin-*`. Equipo interno de SCENCE — acce
 | Campo | Fuente | Para qué sirve |
 |---|---|---|
 | Campañas en curso | `count(campaigns) where status in (active,pending_influencers)` | KPI de carga operativa del mes |
-| Influencers en roster | `count(influencers) where is_active=true` | Tamaño total del roster disponible |
+| Influencers en roster | `count(influencers) where organization_id = sesión e is_active=true` | Tamaño total del roster operativo disponible |
 | Marcas registradas | `count(brands)` | Tamaño de la cartera de clientes |
 | Facturado (outbound) | `sum(invoices.total)` del mes | Ingreso reconocido |
 | Costos recibidos | `sum(payroll_runs.total)` del mes | Costo de payroll del mes |
@@ -307,6 +318,8 @@ Vista mensual/lista sincronizada con Google Calendar. Agenda operativa de aparic
 | Total facturado / cobrado / vencido | Agregados sobre `invoices` | Salud de cobranza |
 | Payroll total | `sum(payroll_runs)` | Costo total a influencers |
 | Tabla Facturas | `invoices.*` join `brands`, `campaigns` | Gestión de cobranza (IVA 19% — BR-08) |
+
+**Alcance Admin (BR-12/13/14):** SCENCE (`super_admin`) ve y gestiona las facturas de todas las marcas, incluidas las sin propietario; es el único que anula, marca vencida o confirma el pago de una factura de colaboración (activa la colaboración solo si `campaign_brand_applications.invoice_id` coincide con la factura) y puede compartir cualquier factura en solo lectura vía `POST /api/invoices/[id]/shares`.
 
 #### AD-12 Contratos
 ![Contratos](mockups/admin-contracts.png)
@@ -496,11 +509,21 @@ Construido 2026-07-02. 3 tiers internos: Basic (99.000 CLP/mes), Growth (259.000
 `PlanUpgradeWall` (gating interno) apunta al CTA `/brand-settings/plan`.
 
 **MK-12b — Billing operativo**
-**Navegación:** `/brand-billing` — placeholder "Facturación próximamente". Historial de cobros y documentos tributarios entre Marca y SCENCE. **No implementado aún.** No confundir con Plan/Suscripción (MK-12a) ni con Payroll (módulo separado Admin).
+**Navegación:** `/brand-billing` (`BillingClient` en modo `invoicesOnly`) · **API:** `/api/invoices` · **Tablas:** `invoices`, `invoice_line_items`, `invoice_shares`.
+La marca crea, lista y consulta **sus** facturas (BR-12), las envía, edita campos no financieros y las marca como pagadas (BR-14). No puede anular ni marcar vencida. Las facturas compartidas con ella se obtienen con `GET /api/invoices?scope=shared` (solo lectura, BR-13) y nunca se mezclan con las propias. La pestaña de compartidas y el botón de compartir **aún no existen en la UI** (pendiente). La migración `20261022120000` está pendiente de revisión/aplicación. Las facturas históricas (10 a 2026-10-22, todas en la organización de la agencia) quedan sin propietario y solo las ve el Admin hasta que se decida su asignación. No confundir con Plan/Suscripción (MK-12a) ni con Payroll (módulo separado Admin).
 
 **Regla:** No tocar Stripe, Transbank, ni billing real hasta fase habilitada explícitamente por Pri.
 
 #### MK-13 Marcas colaboradoras — 🔜 pendiente
+**Estado M5 (2026-10-23):** API `GET|POST|DELETE /api/brand/collaborators` (sin UI): relación **direccional** (A agregó a B), solo con marcas **ya existentes y `approved`** identificadas por Instagram normalizado (se reutiliza su `brand_id`; no se crea ni fusiona nada). Agregar/quitar: solo `owner` y `super_admin`; el resto de roles autorizados de la marca (`member`, `brand_manager`, `finance`) solo consulta la lista de su propia marca; la marca debe estar `approved`. Una marca inexistente o no aprobada responde igual (404) y **no se revela su estado**. La lista expone solo `id`, nombre, logo e Instagram. Crear marcas nuevas desde aquí queda **deshabilitado** hasta resolver M3 (`register_brand`). Colaborar **no concede acceso** a campañas, influencers ni datos privados de la otra marca; sin backfill desde `campaign_brands`. Regla de negocio en `CLAUDE.md` §16.9.
+
+| Nivel de verificación | Estado |
+|---|---|
+| 1. Implementado en local | Sí, sin commit (migración, API y helper; sin UI). |
+| 2. Probado en local | Solo **simulado**: 13 pruebas puras/estáticas + 29 que ejecutan los handlers sobre una base en memoria (no es PostgreSQL); `tsc` y `lint` sin errores. **Pruebas reales contra PostgreSQL: ninguna.** `next build`: no ejecutado (falta binario SWC de Linux). |
+| 3. Verificado en Preview | No (sin evidencia). |
+| 4. Confirmado en producción | No (migración no aplicada en ningún entorno). |
+
 **Navegación:** `brand-brands` — marcado "soon" en v2.1 (antes 404 real — bug B-05). Requiere decisión de producto: alcance de "solo nombre" de otras marcas por campaña compartida (BR-06).
 
 ---
@@ -661,7 +684,7 @@ SCENCE no usa temas visuales sobre planos (no aplica, a diferencia de un sistema
 | INT-01 | Google Calendar (Service Account) | Sincroniza `bookings` con eventos de calendario para la agenda operativa de Admin. | Entrada/Salida |
 | INT-02 | Apify (Instagram Sync) | Actualiza followers/engagement de `influencer_social_profiles` bajo demanda desde Data Quality. | Entrada |
 | INT-03 | Resend | Envío de emails transaccionales (ver §9). | Salida |
-| INT-04 | Stripe | Checkout/Webhook/Portal plan-aware, conectados a `subscription_plans`/`subscriptions`. **v2.2:** UI de plan movida a `/brand-settings/plan` (MK-12a); `/brand-billing` es ahora solo el placeholder de billing operativo (MK-12b). Cobro real no habilitado en esta fase — botones de contratación disparan `mailto:` a ventas. | Entrada/Salida |
+| INT-04 | PayPal | Checkout y webhook de suscripciones (`/api/paypal/*`) conectados a `subscriptions`/`subscription_payments`. Stripe y MercadoPago quedaron descartados (sin datos en producción; CLAUDE.md §16.5). **v2.2:** UI de plan en `/brand-settings/plan` (MK-12a); `/brand-billing` es solo el placeholder de billing operativo (MK-12b). El cobro de suscripciones de marca no está habilitado y su modelo comercial queda pendiente (requerimiento INT-001): los botones de contratación disparan `mailto:` a ventas. | Entrada/Salida |
 | INT-05 | Supabase Auth | Autenticación y sesión; `user_metadata` determina el portal (`is_brand`, `is_influencer`). | Entrada/Salida |
 
 ---

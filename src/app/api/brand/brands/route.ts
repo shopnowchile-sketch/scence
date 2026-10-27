@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, provisionOrgForBrand } from '@/lib/supabase/ensureOrg'
+import { getOrgId, hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { authorizeBrandRegistration, registerBrandAtomic } from '@/lib/supabase/registerBrand'
+import { registrationDeniedMessage, registrationKey } from '@/lib/brand-registration-policy'
+import { isPlausibleEmail } from '@/lib/email-match'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -11,7 +14,15 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
+  // Quién puede ver el listado: admin de plataforma (su propia organización) o un usuario de marca con `campaign.read`
+  // (el listado se arma con las campañas de la marca) y una marca en estado operativo (aprobada). Antes bastaba cualquier membresía.
+  const platformAdmin = await isPlatformAdmin(user.id, admin)
+  const brandAccess = platformAdmin ? null : await resolveBrandAccess(user.id)
+  if (!platformAdmin && (!brandAccess || !hasBrandPermission(brandAccess, 'campaign.read'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  // La organización sale de la marca resuelta (no de «la primera membresía»); el admin usa la suya.
+  const orgId = brandAccess ? brandAccess.organizationId : await getOrgId(user.id, user.user_metadata, admin)
 
   if (!orgId) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
@@ -129,11 +140,15 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
-  if (!orgId) {
-    return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
+  // Pueden registrar marcas: influencers, usuarios de una marca APROBADA y admins
+  // de plataforma, siempre con cuenta verificada y activa. Registrar no concede
+  // brand_manager ni acceso a otras marcas (CLAUDE.md §16.9).
+  const decision = await authorizeBrandRegistration(admin, user)
+  if (!decision.allowed) {
+    return NextResponse.json({ error: registrationDeniedMessage(decision.reason) }, { status: 403 })
   }
+  const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
   let body: Record<string, unknown>
 
@@ -160,60 +175,43 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { data: existingBrand, error: existingError } = await admin
-    .from('brands')
-    .select('id, name, status')
-    .ilike('contact_email', email)
-    .maybeSingle()
-
-  if (existingError) {
-    return NextResponse.json({ error: existingError.message }, { status: 500 })
+  if (!isPlausibleEmail(email)) {
+    return NextResponse.json({ error: 'El email de contacto no es válido' }, { status: 422 })
   }
 
-  if (existingBrand) {
-    return NextResponse.json(
-      {
-        error: `Ya existe una marca registrada con ese email: ${existingBrand.name}`,
-        existing_brand_id: existingBrand.id,
-      },
-      { status: 409 }
-    )
+  const brandFields = {
+    name,
+    logo_url: body.logo_url || null,
+    website: body.website || null,
+    instagram,
+    industry: body.industry || null,
+    contact_name: body.contact_name || null,
+    contact_email: email,
+    contact_phone: body.contact_phone || null,
+    notes: body.notes || null,
+    metadata: {
+      created_from_brand_portal: true,
+      // Org de la persona que registra (referencia informativa; no es un vínculo marca→marca).
+      invited_by_organization_id: orgId,
+    },
+  }
+  const registered = await registerBrandAtomic(admin, {
+    brand: brandFields,
+    registeredBy: user.id,
+    key: registrationKey(user.id, brandFields),
+  })
+  if (!registered.ok) {
+    console.error('[POST /api/brand/brands]', registered.error)
+    return NextResponse.json({ error: 'No se pudo registrar la marca' }, { status: 500 })
+  }
+  if (registered.outcome === 'conflict') {
+    // No se revela el nombre ni el id de la marca existente: pertenece a otra
+    // organización y las marcas no se ven entre sí.
+    return NextResponse.json({ error: 'Ya existe una marca registrada con ese email' }, { status: 409 })
   }
 
-  const newOrgId = await provisionOrgForBrand(name)
+  const { data, error } = await admin.from('brands').select('*').eq('id', registered.brandId).single()
+  if (error || !data) return NextResponse.json({ error: 'No se pudo leer la marca registrada' }, { status: 500 })
 
-  if (!newOrgId) {
-    return NextResponse.json(
-      { error: 'No se pudo crear la organización de la marca' },
-      { status: 500 }
-    )
-  }
-
-  const { data, error } = await admin
-    .from('brands')
-    .insert({
-      organization_id: newOrgId,
-      name,
-      logo_url: body.logo_url || null,
-      website: body.website || null,
-      instagram,
-      industry: body.industry || null,
-      contact_name: body.contact_name || null,
-      contact_email: email,
-      contact_phone: body.contact_phone || null,
-      notes: body.notes || null,
-      created_by: user.id,
-      metadata: {
-        created_from_brand_portal: true,
-        invited_by_organization_id: orgId,
-      },
-    })
-    .select()
-    .single()
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ data }, { status: 201 })
+  return NextResponse.json({ data }, { status: registered.outcome === 'replayed' ? 200 : 201 })
 }

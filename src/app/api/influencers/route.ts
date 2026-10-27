@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveRegisteredBy } from '@/lib/influencer-registrant'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getPrimarySocial } from '@/lib/influencers/ranking'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
-import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { ADMIN_ROLES, getOrgId, getUserRole, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
@@ -447,15 +448,21 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
     }
   }
 
-  // Org de Scence SpA = la organización más antigua (mismo criterio que
-  // ensureInfluencerRow usa para "la organización real").
-  const { data: oldestOrg } = await admin
-    .from('organizations')
-    .select('id')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .single()
-  const scenceOrgId = oldestOrg?.id ?? null
+  // «Registrada por»: se deduce de la relación organización → marcas (ver influencer-registrant.ts),
+  // no de la antigüedad de una organización. Solo presentación.
+  const orgIdsOnPage = Array.from(new Set(withOfficialLocation.map(inf => inf.organization_id as string | null).filter((id): id is string => !!id)))
+  const brandsByOrg = new Map<string, Array<{ name: string; created_at: string }>>()
+  if (orgIdsOnPage.length > 0) {
+    const { data: orgBrandRows } = await admin
+      .from('brands')
+      .select('organization_id, name, created_at')
+      .in('organization_id', orgIdsOnPage)
+    for (const row of (orgBrandRows ?? []) as Array<{ organization_id: string; name: string; created_at: string }>) {
+      const list = brandsByOrg.get(row.organization_id) ?? []
+      list.push({ name: row.name, created_at: row.created_at })
+      brandsByOrg.set(row.organization_id, list)
+    }
+  }
 
   // Reutiliza el mapa ya calculado sobre el dataset completo (filtro/sort de
   // plan) en vez de repetir la consulta — si no se calculó (caso normal, sin
@@ -469,14 +476,11 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
     const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []
     const associated_brands = brandsForInf.map(b => ({ id: b.id, name: b.name }))
 
-    let registered_by: string
-    if (!orgId || orgId === scenceOrgId) {
-      registered_by = 'SCENCE'
-    } else if (brandsForInf.length > 0) {
-      registered_by = brandsForInf[0].name // fila más antigua = marca creadora
-    } else {
-      registered_by = 'Marca' // org de marca sin fila en brand_influencers (caso raro/legado)
-    }
+    const registered_by = resolveRegisteredBy({
+      organizationId: orgId,
+      brandsInOrg: orgId ? brandsByOrg.get(orgId) ?? [] : [],
+      associatedBrands: brandsForInf,
+    })
 
     const pro_source = proStatuses.get(inf.id as string) ?? 'free'
     const pro_attempt_count = proAttemptByInfluencer.get(inf.id as string) ?? 0
@@ -494,6 +498,12 @@ export async function POST(request: NextRequest) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // Solo administración de plataforma (la pantalla existe en /admin-influencers/new; la marca usa /api/brand/influencers).
+  // Antes: cualquier usuario con sesión podía crear fichas, y en cualquier organización (la tomaba del body o del
+  // user_metadata, que el propio usuario puede editar).
+  const admin = createAdminClient()
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: Record<string, unknown>
   try { body = await request.json() }
@@ -533,8 +543,13 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const orgId = (organization_id as string) ?? user.user_metadata?.organization_id
-  const admin = createAdminClient()
+  // La organización sale de las membresías de administración del usuario, nunca del user_metadata. Si el cuerpo
+  // indica una, debe ser una de SUS organizaciones; si no, se usa la suya (getOrgId prioriza la de plataforma).
+  const { data: adminMemberships } = await admin.from('organization_members').select('organization_id').eq('user_id', user.id).eq('is_active', true).in('role', ADMIN_ROLES)
+  const adminOrgIds = (adminMemberships ?? []).map((r: { organization_id: string }) => r.organization_id)
+  if (organization_id && !adminOrgIds.includes(organization_id as string)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const orgId = (organization_id as string | undefined) ?? await getOrgId(user.id, user.user_metadata, admin)
+  if (!orgId) return NextResponse.json({ error: 'Organization not found' }, { status: 400 })
 
   // first_name / last_name don't have dedicated columns — store in metadata
   const meta: Record<string, unknown> = {}

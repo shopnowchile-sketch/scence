@@ -26,6 +26,9 @@ erDiagram
     brands }o--|| organizations : "belongs to"
     brands ||--o{ campaigns : "sponsors"
     brands ||--o{ invoices : "billed via"
+    brands ||--o{ invoices : "owns (owner_brand_id)"
+    invoices ||--o{ invoice_shares : "shared read-only via"
+    brands ||--o{ invoice_shares : "receives"
 
     influencers }o--|| organizations : "roster of"
     influencers ||--o{ influencer_social_profiles : "has"
@@ -94,6 +97,8 @@ Extiende `auth.users` de Supabase.
 
 ### 2.2 `organizations`
 Unidad multi-tenant raíz. Cada instancia de SCENCE para un cliente es una org.
+
+> **Nota documental 2026-10-22:** la organización es un concepto técnico del modelo multiempresa, no un concepto de negocio. En el modelo de negocio todas las marcas están al mismo nivel y SCENCE SpA es una marca de pruebas; hoy cada marca vive en su propia organización `type='brand'` y la organización `Scence SpA` (`type='agency'`) concentra la operación de plataforma (0 marcas). Cifras con su fuente y pendientes de RLS/relaciones: `CLAUDE.md` §16.9.
 
 | Columna | Tipo | Constraints | Descripción |
 |---|---|---|---|
@@ -539,6 +544,26 @@ Notificaciones in-app (tabla existe, UI pendiente).
 
 ---
 
+### 2.19 `brand_collaborators` — *implementada en local; migración `20261023120000` NO aplicada en ningún entorno*
+
+Marcas colaboradoras persistentes y **direccionales**: una fila = «la marca `brand_id` agregó a `collaborator_brand_id`». No crea la relación inversa, no es una jerarquía y **no otorga acceso** (a diferencia de `campaign_brands`, cuyas filas habilitan acceso a campañas por RLS).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| brand_id | uuid FK brands (CASCADE) | marca que agrega |
+| collaborator_brand_id | uuid FK brands (CASCADE) | marca agregada |
+| created_by | uuid FK profiles (SET NULL) | usuario que ejecutó la acción |
+| created_at | timestamptz | |
+
+Restricciones: `UNIQUE (brand_id, collaborator_brand_id)`; `CHECK (brand_id <> collaborator_brand_id)`. RLS habilitado sin políticas y sin privilegios para `anon`/`authenticated`; `service_role` recibe solo `SELECT, INSERT, DELETE` (GRANT explícito necesario: los privilegios por defecto de tablas creadas por `postgres` no incluyen CRUD para `service_role`). Solo rutas con service role (`/api/brand/collaborators`). Sin backfill desde `campaign_brands`. Reversión: `drop table public.brand_collaborators`.
+
+Reglas de uso (CLAUDE.md §16.9): solo `owner` y `super_admin` escriben; los demás roles autorizados de la marca leen su propia lista; solo se vinculan marcas existentes y `approved` (identificadas por `instagram_handle_normalized`, reutilizando su `brand_id`); la fila **no concede acceso** a datos de la marca colaboradora ni toca membresías o `campaign_brands`; la API expone `id`, nombre, logo e Instagram, nunca `status`.
+
+**Verificación:** (1) implementada en local; (2) probada solo con base **en memoria simulada** (solo se emulan la unicidad y el CHECK de autorelación; **el CASCADE real no se ha probado**, y tampoco RLS, privilegios, claves foráneas, índices ni concurrencia en PostgreSQL); (3) Preview: no; (4) producción: no.
+
+---
+
 ## 3. ENUMs
 
 | Enum | Valores |
@@ -581,6 +606,8 @@ Notificaciones in-app (tabla existe, UI pendiente).
 | Sync deliverable tasks | `POST /api/campaigns/[id]/influencers` | Add influencer | syncDeliverableTask() |
 | Crear brands record | `POST /api/brand/register` | Primer login de marca | INSERT brands si no existe |
 | Crear org | `ensureOrg()` | Primer login de admin | INSERT organizations + organization_members |
+
+> **Corrección documental 2026-10-22:** las dos filas anteriores describen el estado de junio 2026. Hoy la marca y su organización se crean en el registro (`POST /api/auth/register-brand` → `ensureBrandRow()`), y `ensureOrg()` es interna: ningún login (admin, marca o influencer) crea organizaciones. `POST /api/brand/register` solo confirma el acceso o vincula una invitación pendiente.
 
 ---
 

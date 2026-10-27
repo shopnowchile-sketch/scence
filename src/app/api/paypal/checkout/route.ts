@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { payPalBaseUrl } from '@/lib/paypal-env'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { canPayBrandPlan, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { type PlanTier } from '@/lib/plan-limits'
 
 const VALID_TIERS: PlanTier[] = ['basic', 'growth', 'pro']
 
-function paypalBaseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
+function paypalBaseUrl() { return payPalBaseUrl() }
 
 async function getAccessToken() {
   const clientId = process.env.PAYPAL_CLIENT_ID
@@ -32,7 +33,8 @@ export async function POST(request: NextRequest) {
   if (!tier || !VALID_TIERS.includes(tier)) return NextResponse.json({ error: 'Plan invÃ¡lido' }, { status: 422 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
-  if (!hasBrandPermission(access, 'billing.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Pagar el plan sigue siendo exclusivo del owner; vale para marcas pendientes (eligen plan) y suspendidas (reactivan).
+  if (!canPayBrandPlan(access)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const paypalPlanId = planIdFor(tier)
   if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavÃ­a no estÃ¡ habilitado para este plan.' }, { status: 503 })
   const admin = createAdminClient()

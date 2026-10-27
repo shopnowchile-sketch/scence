@@ -6,6 +6,8 @@
 
 **Versión:** 2.4 | **Fecha de emisión:** 2026-07-08
 
+> **Nota documental 2026-10-22:** en el modelo de marcas, este documento es histórico (julio 2026). Su BR-10 («vinculado a la organización SCENCE») y su supuesto 1 de §2.3 no reflejan el modelo vigente: SCENCE es la plataforma, SCENCE SpA es una marca de pruebas y cada marca registrada tiene su propia organización técnica. La regla vigente está en `CLAUDE.md` §16.9 y `docs/FUNCTIONAL_DESIGN.md` (BR-10 y BR-15). El contenido original no se modificó.
+
 ## Control de Documento
 
 ### Lista de distribución
@@ -129,6 +131,10 @@ El flujo macro del negocio: se define la campaña, se convoca al elenco de influ
 
 ## 3\. Requisitos Funcionales por Portal
 
+### 3.0 Fuente de verdad funcional — piloto DASH-001
+
+Cuando existe una versión aprobada, el requerimiento versionado es la fuente de verdad funcional. El piloto `DASH-001` conserva definición, impacto, evidencias, pruebas y desviaciones; solo `super_admin` puede proponer o aprobar versiones. Estado inicial: **por verificar** hasta aplicar la migración en un entorno de desarrollo autorizado y contrastar el KPI con datos reales.
+
 > Los mockups son reconstrucciones fieles (SVG, no screenshots literales) generadas a partir de la sesión en vivo del 2026-07-01, en `docs/mockups/*.svg`.
 
 ### 3.1 Portal Admin
@@ -144,7 +150,7 @@ Dashboard Admin
 | Campo                 | Fuente                                                          | Para qué sirve                       |
 | --------------------- | --------------------------------------------------------------- | ------------------------------------ |
 | Campañas en curso     | `count(campaigns) where status in (active,pending_influencers)` | KPI de carga operativa del mes       |
-| Influencers en roster | `count(influencers) where is_active=true`                       | Tamaño total del roster disponible   |
+| Influencers en roster | `count(influencers) where organization_id=sesión and is_active=true` | Tamaño total del roster operativo disponible |
 | Marcas registradas    | `count(brands)`                                                 | Tamaño de la cartera de clientes     |
 | Facturado (outbound)  | `sum(invoices.total)` del mes                                   | Ingreso reconocido                   |
 | Costos recibidos      | `sum(payroll_runs.total)` del mes                               | Costo de payroll del mes             |

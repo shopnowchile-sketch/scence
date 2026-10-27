@@ -4,6 +4,26 @@ import { hasActiveCampaignCommitment } from '@/lib/influencer-pro-commitment'
 import { isInfluencerPro, reconcileOrphanProSubscriptions } from '@/lib/influencer-pro'
 import { influencerSubscriptionGrantsPro, isInfluencerProCancellationScheduled } from '@/lib/influencer-paypal'
 
+// Lista explícita de campos que el portal usa (InfluencerPlanSettings / inf-profile). Lo interno
+// (id de suscripción, metadata, paypal_subscription_id, gateway_payment_id, receipt_url, canceled_at...) no sale.
+type PlanRef = { name: string | null; tier: string | null }
+function publicSubscription(row: Record<string, unknown>) {
+  const rawPlan = row.plan as PlanRef | PlanRef[] | null | undefined
+  const plan = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan
+  return {
+    status: row.status,
+    current_period_end: row.current_period_end ?? null,
+    started_paying_at: row.started_paying_at ?? null,
+    plan: plan ? { name: plan.name ?? null, tier: plan.tier ?? null } : null,
+  }
+}
+function publicPayment(row: Record<string, unknown>) {
+  return {
+    id: row.id, gateway: row.gateway, amount: row.amount, currency: row.currency, status: row.status,
+    paid_at: row.paid_at, period_start: row.period_start ?? null, period_end: row.period_end ?? null,
+  }
+}
+
 export async function GET() {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -55,7 +75,7 @@ export async function GET() {
     const isPro = await isInfluencerPro(admin, influencer.id)
     const cancelScheduled = isInfluencerProCancellationScheduled(subscription)
     return NextResponse.json({
-      subscription,
+      subscription: publicSubscription(subscription as Record<string, unknown>),
       commitment: commitment.commitment,
       // Una cancelación ya programada no se puede repetir (evita doble cancelación).
       can_cancel: ['active', 'trialing'].includes(subscription.status) && !cancelScheduled && !commitment.blocked,
@@ -65,7 +85,7 @@ export async function GET() {
       is_pro: isPro,
       account_active: influencer.is_active,
       started_paying_at: subscription.started_paying_at ?? completedPayments.at(-1)?.paid_at ?? null,
-      payments: payments ?? [],
+      payments: (payments ?? []).map(row => publicPayment(row as Record<string, unknown>)),
       total_paid: totalPaid,
       total_paid_currency: completedPayments[0]?.currency ?? null,
     })

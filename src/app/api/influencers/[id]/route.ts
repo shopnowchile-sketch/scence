@@ -4,9 +4,10 @@ import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { hardDeleteInfluencers, InfluencerHasProError } from '@/lib/influencers/hardDelete'
-import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
+import { getOfficialLocationDisplayMap, normalizeInfluencerPhone, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { getInfluencerProStatuses, getInfluencerProSubscriptionDetails } from '@/lib/influencer-pro'
 import { cancelInfluencerPayPalAtPeriodEnd, persistInfluencerProCancellation } from '@/lib/influencer-paypal'
+import { pickAdminInfluencerColumns, pickInfluencerMetaPatch, sanitizeRateCards } from '@/lib/influencers/writable-fields'
 
 type Params = { params: { id: string } }
 
@@ -17,14 +18,17 @@ async function canManageInfluencer(admin: ReturnType<typeof createAdminClient>, 
     .eq('id', influencerId)
     .maybeSingle()
 
-  if (!influencer) return { allowed: false, influencer: null }
-  if (influencer.user_id === userId) return { allowed: true, influencer }
-
-  // Solo la propia influencer o el admin de plataforma (antes: cualquier
-  // owner de la org Scence SpA, incluidas marcas).
-  const allowed = await isPlatformAdmin(userId, admin)
-  return { allowed, influencer }
+  if (!influencer) return { allowed: false, isAdmin: false, influencer: null }
+  // Admin de plataforma (antes: cualquier owner de la org Scence SpA, incluidas
+  // marcas). La propia influencer solo puede LEER aquí; escribir es solo admin.
+  const isAdmin = await isPlatformAdmin(userId, admin)
+  return { allowed: isAdmin || influencer.user_id === userId, isAdmin, influencer }
 }
+
+const ADMIN_ONLY_RESPONSE = () => NextResponse.json(
+  { error: 'La ficha de una influencer solo la edita el equipo SCENCE. Usa tu perfil para actualizar tus datos.', code: 'INFLUENCER_ADMIN_ONLY' },
+  { status: 403 },
+)
 
 // ── GET /api/influencers/[id] ─────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -213,6 +217,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     first_name, last_name, deactivation_reason, status: influencerStatus,
     // Strip any other relation fields
     campaign_deliverables: _cd,
+    // Nunca desde el cliente: ver writable-fields.ts
+    user_id: _uid, metadata: _rawMeta,
     // Geography is now sourced only from locations.location_id.
     // Never write the legacy text geography columns.
     country: _country,
@@ -221,17 +227,23 @@ export async function PUT(request: NextRequest, { params }: Params) {
     ...rest
   } = body
 
-  // Merge non-column fields into metadata
-  const metaUpdate: Record<string, unknown> = {}
-  if (first_name         !== undefined) metaUpdate.first_name         = first_name
-  if (last_name          !== undefined) metaUpdate.last_name          = last_name
-  if (deactivation_reason !== undefined) metaUpdate.deactivation_reason = deactivation_reason
-  if (influencerStatus   !== undefined) metaUpdate.status             = influencerStatus
+  // Merge non-column fields into metadata (validados; `metadata` crudo del body
+  // se ignora: manual_pro solo cambia por /pro).
+  const metaResult = pickInfluencerMetaPatch({ first_name, last_name, deactivation_reason, status: influencerStatus })
+  if (!metaResult.ok) return NextResponse.json({ error: metaResult.error }, { status: 422 })
+  const metaUpdate = metaResult.patch
+
+  let rateCardRows: ReturnType<typeof sanitizeRateCards> | null = null
+  if (rate_cards !== undefined) {
+    rateCardRows = sanitizeRateCards(rate_cards)
+    if (!rateCardRows.ok) return NextResponse.json({ error: rateCardRows.error }, { status: 422 })
+  }
 
   const admin = createAdminClient()
   const access = await canManageInfluencer(admin, user.id, params.id)
   if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!access.isAdmin) return ADMIN_ONLY_RESPONSE()
 
   if (access.influencer.user_id === user.id && Object.prototype.hasOwnProperty.call(body, 'is_active')) {
     return NextResponse.json({ error: 'Una influencer no puede cambiar el estado de su propia cuenta.', code: 'INFLUENCER_STATUS_ADMIN_ONLY' }, { status: 403 })
@@ -274,14 +286,18 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // Merge metadata with existing (don't overwrite)
   let mergedMeta = metaUpdate
   if (Object.keys(metaUpdate).length > 0) {
-    const { data: cur } = await admin.from('influencers').select('metadata').eq('id', params.id).single()
+    const { data: cur, error: curErr } = await admin.from('influencers').select('metadata').eq('id', params.id).single()
+    if (curErr) return NextResponse.json({ error: 'No se pudo leer la ficha antes de guardar' }, { status: 500 })
     mergedMeta = { ...(cur?.metadata as Record<string,unknown> ?? {}), ...metaUpdate }
   }
+
+  const columnUpdate = pickAdminInfluencerColumns(rest)
+  if ('phone' in columnUpdate) columnUpdate.phone = await normalizeInfluencerPhone(admin, columnUpdate.phone, { locationId: columnUpdate.location_id, influencerId: params.id })
 
   const { data, error } = await admin
     .from('influencers')
     .update({
-      ...rest,
+      ...columnUpdate,
       ...(Object.keys(mergedMeta).length > 0 ? { metadata: mergedMeta } : {}),
       updated_at: new Date().toISOString(),
     })
@@ -325,21 +341,27 @@ export async function PUT(request: NextRequest, { params }: Params) {
     await syncProfilesNow(admin, [...plan.resyncExistingIds, ...insertedIgIds])
   }
 
-  // Replace rate cards if provided
-  // Normalize: form sends service_type → DB column is deliverable_type
-  if (Array.isArray(rate_cards)) {
-    await admin.from('influencer_rate_cards').delete().eq('influencer_id', params.id)
-    if ((rate_cards as unknown[]).length > 0) {
+  // Tarifas: primero se leen las actuales, luego se INSERTAN las nuevas y solo
+  // si eso salió bien se borran las anteriores (por id). Si algo falla, no se
+  // pierden las tarifas existentes. Antes: DELETE sin revisar error + INSERT.
+  if (rateCardRows?.ok) {
+    const { data: oldCards, error: oldErr } = await admin.from('influencer_rate_cards').select('id').eq('influencer_id', params.id)
+    if (oldErr) return NextResponse.json({ error: `Error leyendo tarifas: ${oldErr.message}` }, { status: 500 })
+    if (rateCardRows.rows.length > 0) {
       const { error: rcErr } = await admin.from('influencer_rate_cards').insert(
-        (rate_cards as Array<Record<string, unknown>>).map(({ service_type, id: _rid, ...rc }) => ({
-          ...rc,
-          deliverable_type: (service_type as string) ?? rc.deliverable_type,
-          influencer_id: params.id,
-        }))
+        rateCardRows.rows.map(rc => ({ ...rc, influencer_id: params.id }))
       )
       if (rcErr) {
         console.error('[PUT /api/influencers/[id]] rate_cards:', rcErr)
         return NextResponse.json({ error: `Error guardando tarifas: ${rcErr.message}` }, { status: 500 })
+      }
+    }
+    const oldIds = (oldCards ?? []).map(r => r.id as string)
+    if (oldIds.length > 0) {
+      const { error: delErr } = await admin.from('influencer_rate_cards').delete().in('id', oldIds).eq('influencer_id', params.id)
+      if (delErr) {
+        console.error('[PUT /api/influencers/[id]] rate_cards delete:', delErr)
+        return NextResponse.json({ error: `Las tarifas nuevas se guardaron, pero no se pudieron reemplazar las anteriores: ${delErr.message}` }, { status: 500 })
       }
     }
   }
@@ -373,28 +395,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const access = await canManageInfluencer(admin, user.id, params.id)
   if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!access.isAdmin) return ADMIN_ONLY_RESPONSE()
 
   if (access.influencer.user_id === user.id && Object.prototype.hasOwnProperty.call(body, 'is_active')) {
     return NextResponse.json({ error: 'Una influencer no puede cambiar el estado de su propia cuenta.', code: 'INFLUENCER_STATUS_ADMIN_ONLY' }, { status: 403 })
   }
 
-  // Campos que no son columnas reales → van dentro de metadata JSONB
-  const META_FIELDS = ['deactivation_reason', 'first_name', 'last_name', 'status']
-  const LEGACY_GEO_FIELDS = ['country', 'city', 'commune']
-  const metaPatch: Record<string, unknown> = {}
-  const columnPatch: Record<string, unknown> = {}
-
-  for (const [k, v] of Object.entries(body)) {
-    if (META_FIELDS.includes(k)) metaPatch[k] = v
-    else if (LEGACY_GEO_FIELDS.includes(k)) continue
-    else columnPatch[k] = v
+  // Solo columnas de la lista blanca; el resto del body (user_id,
+  // organization_id, metadata crudo, etc.) se ignora. Claves de metadata se
+  // validan y se mezclan con lo existente.
+  const columnPatch = pickAdminInfluencerColumns(body)
+  if ('phone' in columnPatch) columnPatch.phone = await normalizeInfluencerPhone(admin, columnPatch.phone, { locationId: columnPatch.location_id, influencerId: params.id })
+  const metaResult = pickInfluencerMetaPatch(body)
+  if (!metaResult.ok) return NextResponse.json({ error: metaResult.error }, { status: 422 })
+  const metaPatch = metaResult.patch
+  if (Object.keys(columnPatch).length === 0 && Object.keys(metaPatch).length === 0) {
+    return NextResponse.json({ error: 'No hay campos editables para actualizar' }, { status: 422 })
   }
 
-  // Si hay campos de metadata, hacer merge con el metadata existente
   let metadataUpdate: Record<string, unknown> | undefined
   if (Object.keys(metaPatch).length > 0) {
-    const { data: existing } = await admin
+    const { data: existing, error: existingErr } = await admin
       .from('influencers').select('metadata').eq('id', params.id).single()
+    if (existingErr) return NextResponse.json({ error: 'No se pudo leer la ficha antes de guardar' }, { status: 500 })
     metadataUpdate = { ...(existing?.metadata ?? {}), ...metaPatch }
   }
 
@@ -430,6 +453,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const access = await canManageInfluencer(admin, user.id, params.id)
   if (!access.influencer) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!access.isAdmin) return ADMIN_ONLY_RESPONSE()
   const hard = new URL(req.url).searchParams.get('hard') === 'true'
 
   // ── Borrado permanente ─────────────────────────────────────────────────────

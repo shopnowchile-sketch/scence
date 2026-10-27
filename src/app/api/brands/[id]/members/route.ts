@@ -10,8 +10,8 @@ import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 type Params = { params: { id: string } }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
-// Solo dos roles de marca: owner (único, se transfiere) y member. 'brand_manager' es alias heredado de member.
-const MEMBER_ROLES = ['member', 'brand_manager'] as const
+// Solo dos roles de marca: owner (único, se transfiere) y member.
+const MEMBER_ROLES = ['member'] as const
 
 const officialRole = officialRoleFor
 
@@ -310,15 +310,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     let nextOwnerId = targetMember.user_id as string | null
     if (!nextOwnerId) {
-      let page = 1
-      for (;;) {
-        const { data: usersPage, error: usersError } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
-        if (usersError || !usersPage?.users?.length) break
-        const match = usersPage.users.find(u => u.email?.toLowerCase() === targetMember.email.toLowerCase())
-        if (match) { nextOwnerId = match.id; break }
-        if (usersPage.users.length < 1000) break
-        page++
-      }
+      nextOwnerId = (await findAuthUserByEmail(admin, targetMember.email))?.id ?? null
     }
     if (!nextOwnerId) {
       const { data: created, error: createError } = await admin.auth.admin.createUser({
@@ -352,12 +344,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (previousOwnerError) return NextResponse.json({ error: previousOwnerError.message }, { status: 500 })
     }
 
-    const { data: nextOwner } = await admin.auth.admin.getUserById(nextOwnerId)
-    if (nextOwner?.user) {
-      await admin.auth.admin.updateUserById(nextOwnerId, {
-        user_metadata: { ...nextOwner.user.user_metadata, is_brand: true, brand_id: params.id, full_name: currentBrand.contact_name ?? currentBrand.name },
-      })
-    }
+    // No se reescribe user_metadata de una identidad existente: una misma cuenta
+    // puede ser influencer y owner de marca, y full_name/brand_id no son
+    // fuente de autorización (la membresía canónica ya quedó arriba).
     await admin.from('brand_members').delete().eq('id', targetMember.id).eq('brand_id', params.id)
     return NextResponse.json({ data: { email: targetMember.email, role: 'owner' } })
   }

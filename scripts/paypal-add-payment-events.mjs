@@ -15,6 +15,7 @@
  *   node scripts/paypal-add-payment-events.mjs --apply --webhook-id=XXX --env-file=.env.local
  */
 import { readFileSync } from 'node:fs'
+import { resolvePayPalTarget } from './lib/paypal-target.mjs'
 
 const args = process.argv.slice(2)
 const APPLY = args.includes('--apply')
@@ -30,7 +31,10 @@ for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) {
   const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)
   if (match) env[match[1]] = match[2].trim().replace(/^["']|["']$/g, '')
 }
-const base = env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'
+let target
+try { target = resolvePayPalTarget({ argv: args, env, processEnv: process.env }) } catch (e) { console.error(`✗ ${e.message}`); process.exit(1) }
+const base = target.base
+for (const note of target.notes) console.warn(note)
 if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_CLIENT_SECRET) {
   console.error(`Faltan PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET en ${ENV_FILE}.`)
   process.exit(1)
@@ -56,7 +60,7 @@ if (!currentResponse.ok) {
   process.exit(1)
 }
 
-console.log(`Entorno   : ${env.PAYPAL_ENV} → ${base}`)
+console.log(`Entorno   : ${target.mode} → ${base}`)
 console.log(`Webhook   : ${current.id}`)
 console.log(`URL       : ${current.url}   (NO se modifica)\n`)
 

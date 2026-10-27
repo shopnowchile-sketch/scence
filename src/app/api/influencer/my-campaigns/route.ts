@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { publicCampaignMetadata } from '@/lib/campaign-field-guards'
+import { validateSelfCampaignCreate, buildSelfCampaignUpdate } from '@/lib/influencer-self-campaign'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ export async function GET() {
     .select(`
       id, name, status, description, hashtags, platforms,
       start_date, end_date, currency, budget_total, created_by, campaign_benefits, social_tags,
-      brand:brands!brand_id (id, name, logo_url, website, instagram, contact_name, contact_email),
+      brand:brands!brand_id (id, name, logo_url, website, instagram),
       campaign_brands (
         id, role,
         brand:brands (id, name, logo_url, website, instagram)
@@ -360,8 +361,11 @@ export async function POST(req: NextRequest) {
   if (!influencer) return NextResponse.json({ error: 'Not an influencer' }, { status: 403 })
 
   const body = await req.json()
-  const { name, brand_id, start_date, end_date, description, fee, currency = 'CLP' } = body
-  if (!name) return NextResponse.json({ error: 'name requerido' }, { status: 400 })
+  // brand_id y status del body se ignoran: una campaña propia no pertenece a
+  // ninguna marca ni se auto-aprueba (auditoría 2026-10-19, G-11).
+  const parsed = validateSelfCampaignCreate(body)
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
+  const { name, start_date, end_date, description, fee, currency } = parsed.value
 
   // Require an organization to assign the campaign to
   const orgId = influencer.organization_id
@@ -373,15 +377,15 @@ export async function POST(req: NextRequest) {
       name,
       organization_id: orgId,
       created_by: user.id,
-      description: description ?? null,
-      brand_id: brand_id ?? null,
-      start_date: start_date ?? null,
-      end_date: end_date ?? null,
+      description,
+      brand_id: null,
+      start_date,
+      end_date,
       currency,
       status: 'active',
       type: 'sponsored_post',
     })
-    .select('*, brand:brands!brand_id(id, name, logo_url, website, contact_name, contact_email)')
+    .select('*, brand:brands!brand_id(id, name, logo_url, website)')
     .single()
 
   if (campErr) {
@@ -394,7 +398,7 @@ export async function POST(req: NextRequest) {
   const { error: linkErr } = await admin.from('campaign_influencers').insert({
     campaign_id: newCampaign.id,
     influencer_id: influencer.id,
-    fee: fee ?? null,
+    fee,
     currency,
     // La creadora de su propia campaña no está "postulando": queda aceptada.
     // Sin esto tomaba el DEFAULT 'pending' de la columna y el nuevo gate de
@@ -416,7 +420,7 @@ export async function POST(req: NextRequest) {
     data: {
       id: null,
       status: newCampaign.status,
-      fee: fee ?? null,
+      fee,
       currency,
       campaign: newCampaign,
       campaign_deliverables: [],
@@ -443,22 +447,25 @@ export async function PATCH(req: NextRequest) {
   // Verify this campaign was created by this user
   const { data: existing } = await admin
     .from('campaigns')
-    .select('id, created_by')
+    .select('id, created_by, start_date, end_date')
     .eq('id', id)
     .single()
 
   if (!existing) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   if (existing.created_by !== user.id) return NextResponse.json({ error: 'Sin permiso para editar esta campaña' }, { status: 403 })
 
-  // Allowed fields to update
-  const allowed = ['name', 'description', 'start_date', 'end_date', 'currency', 'brand_id', 'status']
-  const updatePayload: Record<string, unknown> = {}
-  for (const key of allowed) {
-    if (key in updates) updatePayload[key] = updates[key]
-  }
+  // Campos permitidos y estados permitidos (solo pausar/completar/cancelar).
+  // brand_id y cualquier otro campo del body se ignoran.
+  const built = buildSelfCampaignUpdate(updates, existing)
+  if (!built.ok) return NextResponse.json({ error: built.error }, { status: 400 })
+  const updatePayload = built.value
 
   if (Object.keys(updatePayload).length > 0) {
-    await admin.from('campaigns').update(updatePayload).eq('id', id)
+    const { error: updErr } = await admin.from('campaigns').update(updatePayload).eq('id', id).eq('created_by', user.id)
+    if (updErr) {
+      console.error('[PATCH /api/influencer/my-campaigns] campaign update failed:', updErr)
+      return NextResponse.json({ error: 'No se pudo actualizar la campaña' }, { status: 500 })
+    }
   }
 
   // Handle deliverables update (upsert/delete by id)
@@ -466,7 +473,7 @@ export async function PATCH(req: NextRequest) {
     for (const d of deliverables) {
       if (!d.id) {
         // New deliverable
-        await admin.from('campaign_deliverables').insert({
+        const { error: insErr } = await admin.from('campaign_deliverables').insert({
           campaign_id: id,
           influencer_id: influencer.id,
           title: d.title ?? null,
@@ -479,8 +486,16 @@ export async function PATCH(req: NextRequest) {
           status: d.status ?? 'pending',
           content_url: d.content_url ?? null,
         })
+        if (insErr) {
+          console.error('[PATCH /api/influencer/my-campaigns] deliverable insert failed:', insErr)
+          return NextResponse.json({ error: 'No se pudo guardar el entregable' }, { status: 500 })
+        }
       } else if (d._delete) {
-        await admin.from('campaign_deliverables').delete().eq('id', d.id).eq('campaign_id', id)
+        const { error: delErr } = await admin.from('campaign_deliverables').delete().eq('id', d.id).eq('campaign_id', id)
+        if (delErr) {
+          console.error('[PATCH /api/influencer/my-campaigns] deliverable delete failed:', delErr)
+          return NextResponse.json({ error: 'No se pudo eliminar el entregable' }, { status: 500 })
+        }
       } else {
         const delUpdate: Record<string, unknown> = {}
         if ('title' in d) delUpdate.title = d.title
@@ -491,7 +506,11 @@ export async function PATCH(req: NextRequest) {
         if ('sequence_number' in d) delUpdate.sequence_number = d.sequence_number
         if ('description' in d) delUpdate.description = d.description
         if (Object.keys(delUpdate).length > 0) {
-          await admin.from('campaign_deliverables').update(delUpdate).eq('id', d.id).eq('campaign_id', id)
+          const { error: dUpdErr } = await admin.from('campaign_deliverables').update(delUpdate).eq('id', d.id).eq('campaign_id', id)
+          if (dUpdErr) {
+            console.error('[PATCH /api/influencer/my-campaigns] deliverable update failed:', dUpdErr)
+            return NextResponse.json({ error: 'No se pudo actualizar el entregable' }, { status: 500 })
+          }
         }
       }
     }
@@ -502,7 +521,7 @@ export async function PATCH(req: NextRequest) {
     .from('campaigns')
     .select(`
       id, name, status, description, start_date, end_date, currency, created_by,
-      brand:brands!brand_id(id, name, logo_url, website, contact_name, contact_email),
+      brand:brands!brand_id(id, name, logo_url, website),
       campaign_deliverables(id, title, type, status, due_date, scheduled_at, sequence_number, platform, content_url, description, hashtags, tag_brand_ids, tag_handles)
     `)
     .eq('id', id)
@@ -545,6 +564,10 @@ export async function DELETE(req: NextRequest) {
   if (!existing) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   if (existing.created_by !== user.id) return NextResponse.json({ error: 'Sin permiso' }, { status: 403 })
 
-  await admin.from('campaigns').update({ status: 'canceled' }).eq('id', id)
+  const { error: cancelErr } = await admin.from('campaigns').update({ status: 'canceled' }).eq('id', id).eq('created_by', user.id)
+  if (cancelErr) {
+    console.error('[DELETE /api/influencer/my-campaigns] cancel failed:', cancelErr)
+    return NextResponse.json({ error: 'No se pudo cancelar la campaña' }, { status: 500 })
+  }
   return NextResponse.json({ ok: true })
 }

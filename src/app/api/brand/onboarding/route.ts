@@ -20,7 +20,8 @@ export async function GET() {
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!hasBrandPermission(access, 'campaign.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // El checklist de aprobación es un paso de onboarding: lo puede ver una marca pendiente.
+  if (!hasBrandPermission(access, 'campaign.read', 'onboarding')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const admin = createAdminClient()
   const [{ data: brand }, { data: profile }, { data: documents }, { data: campaigns }] = await Promise.all([

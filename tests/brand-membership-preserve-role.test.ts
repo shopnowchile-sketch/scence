@@ -67,9 +67,9 @@ test('solo existen owner y member: cualquier valor heredado se trata como member
   assert.equal(officialRoleFor('finance'), 'brand_manager')
   assert.equal(brandMemberRoleFor('brand_manager', true), 'owner')
   assert.equal(brandMemberRoleFor('finance', false), 'member')
-  // member tiene lo operativo y nada de equipo/facturación/datos de la marca (igual que el antiguo brand_manager)
-  for (const p of ['campaign.manage', 'application.manage', 'influencer.manage', 'location.manage', 'report.read'] as const) assert.equal(roleHasBrandPermission('member', p), true, p)
-  for (const p of ['team.manage', 'billing.manage', 'brand.manage', 'financial_document.read', 'legal_document.manage'] as const) assert.equal(roleHasBrandPermission('member', p), false, p)
+  // member tiene lo operativo y la facturación/finanzas de su marca; nada de equipo, datos de la marca ni documentos legales
+  for (const p of ['campaign.manage', 'application.manage', 'influencer.manage', 'location.manage', 'report.read', 'billing.read', 'billing.manage', 'financial_document.read', 'financial_document.manage'] as const) assert.equal(roleHasBrandPermission('member', p), true, p)
+  for (const p of ['team.manage', 'brand.manage', 'legal_document.read', 'legal_document.manage'] as const) assert.equal(roleHasBrandPermission('member', p), false, p)
   assert.equal(roleHasBrandPermission('owner', 'team.manage'), true)
 })
 
@@ -80,4 +80,15 @@ test('guardia: invitar/reenviar de marca no hace upsert directo de organization_
   for (const f of ['src/app/api/brands/[id]/members/route.ts', 'src/app/api/brand/members/route.ts']) {
     assert.ok(readFileSync(f, 'utf8').includes('ensureBrandMembership'), `${f}: debe usar ensureBrandMembership`)
   }
+})
+
+test('guardia: ninguna ruta de marca acepta brand_manager/finance como rol invitable', () => {
+  for (const f of ['src/app/api/brand/members/route.ts', 'src/app/api/brands/[id]/members/route.ts']) {
+    assert.match(readFileSync(f, 'utf8'), /const MEMBER_ROLES = \['member'\] as const/, f)
+  }
+  const invite = readFileSync('src/app/api/settings/team/invite/route.ts', 'utf8')
+  assert.match(invite, /brandAccess && role !== 'member'/)
+  assert.match(invite, /ensureBrandMembership/)
+  const team = readFileSync('src/app/api/settings/team/route.ts', 'utf8')
+  assert.match(team, /brandAccess\s*\?\s*\['member'\]/)
 })

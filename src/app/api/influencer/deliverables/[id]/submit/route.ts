@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { ADMIN_NOTIFICATION_EMAIL, getResend, FROM_EMAIL } from '@/lib/resend'
 import { didContentUrlChange, normalizeContentUrl } from '@/lib/deliverables/metrics-state'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { escapeHtml } from '@/lib/utils'
 
 type Params = { params: { id: string } }
 
@@ -110,11 +111,15 @@ export async function POST(req: NextRequest, { params }: Params) {
         const campaignData = (deliverable as { campaign?: { name?: string } | null }).campaign
         const campaignName = campaignData?.name ?? 'Campaña'
         const contentUrl = nextContentUrl
+        // Todo lo que escribe la influencer (nombre, título, URL) se escapa: va a la bandeja de operaciones.
+        // El enlace solo se activa con http(s); cualquier otro esquema (javascript:, data:) queda como texto.
+        const safeContentUrl = contentUrl ? escapeHtml(contentUrl) : null
+        const contentIsHttp = !!contentUrl && /^https?:\/\//i.test(contentUrl)
 
         const { error: sendErr } = await getResend().emails.send({
           from: FROM_EMAIL,
           to: ADMIN_NOTIFICATION_EMAIL, tags: [emailAudience('admin')],
-          subject: `Nueva entrega de contenido — ${influencerName} · ${deliverableTitle}`,
+          subject: `Nueva entrega de contenido — ${String(influencerName).replace(/[\r\n]+/g, ' ')} · ${String(deliverableTitle).replace(/[\r\n]+/g, ' ')}`,
           html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -127,10 +132,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     <div style="padding:32px">
       <h1 style="font-size:20px;font-weight:700;color:#111827;margin:0 0 16px">Hay una nueva entrega para revisar</h1>
       <div style="background:#f3f4f6;border-radius:12px;padding:20px;margin-bottom:24px">
-        <p style="color:#374151;font-size:14px;margin:0 0 8px"><strong>Influencer:</strong> ${influencerName}</p>
-        <p style="color:#374151;font-size:14px;margin:0 0 8px"><strong>Entregable:</strong> ${deliverableTitle}</p>
-        <p style="color:#374151;font-size:14px;margin:0${contentUrl ? ' 0 8px' : ''}"><strong>Campaña:</strong> ${campaignName}</p>
-        ${contentUrl ? `<p style="color:#374151;font-size:14px;margin:0"><strong>Contenido:</strong> <a href="${contentUrl}" style="color:#7c3aed">${contentUrl}</a></p>` : ''}
+        <p style="color:#374151;font-size:14px;margin:0 0 8px"><strong>Influencer:</strong> ${escapeHtml(String(influencerName))}</p>
+        <p style="color:#374151;font-size:14px;margin:0 0 8px"><strong>Entregable:</strong> ${escapeHtml(String(deliverableTitle))}</p>
+        <p style="color:#374151;font-size:14px;margin:0${contentUrl ? ' 0 8px' : ''}"><strong>Campaña:</strong> ${escapeHtml(String(campaignName))}</p>
+        ${safeContentUrl ? `<p style="color:#374151;font-size:14px;margin:0"><strong>Contenido:</strong> ${contentIsHttp ? `<a href="${safeContentUrl}" style="color:#7c3aed">${safeContentUrl}</a>` : safeContentUrl}</p>` : ''}
       </div>
       <p style="color:#6b7280;font-size:13px;margin:0">Entra a Scence para revisar y aprobar o rechazar la entrega.</p>
     </div>

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { payPalBaseUrl } from '@/lib/paypal-env'
 import { createAdminClient } from '@/lib/supabase/server'
 import { buildInfluencerSubscriptionRow, parseInfluencerReference, payPalPaidThrough, PAYPAL_SUBSCRIPTION_STATUS_MAP, type PayPalSubscriptionSnapshot } from '@/lib/influencer-paypal'
 import { isInfluencerSubscription } from '@/lib/plan-limits'
 
 const STATUS_MAP = PAYPAL_SUBSCRIPTION_STATUS_MAP
-function baseUrl() { return process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com' }
+function baseUrl() { return payPalBaseUrl() }
 async function token() {
   const id = process.env.PAYPAL_CLIENT_ID, secret = process.env.PAYPAL_CLIENT_SECRET
   if (!id || !secret) return null

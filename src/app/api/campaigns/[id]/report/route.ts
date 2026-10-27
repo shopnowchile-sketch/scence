@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 
@@ -45,9 +45,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Administración de plataforma primero (membresía super_admin ACTIVA): un administrador que además es
+  // miembro de una marca conserva el acceso global. Los demás usuarios siguen limitados a su marca y campaña.
   let authorized = false
-  const access = await resolveBrandAccess(user.id)
-  if (access) {
+  const platformAdmin = await isPlatformAdmin(user.id, admin)
+  const access = platformAdmin ? null : await resolveBrandAccess(user.id)
+  if (platformAdmin) {
+    authorized = true
+  } else if (access) {
     const isOwner = campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
     const { data: coBrand } = isOwner ? { data: null } : await admin
       .from('campaign_brands')
@@ -56,10 +61,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('brand_id', access.brandId)
       .maybeSingle()
     authorized = hasBrandPermission(access, 'report.read') && (isOwner || !!coBrand)
-  } else {
-    const orgId = await getOrgId(user.id, user.user_metadata, admin)
-    const role = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-    authorized = role.isAdmin
   }
   if (!authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

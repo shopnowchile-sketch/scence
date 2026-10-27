@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { findAuthUserByEmail } from '@/lib/supabase/findAuthUser'
 import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 
@@ -79,24 +80,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const contactEmail = brand.contact_email.trim().toLowerCase()
 
-  // Búsqueda paginada de auth.users por email. Con >1.6k usuarios,
-  // admin.auth.admin.listUsers() SIN paginar solo trae la primera página
-  // (perPage default bajo) — puede no encontrar una cuenta que sí existe y
-  // arriesgar crear un duplicado más abajo. Mismo patrón ya usado en
-  // crm-leads/[id]/route.ts.
-  async function findAuthUserByEmail(email: string) {
-    let page = 1
-    const perPage = 1000
-    for (;;) {
-      const { data: usersPage, error: usersErr } = await admin.auth.admin.listUsers({ page, perPage })
-      if (usersErr || !usersPage?.users?.length) return null
-      const match = usersPage.users.find(u => u.email?.toLowerCase() === email)
-      if (match) return match
-      if (usersPage.users.length < perPage) return null
-      page++
-    }
-  }
-
   // ── Ya tiene cuenta vinculada (brands.user_id) → reenviar magic link ─────────
   // FIX (bug Limitless, 2026-07-13): antes esta rama llamaba generateLink con
   // brand.contact_email SIN verificar que coincidiera con el email real del
@@ -128,19 +111,15 @@ export async function POST(_req: NextRequest, { params }: Params) {
       )
     }
 
-    // Merge de metadata (no reemplazo) — antes esto pisaba user_metadata
-    // completo, arriesgando perder organization_id u otros campos que
-    // ensureOrg() ya le hubiera fijado al usuario.
-    await admin.auth.admin.updateUserById(brand.user_id, {
-      user_metadata: { ...ownerAuth.user.user_metadata, is_brand: true, brand_id: params.id },
-    })
+    // No se modifica metadata de una identidad existente. `is_brand`,
+    // `is_influencer` y `brand_id` son legados de presentación y no pueden
+    // reemplazar la membresía canónica ni alterar su otro portal.
 
     const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
       type: 'magiclink',
       email: contactEmail,
       options: {
         redirectTo: `${APP_URL}/brand-dash`,
-        data: { is_brand: true, brand_id: params.id },
       },
     })
 
@@ -176,19 +155,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
   }
 
   // ── Sin cuenta vinculada todavía → crear o vincular auth user ────────────────
-  const existingUser = await findAuthUserByEmail(contactEmail)
+  const existingUser = await findAuthUserByEmail(admin, contactEmail)
 
   let authUserId: string
 
   if (existingUser) {
-    await admin.auth.admin.updateUserById(existingUser.id, {
-      user_metadata: {
-        ...existingUser.user_metadata,
-        is_brand: true,
-        brand_id: params.id,
-        full_name: brand.contact_name ?? brand.name,
-      },
-    })
+    // Reusar la identidad sin tocar metadata ni el perfil de influencer.
     authUserId = existingUser.id
   } else {
     const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
@@ -220,7 +192,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
     email: contactEmail,
     options: {
       redirectTo: `${APP_URL}/brand-dash`,
-      data: { is_brand: true, brand_id: params.id },
     },
   })
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo } from 'react'
 import { ERROR_FRAGMENTS, ES_TO_EN, ES_TO_EN_PATTERNS, SPANISH_MONTHS } from '@/i18n/catalog'
 import {
   LOCALE_COOKIE,
@@ -104,6 +104,35 @@ function translateNode(root: Node) {
   }
 }
 
+
+/** Ejecuta `run` cuando la hidratación de React ya terminó: tras `load`, dos fotogramas y un instante de reposo.
+ * Tope de 1,5 s para no dejar el cuerpo oculto si algo se retrasa. Devuelve la función que cancela la espera. */
+function afterHydration(run: () => void): () => void {
+  let done = false
+  let capTimer: number | undefined
+  const fire = () => {
+    if (done) return
+    done = true
+    window.clearTimeout(capTimer)
+    run()
+  }
+  const settle = () => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      if (done) return
+      if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(fire, { timeout: 500 })
+      else window.setTimeout(fire, 0)
+    }))
+  }
+  capTimer = window.setTimeout(fire, 1500)
+  if (document.readyState === 'complete') settle()
+  else window.addEventListener('load', settle, { once: true })
+  return () => {
+    done = true
+    window.clearTimeout(capTimer)
+    window.removeEventListener('load', settle)
+  }
+}
+
 export function LocaleProvider({
   initialLocale,
   children,
@@ -130,39 +159,44 @@ export function LocaleProvider({
   useLayoutEffect(() => {
     document.documentElement.lang = initialLocale
     document.documentElement.dataset.locale = initialLocale
+    if (initialLocale !== 'en') document.documentElement.dataset.localeReady = 'true'
+  }, [initialLocale])
 
-    if (initialLocale === 'en') {
+  // La traducción al inglés reescribe nodos de texto del DOM. Hacerlo mientras React hidrata (sobre todo dentro
+  // de límites Suspense) provoca los errores #425/#422. Por eso se espera a que la hidratación termine; mientras
+  // tanto el cuerpo sigue oculto (globals.css), así que la experiencia visual no cambia.
+  useEffect(() => {
+    if (initialLocale !== 'en') return
+    let observer: MutationObserver | undefined
+    const stopWaiting = afterHydration(() => {
       translateNode(document.body)
       const [pageTitle, suffix] = document.title.split(' · ')
       const translatedTitle = translateText(pageTitle)
       document.title = suffix ? `${translatedTitle} · ${suffix}` : translatedTitle
-    }
-    document.documentElement.dataset.localeReady = 'true'
+      document.documentElement.dataset.localeReady = 'true'
 
-    if (initialLocale !== 'en') return
-    const observer = new MutationObserver(mutations => {
-      observer.disconnect()
-      for (const mutation of mutations) {
-        if (mutation.type === 'characterData') translateNode(mutation.target)
-        for (const node of Array.from(mutation.addedNodes)) translateNode(node)
-        if (mutation.type === 'attributes') translateNode(mutation.target)
-      }
-      observer.observe(document.body, {
+      const options = {
         subtree: true,
         childList: true,
         characterData: true,
         attributes: true,
         attributeFilter: [...TRANSLATABLE_ATTRIBUTES],
+      }
+      observer = new MutationObserver(mutations => {
+        observer?.disconnect()
+        for (const mutation of mutations) {
+          if (mutation.type === 'characterData') translateNode(mutation.target)
+          for (const node of Array.from(mutation.addedNodes)) translateNode(node)
+          if (mutation.type === 'attributes') translateNode(mutation.target)
+        }
+        observer?.observe(document.body, options)
       })
+      observer.observe(document.body, options)
     })
-    observer.observe(document.body, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: [...TRANSLATABLE_ATTRIBUTES],
-    })
-    return () => observer.disconnect()
+    return () => {
+      stopWaiting()
+      observer?.disconnect()
+    }
   }, [initialLocale])
 
   const value = useMemo(() => ({ locale: initialLocale, setLocale }), [initialLocale, setLocale])

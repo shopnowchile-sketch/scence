@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { roleHasBrandPermission, normalizeBrandRole, type BrandPermission, type BrandRole } from '@/lib/brand-permissions'
+import { brandStatusAllows, capabilityForPermission, type BrandCapability } from '@/lib/brand-status-access'
+import { exactEmailPattern } from '@/lib/email-match'
 import { reconcileOrphanProSubscriptions } from '@/lib/influencer-pro'
 export type { BrandPermission } from '@/lib/brand-permissions'
 
@@ -75,93 +77,13 @@ export async function isPlatformAdmin(userId: string, admin: SupabaseClient): Pr
   return (data?.length ?? 0) > 0
 }
 
-/**
- * ensureOrg — aprovisiona una organización cuando el usuario todavía no
- * tiene una membresía oficial. La pertenencia existente se resuelve siempre
- * desde `organization_members`; metadata solo aporta datos de presentación
- * para crear una organización nueva y nunca concede acceso.
- */
 import { createAdminClient } from './server'
 import type { User } from '@supabase/supabase-js'
 
-export async function ensureOrg(user: User): Promise<string | null> {
-  const admin = createAdminClient()
-  const { data: existingMembership } = await admin
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .eq('is_active', true)
-    .limit(1)
-    .maybeSingle()
-
-  if (existingMembership) return existingMembership.organization_id
-
-  const orgName: string =
-    (user.user_metadata?.organization_name as string | undefined) ??
-    (user.email?.split('@')[1]?.split('.')[0] ?? 'My Organization')
-
-  // FIX (2026-07-10, root cause de fmicchile@gmail.com/Empresa1 y probable
-  // causa de más cuentas atascadas): `organizations.slug` es UNIQUE. Cuando
-  // el usuario no trae `organization_name` en su metadata (ej. el flujo
-  // viejo de /register, o cualquier cuenta futura sin ese campo), el
-  // fallback usa el dominio del email ("gmail", "hotmail", "outlook"...) —
-  // eso NO es único por marca, es único por PROVEEDOR de email. La primera
-  // marca de gmail.com que se registra se queda con el slug "gmail"; la
-  // segunda choca con un 23505 y `ensureOrg` fallaba devolviendo null sin
-  // reintentar, dejando a esa marca sin organización ni fila `brands` para
-  // siempre. Ahora: si el slug base ya existe, se reintenta UNA vez con un
-  // sufijo corto y estable (primeros 6 caracteres del user.id, no cambia
-  // entre reintentos) — nunca se reutiliza la organización ajena que ganó el
-  // slug base, cada usuario se queda con la suya propia.
-  const baseSlug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'org'
-  const suffix = user.id.slice(0, 6)
-
-  const insertOrg = (slug: string) =>
-    admin.from('organizations').insert({ name: orgName, slug, type: 'brand' }).select('id').single()
-
-  let { data: org, error: orgErr } = await insertOrg(baseSlug)
-
-  if (orgErr?.code === '23505') {
-    ;({ data: org, error: orgErr } = await insertOrg(`${baseSlug}-${suffix}`.slice(0, 60)))
-  }
-
-  if (orgErr || !org) {
-    console.error('[ensureOrg] failed to create org:', orgErr?.message)
-    return null
-  }
-
-  // Update user metadata with org id
-  const { error: updateErr } = await admin.auth.admin.updateUserById(user.id, {
-    user_metadata: {
-      ...user.user_metadata,
-      organization_id: org.id,
-    },
-  })
-
-  if (updateErr) {
-    console.error('[ensureOrg] failed to update user metadata:', updateErr.message)
-  }
-
-  // Upsert profile (profiles table has no organization_id column)
-  await admin.from('profiles').upsert({
-    id: user.id,
-    full_name: user.user_metadata?.full_name as string ?? '',
-    display_name: user.user_metadata?.full_name as string ?? '',
-    role: 'brand_manager',
-  }, { onConflict: 'id' })
-
-  // Add user as org member (owner)
-  await admin.from('organization_members').upsert({
-    organization_id: org.id,
-    user_id: user.id,
-    role: 'brand_manager',
-    is_owner: true,
-    is_active: true,
-    joined_at: new Date().toISOString(),
-  }, { onConflict: 'organization_id,user_id' })
-
-  return org.id
-}
+/*
+ * Las organizaciones ya no se crean aquí: nacen con la marca dentro de la función
+ * SQL register_brand (ver registerBrand.ts). El antiguo ensureOrg() se eliminó.
+ */
 
 /**
  * provisionOrgForBrand — crea una organización aislada para una marca
@@ -283,104 +205,13 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; dis
     }
   }
 
-  // Esta ruta es solo un respaldo para cuentas de influencer que no fueron
-  // provisionadas por handle_new_user(). Nunca crea una influencer sin Instagram.
-  const rawInstagram = user.user_metadata?.instagram_username
-  const instagramUsername = typeof rawInstagram === 'string'
-    ? rawInstagram.trim().replace(/^@+/, '').toLowerCase()
-    : ''
-
-  if (!instagramUsername || !/^[a-z0-9._]{1,30}$/.test(instagramUsername)) {
-    console.error('[ensureInfluencerRow] Instagram requerido; no se crea influencer sin Instagram')
-    return null
-  }
-
-  const { data: org } = await admin
-    .from('organizations')
-    .select('id')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .single()
-
-  if (!org) {
-    console.error('[ensureInfluencerRow] organización principal no encontrada')
-    return null
-  }
-
-  const displayName = (user.user_metadata?.display_name as string | undefined)
-    ?? (user.user_metadata?.full_name as string | undefined)
-    ?? user.email
-    ?? 'Creador'
-
-  const { data: influencer, error } = await admin
-    .from('influencers')
-    .insert({
-      organization_id: org.id,
-      user_id:         user.id,
-      display_name:    displayName,
-      email:            user.email ?? null,
-    })
-    .select('id, display_name')
-    .single()
-
-  if (!error && influencer) {
-    const { error: instagramError } = await admin
-      .from('influencer_social_profiles')
-      .insert({
-        influencer_id: influencer.id,
-        platform: 'instagram',
-        username: instagramUsername,
-        profile_url: `https://www.instagram.com/${instagramUsername}`,
-        followers: 0,
-        is_primary: true,
-      })
-
-    if (instagramError) {
-      await admin.from('influencers').delete().eq('id', influencer.id)
-      console.error('[ensureInfluencerRow] failed to create required Instagram profile:', instagramError.message)
-      return null
-    }
-  }
-
-  // FIX (2026-07-04, root cause "no veía las campañas" — 33 cuentas afectadas):
-  // `influencers.user_id` tiene un UNIQUE constraint (influencers_user_id_key).
-  // Este check-then-insert no es atómico: si el layout se invoca 2 veces casi
-  // en simultáneo para el mismo usuario (doble efecto de React, prefetch +
-  // navegación real, o un reintento de red en conexión mobile inestable),
-  // ambas pasan el chequeo `existing` (ninguna ve la fila del otro todavía) y
-  // la SEGUNDA insert falla con "duplicate key value violates unique
-  // constraint" — visto repetido en los logs de Postgres. Antes esto se
-  // logueaba y se retornaba null silenciosamente, dejando a esa cuenta SIN
-  // fila de influencer para siempre (cada visita futura repetía el mismo
-  // fallo porque `existing` seguía sin encontrar nada... hasta que SÍ hay una
-  // fila, solo que la creó la otra request concurrente). Ahora, ante ese error
-  // específico, se vuelve a buscar por user_id — la fila de la request que sí
-  // ganó la carrera debe existir ya.
-  if (error) {
-    if (error.code === '23505') {
-      const { data: wonByOther } = await admin
-        .from('influencers')
-        .select('id, display_name')
-        .eq('user_id', user.id)
-        .single()
-      if (wonByOther) return wonByOther
-    }
-    console.error('[ensureInfluencerRow] failed to create influencer row:', error.message)
-    return null
-  }
-
-  // Ficha nueva para un usuario que ya existía: si su ficha anterior fue
-  // borrada teniendo Pro pagado, la suscripción vuelve a esta ficha
-  // (identidad estable = user_id). Best-effort: nunca bloquea el login.
-  if (influencer) {
-    try {
-      await reconcileOrphanProSubscriptions(admin, { id: influencer.id, user_id: user.id })
-    } catch (reconcileError) {
-      console.error('[ensureInfluencerRow] no se pudo reconciliar el Plan Pro:', reconcileError)
-    }
-  }
-
-  return influencer
+  // Respaldo que ya NO crea filas (2026-10-22). Antes asignaba a la influencer nueva «la organización más
+  // antigua»; el modelo de SCENCE no tiene una organización de plataforma, y la antigüedad (o un nombre)
+  // no es una relación real. Las cuentas nuevas las provisiona handle_new_user() y las filas creadas por
+  // admin o por una marca se vinculan arriba por correo. Si no hay relación verificable, se falla cerrado
+  // y se deja registro para resolverlo a mano; no se asigna ninguna organización arbitraria.
+  console.error('[ensureInfluencerRow] sin fila de influencer ni organización verificable; no se crea por antigüedad ni por nombre')
+  return null
 }
 
 /**
@@ -424,12 +255,16 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
   const brandName    = (user.user_metadata?.brand_name as string | undefined) ?? user.email ?? 'Mi Marca'
   const contactName  = (user.user_metadata?.full_name as string | undefined) ?? null
 
-  if (contactEmail) {
+  // Coincidencia exacta del correo: `_`, `%` y `*` NO son comodines aquí (ver
+  // email-match.ts). Si el correo no se puede comparar sin ambigüedad, no se
+  // vincula ninguna marca existente y se crea una nueva en pending_approval.
+  const orphanEmailPattern = contactEmail ? exactEmailPattern(contactEmail) : null
+  if (orphanEmailPattern) {
     const { data: orphan } = await admin
       .from('brands')
       .select('id, name, status')
       .is('user_id', null)
-      .ilike('contact_email', contactEmail)
+      .ilike('contact_email', orphanEmailPattern)
       .limit(1)
       .maybeSingle()
 
@@ -444,12 +279,6 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
         return orphan
       }
     }
-  }
-
-  const orgId = await ensureOrg(user)
-  if (!orgId) {
-    console.error('[ensureBrandRow] no se pudo aprovisionar la organización')
-    return null
   }
 
   const rawReferral = user.user_metadata?.referred_by_instagram
@@ -472,45 +301,48 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
     referredByInfluencerId = socialProfile?.influencer_id ?? null
   }
 
-  const { data: brand, error } = await admin
-    .from('brands')
-    .insert({
-      organization_id: orgId,
-      user_id:         user.id,
-      name:            brandName,
-      contact_name:    contactName,
-      contact_email:   contactEmail,
-      created_by:      user.id,
-      status:          'pending_approval',
+  // Organización propia + marca (pending_approval) + membresía de responsable en
+  // UNA transacción idempotente por usuario (register_brand): reintentos y
+  // llamadas simultáneas (register-brand + primer login) devuelven la misma
+  // marca, sin organizaciones duplicadas ni huérfanas. El responsable lo es solo
+  // de su propia marca (sin permisos globales ni sobre otras marcas).
+  const { registerBrandAtomic } = await import('./registerBrand')
+  const registered = await registerBrandAtomic(admin, {
+    brand: {
+      name: brandName,
+      contact_name: contactName,
+      contact_email: contactEmail,
       referred_by_influencer_id: referredByInfluencerId,
-      metadata:        referredByInstagram ? { referred_by_instagram: referredByInstagram } : {},
-    })
-    .select('id, name, status')
-    .single()
+      metadata: referredByInstagram ? { referred_by_instagram: referredByInstagram } : {},
+    },
+    registeredBy: user.id,
+    ownerUserId: user.id,
+    key: `self:${user.id}`,
+  })
 
-  if (error) {
-    // Carrera: la misma protección que ensureInfluencerRow — dos llamadas
-    // casi simultáneas (register-brand + primer login casi inmediato,
-    // reintento de red) pueden pasar el chequeo `existing` antes de que la
-    // otra termine de insertar.
-    if (error.code === '23505') {
-      const { data: wonByOther } = await admin
-        .from('brands')
-        .select('id, name, status')
-        .eq('user_id', user.id)
-        .single()
-      if (wonByOther) return wonByOther
-    }
-    console.error('[ensureBrandRow] failed to create brand row:', error.message)
+  if (!registered.ok || registered.outcome === 'conflict') {
+    // Carrera residual: otra llamada pudo ganar justo antes.
+    const { data: wonByOther } = await admin.from('brands').select('id, name, status').eq('user_id', user.id).maybeSingle()
+    if (wonByOther) return wonByOther
+    console.error('[ensureBrandRow] failed to create brand row:', registered.ok ? 'conflict' : registered.error)
     return null
   }
 
-  await admin.from('organization_members')
-    .update({ brand_id: brand.id })
-    .eq('organization_id', orgId)
-    .eq('user_id', user.id)
+  // Mejor esfuerzo: presentación (metadata) y perfil. Nunca conceden acceso;
+  // el acceso sale de organization_members.
+  const { error: metaErr } = await admin.auth.admin.updateUserById(user.id, {
+    user_metadata: { ...user.user_metadata, organization_id: registered.organizationId },
+  })
+  if (metaErr) console.error('[ensureBrandRow] no se pudo guardar organization_id en metadata:', metaErr.message)
+  await admin.from('profiles').upsert({
+    id: user.id,
+    full_name: (user.user_metadata?.full_name as string | undefined) ?? '',
+    display_name: (user.user_metadata?.full_name as string | undefined) ?? '',
+    role: 'brand_manager',
+  }, { onConflict: 'id' })
 
-  return brand
+  const { data: brand } = await admin.from('brands').select('id, name, status').eq('id', registered.brandId).single()
+  return brand ?? { id: registered.brandId, name: brandName, status: 'pending_approval' }
 }
 
 /**
@@ -526,10 +358,34 @@ export type BrandAccess = {
   organizationId: string
   role: BrandRole
   isOwner: boolean
+  /** Estado de aprobación de la marca (brands.status). Gobierna qué puede hacer. */
+  status: string | null
 }
 
-export function hasBrandPermission(access: BrandAccess | null, permission: BrandPermission): boolean {
-  return access ? roleHasBrandPermission(access.role, permission) : false
+/**
+ * Permiso de rol Y estado de la marca. El servidor aplica la tabla de estados
+ * (brand-status-access.ts): una marca pendiente, rechazada o suspendida solo
+ * conserva las capacidades que su estado permite, aunque su rol las tenga.
+ * `capability` permite exigir una capacidad distinta de la que corresponde al
+ * permiso (p. ej. el checklist de aprobación lee campañas con `onboarding`).
+ */
+export function hasBrandPermission(
+  access: BrandAccess | null,
+  permission: BrandPermission,
+  capability: BrandCapability = capabilityForPermission(permission),
+): boolean {
+  if (!access) return false
+  return roleHasBrandPermission(access.role, permission) && brandStatusAllows(access.status, capability)
+}
+
+/**
+ * Pagar el plan de suscripción (PayPal): solo el owner (brand.manage) y en los estados que hoy pueden contratar:
+ * pendiente (elige plan antes de la aprobación) y suspendida (reactiva). Una marca rechazada no. Conserva lo que
+ * producción permite hoy a las marcas pendientes; la facturación operativa sigue gobernada por hasBrandPermission.
+ */
+export function canPayBrandPlan(access: BrandAccess | null): boolean {
+  if (!access || !roleHasBrandPermission(access.role, 'brand.manage')) return false
+  return brandStatusAllows(access.status, 'billing_manage') || brandStatusAllows(access.status, 'onboarding')
 }
 
 export async function resolveBrandAccess(userId: string): Promise<BrandAccess | null> {
@@ -552,7 +408,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
   for (const membership of memberships) {
     let brandQuery = admin
       .from('brands')
-      .select('id, organization_id')
+      .select('id, organization_id, status')
       .eq('organization_id', membership.organization_id)
     if (membership.brand_id) brandQuery = brandQuery.eq('id', membership.brand_id)
     const { data: brand } = await brandQuery.maybeSingle()
@@ -562,6 +418,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
         organizationId: brand.organization_id,
         role: normalizeBrandRole(membership.role, membership.is_owner === true),
         isOwner: membership.is_owner === true,
+        status: (brand.status as string | null) ?? null,
       }
     }
   }

@@ -141,7 +141,8 @@ export async function GET() {
     })
     .map(c => {
       // metadata solo se lee para el filtro de invitación: no viaja al cliente.
-      const { created_by: _createdBy, metadata: _metadata, ...rest } = c
+      // campaign_influencers (filas de OTRAS influencers) tampoco viaja: solo se expone accepted_count.
+      const { created_by: _createdBy, metadata: _metadata, campaign_influencers: _others, ...rest } = c
       return {
         ...rest,
         accepted_count: (c.campaign_influencers ?? []).filter(

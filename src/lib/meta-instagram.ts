@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { isProductionRuntime } from './runtime-env'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 const STATE_SECRET = process.env.META_INSTAGRAM_STATE_SECRET
@@ -6,6 +7,8 @@ const STATE_SECRET = process.env.META_INSTAGRAM_STATE_SECRET
 export const META_INSTAGRAM_CALLBACK_URL = `${APP_URL}/api/brand/instagram/callback`
 
 export function getMetaInstagramConfig() {
+  // Fuera de producción no hay integración con Meta (los llamadores ya manejan "no configurado").
+  if (!isProductionRuntime()) return null
   const appId = process.env.META_INSTAGRAM_APP_ID
   const appSecret = process.env.META_INSTAGRAM_APP_SECRET
   if (!appId || !appSecret || !STATE_SECRET) return null

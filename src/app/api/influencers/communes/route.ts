@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
 import { groupCommunes } from '@/lib/communes-chile'
 
 // GET /api/influencers/communes
@@ -15,8 +14,6 @@ export async function GET() {
   }
 
   const admin = createAdminClient()
-  const orgId = await getOrgId(user.id, user.user_metadata, admin)
-
   const { data: rows, error } = await admin
     .from('locations')
     .select('name')

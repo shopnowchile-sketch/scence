@@ -12,6 +12,8 @@
  * estado único `not_found` (spike 2026-09-26, doc 07 secc. 8).
  */
 
+import { isProductionRuntime } from '@/lib/runtime-env'
+
 export const GRAPH_API_VERSION = 'v26.0'
 /** Cuenta profesional de SCENCE desde la que se consulta (influencers.snc). No es secreto. */
 export const DEFAULT_IG_SOURCE_ACCOUNT_ID = '17841449435340415'
@@ -91,6 +93,10 @@ export async function fetchBusinessDiscovery(
   handle: string,
   opts: { token: string; sourceAccountId?: string; fetchImpl?: FetchLike; timeoutMs?: number },
 ): Promise<DiscoveryResult> {
+  // Última barrera: sin red real fuera de producción (los tests inyectan fetchImpl simulado).
+  if (!opts.fetchImpl && !isProductionRuntime()) {
+    return { kind: 'api_error', message: 'blocked_non_production' }
+  }
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as unknown as FetchLike)
   const source = opts.sourceAccountId ?? DEFAULT_IG_SOURCE_ACCOUNT_ID
   const fields = `business_discovery.username(${handle}){username,followers_count,id}`

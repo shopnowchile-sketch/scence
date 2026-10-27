@@ -1,4 +1,5 @@
-export const influencerPayPalBaseUrl = () => process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'
+import { payPalBaseUrl } from './paypal-env'
+export const influencerPayPalBaseUrl = () => payPalBaseUrl()
 
 export async function getInfluencerPayPalToken() {
   const clientId = process.env.PAYPAL_CLIENT_ID, clientSecret = process.env.PAYPAL_CLIENT_SECRET

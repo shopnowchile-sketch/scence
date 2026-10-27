@@ -5,14 +5,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import {
+import { register } from 'node:module'
+import type { PayPalSubscriptionSnapshot, StoredInfluencerSubscription } from '../src/lib/influencer-paypal.ts'
+
+// influencer-paypal.ts importa ./paypal-env sin extensión (como lo resuelve Next).
+register('./support/ts-resolve.mjs', import.meta.url)
+const {
   buildInfluencerSubscriptionRow,
   influencerSubscriptionGrantsPro,
   selectOrphanSubscriptionsToRelink,
   payPalPaidThrough,
-  type PayPalSubscriptionSnapshot,
-  type StoredInfluencerSubscription,
-} from '../src/lib/influencer-paypal.ts'
+} = await import('../src/lib/influencer-paypal.ts')
 
 const NOW = new Date('2026-10-08T12:00:00Z')
 const influencer = { id: 'inf-1', organization_id: 'org-1' }
@@ -191,7 +194,8 @@ test('reconciliación idempotente: correr dos veces no mueve nada más', () => {
 })
 
 test('la ficha nueva y la pantalla del plan reconcilian el Pro del mismo usuario', () => {
-  assert.match(ensureOrg, /reconcileOrphanProSubscriptions\(admin, \{ id: influencer\.id, user_id: user\.id \}\)/)
+  // ensureInfluencerRow ya no crea fichas (antes asignaba la organización más antigua); la conciliación vive en la pantalla del plan.
+  assert.doesNotMatch(ensureOrg, /\.from\('influencers'\)\s*\.insert\(/)
   assert.match(billing, /reconcileOrphanProSubscriptions\(admin, influencer\)/)
   assert.match(webhook, /eq\('user_id', linkedMetadata\.user_id\)/)
 })

@@ -1,3 +1,4 @@
+import { officialRoleFor } from '@/lib/brand-membership'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
@@ -42,14 +43,15 @@ export async function PATCH(req: NextRequest) {
   }
 
   const { member_id, role } = await req.json()
+  // Una marca tiene solo owner y member; el equipo de plataforma conserva sus roles.
   const VALID_ROLES = brandAccess
-    ? ['brand_manager', 'member', 'finance']
+    ? ['member']
     : ['super_admin', 'brand_manager', 'member', 'finance', 'influencer']
   if (!VALID_ROLES.includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
 
   const { error } = await admin
     .from('organization_members')
-    .update({ role })
+    .update({ role: brandAccess ? officialRoleFor(role) : role })
     .eq('id', member_id)
     .eq('organization_id', orgId)
     .eq('is_owner', false)

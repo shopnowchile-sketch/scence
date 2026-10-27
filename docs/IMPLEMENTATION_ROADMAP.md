@@ -24,6 +24,13 @@
 
 ## 2. Funcionalidades completadas
 
+### Fuente de verdad funcional — piloto DASH-001 (requiere validación de entorno)
+- [x] Migración aditiva versionada para requerimientos, versiones y evidencias.
+- [x] API Admin-only con propuesta, aprobación, historial y bitácora complementaria en `audit_logs`.
+- [x] Corrección de la consulta del KPI para excluir influencers inactivos.
+- [x] Prueba de regresión de contrato para autorización, RLS y filtro `is_active`.
+- [ ] Aplicar la migración únicamente en un entorno de desarrollo autorizado y contrastar el KPI con datos reales antes de marcar DASH-001 como validado.
+
 ### Portal Admin ✅
 - [x] Dashboard con KPIs reales (revenue, payroll, margen, campañas, influencers)
 - [x] Gráfico revenue vs payroll 6 meses
@@ -103,6 +110,7 @@
 | P-03 | `/opportunities` — Portal Influencer | `src/app/(influencer)/opportunities/page.tsx` |
 | P-04 | Email al invitar influencer | `src/app/api/brand/campaigns/[id]/invite/route.ts` |
 | P-05 | `ANTHROPIC_API_KEY` en Vercel | Dashboard Vercel → Settings |
+| M5 | Marcas colaboradoras persistentes (direccional; solo `owner`/`super_admin` escriben; búsqueda solo de marcas `approved`) — *1 implementado en local (sin commit) · 2 probado solo con pruebas simuladas en memoria (sin PostgreSQL real; `next build` no ejecutado) · 3 Preview: no · 4 producción: no.* Migración sin aplicar; UI pendiente; creación de marcas nuevas bloqueada hasta M3 | `supabase/migrations/20261023120000_brand_collaborators.sql`, `src/app/api/brand/collaborators/route.ts`, `src/lib/brand-collaborators.ts`, `tests/brand-collaborators.test.ts`, `tests/brand-collaborators-routes.test.ts` |
 
 ### Media prioridad
 | # | Funcionalidad | Descripción |

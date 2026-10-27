@@ -160,9 +160,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
           birth_date: data.birth_date || null,
           address:    data.address    || null,
           is_active: data.is_active,
-          metadata: {
-            deactivation_reason: data.is_active ? null : (data.deactivation_reason || null),
-          },
+          deactivation_reason: data.is_active ? null : (data.deactivation_reason || null),
         }),
       })
       if (!res.ok) {

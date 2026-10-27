@@ -43,14 +43,19 @@ export async function authorizeCampaignBrandAction(
     .maybeSingle()
   if (!campaign) return null
 
-  const brandAccess = await resolveBrandAccess(userId)
-  if (brandAccess) {
-    const isPrimaryOrCreator = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
-    const isCollaborator = await isCampaignBrandCollaborator(admin, campaignId, brandAccess.brandId)
-    if ((!isPrimaryOrCreator && !isCollaborator) || !hasBrandPermission(brandAccess, permission)) return null
-    return { admin, brandAccess, isPlatformAdmin: false, campaign }
+  // Administración de plataforma primero: un super_admin que además es miembro de una marca conserva su
+  // acceso global (antes la membresía de marca lo reducía a SU marca y perdía el resto). No amplía a nadie más:
+  // isPlatformAdmin exige una membresía activa con rol super_admin.
+  if (await isPlatformAdmin(userId, admin)) {
+    return { admin, brandAccess: null, isPlatformAdmin: true, campaign }
   }
 
-  if (!(await isPlatformAdmin(userId, admin))) return null
-  return { admin, brandAccess: null, isPlatformAdmin: true, campaign }
+  const brandAccess = await resolveBrandAccess(userId)
+  if (!brandAccess) return null
+  // Marca principal/creadora, o colaboradora vinculada a ESTA campaña (campaign_brands): mismo acceso que la
+  // principal solo en esa campaña. El rol y el estado de la marca (hasBrandPermission) siguen limitando.
+  const isPrimaryOrCreator = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
+  const isCollaborator = isPrimaryOrCreator ? false : await isCampaignBrandCollaborator(admin, campaignId, brandAccess.brandId)
+  if ((!isPrimaryOrCreator && !isCollaborator) || !hasBrandPermission(brandAccess, permission)) return null
+  return { admin, brandAccess, isPlatformAdmin: false, campaign }
 }

@@ -18,9 +18,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   // Admin de plataforma: cualquier campaña. Marca: solo SU campaña (brand_id / created_by_brand_id), con el permiso
-  // `report.read` (rol owner o brand_manager). Antes: cualquier miembro de la organización, de cualquier rol.
-  // NOTA: aquí NO se valida el estado de la marca (pendiente/rechazada/suspendida): este código aún no dispone de esa
-  // lógica (brand-status-access). Una marca no aprobada con ese rol conserva acceso a SU propia campaña, como antes.
+  // `report.read` y el estado que lo permita. Antes: cualquier miembro de la organización, de cualquier rol.
   const isAdmin = await isPlatformAdmin(user.id, admin)
   if (!isAdmin && !(await authorizeCampaignBrandAction(user.id, params.id, 'report.read'))) {
     return new NextResponse('Campaña no encontrada', { status: 404 })

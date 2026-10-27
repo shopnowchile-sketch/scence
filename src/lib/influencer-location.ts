@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
+import { normalizePhone } from '@/lib/phone'
 
 export type OfficialInfluencerLocation = {
   country: string | null
@@ -116,4 +117,31 @@ export function withOfficialInfluencerLocation<T extends { location_id?: string 
     city: location?.city ?? null,
     commune: location?.commune ?? null,
   }
+}
+
+/** País (nombre) de un location_id, para normalizar teléfonos al guardar. */
+export async function getInfluencerCountry(
+  admin: SupabaseClient,
+  locationId: string | null | undefined
+): Promise<string | null> {
+  if (!locationId) return null
+  return (await getOfficialLocationDisplayMap(admin)).get(locationId)?.country ?? null
+}
+
+/**
+ * Teléfono listo para guardar: "+CC número" según el país real de la
+ * influencer. Usa locationId si viene; si no, el de la ficha existente.
+ */
+export async function normalizeInfluencerPhone(
+  admin: SupabaseClient,
+  phone: unknown,
+  ref: { locationId?: unknown; influencerId?: string }
+): Promise<string | null> {
+  if (typeof phone !== 'string') return null
+  let locationId = typeof ref.locationId === 'string' && ref.locationId.trim() ? ref.locationId.trim() : null
+  if (!locationId && ref.influencerId) {
+    const { data } = await admin.from('influencers').select('location_id').eq('id', ref.influencerId).maybeSingle()
+    locationId = (data?.location_id as string | null) ?? null
+  }
+  return normalizePhone(phone, await getInfluencerCountry(admin, locationId))
 }

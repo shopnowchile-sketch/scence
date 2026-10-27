@@ -18,20 +18,37 @@ export type MemoryOptions = {
   failSelectOn?: string
   /** Las actualizaciones de esta tabla fallan. */
   failUpdateOn?: string
+  /** Los borrados (delete) en esta tabla fallan. */
+  failDeleteOn?: string
+  /** Asigna `id` incremental ('mem-1', 'mem-2'…) a las filas insertadas sin `id`. Opt-in: por defecto no se agrega nada. */
+  autoId?: boolean
+  /** Opt-in: respeta la lista de columnas de `.select('a, b')` (por defecto devuelve la fila completa). Sin relaciones ni `*`. */
+  projectColumns?: boolean
 }
 
 export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
+  let idSeq = 0
   const from = (table: string) => {
     const filters: Array<(r: Row) => boolean> = []
-    let op: 'select' | 'insert' | 'update' = 'select'
+    let op: 'select' | 'insert' | 'update' | 'delete' | 'upsert' = 'select'
+    let onConflict: string[] = []
     let payload: any
     let wantRows = false
     let head = false
     let count = false
+    let cols: string | undefined
+    const project = (r: Row): Row => {
+      if (!opts.projectColumns || !cols || cols.trim() === '*' || !/^[\w\s,]+$/.test(cols)) return r
+      const out: Row = {}
+      for (const c of cols.split(',').map(x => x.trim()).filter(Boolean)) if (c in r) out[c] = r[c]
+      return out
+    }
     const builder: any = {
-      select(_cols?: string, o?: { count?: string; head?: boolean }) { wantRows = true; head = Boolean(o?.head); count = Boolean(o?.count); return builder },
+      select(_cols?: string, o?: { count?: string; head?: boolean }) { cols = _cols; wantRows = true; head = Boolean(o?.head); count = Boolean(o?.count); return builder },
       insert(p: any) { op = 'insert'; payload = p; return builder },
       update(p: any) { op = 'update'; payload = p; return builder },
+      upsert(p: any, o?: { onConflict?: string }) { op = 'upsert'; payload = p; onConflict = (o?.onConflict ?? 'id').split(','); return builder },
+      delete() { op = 'delete'; return builder },
       eq(c: string, v: unknown) { filters.push(r => getPath(r, c) === v); return builder },
       is(c: string, v: unknown) { filters.push(r => (getPath(r, c) ?? null) === v); return builder },
       not(c: string, kind: string, v: unknown) {
@@ -41,6 +58,13 @@ export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
       in(c: string, arr: unknown[]) { filters.push(r => arr.includes(getPath(r, c))); return builder },
       gte(c: string, v: string) { filters.push(r => getPath(r, c) != null && String(getPath(r, c)) >= v); return builder },
       lt(c: string, v: string) { filters.push(r => getPath(r, c) != null && String(getPath(r, c)) < v); return builder },
+      lte(c: string, v: string) { filters.push(r => getPath(r, c) != null && String(getPath(r, c)) <= v); return builder },
+      neq(c: string, v: unknown) { filters.push(r => getPath(r, c) != null && getPath(r, c) !== v); return builder },
+      ilike(c: string, pattern: string) {
+        const needle = pattern.replace(/%/g, '').toLowerCase()
+        filters.push(r => String(getPath(r, c) ?? '').toLowerCase().includes(needle)); return builder
+      },
+      range() { return builder },
       filter(c: string, _op: string, v: unknown) { filters.push(r => getPath(r, c) === v); return builder },
       limit() { return builder },
       order() { return builder },
@@ -62,19 +86,40 @@ export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
       const rows = db[table] ?? (db[table] = [])
       if (op === 'insert') {
         if (opts.failInsertOn === table) return { data: null, error: { message: `insert fallido en ${table}` } }
-        rows.push(...([] as Row[]).concat(payload).map((p: Row) => ({ ...p })))
-        return { data: null, error: null }
+        const inserted = ([] as Row[]).concat(payload).map((p: Row) => ({ ...p }))
+        if (opts.autoId) inserted.forEach(r => { if (r.id === undefined) r.id = `mem-${++idSeq}` })
+        rows.push(...inserted)
+        // Con `.select()` encadenado (insert(...).select().single()) devuelve las filas, como PostgREST.
+        return { data: wantRows ? inserted.map(r => project({ ...r })) : null, error: null }
+      }
+      if (op === 'upsert') {
+        if (opts.failInsertOn === table) return { data: null, error: { message: `upsert fallido en ${table}` } }
+        const out: Row[] = []
+        for (const p of ([] as Row[]).concat(payload)) {
+          const existing = rows.find(r => onConflict.every(c => r[c] === p[c]))
+          if (existing) { Object.assign(existing, p); out.push({ ...existing }) }
+          else { const row = { ...p }; if (opts.autoId && row.id === undefined) row.id = `mem-${++idSeq}`; rows.push(row); out.push({ ...row }) }
+        }
+        return { data: wantRows ? out : null, error: null }
+      }
+      if (op === 'delete') {
+        if (opts.failDeleteOn === table) return { data: null, error: { message: `delete fallido en ${table}` } }
+        const removed = rows.filter(r => filters.every(f => f(r)))
+        const keep = rows.filter(r => !filters.every(f => f(r)))
+        rows.splice(0, rows.length, ...keep)
+        // Con `.select()` encadenado devuelve las filas borradas, como PostgREST.
+        return { data: wantRows ? removed.map(r => ({ ...r })) : null, error: null }
       }
       if (op === 'update') {
         if (opts.failUpdateOn === table) return { data: null, error: { message: `update fallido en ${table}` } }
         const matched = rows.filter(r => filters.every(f => f(r)))
         matched.forEach(r => Object.assign(r, payload))
-        return { data: wantRows ? matched.map(r => ({ ...r })) : null, error: null }
+        return { data: wantRows ? matched.map(r => project({ ...r })) : null, error: null }
       }
       if (opts.failSelectOn === table) return { data: null, error: { message: `select fallido en ${table}` } }
       const matched = rows.filter(r => filters.every(f => f(r)))
       if (head) return { data: null, error: null, count: matched.length }
-      return { data: matched.map(r => ({ ...r })), error: null, ...(count ? { count: matched.length } : {}) }
+      return { data: matched.map(r => project({ ...r })), error: null, ...(count ? { count: matched.length } : {}) }
     }
     return builder
   }

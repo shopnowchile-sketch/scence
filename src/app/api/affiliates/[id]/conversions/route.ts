@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
 type Params = { params: { id: string } }
 const STATUSES = new Set(['pending', 'confirmed', 'cancelled'])
@@ -90,6 +90,8 @@ async function getAccess(affiliateLinkId: string) {
   }
 
   const admin = createAdminClient()
+  // Solo plataforma (SCENCE): estas pantallas existen únicamente en /admin-*; antes cualquier miembro de la organización pasaba.
+  if (!(await isPlatformAdmin(user.id, admin))) return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) {
     return { response: NextResponse.json({ error: 'Organization not found' }, { status: 400 }) }

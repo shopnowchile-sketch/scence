@@ -543,6 +543,9 @@ export function DashboardClient() {
     const influencersTotal =
       deepNumber(state.dashboard, ['totalInfluencers', 'influencersTotal', 'influencersRoster'], state.influencers.length)
 
+    const activeInfluencers =
+      deepNumber(state.dashboard, ['active_influencers', 'activeInfluencers'], influencersTotal)
+
     const brandsTotal =
       deepNumber(state.dashboard, ['total_brands', 'totalBrands', 'brandsTotal', 'registeredBrands'], 0)
 
@@ -652,6 +655,7 @@ export function DashboardClient() {
       proPlan,
       campaignCount,
       influencersTotal,
+      activeInfluencers,
       brandsTotal,
       revenue,
       payroll,
@@ -698,7 +702,7 @@ export function DashboardClient() {
 
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Operación</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <KpiCard
               icon={<CalendarDays className="h-5 w-5" />}
               value={String(computed.campaignCount)}
@@ -713,6 +717,14 @@ export function DashboardClient() {
               title="Influencers en roster"
               subtitle="total (activos + inactivos)"
               tone="blue"
+              href="/admin-influencers"
+            />
+            <KpiCard
+              icon={<Users className="h-5 w-5" />}
+              value={String(computed.activeInfluencers)}
+              title="Influencers activos"
+              subtitle="del roster operativo"
+              tone="purple"
               href="/admin-influencers"
             />
             <KpiCard

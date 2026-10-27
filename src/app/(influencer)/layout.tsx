@@ -6,6 +6,8 @@ import { InfluencerSidebar } from './_components/InfluencerSidebar'
 import { PresenceHeartbeat } from './_components/PresenceHeartbeat'
 import { ProfileCompletionGate } from './_components/ProfileCompletionGate'
 import { InactiveAccountGate } from './_components/InactiveAccountGate'
+import { canEnterInfluencerPortal, defaultPortalPath } from '@/lib/portal-access'
+import { resolvePortalAccess } from '@/lib/portal-access-server'
 
 export const metadata: Metadata = {
   title: { default: 'Mi Portal — Scence', template: '%s | Scence' },
@@ -45,6 +47,9 @@ export default async function InfluencerLayout({ children }: { children: React.R
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const portalAccess = await resolvePortalAccess(user.id)
+  if (!canEnterInfluencerPortal(portalAccess)) redirect(defaultPortalPath(portalAccess))
+
   // FIX (2026-07-02, seguimiento trigger): antes se llamaba ensureOrg(user)
   // acá, que era no-op mientras el trigger handle_new_user() stampeaba
   // organization_id en el metadata del usuario. Al corregir el trigger para
@@ -63,7 +68,7 @@ export default async function InfluencerLayout({ children }: { children: React.R
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <PresenceHeartbeat />
-      <InfluencerSidebar />
+      <InfluencerSidebar hasBrandAccess={portalAccess.brand !== null} />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="w-full p-4 lg:p-8 max-w-[1440px] mx-auto">
           <InactiveAccountGate active={profileState.active}>

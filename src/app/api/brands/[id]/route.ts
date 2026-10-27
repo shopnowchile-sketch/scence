@@ -91,6 +91,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at, org_plan, direct_influencers } })
 }
 
+const BRAND_TEXT_FIELDS = ['name', 'contact_email', 'logo_url', 'website', 'industry', 'contact_name', 'contact_phone', 'notes'] as const
+const BRAND_STATUSES = ['pending_approval', 'approved', 'rejected', 'suspended'] as const
+const BRAND_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// Columnas que el PATCH de Admin puede escribir. RUT, dirección, organization_id,
+// metadata y user_id (salvo asignación server-side de owner) quedan fuera a propósito.
+const BRAND_PATCH_ALLOWED_FIELDS = [
+  'name', 'logo_url', 'website', 'instagram', 'industry', 'contact_name',
+  'contact_email', 'contact_phone', 'notes', 'status', 'subscription_plan_override', 'user_id',
+] as const
+
 export async function PATCH(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -104,7 +114,39 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { id: _id, organization_id: _oi, created_by: _cb, created_at: _ca, ...rest } = body
+  const { id: _id, organization_id: _oi, created_by: _cb, created_at: _ca, if_updated_at: ifUpdatedAtRaw, ...rest } = body
+
+  // Hardening (edición Admin): user_id y metadata NUNCA se aceptan del cliente.
+  // user_id solo lo asigna el flujo de owner de más abajo (rest.user_id = ...);
+  // cualquier otro intento se descarta. Ver BRAND_PATCH_ALLOWED_FIELDS.
+  delete rest.user_id
+  delete rest.metadata
+
+  const ifUpdatedAt = typeof ifUpdatedAtRaw === 'string' && ifUpdatedAtRaw ? ifUpdatedAtRaw : null
+
+  // Validación básica de campos de texto editables (422, mensaje claro).
+  for (const key of BRAND_TEXT_FIELDS) {
+    if (!(key in rest)) continue
+    const v = rest[key]
+    if (v === null || v === undefined) { rest[key] = null; continue }
+    if (typeof v !== 'string') {
+      return NextResponse.json({ error: `El campo ${key} debe ser texto` }, { status: 422 })
+    }
+    const t = v.trim()
+    if (t.length > (key === 'notes' ? 5000 : 500)) {
+      return NextResponse.json({ error: `El campo ${key} es demasiado largo` }, { status: 422 })
+    }
+    rest[key] = t === '' ? null : t
+  }
+  if ('name' in rest && !rest.name) {
+    return NextResponse.json({ error: 'El nombre de la marca es obligatorio' }, { status: 422 })
+  }
+  if (typeof rest.contact_email === 'string' && !BRAND_EMAIL_RE.test(rest.contact_email)) {
+    return NextResponse.json({ error: 'El email de contacto no es válido' }, { status: 422 })
+  }
+  if ('status' in rest && !(BRAND_STATUSES as readonly string[]).includes(String(rest.status))) {
+    return NextResponse.json({ error: 'Estado de marca no válido' }, { status: 422 })
+  }
 
   if ('instagram' in rest) {
     rest.instagram = typeof rest.instagram === 'string'
@@ -289,14 +331,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     rest.subscription_plan_override = null
   }
 
-  const { data, error } = await admin
-    .from('brands')
-    .update({ ...rest, updated_at: new Date().toISOString() })
-    .eq('id', params.id)
-    .select()
-    .single()
+  // Lista blanca: solo se escriben columnas explícitamente editables. user_id
+  // entra únicamente si lo asignó el flujo de owner (el valor del cliente ya
+  // fue descartado arriba).
+  const updatePayload: Record<string, unknown> = {}
+  for (const key of BRAND_PATCH_ALLOWED_FIELDS) {
+    if (key in rest) updatePayload[key] = rest[key]
+  }
+  updatePayload.updated_at = new Date().toISOString()
 
-  if (error) {
+  // Concurrencia optimista: si el cliente envía if_updated_at y la marca
+  // cambió desde que abrió la ficha, no se pisa en silencio (409).
+  let updateQuery = admin.from('brands').update(updatePayload).eq('id', params.id)
+  if (ifUpdatedAt) updateQuery = updateQuery.eq('updated_at', ifUpdatedAt)
+  const { data, error } = await updateQuery.select().maybeSingle()
+
+  if (error || !data) {
     // Rollback compensatorio: si ya cambiamos auth.users más arriba pero
     // este update de `brands` falla, auth.users.email y brands.contact_email
     // quedarían desincronizados (el mismo bug que originó este fix, al
@@ -320,7 +370,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         console.error('[PATCH /api/brands/[id]] no se pudo revertir el owner creado:', deleteOwnerError.message)
       }
     }
-    console.error('[PATCH /api/brands/[id]] update de brands falló:', error.message)
+    // Sin error pero sin fila: la marca cambió (409) o no existe (404). El
+    // rollback de auth de arriba ya corrió, así que auth y brands no divergen.
+    if (!error) {
+      return NextResponse.json(
+        { error: ifUpdatedAt ? 'La marca fue modificada por otra persona. Recarga la ficha e inténtalo de nuevo.' : 'Marca no encontrada' },
+        { status: ifUpdatedAt ? 409 : 404 },
+      )
+    }
+    console.error('[PATCH /api/brands/[id]] update de brands falló:', error?.message)
     return NextResponse.json({ error: 'No se pudo guardar los cambios de la marca' }, { status: 500 })
   }
 

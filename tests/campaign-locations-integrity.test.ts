@@ -113,7 +113,7 @@ test('lectura: admin y marca reciben TODAS las direcciones de su campaña; la in
   assert.match(read('src/app/api/campaigns/[id]/route.ts'), /locations: await loadCampaignLocations\(admin, params\.id\)/)
   assert.match(read('src/app/api/brand/campaigns/[id]/route.ts'), /locations: await loadCampaignLocations\(admin, params\.id\)/)
   const detail = read('src/app/api/influencer/campaigns/[id]/route.ts')
-  assert.match(detail, /locationsForInfluencer\(await loadCampaignLocations\(admin, params\.id\)\.catch\(\(\) => \[\]\), isAccepted\)/)
+  assert.match(detail, /locationsForInfluencer\(await loadCampaignLocations\(admin, params\.id\)\.catch\(\(\) => \[\]\), operationalAccess\)/)
   assert.match(detail, /stripLegacyLocation\(eventBooking\.location_details\)/)
   assert.match(detail, /payload\.metadata = metadataForInfluencer\(campaign\.metadata\)/, 'la aceptada tampoco recibe legacy_location en metadata')
   const mine = read('src/app/api/influencer/my-campaigns/route.ts')

@@ -13,7 +13,7 @@ test('no existe el bloque duplicado de edición del encabezado', () => {
 
 test('cada campo editable del encabezado aparece una sola vez (en su lugar)', () => {
   // Las horas también existen en el pequeño editor previo de "Hora por confirmar" (estado excluyente, sin horario agendado).
-  const expected: Record<string, number> = { 'Fecha': 1, 'Hora de inicio': 2, 'Hora de término': 2, 'Lugar': 1, 'Tipo de campaña': 1, 'Marca principal': 1, 'Nombre de campaña': 1 }
+  const expected: Record<string, number> = { 'Fecha': 1, 'Hora de inicio': 2, 'Hora de término': 2, 'Tipo de campaña': 1, 'Marca principal': 1, 'Nombre de campaña': 1 }
   for (const [label, n] of Object.entries(expected)) {
     assert.equal(count(new RegExp(`aria-label="${label}"`, 'g')), n, `aria-label="${label}"`)
   }
@@ -24,7 +24,9 @@ test('estado de la campaña: un único selector en el encabezado', () => {
 })
 
 test('los datos de lugar y fecha editados se guardan con el mismo estado de formulario de siempre', () => {
-  assert.match(source, /value=\{summaryEditForm\.location\}/)
+  // El lugar ya no es un campo de texto del resumen: se edita con las direcciones canónicas (campaign_locations).
+  assert.match(source, /<CampaignLocationsEditor campaignId=\{id\}/)
+  assert.doesNotMatch(source, /summaryEditForm\.location\b/)
   assert.match(source, /setEventScheduleForm\(previous => previous\.map/)
   assert.match(source, /value=\{summaryEditForm\.type\}/)
 })

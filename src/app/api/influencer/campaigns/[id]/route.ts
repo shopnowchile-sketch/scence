@@ -1,3 +1,4 @@
+import { loadCampaignLocations, locationsForInfluencer, metadataForInfluencer, stripLegacyLocation } from '@/lib/campaign-locations'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
@@ -146,6 +147,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // Solo el título de cada entregable; las instrucciones se liberan al aceptar.
     payload.deliverable_templates = publicDeliverableTemplates(payload.deliverable_templates)
     payload.metadata = publicCampaignMetadata(campaign.metadata)
+  } else {
+    // Aceptada: dirección vigente sí; la copia histórica interna (legacy_location) nunca.
+    payload.metadata = metadataForInfluencer(campaign.metadata)
   }
 
   // Fecha y hora del evento ya son visibles antes de aceptar (para decidir si
@@ -199,7 +203,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         starts_at: eventBooking.starts_at,
         ends_at: eventBooking.ends_at,
         location: operationalAccess ? eventBooking.location : null,
-        location_details: operationalAccess ? eventBooking.location_details : publicLocationDetails,
+        location_details: operationalAccess ? stripLegacyLocation(eventBooking.location_details) : publicLocationDetails,
       }
     : (operationalAccess && fallbackLocation ? { id: null, starts_at: null, ends_at: null, location: fallbackLocation, location_details: null } : null)
 
@@ -213,6 +217,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       attendance_confirmed: operationalAccess,
       application_status: canReapply ? null : (existing?.application_status ?? null),
       event_booking: visibleEventBooking,
+      // Todas las direcciones de la campaña, redactadas en el servidor hasta ser aceptada.
+      locations: locationsForInfluencer(await loadCampaignLocations(admin, params.id).catch(() => []), operationalAccess),
       can_apply: campaign.visibility === 'open' || isPro,
       requires_pro: campaign.visibility === 'private' && !isPro,
     },

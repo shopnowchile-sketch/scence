@@ -4,7 +4,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign, publicCampaignMetadata } from '@/lib/campaign-field-guards'
-import { canReapplyAfterProExpiry } from '@/lib/campaign-pro-reapply'
+import { canReapplyAfterProExpiry, canReapplyAfterWithdrawal } from '@/lib/campaign-pro-reapply'
 import { publicDeliverableTemplates } from '@/lib/deliverable-template-title'
 
 type Params = { params: { id: string } }
@@ -80,7 +80,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Plan Pro, postulable por cuenta propia.
   const rejectedInvitation = existing?.application_status === 'rejected' && existing.origin === 'invitation'
   const proExpiredApplication = canReapplyAfterProExpiry(existing)
-  const canReapply = rejectedInvitation || proExpiredApplication
+  const canReapply = rejectedInvitation || proExpiredApplication || canReapplyAfterWithdrawal(existing)
 
   if (!existing && campaign.visibility !== 'open' && campaign.visibility !== 'private') {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })

@@ -6,6 +6,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolvePhysicalLocation, PhysicalLocationError } from '@/lib/resolvePhysicalLocation'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
   const {
     campaign_id, influencer_id, organization_id,
     title, description, event_type,
-    location: clientLocation, location_details: clientLocationDetails, is_virtual, virtual_link,
+    location: clientLocation, location_id: clientLocationId, location_details: clientLocationDetails, is_virtual, virtual_link,
     starts_at, ends_at,
     fee, currency, travel_covered,
     notes, attendee_emails = [],
@@ -132,7 +133,18 @@ export async function POST(req: NextRequest) {
   const canonicalLocation = campaign_id && event_type === 'event' && !primaryInfluencerId
     ? await canonicalBookingLocationForCampaign(admin, String(campaign_id))
     : null
-  const location = canonicalLocation ? canonicalLocation.location : clientLocation
+  let picked
+  try {
+    picked = canonicalLocation ? null : await resolvePhysicalLocation(admin, {
+      locationId: typeof clientLocationId === 'string' ? clientLocationId : null,
+      location: typeof clientLocation === 'string' ? clientLocation : null,
+      isVirtual: is_virtual === true,
+    })
+  } catch (e) {
+    if (e instanceof PhysicalLocationError) return NextResponse.json({ error: e.message }, { status: e.status })
+    throw e
+  }
+  const location = canonicalLocation ? canonicalLocation.location : (picked?.locationDisplay ?? clientLocation)
   const location_details = canonicalLocation ? mergeBookingLocationDetails(null, clientLocationDetails, canonicalLocation.details) : clientLocationDetails
 
   // Idempotencia: si es el booking general de una campaña (sin influencer) y ya
@@ -187,7 +199,7 @@ export async function POST(req: NextRequest) {
       description,
       event_type,
       location,
-      location_id: canonicalLocation?.location_id ?? null,
+      location_id: canonicalLocation?.location_id ?? picked?.locationId ?? null,
       location_details: location_details ?? null,
       is_virtual: is_virtual ?? false,
       virtual_link,
@@ -244,7 +256,7 @@ export async function PUT(req: NextRequest) {
   // campaign_id / organization_id / created_by no se pueden reasignar por PUT: permitirlo dejaría
   // mover un booking a una campaña u organización ajena tras autorizar solo la original.
   const {
-    id, title, description, location: clientLocation, starts_at, ends_at, timezone,
+    id, title, description, location: clientLocation, location_id: clientLocationId, starts_at, ends_at, timezone,
     campaign_id: _campaignId, organization_id: _organizationId, created_by: _createdBy, calendar_event_id: _calendarEventId,
     ...rest
   } = body
@@ -264,10 +276,20 @@ export async function PUT(req: NextRequest) {
   const canonicalLocation = existing.campaign_id && existing.event_type === 'event' && !existing.influencer_id
     ? await canonicalBookingLocationForCampaign(admin, existing.campaign_id)
     : null
-  const location = canonicalLocation ? canonicalLocation.location : clientLocation
+  let picked
+  try {
+    picked = canonicalLocation || typeof clientLocationId !== 'string' ? null : await resolvePhysicalLocation(admin, {
+      locationId: clientLocationId,
+      location: typeof clientLocation === 'string' ? clientLocation : null,
+    })
+  } catch (e) {
+    if (e instanceof PhysicalLocationError) return NextResponse.json({ error: e.message }, { status: e.status })
+    throw e
+  }
+  const location = canonicalLocation ? canonicalLocation.location : (picked?.locationDisplay ?? clientLocation)
   const canonicalFields = canonicalLocation
     ? { location_id: canonicalLocation.location_id, location_details: mergeBookingLocationDetails(existing.location_details, rest.location_details, canonicalLocation.details) }
-    : {}
+    : picked ? { location_id: picked.locationId } : {}
 
   if (existing?.calendar_event_id) {
     try {

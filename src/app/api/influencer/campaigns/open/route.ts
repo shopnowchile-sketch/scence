@@ -4,7 +4,7 @@ import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { getCampaignDateKey } from '@/lib/attendance-state'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
-import { canReapplyAfterProExpiry } from '@/lib/campaign-pro-reapply'
+import { canReapplyAfterProExpiry, canReapplyAfterWithdrawal } from '@/lib/campaign-pro-reapply'
 
 // GET /api/influencer/campaigns/open
 // Returns active campaigns the influencer is NOT yet part of (open to apply)
@@ -52,7 +52,7 @@ export async function GET() {
   // ocultando igual que antes.
   const excludeIds = (myRows ?? [])
     .filter(r => r.application_status !== 'pending')
-    .filter(r => !(r.application_status === 'rejected' && r.origin === 'invitation') && !canReapplyAfterProExpiry(r))
+    .filter(r => !(r.application_status === 'rejected' && r.origin === 'invitation') && !canReapplyAfterProExpiry(r) && !canReapplyAfterWithdrawal(r))
     .map(r => r.campaign_id as string)
 
   // Marketplace público: una campaña abierta y activa puede ser descubierta por

@@ -9,6 +9,7 @@ import {
   Search, X, Loader2, UserPlus, ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { PhysicalLocationPicker } from '@/components/locations/PhysicalLocationPicker'
 import { cn } from '@/lib/utils'
 import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
@@ -49,9 +50,9 @@ type BrandLocation = {
   city: string | null
   region: string | null
   country: string | null
-  is_public: boolean
   notes: string | null
 }
+type EcommerceLink = { name: string; url: string }
 
 type BrandInfluencer = {
   id: string
@@ -137,15 +138,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [invitingMember, setInvitingMember] = useState(false)
   const [ownerEmail, setOwnerEmail] = useState('')
   const [savingOwner, setSavingOwner] = useState(false)
-  const [newLocation, setNewLocation] = useState({
-    name: '',
-    address: '',
-    city: '',
-    region: '',
-    country: 'Chile',
-    is_public: false,
-    notes: '',
-  })
+  const [ecommerce, setEcommerce] = useState<EcommerceLink[]>([])
+  const [newEcommerce, setNewEcommerce] = useState({ name: '', url: '' })
 
   const campaigns = useMemo(() => brand?.campaigns ?? [], [brand?.campaigns])
   const activeCampaigns = useMemo(() => campaigns.filter(c => c.status === 'active'), [campaigns])
@@ -483,8 +477,9 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     try {
       const res = await fetch(`/api/brands/${brand.id}/locations`)
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error cargando lugares')
+      if (!res.ok) throw new Error(json.error ?? 'Error cargando puntos de venta')
       setLocations(json.data ?? [])
+      setEcommerce(json.ecommerce ?? [])
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -492,49 +487,35 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     }
   }
 
-  async function createLocation() {
-    if (!brand) return
-    if (!newLocation.name.trim()) return toast.error('Nombre requerido')
-
-    const res = await fetch(`/api/brands/${brand.id}/locations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newLocation),
-    })
-
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) return toast.error(json.error ?? 'No se pudo crear lugar')
-
-    setLocations(prev => [json.data, ...prev])
-    setNewLocation({ name: '', address: '', city: '', region: '', country: 'Chile', is_public: false, notes: '' })
-    toast.success('Lugar agregado')
-  }
-
-  async function toggleLocationPublic(location: BrandLocation) {
-    if (!brand) return
-
-    const res = await fetch(`/api/brands/${brand.id}/locations/${location.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_public: !location.is_public }),
-    })
-
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) return toast.error(json.error ?? 'No se pudo actualizar')
-
-    setLocations(prev => prev.map(l => l.id === location.id ? json.data : l))
+  // El punto de venta ya se creó/eligió en el selector canónico (locations, con la marca como dueña): solo se recarga la lista.
+  async function onStoreSelected() {
+    await loadLocations()
+    toast.success('Punto de venta agregado')
   }
 
   async function deleteLocation(location: BrandLocation) {
     if (!brand) return
-    if (!confirm(`¿Eliminar el lugar "${location.name}"?`)) return
+    if (!confirm(`¿Quitar el punto de venta "${location.name}"?`)) return
 
     const res = await fetch(`/api/brands/${brand.id}/locations/${location.id}`, { method: 'DELETE' })
     const json = await res.json().catch(() => ({}))
-    if (!res.ok) return toast.error(json.error ?? 'No se pudo eliminar')
+    if (!res.ok) return toast.error(json.error ?? 'No se pudo quitar')
 
     setLocations(prev => prev.filter(l => l.id !== location.id))
-    toast.success('Lugar eliminado')
+    toast.success('Punto de venta quitado')
+  }
+
+  async function saveEcommerce(next: EcommerceLink[]) {
+    if (!brand) return
+    const res = await fetch(`/api/brands/${brand.id}/locations`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ecommerce: next }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) return toast.error(json.error ?? 'No se pudo guardar el e-commerce')
+    setEcommerce(json.ecommerce ?? next)
+    setNewEcommerce({ name: '', url: '' })
   }
 
   async function savePlanOverride() {
@@ -874,7 +855,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             ['overview', 'Overview'],
             ['campaigns', 'Campañas'],
             ['influencers', 'Influencers'],
-            ['locations', 'Lugares'],
+            ['locations', 'Puntos de venta'],
             ['plan', 'Plan'],
             ['billing', 'Billing'],
             ['documents', 'Documentos'],
@@ -1065,129 +1046,78 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
 
       {tab === 'locations' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="card p-5 space-y-4">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <section className="card space-y-4 p-5">
             <div>
-              <h2 className="font-bold text-gray-900">Agregar lugar</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Lugares asociados a {brand.name}. Marca público solo si otras marcas pueden verlo.
-              </p>
+              <h2 className="font-bold text-gray-900">Agregar punto de venta</h2>
+              <p className="mt-1 text-sm text-gray-500">Busca una tienda ya registrada o crea una nueva para {brand.name}.</p>
             </div>
-
-            <div className="space-y-3">
-              <input
-                value={newLocation.name}
-                onChange={e => setNewLocation(v => ({ ...v, name: e.target.value }))}
-                placeholder="Nombre del lugar"
-                className="input-base w-full"
-              />
-
-              <input
-                value={newLocation.address}
-                onChange={e => setNewLocation(v => ({ ...v, address: e.target.value }))}
-                placeholder="Dirección"
-                className="input-base w-full"
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={newLocation.city}
-                  onChange={e => setNewLocation(v => ({ ...v, city: e.target.value }))}
-                  placeholder="Ciudad"
-                  className="input-base w-full"
-                />
-                <input
-                  value={newLocation.region}
-                  onChange={e => setNewLocation(v => ({ ...v, region: e.target.value }))}
-                  placeholder="Región"
-                  className="input-base w-full"
-                />
-              </div>
-
-              <textarea
-                value={newLocation.notes}
-                onChange={e => setNewLocation(v => ({ ...v, notes: e.target.value }))}
-                placeholder="Notas internas"
-                className="input-base w-full min-h-[80px]"
-              />
-
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={newLocation.is_public}
-                  onChange={e => setNewLocation(v => ({ ...v, is_public: e.target.checked }))}
-                />
-                Público para otras marcas
-              </label>
-
+            <PhysicalLocationPicker apiBase="/api/locations" brandId={brand.id} placeType="store" onSelect={onStoreSelected} />
+            <div className="space-y-2 border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-bold text-gray-900">Agregar e-commerce</h3>
+              <input className="input-base" placeholder="Nombre (ej: Tienda online)" value={newEcommerce.name} onChange={e => setNewEcommerce(v => ({ ...v, name: e.target.value }))} />
+              <input className="input-base" placeholder="https://..." value={newEcommerce.url} onChange={e => setNewEcommerce(v => ({ ...v, url: e.target.value }))} />
               <button
                 type="button"
-                onClick={createLocation}
-                className="w-full py-2 text-sm font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700"
+                disabled={!newEcommerce.name.trim() || !newEcommerce.url.trim()}
+                onClick={() => saveEcommerce([...ecommerce, newEcommerce])}
+                className="w-full rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
               >
-                Agregar lugar
+                Agregar e-commerce
               </button>
             </div>
-          </div>
+          </section>
 
-          <div className="lg:col-span-2 card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900">Lugares de la marca</h2>
-              <span className="text-sm text-gray-400">{locations.length} lugar{locations.length !== 1 ? 'es' : ''}</span>
-            </div>
-
-            {loadingLocations ? (
-              <p className="text-sm text-gray-400">Cargando lugares…</p>
-            ) : locations.length === 0 ? (
-              <p className="text-sm text-gray-400">Aún no hay lugares asociados.</p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {locations.map(location => (
-                  <div key={location.id} className="rounded-xl border border-gray-100 p-4 bg-gray-50">
-                    <div className="flex items-start justify-between gap-3">
+          <section className="card space-y-5 p-5 lg:col-span-2">
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-bold text-gray-900">Tiendas físicas</h2>
+                <span className="text-sm text-gray-400">{locations.length}</span>
+              </div>
+              {loadingLocations ? (
+                <p className="text-sm text-gray-400">Cargando…</p>
+              ) : locations.length === 0 ? (
+                <p className="text-sm text-gray-400">Aún no hay tiendas físicas.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {locations.map(location => (
+                    <div key={location.id} className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
                       <div className="min-w-0">
-                        <p className="font-bold text-gray-900 truncate">{location.name}</p>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {location.address || 'Sin dirección'}
-                        </p>
+                        <p className="truncate font-bold text-gray-900">{location.name}</p>
+                        <p className="mt-1 text-sm text-gray-500">{location.address || 'Sin dirección'}</p>
                         {(location.city || location.region) && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            {[location.city, location.region, location.country].filter(Boolean).join(', ')}
-                          </p>
+                          <p className="mt-1 text-xs text-gray-400">{[location.city, location.region, location.country].filter(Boolean).join(', ')}</p>
                         )}
                       </div>
-
-                      <span className={cn('badge text-xs font-bold', location.is_public ? 'badge-green' : 'badge-gray')}>
-                        {location.is_public ? 'Público' : 'Privado'}
-                      </span>
-                    </div>
-
-                    {location.notes && (
-                      <p className="mt-3 text-xs text-gray-500 bg-white rounded-lg p-2">{location.notes}</p>
-                    )}
-
-                    <div className="flex gap-2 mt-4">
-                      <button
-                        type="button"
-                        onClick={() => toggleLocationPublic(location)}
-                        className="flex-1 py-2 text-xs font-semibold rounded-lg bg-white text-gray-700 hover:bg-gray-100"
-                      >
-                        {location.is_public ? 'Hacer privado' : 'Hacer público'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => deleteLocation(location)}
-                        className="px-3 py-2 text-xs font-semibold rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
-                      >
+                      <button type="button" onClick={() => deleteLocation(location)} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h2 className="mb-3 font-bold text-gray-900">E-commerce</h2>
+              {ecommerce.length === 0 ? (
+                <p className="text-sm text-gray-400">Aún no hay enlaces de e-commerce.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {ecommerce.map((link, i) => (
+                    <li key={`${link.url}-${i}`} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="min-w-0 truncate text-sm font-semibold text-violet-700 hover:underline">
+                        {link.name} <span className="font-normal text-gray-400">· {link.url}</span>
+                      </a>
+                      <button type="button" onClick={() => saveEcommerce(ecommerce.filter((_, j) => j !== i))} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
         </div>
       )}
 

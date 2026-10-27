@@ -11,3 +11,11 @@ export function canReapplyAfterProExpiry(row: {
     row.origin === 'application' &&
     row.notes === PRO_EXPIRED_APPLICATION_NOTE
 }
+
+/** Una postulación retirada por la propia influencer se conserva como historial y puede volver a postular. */
+export function canReapplyAfterWithdrawal(row: {
+  application_status?: string | null
+  origin?: string | null
+} | null | undefined): boolean {
+  return row?.application_status === 'withdrawn' && row.origin === 'application'
+}

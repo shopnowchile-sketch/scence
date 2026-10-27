@@ -252,6 +252,12 @@ export default function MyCampaignsPage() {
       if (!res.ok && json?.code === 'INFLUENCER_PRO_TERMS_REQUIRED') {
         throw new Error('Los Términos del Plan Pro cambiaron. Vuelve a intentarlo para revisarlos y aceptarlos.')
       }
+      if (!res.ok && json?.code === 'PROFILE_INCOMPLETE') {
+        toast.error(json.error, { action: { label: 'Completar perfil', onClick: () => window.location.assign('/inf-profile') } })
+        setApplyDialog(null)
+        setApplying(null)
+        return
+      }
       if (!res.ok) throw new Error(json.error)
       toast.success('¡Solicitud enviada! El equipo te confirmará pronto.')
       setOpenCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, _applied: true } : c))

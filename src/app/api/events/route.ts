@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolvePhysicalLocation, PhysicalLocationError } from '@/lib/resolvePhysicalLocation'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
     description,
     event_date,
     location,
+    location_id,
     is_virtual = false,
     virtual_link,
     capacity,
@@ -91,6 +93,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'event_date is required' }, { status: 422 })
   }
 
+  let resolved
+  try {
+    resolved = await resolvePhysicalLocation(admin, {
+      locationId: typeof location_id === 'string' ? location_id : null,
+      location: typeof location === 'string' ? location : null,
+      isVirtual: is_virtual === true,
+    })
+  } catch (e) {
+    if (e instanceof PhysicalLocationError) return NextResponse.json({ error: e.message }, { status: e.status })
+    throw e
+  }
+
   const { data, error } = await admin
     .from('events')
     .insert({
@@ -99,7 +113,8 @@ export async function POST(request: NextRequest) {
       name: (name as string).trim(),
       description: description ?? null,
       event_date,
-      location: location ?? null,
+      location: resolved.locationDisplay,
+      location_id: resolved.locationId,
       is_virtual,
       virtual_link: virtual_link ?? null,
       capacity: capacity ?? null,

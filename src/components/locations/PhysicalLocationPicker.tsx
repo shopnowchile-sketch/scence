@@ -28,6 +28,8 @@ type Props = {
   /** Admin: marca dueña del lugar nuevo (la de la campaña), para que esa marca lo vea y administre. */
   brandId?: string | null
   excludeIds?: string[]
+  /** Categoría del lugar nuevo (por defecto: local de marca si hay marca, evento si no). */
+  placeType?: 'brand_venue' | 'store' | 'showroom' | 'event' | 'other'
   disabled?: boolean
   onSelect: (place: PlaceSelection) => void
 }
@@ -54,7 +56,7 @@ function toSelection(place: Node, fallbackGeo?: { commune?: string; region?: str
   }
 }
 
-export function PhysicalLocationPicker({ apiBase, brandId = null, excludeIds = [], disabled = false, onSelect }: Props) {
+export function PhysicalLocationPicker({ apiBase, brandId = null, excludeIds = [], placeType, disabled = false, onSelect }: Props) {
   const isBrand = apiBase === '/api/brand/locations'
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Node[]>([])
@@ -131,7 +133,7 @@ export function PhysicalLocationPicker({ apiBase, brandId = null, excludeIds = [
     try {
       const body = isBrand
         ? { name: placeName.trim(), parent_id: communeId, address: address.trim() }
-        : { name: placeName.trim(), level: 'place', parent_id: communeId, type: brandId ? 'brand_venue' : 'event', address: address.trim(), brand_id: brandId || null }
+        : { name: placeName.trim(), level: 'place', parent_id: communeId, type: placeType ?? (brandId ? 'brand_venue' : 'event'), address: address.trim(), brand_id: brandId || null }
       const res = await fetch(apiBase, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? 'No se pudo crear el lugar')

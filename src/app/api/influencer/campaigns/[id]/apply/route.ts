@@ -4,7 +4,7 @@ import { acceptCampaignApplication } from '@/lib/campaign-applications'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
-import { canReapplyAfterProExpiry } from '@/lib/campaign-pro-reapply'
+import { canReapplyAfterProExpiry, canReapplyAfterWithdrawal } from '@/lib/campaign-pro-reapply'
 
 type Params = { params: { id: string } }
 
@@ -155,8 +155,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const reusableRejectedInvitation =
     existing?.application_status === 'rejected' && existing.origin === 'invitation'
   const reusableProExpiredApplication = canReapplyAfterProExpiry(existing)
+  const reusableWithdrawn = canReapplyAfterWithdrawal(existing)
 
-  if (existing && !reusableRejectedInvitation && !reusableProExpiredApplication) {
+  if (existing && !reusableRejectedInvitation && !reusableProExpiredApplication && !reusableWithdrawn) {
     return NextResponse.json({
       error: existing.application_status === 'pending'
         ? 'Ya enviaste una postulación a esta campaña'
@@ -201,7 +202,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       : [],
   }
 
-  const reusable = reusableRejectedInvitation || reusableProExpiredApplication
+  const reusable = reusableRejectedInvitation || reusableProExpiredApplication || reusableWithdrawn
   const previousMetadata = existing?.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
     ? existing.metadata as Record<string, unknown> : {}
   const previousHistory = Array.isArray(previousMetadata.application_history) ? previousMetadata.application_history : []
@@ -212,7 +213,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     rejection_reason: existing!.rejection_reason,
     rejected_at: existing!.rejected_at,
     reopened_at: new Date().toISOString(),
-    reason: reusableProExpiredApplication ? 'pro_reactivated' : 'declined_invitation',
+    reason: reusableProExpiredApplication ? 'pro_reactivated' : reusableWithdrawn ? 'withdrawn_reapplied' : 'declined_invitation',
   }] : previousHistory
 
   const { data, error } = reusable
@@ -220,7 +221,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         .from('campaign_influencers')
         .update({ ...applicationRow, metadata: { ...previousMetadata, application_history: history }, rejected_at: null, rejection_reason: null, notes: null, updated_at: new Date().toISOString() })
         .eq('id', existing!.id)
-        .eq('application_status', 'rejected')
+        .eq('application_status', existing!.application_status)
         .eq('origin', existing!.origin)
         .select('id')
         .single()
@@ -257,19 +258,22 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     )
   }
 
-  const { error: deleteError } = await admin
+  // No borra la fila: conserva el historial y distingue una postulación retirada de una inexistente.
+  const { data: withdrawn, error: withdrawError } = await admin
     .from('campaign_influencers')
-    .delete()
+    .update({ application_status: 'withdrawn', updated_at: new Date().toISOString() })
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer.id)
     .eq('application_status', 'pending')
     .eq('origin', 'application')
-  if (deleteError) {
-    console.error('[DELETE /api/influencer/campaigns/[id]/apply]', deleteError)
-    return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    .select('id')
+  if (withdrawError) {
+    console.error('[DELETE /api/influencer/campaigns/[id]/apply]', withdrawError)
+    return NextResponse.json({ error: withdrawError.message }, { status: 500 })
   }
+  if (!withdrawn?.length) return NextResponse.json({ error: 'Solo puedes retirar una postulación pendiente' }, { status: 422 })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, status: 'withdrawn' })
 }
 
 // PATCH /api/influencer/campaigns/[id]/apply

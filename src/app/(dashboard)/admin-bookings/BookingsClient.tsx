@@ -14,6 +14,7 @@ import {
 import { es } from 'date-fns/locale'
 import { cn, formatCurrency } from '@/lib/utils'
 import { AddressWithMap } from '@/components/maps/GoogleMap'
+import { PhysicalLocationPicker } from '@/components/locations/PhysicalLocationPicker'
 import type { Booking, BookingStatus } from '@/types'
 import { useBookings, useUpdateBookingStatus, useCancelBooking, useCreateBooking } from '@/hooks/useBookings'
 
@@ -27,6 +28,7 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
     ends_at: '',
     is_virtual: false,
     location: '',
+    location_id: '',
     virtual_link: '',
     fee: '',
     currency: 'CLP',
@@ -68,6 +70,7 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
         ends_at: new Date(form.ends_at).toISOString(),
         is_virtual: form.is_virtual,
         location: form.is_virtual ? null : form.location || null,
+        location_id: form.is_virtual ? null : form.location_id || null,
         virtual_link: form.is_virtual ? form.virtual_link || null : null,
         fee: form.fee ? Number(form.fee) : null,
         currency: form.currency || 'CLP',
@@ -155,8 +158,17 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Ubicación</label>
-              <input className="input-base" value={form.location} onChange={e => set('location', e.target.value)} placeholder="Dirección o lugar..." />
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Lugar físico</label>
+              {form.location_id && (
+                <div className="flex items-center justify-between gap-2 mb-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  <span className="truncate">{form.location}</span>
+                  <button type="button" className="text-xs text-gray-500 underline" onClick={() => setForm(f => ({ ...f, location: '', location_id: '' }))}>Quitar</button>
+                </div>
+              )}
+              <PhysicalLocationPicker
+                apiBase="/api/locations"
+                onSelect={place => setForm(f => ({ ...f, location_id: place.locationId, location: [place.name, [place.commune, place.region, place.country].filter(Boolean).join(' · '), place.address].filter(Boolean).join(' — ') }))}
+              />
             </div>
           )}
 

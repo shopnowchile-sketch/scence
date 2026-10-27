@@ -94,7 +94,7 @@ test('privacidad: pendiente/rechazada solo ve nombre y comuna, aceptada ve todo,
 test('bookings POST y PUT: el evento toma la principal; location y location_id se escriben juntos', () => {
   const src = read('src/app/api/bookings/route.ts')
   assert.equal((src.match(/canonicalBookingLocationForCampaign\(/g) ?? []).length, 2, 'POST y PUT')
-  assert.match(src, /location_id: canonicalLocation\?\.location_id \?\? null/, 'POST escribe location_id')
+  assert.match(src, /location_id: canonicalLocation\?\.location_id \?\? picked\?\.locationId \?\? null/, 'POST escribe location_id (canónica primero, luego el lugar elegido)')
   assert.equal((src.match(/mergeBookingLocationDetails\(/g) ?? []).length, 2, 'POST y PUT fusionan en vez de reemplazar location_details')
   assert.match(src, /select\('calendar_event_id, campaign_id, organization_id, event_type, influencer_id, location_details'\)/, 'PUT lee lo guardado')
   assert.match(src, /\.\.\.rest, \.\.\.canonicalFields/, 'PUT aplica la dirección canónica DESPUÉS de lo que envía el cliente')

@@ -59,3 +59,21 @@ export function capabilityForPermission(permission: BrandPermission): BrandCapab
       return 'operate'
   }
 }
+
+/**
+ * Páginas del portal de marca que una marca `pending_approval` puede abrir (decisión 2026-10-26): completar el perfil
+ * de la marca y el personal (datos para firmar), consultar su facturación, completar los documentos permitidos y
+ * elegir plan. Todo lo demás (campañas, influencers, reportes) sigue bloqueado hasta la aprobación. Es solo la
+ * experiencia de navegación: el servidor aplica la misma regla en cada ruta (`brandStatusAllows`).
+ */
+const PENDING_BRAND_PORTAL_PATHS = [
+  '/brand-settings/organization',
+  '/brand-settings/profile',
+  '/brand-settings/plan',
+  '/brand-billing',
+  '/brand-documents',
+] as const
+
+export function pendingBrandPathAllowed(pathname: string): boolean {
+  return PENDING_BRAND_PORTAL_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
+}

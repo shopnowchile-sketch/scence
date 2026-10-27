@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Clock } from 'lucide-react'
+import { pendingBrandPathAllowed } from '@/lib/brand-status-access'
 import { BrandSidebar } from './_components/BrandSidebar'
 import { BrandOnboarding } from '@/components/brand/BrandOnboarding'
 // Reutilizado del portal Influencer (mismo componente, sin cambios) — pedido
@@ -49,6 +50,8 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // aprobada. Las demás secciones operativas siguen bloqueadas hasta que el
   // pago confirme la activación de su cuenta.
   const isPlanPage = pathname.startsWith('/brand-settings/plan')
+  // Marca pendiente: puede completar perfil, consultar facturación y completar documentos (brand-status-access.ts).
+  const pendingPageAllowed = brandStatus === 'pending_approval' && pendingBrandPathAllowed(pathname)
 
   useEffect(() => {
     let cancelled = false
@@ -169,8 +172,8 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // Planes. Así una cuenta recién creada (o una ya aprobada como Xtronails)
   // no navega el portal ni inicia una campaña sin una suscripción activa.
   useEffect(() => {
-    if (hasActiveSubscription === false && !isPlanPage) router.replace('/brand-settings/plan')
-  }, [hasActiveSubscription, isPlanPage, router])
+    if (hasActiveSubscription === false && !isPlanPage && !pendingPageAllowed) router.replace('/brand-settings/plan')
+  }, [hasActiveSubscription, isPlanPage, pendingPageAllowed, router])
 
   // La suspensión comercial representa el fin del acceso gratuito. Aunque el
   // usuario sea owner, finance o member, solo puede entrar a Planes para
@@ -187,7 +190,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   const loadingStatus = instagramComplete === null || brandStatus === null || hasActiveSubscription === null
   const pendingApproval = !loadingStatus && !approved
   const blocked = loadingStatus
-    || (hasActiveSubscription === false && !isPlanPage)
+    || (hasActiveSubscription === false && !isPlanPage && !pendingPageAllowed)
     || (approved && instagramComplete === false && !isProfilePage)
 
   return (
@@ -196,7 +199,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
       <BrandSidebar plan={brandPlan} />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
-          {pendingApproval && !isPlanPage ? (
+          {pendingApproval && !isPlanPage && !pendingPageAllowed ? (
             <div className="flex items-center justify-center min-h-[60vh]">
               <div className="max-w-sm text-center">
                 <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">

@@ -378,6 +378,16 @@ export function hasBrandPermission(
   return roleHasBrandPermission(access.role, permission) && brandStatusAllows(access.status, capability)
 }
 
+/**
+ * Pagar el plan de suscripción (PayPal): solo el owner (brand.manage) y en los estados que hoy pueden contratar:
+ * pendiente (elige plan antes de la aprobación) y suspendida (reactiva). Una marca rechazada no. Conserva lo que
+ * producción permite hoy a las marcas pendientes; la facturación operativa sigue gobernada por hasBrandPermission.
+ */
+export function canPayBrandPlan(access: BrandAccess | null): boolean {
+  if (!access || !roleHasBrandPermission(access.role, 'brand.manage')) return false
+  return brandStatusAllows(access.status, 'billing_manage') || brandStatusAllows(access.status, 'onboarding')
+}
+
 export async function resolveBrandAccess(userId: string): Promise<BrandAccess | null> {
   const admin = createAdminClient()
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { payPalBaseUrl } from '@/lib/paypal-env'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { canPayBrandPlan, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import { BRAND_PLAN_USD_PRICING, PLAN_LIMITS, isInfluencerSubscription, type PlanTier } from '@/lib/plan-limits'
@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
-  // Pagar el plan de suscripción sigue siendo exclusivo del owner (brand.manage), con la misma regla de estado de antes.
-  if (!hasBrandPermission(access, 'brand.manage', 'billing_manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Pagar el plan sigue siendo exclusivo del owner; vale para marcas pendientes (eligen plan) y suspendidas (reactivan).
+  if (!canPayBrandPlan(access)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const clientId = process.env.PAYPAL_CLIENT_ID, secret = process.env.PAYPAL_CLIENT_SECRET
   if (!clientId || !secret) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
   const authorization = Buffer.from(`${clientId}:${secret}`).toString('base64')

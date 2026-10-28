@@ -1875,7 +1875,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     })
   }
 
-  async function updateManualAttendance(influencerId: string, action: 'confirmed_client' | 'attended' | 'no_show' | 'revert_no_show') {
+  async function updateManualAttendance(influencerId: string, action: 'confirmed_client' | 'declined_admin' | 'attended' | 'no_show' | 'revert_no_show') {
     setAttendanceUpdating(influencerId)
     try {
       const response = await fetch(`/api/campaigns/${id}/influencers`, {
@@ -1897,7 +1897,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
           return next
         })
       }
-      const label = action === 'confirmed_client' ? 'Confirmación registrada' : action === 'attended' ? 'Asistencia registrada' : action === 'revert_no_show' ? 'No asistencia revertida' : 'No asistencia registrada'
+      const label = action === 'confirmed_client' ? 'Confirmación registrada' : action === 'declined_admin' ? 'No asistirá registrado' : action === 'attended' ? 'Asistencia registrada' : action === 'revert_no_show' ? 'No asistencia revertida' : 'No asistencia registrada'
       toast.success(label)
       await refetch()
     } catch (error) {
@@ -3788,7 +3788,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 value=""
                                 disabled={attendanceUpdating === inf.id}
                                 onChange={event => {
-                                  const action = event.target.value as 'confirmed_client' | 'attended' | 'no_show'
+                                  const action = event.target.value as 'confirmed_client' | 'declined_admin' | 'attended' | 'no_show'
                                   if (action === 'no_show') setAttendanceConfirm({ influencerId: inf.id, action })
                                   else if (action) void updateManualAttendance(inf.id, action)
                                 }}
@@ -3798,6 +3798,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               >
                                 <option value="">{attendanceUpdating === inf.id ? 'Guardando…' : 'No confirmó'}</option>
                                 <option value="confirmed_client">Confirmó con cliente</option>
+                                <option value="declined_admin">No asistirá</option>
                                 <option value="attended">Asistió</option>
                                 <option value="no_show">No asistió</option>
                               </select>
@@ -3808,7 +3809,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 value=""
                                 disabled={attendanceUpdating === inf.id}
                                 onChange={event => {
-                                  const action = event.target.value as 'confirmed_client' | 'attended' | 'no_show'
+                                  const action = event.target.value as 'confirmed_client' | 'declined_admin' | 'attended' | 'no_show'
                                   if (action === 'no_show') setAttendanceConfirm({ influencerId: inf.id, action })
                                   else if (action) void updateManualAttendance(inf.id, action)
                                 }}
@@ -3818,6 +3819,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               >
                                 <option value="">{attendanceUpdating === inf.id ? 'Guardando…' : 'Sin confirmar'}</option>
                                 <option value="confirmed_client">Confirmó con cliente</option>
+                                <option value="declined_admin">No asistirá</option>
                                 <option value="attended">Asistió</option>
                                 <option value="no_show">No asistió</option>
                               </select>

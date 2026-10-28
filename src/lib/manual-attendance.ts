@@ -1,6 +1,6 @@
 import { attendanceStatusForResponse } from './deliverable-status'
 
-export type ManualAttendanceAction = 'confirmed_client' | 'attended' | 'no_show' | 'no_show_unconfirmed' | 'revert_no_show'
+export type ManualAttendanceAction = 'confirmed_client' | 'declined_admin' | 'attended' | 'no_show' | 'no_show_unconfirmed' | 'revert_no_show'
 
 export function buildManualAttendanceUpdate({
   action,
@@ -19,6 +19,11 @@ export function buildManualAttendanceUpdate({
     update.attendance_responded_at = now
     update.attendance_note = 'Confirmó con el cliente · confirmación registrada manualmente'
     update.status = attendanceStatusForResponse('confirmed')
+  } else if (action === 'declined_admin') {
+    update.attendance_response = 'declined'
+    update.attendance_responded_at = now
+    update.attendance_note = 'No asistirá · registrado manualmente por el equipo'
+    update.status = attendanceStatusForResponse('declined')
   } else if (action === 'attended') {
     update.attendance_response = 'confirmed'
     if (currentResponse !== 'confirmed') update.attendance_responded_at = now

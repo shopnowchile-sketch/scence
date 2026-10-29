@@ -1,3 +1,5 @@
+import { parseE164 } from '@/lib/phone'
+import { sanitizeAddressParts } from '@/lib/address-parts'
 import { socialProfileUrl } from '@/lib/social-profile-url'
 import { NextResponse } from 'next/server'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
@@ -16,7 +18,7 @@ export async function GET() {
     .from('influencers')
     .select(`
       id, display_name, avatar_url, bio, email, phone,
-      address, location_id, birth_date, categories, tags, is_verified,
+      address, location_id, birth_date, categories, tags, is_verified, metadata,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('user_id', user.id)
@@ -50,8 +52,9 @@ export async function GET() {
   }
 
   // Defensa adicional: aunque el select cambie, el tenant interno no sale al navegador.
-  const { organization_id: _tenant, ...ownProfile } = data as typeof data & { organization_id?: unknown }
-  return NextResponse.json({ data: { ...ownProfile, ...officialLocation, referred_brands_count } })
+  const { organization_id: _tenant, metadata: ownMetadata, ...ownProfile } = data as typeof data & { organization_id?: unknown }
+  const address_parts = sanitizeAddressParts((ownMetadata as Record<string, unknown> | null)?.address_parts)
+  return NextResponse.json({ data: { ...ownProfile, ...officialLocation, address_parts, referred_brands_count } })
 }
 
 // PATCH /api/influencer/me
@@ -65,7 +68,7 @@ export async function PATCH(req: Request) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, address, location_id, birth_date')
+    .select('id, display_name, address, location_id, birth_date, phone, metadata')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
@@ -75,6 +78,26 @@ export async function PATCH(req: Request) {
   const allowed = ['display_name', 'bio', 'phone', 'address', 'birth_date', 'avatar_url', 'categories', 'location_id']
   for (const key of allowed) {
     if (key in body) profileUpdate[key] = body[key]
+  }
+
+  // Teléfono: siempre E.164. Si no cambió, no se revalida (perfiles antiguos con formatos raros siguen guardando).
+  if ('phone' in profileUpdate) {
+    const incoming = String(profileUpdate.phone ?? '').trim()
+    if (!incoming) profileUpdate.phone = null
+    else if (incoming !== String(influencer.phone ?? '').trim()) {
+      const parsed = parseE164(incoming)
+      if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 422 })
+      profileUpdate.phone = parsed.e164
+    }
+  }
+
+  // Dirección estructurada (calle, depto, código postal): se guarda en metadata.address_parts sin tocar
+  // el resto del metadata. País/región/comuna NO se guardan aquí: salen de location_id.
+  const addressParts = 'address_parts' in body ? sanitizeAddressParts(body.address_parts) : null
+  if (addressParts) {
+    const current = influencer.metadata && typeof influencer.metadata === 'object' && !Array.isArray(influencer.metadata)
+      ? influencer.metadata as Record<string, unknown> : {}
+    profileUpdate.metadata = { ...current, address_parts: addressParts }
   }
 
   // Perfil obligatorio (portal influencer): nombre + Instagram + comuna + dirección.

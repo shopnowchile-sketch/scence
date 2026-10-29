@@ -55,3 +55,89 @@ export function whatsappUrl(phone: string | null | undefined, country?: string |
   const digits = full.replace(/\D/g, '')
   return digits.length >= 8 ? `https://wa.me/${digits}` : null
 }
+
+
+// ── Teléfono internacional (E.164) ────────────────────────────────────────────
+// Un país = código ISO, nombre en español, prefijo y largo del número nacional.
+// Sin dependencias; la validación es por largo (no verifica que la línea exista).
+export type PhoneCountry = { iso: string; name: string; dial: string; min: number; max: number; groups: number[] }
+
+export const PHONE_COUNTRIES: PhoneCountry[] = [
+  { iso: 'CL', name: 'Chile', dial: '56', min: 9, max: 9, groups: [1, 4, 4] },
+  { iso: 'AR', name: 'Argentina', dial: '54', min: 10, max: 11, groups: [2, 4, 4] },
+  { iso: 'BO', name: 'Bolivia', dial: '591', min: 8, max: 8, groups: [4, 4] },
+  { iso: 'BR', name: 'Brasil', dial: '55', min: 10, max: 11, groups: [2, 5, 4] },
+  { iso: 'CO', name: 'Colombia', dial: '57', min: 10, max: 10, groups: [3, 3, 4] },
+  { iso: 'CR', name: 'Costa Rica', dial: '506', min: 8, max: 8, groups: [4, 4] },
+  { iso: 'EC', name: 'Ecuador', dial: '593', min: 9, max: 9, groups: [2, 3, 4] },
+  { iso: 'ES', name: 'España', dial: '34', min: 9, max: 9, groups: [3, 3, 3] },
+  { iso: 'US', name: 'Estados Unidos', dial: '1', min: 10, max: 10, groups: [3, 3, 4] },
+  { iso: 'MX', name: 'México', dial: '52', min: 10, max: 10, groups: [2, 4, 4] },
+  { iso: 'PA', name: 'Panamá', dial: '507', min: 8, max: 8, groups: [4, 4] },
+  { iso: 'PY', name: 'Paraguay', dial: '595', min: 9, max: 9, groups: [3, 3, 3] },
+  { iso: 'PE', name: 'Perú', dial: '51', min: 9, max: 9, groups: [3, 3, 3] },
+  { iso: 'UY', name: 'Uruguay', dial: '598', min: 8, max: 9, groups: [4, 4] },
+  { iso: 'VE', name: 'Venezuela', dial: '58', min: 10, max: 10, groups: [3, 3, 4] },
+]
+
+export const DEFAULT_PHONE_COUNTRY = 'CL'
+
+export function phoneCountryFlag(iso: string): string {
+  return iso.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0)))
+}
+
+export function phoneCountry(iso: string | null | undefined): PhoneCountry {
+  return PHONE_COUNTRIES.find(c => c.iso === iso) ?? PHONE_COUNTRIES[0]
+}
+
+/** Quita ceros de troncal y todo lo que no sea dígito. */
+function nationalDigits(raw: string, country: PhoneCountry): string {
+  let digits = raw.replace(/\D/g, '')
+  if (raw.trim().startsWith('+') && digits.startsWith(country.dial)) digits = digits.slice(country.dial.length)
+  return digits.replace(/^0+/, '').slice(0, country.max)
+}
+
+/** Formato visual del número nacional según el país: "9 1234 5678". */
+export function formatNational(raw: string, isoCountry: string): string {
+  const country = phoneCountry(isoCountry)
+  const digits = nationalDigits(raw, country)
+  const parts: string[] = []
+  let at = 0
+  for (const size of country.groups) {
+    if (at >= digits.length) break
+    parts.push(digits.slice(at, at + size))
+    at += size
+  }
+  if (at < digits.length) parts.push(digits.slice(at))
+  return parts.join(' ')
+}
+
+export type PhoneParse = { ok: true; e164: string; iso: string; national: string } | { ok: false; error: string }
+
+/** País + número nacional → E.164 ("+56912345678") o error en español. */
+export function toE164(raw: string, isoCountry: string): PhoneParse {
+  const country = phoneCountry(isoCountry)
+  const digits = nationalDigits(raw, country)
+  if (!digits) return { ok: false, error: 'Ingresa tu número de teléfono' }
+  if (digits.length < country.min || digits.length > country.max) {
+    const expected = country.min === country.max ? `${country.min}` : `${country.min} a ${country.max}`
+    return { ok: false, error: `En ${country.name} el número debe tener ${expected} dígitos` }
+  }
+  return { ok: true, e164: `+${country.dial}${digits}`, iso: country.iso, national: digits }
+}
+
+/** Separa un teléfono guardado ("+56912345678" o "+56 912345678") en país + número nacional. */
+export function splitStoredPhone(stored: string | null | undefined): { iso: string; national: string } | null {
+  const clean = (stored ?? '').trim()
+  if (!clean.startsWith('+')) return null
+  const digits = clean.replace(/\D/g, '')
+  const match = [...PHONE_COUNTRIES].sort((a, b) => b.dial.length - a.dial.length).find(c => digits.startsWith(c.dial))
+  return match ? { iso: match.iso, national: digits.slice(match.dial.length) } : null
+}
+
+/** Valida un valor llegado a la API: debe ser E.164 de un país soportado. */
+export function parseE164(value: string): PhoneParse {
+  const split = splitStoredPhone(value)
+  if (!split) return { ok: false, error: 'Teléfono inválido: usa el formato internacional (+56…)' }
+  return toE164(split.national, split.iso)
+}

@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
   const q = (params.get('q') ?? '').trim()
   const id = (params.get('id') ?? '').trim()
   const level = (params.get('level') ?? '').trim()
+  const parent = (params.get('parent') ?? '').trim()
+  const ancestors = (params.get('ancestors') ?? '').trim()
 
   const { data: locations, error } = await fetchAllRows(
     (from, to) => admin
@@ -70,6 +72,24 @@ export async function GET(req: NextRequest) {
   })
 
   if (id) return NextResponse.json({ data: data.filter(row => row.id === id) })
+
+  // Selectores dependientes: hijos directos de un nodo ('root' = países) y cadena de ancestros.
+  if (parent) {
+    const children = rows
+      .filter(row => (parent === 'root' ? row.level === 'country' : row.parent_id === parent))
+      .map(row => ({ id: row.id, name: row.name, level: row.level }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    return NextResponse.json({ data: children })
+  }
+  if (ancestors) {
+    const chain: Array<{ id: string; name: string; level: string }> = []
+    let current = byId.get(ancestors)
+    while (current && chain.length < 6) {
+      chain.unshift({ id: current.id, name: current.name, level: current.level })
+      current = current.parent_id ? byId.get(current.parent_id) : undefined
+    }
+    return NextResponse.json({ data: chain })
+  }
 
   if (level === 'country') return NextResponse.json({ data: data.filter(row => row.level === 'country') })
 

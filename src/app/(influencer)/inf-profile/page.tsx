@@ -1,5 +1,8 @@
 'use client'
 
+import { PhoneField } from '@/components/forms/PhoneField'
+import { StructuredAddressFields } from '@/components/influencers/StructuredAddressFields'
+import { composeAddress, EMPTY_ADDRESS_PARTS, partsFromProfile, type AddressParts } from '@/lib/address-parts'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { InstagramSyncHint } from '@/components/influencers/InstagramSyncHint'
 import {
@@ -14,7 +17,6 @@ import NotificationPreferencesForm from '@/components/settings/NotificationPrefe
 import { InfluencerPlanSettings } from '../inf-plan/InfluencerPlanSettings'
 import { InfluencerDocuments } from './_components/InfluencerDocuments'
 import { InfluencerAffiliate } from './_components/InfluencerAffiliate'
-import { InfluencerLocationPicker, type InfluencerLocation } from '@/components/influencers/InfluencerLocationPicker'
 
 type SocialProfile = {
   id?: string
@@ -40,6 +42,7 @@ type InfluencerProfile = {
   address: string | null
   commune: string | null
   location_id: string | null
+  address_parts?: AddressParts | null
   birth_date: string | null
   categories: string[] | null
   influencer_social_profiles: SocialProfile[] | null
@@ -161,6 +164,8 @@ export default function ProfilePage() {
   const [loading,   setLoading]   = useState(true)
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
+  const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [addressParts, setAddressParts] = useState<AddressParts>(EMPTY_ADDRESS_PARTS)
   const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', address: '', location_id: '', birth_date: '', categories: '' })
   const [socials,   setSocials]   = useState<SocialProfile[]>([])
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
@@ -227,6 +232,8 @@ export default function ProfilePage() {
       birth_date: profile.birth_date ?? '',
       categories: (profile.categories ?? []).join(', '),
     })
+    setAddressParts(partsFromProfile(profile.address, profile.address_parts))
+    setPhoneError(null)
     const existingSocials = (profile.influencer_social_profiles ?? []).map(sp => ({ ...sp }))
     if (!existingSocials.some(sp => sp.platform === 'instagram')) {
       existingSocials.unshift({ platform: 'instagram', username: '', followers: 0, engagement_rate: null, profile_url: null })
@@ -248,6 +255,7 @@ export default function ProfilePage() {
   }
 
   async function saveProfile() {
+    if (phoneError) { toast.error(phoneError); scrollToSection('personal'); return }
     const blocking = currentMissing().filter(item => item.blocking)
     if (blocking.length > 0) {
       toast.error(`Falta completar: ${blocking.map(item => item.label).join(', ')}`)
@@ -263,6 +271,7 @@ export default function ProfilePage() {
           ...editForm,
           categories: editForm.categories ? editForm.categories.split(',').map(s => s.trim()).filter(Boolean) : [],
           social_profiles: socials,
+          address_parts: addressParts,
         }),
       })
       const json = await res.json()
@@ -519,7 +528,7 @@ export default function ProfilePage() {
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /> Información personal</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Nombre" value={editForm.display_name} onChange={v => setEditForm(f => ({ ...f, display_name: v }))} placeholder="Tu nombre" />
-              <Field label="Teléfono" value={editForm.phone} onChange={v => setEditForm(f => ({ ...f, phone: v }))} type="tel" placeholder="+56 9 1234 5678" />
+              <PhoneField value={editForm.phone} onChange={(v, err) => { setEditForm(f => ({ ...f, phone: v })); setPhoneError(err) }} />
               <Field label="Fecha de nacimiento" value={editForm.birth_date} onChange={v => setEditForm(f => ({ ...f, birth_date: v }))} type="date" />
             </div>
             <Field label="Bio" value={editForm.bio} onChange={v => setEditForm(f => ({ ...f, bio: v }))} textarea placeholder="Cuéntanos sobre ti…" />
@@ -558,13 +567,12 @@ export default function ProfilePage() {
 
           <div id={SECTION_IDS.ubicacion} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 scroll-mt-24">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-400" /> Dirección y ubicación</h2>
-            <Field label="Dirección completa *" value={editForm.address} onChange={v => setEditForm(f => ({ ...f, address: v }))} placeholder="Av. Providencia 1234, Depto 5" />
-            <InfluencerLocationPicker
-              value={editForm.location_id}
-              required
-              onChange={(location: InfluencerLocation | null) =>
-                setEditForm(f => ({ ...f, location_id: location?.id ?? '' }))
-              }
+            <StructuredAddressFields
+              key={profile.id ?? 'address'}
+              locationId={editForm.location_id}
+              parts={addressParts}
+              onLocationChange={id => setEditForm(f => ({ ...f, location_id: id }))}
+              onPartsChange={parts => { setAddressParts(parts); setEditForm(f => ({ ...f, address: composeAddress(parts) })) }}
             />
           </div>
 

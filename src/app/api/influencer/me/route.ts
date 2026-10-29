@@ -1,3 +1,4 @@
+import { socialProfileUrl } from '@/lib/social-profile-url'
 import { NextResponse } from 'next/server'
 import { syncProfilesNow } from '@/lib/instagram/followers-sync'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
@@ -161,7 +162,7 @@ export async function PATCH(req: Request) {
         const previousUsername = String(existing?.username ?? '').trim().replace(/^@/, '').toLowerCase()
         await admin.from('influencer_social_profiles').update({
           username: nextUsername || null,
-          profile_url: sp.profile_url ?? null,
+          profile_url: socialProfileUrl(sp.platform, nextUsername),
           // Seguidores y engagement son datos verificados: la influencer no
           // puede escribirlos. Si cambia el @, se reintenta el sync sin borrar
           // el último valor válido.
@@ -179,7 +180,7 @@ export async function PATCH(req: Request) {
           influencer_id: influencer.id,
           platform: sp.platform,
           username: sp.username ?? null,
-          profile_url: sp.profile_url ?? null,
+          profile_url: socialProfileUrl(sp.platform, sp.username),
           followers: 0,
           engagement_rate: null,
         }).select('id').single()

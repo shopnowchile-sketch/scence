@@ -908,19 +908,6 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               arriba, en "Información del evento"): el rango Inicio/Termina de la
               campaña solo confundía. Se mantiene tal cual para campañas sin
               evento, donde es la única fecha disponible. */}
-          {!p.event_booking?.starts_at && (
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-50">
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
-                <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.start_date)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
-                <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(p.end_date)}</p>
-              </div>
-            </div>
-          )}
-
           {(p.max_influencers || p.application_deadline) && (
             <div className="mt-3 rounded-xl bg-violet-50 border border-violet-100 px-3 py-2">
               {p.max_influencers && <p className="text-xs font-bold text-violet-800">Cupos limitados</p>}
@@ -1224,20 +1211,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
         {/* Mismo criterio que el preview: con evento cargado no se repite el
             rango de la campaña. "Tu fee" se conserva siempre. */}
-        {(!data.event_booking?.starts_at || !!data.fee) && (
+        {!!data.fee && (
           <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-50">
-            {!data.event_booking?.starts_at && (
-              <>
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Inicio</p>
-                  <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.start_date)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Termina</p>
-                  <p className="text-sm font-bold text-gray-900 mt-0.5">{fmtDate(c.end_date)}</p>
-                </div>
-              </>
-            )}
             {!!data.fee && (
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tu fee</p>

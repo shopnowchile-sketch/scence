@@ -465,11 +465,7 @@ export default function MyCampaignsPage() {
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">Invitación</span>
                     </div>
                     {c.brand_name && <p className="text-xs font-medium text-violet-600 mt-0.5">{c.brand_name}</p>}
-                    {(c.start_date || c.end_date) && (
-                      <p className="text-[10px] text-gray-400 mt-1">
-                        {fmt(c.start_date) ?? '—'}{' → '}{fmt(c.end_date) ?? '—'}
-                      </p>
-                    )}
+
                   </div>
                   <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
                     <Link href={`/inf-campaign/${c.id}`} className="text-[10px] font-semibold text-gray-400 hover:text-violet-600 transition-colors">
@@ -581,11 +577,9 @@ export default function MyCampaignsPage() {
                     {c.requires_pro && (
                       <p className="mt-1 text-[11px] font-semibold text-violet-700">🔒 Activa Plan Pro para postular a esta campaña</p>
                     )}
-                    {(c.start_date || c.end_date) && (
-                      <p className="text-[10px] text-gray-400 mt-1">
-                        {c.start_date ? new Date(c.start_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : '—'}
-                        {' → '}
-                        {c.end_date ? new Date(c.end_date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                    {c.event_starts_at && (
+                      <p className="text-[11px] font-medium text-gray-500 mt-1">
+                        Evento: {new Date(c.event_starts_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </p>
                     )}
                     {/* Contador de días al evento — mismo eventCountdown() del
@@ -738,7 +732,6 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
       <div className="p-4">
         <div className="flex items-start justify-between gap-2"><BrandBadge name={c.brand_name} logoUrl={c.brand_logo} instagram={c.brand_instagram} compact /><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', stCfg.color)}>{stCfg.label}</span></div>
         <p className="text-base font-bold text-gray-900 mt-3 truncate">{c.name}</p>
-        <div className="flex items-center gap-2 mt-1 text-xs text-gray-400"><Calendar className="h-3 w-3" />{fmt(c.start_date) ?? 'Sin fecha'}{c.end_date ? ` → ${fmt(c.end_date)}` : ''}</div>
         {isActive && c.next_due && <p className="text-sm font-semibold text-violet-700 mt-3">Próxima entrega: {fmt(c.next_due)}</p>}
         {c.application_status === 'rejected' && <p className="text-xs text-gray-400 mt-3">{c.removal_message ?? 'Gracias por postular. Tendrás nuevas oportunidades pronto.'}</p>}
         {c.deliverables_total > 0 && <div className="mt-4"><div className="flex justify-between text-[11px] text-gray-400 mb-1"><span>{c.deliverables_done}/{c.deliverables_total} entregables</span><span>{pct}%</span></div><div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={cn('h-full rounded-full', pct === 100 ? 'bg-emerald-500' : 'bg-violet-500')} style={{ width: `${pct}%` }} /></div></div>}

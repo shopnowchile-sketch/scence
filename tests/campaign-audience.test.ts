@@ -133,3 +133,13 @@ test('influencer sin ubicación recibe aviso para completar su perfil', () => {
   assert.match(page, /missing-location-banner/)
   assert.match(page, /href="\/inf-profile"/)
 })
+
+test('URL de perfil social se deriva del usuario (la influencer solo escribe su @)', async () => {
+  const { socialProfileUrl } = await import('../src/lib/social-profile-url.ts')
+  assert.equal(socialProfileUrl('instagram', '@Ana.Perez'), 'https://www.instagram.com/Ana.Perez')
+  assert.equal(socialProfileUrl('tiktok', 'ana'), 'https://www.tiktok.com/@ana')
+  assert.equal(socialProfileUrl('instagram', '  '), null)
+  assert.equal(socialProfileUrl('otra', 'ana'), null)
+  assert.doesNotMatch(read('src/app/(influencer)/inf-profile/page.tsx'), /URL perfil/)
+  assert.doesNotMatch(read('src/app/api/influencer/me/route.ts'), /profile_url: sp\.profile_url/)
+})

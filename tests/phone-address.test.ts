@@ -108,3 +108,11 @@ test('catálogo de ubicaciones: páginas bajo el tope de filas del proyecto y co
   assert.match(route, /pageSize: 250/)
   assert.match(read('src/lib/influencer-location.ts'), /pageSize: 250/)
 })
+
+test('perfil: fecha vacía se guarda como null y los errores de base no se muestran crudos', () => {
+  const route = read('src/app/api/influencer/me/route.ts')
+  assert.match(route, /if \(!raw\) profileUpdate\.birth_date = null/)
+  assert.match(route, /La fecha de nacimiento no es válida/)
+  assert.doesNotMatch(route, /error: upErr\.message/)
+  assert.match(route, /No se pudo guardar tu perfil/)
+})

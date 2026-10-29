@@ -80,6 +80,15 @@ export async function PATCH(req: Request) {
     if (key in body) profileUpdate[key] = body[key]
   }
 
+  // Fecha de nacimiento opcional: vacío = sin dato (antes '' llegaba a la columna date y fallaba con un error técnico).
+  if ('birth_date' in profileUpdate) {
+    const raw = String(profileUpdate.birth_date ?? '').trim()
+    if (!raw) profileUpdate.birth_date = null
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(Date.parse(raw))) {
+      return NextResponse.json({ error: 'La fecha de nacimiento no es válida' }, { status: 422 })
+    }
+  }
+
   // Teléfono: siempre E.164. Si no cambió, no se revalida (perfiles antiguos con formatos raros siguen guardando).
   if ('phone' in profileUpdate) {
     const incoming = String(profileUpdate.phone ?? '').trim()
@@ -162,7 +171,11 @@ export async function PATCH(req: Request) {
       .from('influencers')
       .update(profileUpdate)
       .eq('id', influencer.id)
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) {
+      // Nunca mostrar errores técnicos de la base a la persona.
+      console.error('[influencer/me PATCH]', upErr)
+      return NextResponse.json({ error: 'No se pudo guardar tu perfil. Revisa los datos e inténtalo de nuevo.' }, { status: 500 })
+    }
   }
 
   // Handle social profiles upsert/delete

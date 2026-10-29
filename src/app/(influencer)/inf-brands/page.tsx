@@ -75,8 +75,8 @@ export default function InfluencerBrandsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
-        <div><h1 className="text-2xl font-bold text-gray-900">Mis marcas</h1><p className="text-sm text-gray-400 mt-1">Tu directorio privado de contactos y colaboraciones</p></div>
-        <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" />Agregar marca</button>
+        <div><h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Mis marcas</h1><p className="mt-1 hidden text-sm text-gray-400 sm:block">Tu directorio privado de contactos y colaboraciones</p></div>
+        <button onClick={openCreate} className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-violet-600 px-3 h-9 sm:px-4 sm:h-auto sm:py-2.5 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" />Agregar marca</button>
       </div>
 
       {loading ? <div className="flex justify-center py-24"><Loader2 className="h-7 w-7 animate-spin text-violet-500" /></div> : brands.length === 0 ? (

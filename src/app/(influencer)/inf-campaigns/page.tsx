@@ -366,7 +366,7 @@ export default function MyCampaignsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Campañas</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Tus campañas propias y las asignadas por tu agencia</p>
+          <p className="mt-0.5 hidden text-sm text-gray-400 sm:block">Tus campañas propias y las asignadas por tu agencia</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -374,7 +374,7 @@ export default function MyCampaignsPage() {
           </button>
           <button
             onClick={() => setShowForm(v => !v)}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
+            className="flex items-center gap-1.5 whitespace-nowrap px-3 sm:px-4 h-9 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
           >
             {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
             {showForm ? 'Cancelar' : 'Nueva campaña'}
@@ -523,15 +523,15 @@ export default function MyCampaignsPage() {
             const brands = visibleOpenCampaigns.map(c => c.brand?.name).filter((b): b is string => !!b)
             const unique = brands.filter((b, i) => brands.indexOf(b) === i)
             return unique.length > 1 ? (
-              <div className="flex gap-2 flex-wrap pb-3">
+              <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden">
                 <button onClick={() => setBrandFilter('')}
-                  className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
+                  className={cn('shrink-0 whitespace-nowrap text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
                     brandFilter === '' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
                   Todas
                 </button>
                 {unique.map(brand => (
                   <button key={brand} onClick={() => setBrandFilter(brand === brandFilter ? '' : brand)}
-                    className={cn('text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
+                    className={cn('shrink-0 whitespace-nowrap text-xs font-semibold px-3 py-1 rounded-full border transition-colors',
                       brandFilter === brand ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200 hover:border-violet-300')}>
                     {brand}
                   </button>
@@ -540,7 +540,7 @@ export default function MyCampaignsPage() {
             ) : null
           })()}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             {visibleOpenCampaigns
               .filter(c => !brandFilter || c.brand?.name === brandFilter)
               .map(c => (
@@ -548,7 +548,7 @@ export default function MyCampaignsPage() {
                 'rounded-2xl overflow-hidden border',
                 c._applied ? 'bg-amber-50/50 border-amber-100' : 'bg-white border-gray-100'
               )}>
-                <CampaignCover name={c.name} src={c.cover_url} className="h-28" />
+                <CampaignCover name={c.name} src={c.cover_url} className="h-20 sm:h-28" />
                 <div className="flex items-start gap-3 p-4">
                   {c.brand?.logo_url ? (
                     <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />

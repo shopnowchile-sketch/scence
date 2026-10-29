@@ -17,8 +17,8 @@ export function InstagramSyncHint({ profile, className = '' }: { profile: IgSync
     <div className={className}>
       <div className={`text-[11px] leading-tight ${TONE[label.tone]}`}>{label.text}</div>
       {profile.platform === 'instagram' && profile.sync_status === 'not_found' && (
-        <div className="text-[11px] leading-tight text-amber-700 mt-1 max-w-[240px]">
-          Para actualizar tus seguidores, tu perfil de Instagram debe estar público y el @ debe ser correcto. Esto no impide postular a campañas.
+        <div className="text-[11px] leading-tight text-amber-700 mt-0.5">
+          Hazlo público y revisa tu @ para actualizar seguidores.
         </div>
       )}
     </div>

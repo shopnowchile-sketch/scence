@@ -451,7 +451,8 @@ export default function ProfilePage() {
               </div>
               <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3">
                 {socialProfiles.map(sp => (
-                  <div key={sp.id ?? sp.platform} className="flex items-center gap-3">
+                  <div key={sp.id ?? sp.platform} className="space-y-1.5">
+                  <div className="flex items-center gap-3">
                     <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br', PLATFORM_COLORS[sp.platform] ?? 'from-gray-400 to-gray-300')}>
                       <span className="text-white text-xs font-bold">{sp.platform.charAt(0).toUpperCase()}</span>
                     </div>
@@ -466,8 +467,9 @@ export default function ProfilePage() {
                     <div className="text-right flex-shrink-0">
                       {sp.followers > 0 && <p className="text-sm font-bold text-gray-900">{sp.followers.toLocaleString('es-CL')}</p>}
                       {sp.engagement_rate && <p className="text-xs text-gray-400">{sp.engagement_rate.toFixed(1)}% eng.</p>}
-                      <InstagramSyncHint profile={sp} />
                     </div>
+                  </div>
+                  <InstagramSyncHint profile={sp} className="pl-12" />
                   </div>
                 ))}
               </div>

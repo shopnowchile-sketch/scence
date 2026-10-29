@@ -80,6 +80,12 @@ type InfluencerProfile = {
 // `section` corresponde a los anclajes de /inf-profile.
 type MissingProfileItem = { label: string; section: 'personal' | 'ubicacion' | 'redes' }
 
+// "Instagram, dirección y comuna": minúsculas salvo Instagram, con "y" antes del último.
+function joinMissing(labels: string[]): string {
+  const words = labels.map(label => (label === 'Instagram' ? label : label.toLowerCase()))
+  return words.length > 1 ? `${words.slice(0, -1).join(', ')} y ${words[words.length - 1]}` : words[0] ?? ''
+}
+
 function missingProfileItems(profile: InfluencerProfile | null): MissingProfileItem[] {
   if (!profile) return []
   const missing: MissingProfileItem[] = []
@@ -283,15 +289,21 @@ export default function InfluencerDashboard() {
       {missingProfile.length > 0 && (
         <Link
           href={`/inf-profile?focus=${missingProfile[0].section}`}
-          className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 transition-colors hover:bg-amber-100"
+          data-testid="complete-profile-card"
+          className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 transition-colors hover:bg-amber-100 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
         >
-          <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
-          <span className="min-w-0 flex-1">
-            <b>Te falta completar tu perfil:</b> {missingProfile.map(item => item.label).join(', ')}.
-            {' '}Necesitas estos datos para postular a campañas y recibir productos.
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white">
-            Completar ahora <ArrowRight className="h-3.5 w-3.5" />
+          <div className="flex min-w-0 items-start gap-2.5 sm:flex-1">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight text-amber-950">Completa tu perfil</p>
+              <p className="mt-1 text-[13px] leading-snug text-amber-900">
+                Te falta: {joinMissing(missingProfile.map(item => item.label))}.
+              </p>
+              <p className="mt-0.5 text-xs leading-snug text-amber-800/70">Necesitas estos datos para postular a campañas.</p>
+            </div>
+          </div>
+          <span className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white sm:w-auto">
+            Completar perfil <ArrowRight className="h-4 w-4" />
           </span>
         </Link>
       )}

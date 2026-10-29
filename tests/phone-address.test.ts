@@ -101,3 +101,10 @@ test('selector de ubicación con búsqueda al escribir y perfil mostrando comuna
   const page = read('src/app/(influencer)/inf-profile/page.tsx')
   assert.match(page, /profile\.commune \?\? profile\.city, profile\.region, profile\.country/)
 })
+
+test('catálogo de ubicaciones: páginas bajo el tope de filas del proyecto y con orden estable', () => {
+  const route = read('src/app/api/influencer/locations/route.ts')
+  assert.match(route, /\.order\('id', \{ ascending: true \}\)/)
+  assert.match(route, /pageSize: 250/)
+  assert.match(read('src/lib/influencer-location.ts'), /pageSize: 250/)
+})

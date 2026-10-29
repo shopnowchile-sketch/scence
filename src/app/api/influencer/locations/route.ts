@@ -23,8 +23,11 @@ export async function GET(req: NextRequest) {
       .select('id, name, parent_id, level')
       .eq('is_active', true)
       .neq('level', 'place')
+      .order('id', { ascending: true })
       .range(from, to),
-    { maxRows: 5000 }
+    // pageSize bajo el tope de filas del proyecto (en DEV es 500): con un tope mayor la primera página
+    // se tomaba por la última y el catálogo quedaba truncado sin error.
+    { maxRows: 5000, pageSize: 250 }
   )
 
   if (error) {

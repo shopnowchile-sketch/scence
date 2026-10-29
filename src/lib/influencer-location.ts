@@ -31,7 +31,7 @@ export async function loadLocationRows(admin: SupabaseClient): Promise<LocationN
       .neq('level', 'place')
       .order('id', { ascending: true })
       .range(from, to),
-    { maxRows: Number.POSITIVE_INFINITY }
+    { maxRows: Number.POSITIVE_INFINITY, pageSize: 250 }
   )
   if (error) throw error
   return data

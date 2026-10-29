@@ -3,7 +3,7 @@
 // Dirección estructurada: País → Región → Comuna (selectores dependientes sobre `locations`),
 // calle y número, depto/información adicional y código postal. El único dato geográfico que
 // se guarda es location_id (el nodo más específico elegido); nada de texto paralelo.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AddressParts } from '@/lib/address-parts'
 
 type Node = { id: string; name: string; level: string }
@@ -11,6 +11,51 @@ type Node = { id: string; name: string; level: string }
 const LEVEL_LABEL: Record<string, string> = { country: 'País', region: 'Región', city: 'Ciudad', commune: 'Comuna' }
 const SELECT_CLASS = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-violet-400'
 const INPUT_CLASS = SELECT_CLASS
+
+const fold = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
+// Selector con búsqueda: se escribe y la lista se filtra (sin tildes ni mayúsculas).
+function SearchSelect({ label, options, value, disabled, onChange }: {
+  label: string; options: Node[]; value: string; disabled?: boolean; onChange: (id: string) => void
+}) {
+  const selected = options.find(o => o.id === value)
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as globalThis.Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+  const q = fold(query)
+  const shown = (q ? options.filter(o => fold(o.name).includes(q)) : options).slice(0, 60)
+  return (
+    <div ref={box} className="relative">
+      <label className="mb-1 block text-xs font-semibold text-gray-500">{label} *</label>
+      <input
+        role="combobox" aria-expanded={open} aria-label={label} disabled={disabled}
+        value={open ? query : selected?.name ?? ''}
+        placeholder={`Escribe para buscar ${label.toLowerCase()}…`}
+        onFocus={() => { setQuery(''); setOpen(true) }}
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+        className={SELECT_CLASS}
+      />
+      {open && (
+        <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+          {shown.length === 0 && <li className="px-3 py-2 text-sm text-gray-400">Sin resultados</li>}
+          {shown.map(o => (
+            <li key={o.id}>
+              <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { onChange(o.id); setOpen(false); setQuery('') }}
+                className={`flex w-full px-3 py-2 text-left text-sm hover:bg-violet-50 ${o.id === value ? 'font-semibold text-violet-700' : 'text-gray-800'}`}>
+                {o.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 async function fetchNodes(query: string): Promise<Node[]> {
   try {
@@ -68,13 +113,7 @@ export function StructuredAddressFields({ locationId, parts, onLocationChange, o
     <div className="space-y-3" data-testid="structured-address">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {levels.map((options, depth) => (
-          <div key={depth}>
-            <label className="mb-1 block text-xs font-semibold text-gray-500">{LEVEL_LABEL[options[0]?.level] ?? 'Zona'} *</label>
-            <select value={chain[depth] ?? ''} onChange={e => void choose(depth, e.target.value)} disabled={!ready} className={SELECT_CLASS}>
-              <option value="">Selecciona…</option>
-              {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </div>
+          <SearchSelect key={depth} label={LEVEL_LABEL[options[0]?.level] ?? 'Zona'} options={options} value={chain[depth] ?? ''} disabled={!ready} onChange={id => void choose(depth, id)} />
         ))}
       </div>
 

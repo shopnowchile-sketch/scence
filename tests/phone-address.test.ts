@@ -84,3 +84,20 @@ test('selectores dependientes usan el endpoint de locations (parent / ancestors)
   assert.match(route, /params\.get\('parent'\)/)
   assert.match(route, /params\.get\('ancestors'\)/)
 })
+
+test('países: migración con el catálogo completo, idempotente y sin tocar regiones', () => {
+  const sql = read('supabase/migrations/20261029160000_locations_all_countries.sql')
+  const names = [...sql.matchAll(/\('([^']+)'\)/g)].map(m => m[1])
+  assert.ok(names.length >= 190 && new Set(names).size === names.length)
+  for (const n of ['Chile', 'Argentina', 'Japón', 'Zimbabue', 'Estados Unidos']) assert.ok(names.includes(n), n)
+  assert.match(sql, /WHERE NOT EXISTS/)
+  assert.doesNotMatch(sql, /DELETE|UPDATE|level\s*=\s*'region'\s*,/)
+})
+
+test('selector de ubicación con búsqueda al escribir y perfil mostrando comuna y región', () => {
+  const form = read('src/components/influencers/StructuredAddressFields.tsx')
+  assert.match(form, /role="combobox"/)
+  assert.match(form, /normalize\('NFD'\)/)
+  const page = read('src/app/(influencer)/inf-profile/page.tsx')
+  assert.match(page, /profile\.commune \?\? profile\.city, profile\.region, profile\.country/)
+})

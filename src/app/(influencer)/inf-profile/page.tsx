@@ -41,6 +41,7 @@ type InfluencerProfile = {
   country: string | null
   address: string | null
   commune: string | null
+  region?: string | null
   location_id: string | null
   address_parts?: AddressParts | null
   birth_date: string | null
@@ -434,7 +435,7 @@ export default function ProfilePage() {
             <div className="mt-4 grid gap-3 text-sm text-gray-600 sm:grid-cols-2">
               {profile.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-gray-300" />{profile.email}</div>}
               {profile.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-gray-300" />{profile.phone}</div>}
-              {profile.address && <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-300" />{profile.address}</div>}
+              {(profile.address || profile.commune || profile.region || profile.country) && <div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" /><span>{[profile.address, profile.commune ?? profile.city, profile.region, profile.country].filter(Boolean).join(' · ')}</span></div>}
               {(profile.commune || profile.city || profile.country) && <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-gray-300" />{[profile.commune, profile.city, profile.country].filter(Boolean).join(', ')}</div>}
               {profile.birth_date && <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-300" />{new Date(profile.birth_date).toLocaleDateString('es-CL')}</div>}
             </div>

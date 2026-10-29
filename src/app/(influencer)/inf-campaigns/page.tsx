@@ -501,14 +501,14 @@ export default function MyCampaignsPage() {
 
       {missingLocation && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" data-testid="missing-location-banner">
-          <strong>Completa tu ubicación:</strong> algunas campañas se muestran solo por zona. Agrega tu comuna para verlas.{' '}
+          <strong>Agrega tu comuna</strong> para ver campañas de tu zona.{' '}
           <a href="/inf-profile" className="font-semibold underline">Completar perfil</a>
         </div>
       )}
 
       {instagramPublicWarning && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>Instagram:</strong> para actualizar tus seguidores, tu perfil debe estar público y el @ debe ser correcto. <span className="font-medium">Esto no impide que puedas postular a campañas.</span>
+          <strong>Instagram:</strong> hazlo público y revisa tu @ para actualizar seguidores.
         </div>
       )}
 

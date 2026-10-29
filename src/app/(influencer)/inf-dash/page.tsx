@@ -96,7 +96,7 @@ function missingProfileItems(profile: InfluencerProfile | null): MissingProfileI
   if (!hasInstagram) missing.push({ label: 'Instagram', section: 'redes' })
   if (!profile.address?.trim()) missing.push({ label: 'Dirección', section: 'ubicacion' })
   if (!profile.location_id?.trim()) missing.push({ label: 'Comuna', section: 'ubicacion' })
-  if (!profile.birth_date?.trim()) missing.push({ label: 'Fecha de nacimiento', section: 'personal' })
+  if (!profile.birth_date?.trim()) missing.push({ label: 'Nacimiento', section: 'personal' })
   return missing
 }
 
@@ -296,14 +296,13 @@ export default function InfluencerDashboard() {
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <div className="min-w-0">
               <p className="text-sm font-semibold leading-tight text-amber-950">Completa tu perfil</p>
-              <p className="mt-1 text-[13px] leading-snug text-amber-900">
-                Te falta: {joinMissing(missingProfile.map(item => item.label))}.
+              <p className="mt-0.5 text-[13px] leading-snug text-amber-900">
+                Falta: {joinMissing(missingProfile.map(item => item.label))}.
               </p>
-              <p className="mt-0.5 text-xs leading-snug text-amber-800/70">Necesitas estos datos para postular a campañas.</p>
             </div>
           </div>
           <span className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white sm:w-auto">
-            Completar perfil <ArrowRight className="h-4 w-4" />
+            Completar <ArrowRight className="h-4 w-4" />
           </span>
         </Link>
       )}

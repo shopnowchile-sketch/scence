@@ -37,7 +37,7 @@ export default function InfluencerBookingsPage() {
       if (!res.ok) throw new Error(json.error)
       setBookings(json.data ?? [])
     } catch (e) {
-      toast.error((e as Error).message ?? 'Error cargando bookings')
+      toast.error((e as Error).message ?? 'Error cargando eventos')
     }
     setLoading(false)
   }, [])
@@ -62,7 +62,7 @@ export default function InfluencerBookingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Mis Bookings</h1>
+          <h1 className="text-xl font-bold text-gray-900">Mis eventos</h1>
           <p className="text-sm text-gray-400 mt-0.5">Eventos y participaciones agendadas</p>
         </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -73,7 +73,7 @@ export default function InfluencerBookingsPage() {
       {bookings.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 flex flex-col items-center py-20 gap-3">
           <Calendar className="h-10 w-10 text-gray-200" />
-          <p className="text-sm font-semibold text-gray-400">Sin bookings ni eventos asignados</p>
+          <p className="text-sm font-semibold text-gray-400">Sin eventos asignados</p>
           <p className="text-xs text-gray-400">Tu agencia te asignará eventos y participaciones aquí.</p>
         </div>
       ) : (

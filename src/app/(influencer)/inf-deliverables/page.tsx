@@ -434,14 +434,14 @@ function DeliverablesPageInner() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-6">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Mis entregables</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900">Mis entregables</h1>
           <p className="text-sm text-gray-400 mt-0.5">{pendingDeliverables.length} entregables pendientes</p>
-          <p className="text-xs text-violet-600 mt-1">Entregar a tiempo fortalece tu perfil para próximas campañas.</p>
+          <p className="hidden text-xs text-violet-600 mt-1 sm:block">Entregar a tiempo fortalece tu perfil para próximas campañas.</p>
         </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw className="h-4 w-4" />
@@ -452,7 +452,7 @@ function DeliverablesPageInner() {
       <div className="space-y-3">
           {/* Filtro pendientes/completados */}
           {campaignGroups.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <Filter className="h-4 w-4 text-gray-300 flex-shrink-0" />
               {([
                 { key: 'all',     label: 'Todos' },
@@ -463,7 +463,7 @@ function DeliverablesPageInner() {
                   key={key}
                   onClick={() => setDelivFilter(key)}
                   className={cn(
-                    'text-xs font-medium px-3 py-1.5 rounded-full border transition-colors',
+                    'shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors',
                     delivFilter === key
                       ? 'bg-violet-600 text-white border-violet-600'
                       : 'bg-white text-gray-500 border-gray-200 hover:border-violet-200'
@@ -501,7 +501,7 @@ function DeliverablesPageInner() {
 
             return (
               <div key={g.campaign_id} id={`campaign-group-${g.campaign_id}`} className={cn('rounded-2xl border overflow-hidden scroll-mt-4 transition-opacity', isArchived ? 'bg-gray-50 border-gray-100 opacity-60 grayscale-[0.35]' : 'bg-white border-gray-100')}>
-                <div className="w-full text-left p-4">
+                <div className="w-full text-left p-3.5 sm:p-4">
                   <div className="flex items-center justify-between gap-3">
                     {/* Único link a la campaña de todo el grupo — lleva al
                         detalle. Separado del toggle de abajo para no mezclar
@@ -514,7 +514,7 @@ function DeliverablesPageInner() {
                     </button>
                     {/* % completado, grande y a la derecha — sube apenas la
                         influencer manda el link del entregable. */}
-                    <span className={cn('text-2xl font-bold flex-shrink-0', isArchived ? 'text-gray-400' : pct === 100 ? 'text-green-500' : 'text-gray-900')}>
+                    <span className={cn('text-xl sm:text-2xl font-bold flex-shrink-0', isArchived ? 'text-gray-400' : pct === 100 ? 'text-green-500' : 'text-gray-900')}>
                       {pct}%
                     </span>
                   </div>

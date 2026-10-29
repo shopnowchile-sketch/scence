@@ -448,9 +448,9 @@ export default function MyCampaignsPage() {
           <p className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> Invitaciones pendientes ({pendingInvitations.length})
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:snap-none sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0">
             {pendingInvitations.map(c => (
-              <div key={c.id} className="rounded-xl p-4 border border-violet-200 bg-violet-50/50">
+              <div key={c.id} className="w-[84%] shrink-0 snap-start sm:w-auto rounded-xl p-4 border border-violet-200 bg-violet-50/50">
                 <div className="flex items-start gap-3">
                   {c.brand_logo ? (
                     <img src={c.brand_logo} alt={c.brand_name ?? ''} className="w-9 h-9 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
@@ -536,12 +536,12 @@ export default function MyCampaignsPage() {
             ) : null
           })()}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+          <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:snap-none sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0">
             {visibleOpenCampaigns
               .filter(c => !brandFilter || c.brand?.name === brandFilter)
               .map(c => (
               <div key={c.id} className={cn(
-                'rounded-2xl overflow-hidden border',
+                'w-[80%] shrink-0 snap-start sm:w-auto rounded-2xl overflow-hidden border',
                 c._applied ? 'bg-amber-50/50 border-amber-100' : 'bg-white border-gray-100'
               )}>
                 <CampaignCover name={c.name} src={c.cover_url} className="h-20 sm:h-28" />
@@ -666,7 +666,7 @@ export default function MyCampaignsPage() {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Asignadas por agencia ({assigned.length})
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:snap-none sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0">
             {assigned.map(c => <CampaignRow key={c.id} campaign={c} />)}
           </div>
         </div>
@@ -678,7 +678,7 @@ export default function MyCampaignsPage() {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Mis campañas ({selfCreated.length})
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:snap-none sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0">
             {selfCreated.map(c => <CampaignRow key={c.id} campaign={c} />)}
           </div>
         </div>
@@ -726,10 +726,10 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
     <button
       onClick={() => { if (!removedForAttendanceDeadline) router.push(`/inf-campaign/${c.id}`) }}
       disabled={removedForAttendanceDeadline}
-      className={cn('w-full overflow-hidden rounded-2xl border text-left transition-all', removedForAttendanceDeadline ? 'cursor-default border-gray-100 bg-gray-50 opacity-70 grayscale-[0.25]' : 'hover:shadow-md', c.status === 'completed' ? 'border-gray-100 bg-gray-50 opacity-65 grayscale-[0.35]' : !removedForAttendanceDeadline && 'border-gray-100 bg-white hover:border-violet-200')}
+      className={cn('w-[80%] shrink-0 snap-start sm:w-full overflow-hidden rounded-2xl border text-left transition-all', removedForAttendanceDeadline ? 'cursor-default border-gray-100 bg-gray-50 opacity-70 grayscale-[0.25]' : 'hover:shadow-md', c.status === 'completed' ? 'border-gray-100 bg-gray-50 opacity-65 grayscale-[0.35]' : !removedForAttendanceDeadline && 'border-gray-100 bg-white hover:border-violet-200')}
     >
-      <CampaignCover name={c.name} src={c.cover_url} className="h-32" />
-      <div className="p-4">
+      <CampaignCover name={c.name} src={c.cover_url} className="h-24 sm:h-32" />
+      <div className="p-3 sm:p-4">
         <div className="flex items-start justify-between gap-2"><BrandBadge name={c.brand_name} logoUrl={c.brand_logo} instagram={c.brand_instagram} compact /><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', stCfg.color)}>{stCfg.label}</span></div>
         <p className="text-base font-bold text-gray-900 mt-3 truncate">{c.name}</p>
         {isActive && c.next_due && <p className="text-sm font-semibold text-violet-700 mt-3">Próxima entrega: {fmt(c.next_due)}</p>}

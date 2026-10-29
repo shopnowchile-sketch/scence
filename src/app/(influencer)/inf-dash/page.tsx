@@ -273,7 +273,7 @@ export default function InfluencerDashboard() {
           <div className="min-w-0">
             <p className="hidden text-xs font-semibold uppercase tracking-[0.16em] text-violet-500 sm:block">Mi portal</p>
             <h1 className="truncate text-base font-bold leading-tight tracking-tight text-gray-950 sm:text-2xl">Hola, {profile?.display_name}<span className="hidden sm:inline"> 👋</span></h1>
-            <p className="truncate text-xs capitalize leading-tight text-gray-400 sm:text-sm">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+            <p className="truncate text-xs first-letter:uppercase leading-tight text-gray-400 sm:text-sm">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center sm:gap-2">
@@ -483,7 +483,7 @@ export default function InfluencerDashboard() {
           <Sparkles className="h-3.5 w-3.5" /> Campañas abiertas
         </Link>
         <Link href="/inf-bookings" className="flex items-center gap-1.5 text-gray-500 hover:text-violet-600 transition-colors">
-          <Calendar className="h-3.5 w-3.5" /> Bookings
+          <Calendar className="h-3.5 w-3.5" /> Eventos
         </Link>
       </div>
     </div>

@@ -1147,7 +1147,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-base font-bold text-gray-900 sm:text-lg">Detalle de campaña</h1>
-          <p className="mt-0.5 hidden text-xs capitalize text-gray-400 sm:block">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <p className="mt-0.5 hidden text-xs first-letter:uppercase text-gray-400 sm:block">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw className="h-4 w-4" />

@@ -262,21 +262,21 @@ export default function InfluencerDashboard() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-6">
 
       {/* Cabecera: el estado de hoy queda claro antes de mostrar campañas. */}
-      <div className="flex items-center justify-between pt-1">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 sm:pt-1">
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-base sm:text-lg flex-shrink-0 overflow-hidden">
             {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} className="w-full h-full object-cover" /> : profile?.display_name?.charAt(0).toUpperCase() ?? '?'}
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-500">Mi portal</p>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-950">Hola, {profile?.display_name} 👋</h1>
-            <p className="text-sm capitalize text-gray-400">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <div className="min-w-0">
+            <p className="hidden text-xs font-semibold uppercase tracking-[0.16em] text-violet-500 sm:block">Mi portal</p>
+            <h1 className="truncate text-base font-bold leading-tight tracking-tight text-gray-950 sm:text-2xl">Hola, {profile?.display_name}<span className="hidden sm:inline"> 👋</span></h1>
+            <p className="truncate text-xs capitalize leading-tight text-gray-400 sm:text-sm">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center sm:gap-2">
           <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors" title="Actualizar">
             <RefreshCw className="h-4 w-4" />
           </button>
@@ -290,26 +290,24 @@ export default function InfluencerDashboard() {
         <Link
           href={`/inf-profile?focus=${missingProfile[0].section}`}
           data-testid="complete-profile-card"
-          className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 transition-colors hover:bg-amber-100 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
+          className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 transition-colors hover:bg-amber-100 sm:gap-4 sm:rounded-2xl sm:p-4"
         >
-          <div className="flex min-w-0 items-start gap-2.5 sm:flex-1">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold leading-tight text-amber-950">Completa tu perfil</p>
-              <p className="mt-0.5 text-[13px] leading-snug text-amber-900">
-                Falta: {joinMissing(missingProfile.map(item => item.label))}.
-              </p>
-            </div>
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold leading-tight text-amber-950 sm:text-sm">Completa tu perfil</p>
+            <p className="line-clamp-1 text-xs leading-snug text-amber-900 sm:line-clamp-none sm:text-[13px]">
+              Falta: {joinMissing(missingProfile.map(item => item.label))}.
+            </p>
           </div>
-          <span className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white sm:w-auto">
-            Completar <ArrowRight className="h-4 w-4" />
+          <span className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white sm:h-10 sm:text-sm">
+            Completar <ArrowRight className="h-3.5 w-3.5" />
           </span>
         </Link>
       )}
 
-      <section className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">Descubre y participa</p><h2 className="mt-1 text-xl font-bold text-gray-950">Campañas disponibles para postular</h2></div><Sparkles className="h-6 w-6 text-violet-500" /></div>
-        {availableCampaigns.length > 0 ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{availableCampaigns.slice(0, 6).map(c => <Link key={c.id} href={`/inf-campaign/${c.id}`} className="group overflow-hidden rounded-2xl border border-white bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200"><CampaignCover name={c.name} src={c.cover_url} className="h-28" /><div className="p-4"><BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} compact /><div className="mt-3 flex items-center justify-between gap-3"><p className="truncate text-sm font-bold text-gray-900">{c.name}</p><ArrowRight className="h-4 w-4 shrink-0 text-violet-500 transition-transform group-hover:translate-x-1" /></div>{(() => {
+      <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-3 shadow-sm sm:rounded-3xl sm:p-5">
+        <div className="mb-2 flex items-center justify-between gap-3 sm:mb-4"><div><p className="hidden text-xs font-semibold uppercase tracking-[0.14em] text-violet-600 sm:block">Descubre y participa</p><h2 className="text-base font-bold text-gray-950 sm:mt-1 sm:text-xl">Campañas disponibles<span className="hidden sm:inline"> para postular</span></h2></div><Sparkles className="hidden h-6 w-6 text-violet-500 sm:block" /></div>
+        {availableCampaigns.length > 0 ? <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{availableCampaigns.slice(0, 6).map(c => <Link key={c.id} href={`/inf-campaign/${c.id}`} className="group overflow-hidden rounded-2xl border border-white bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200"><CampaignCover name={c.name} src={c.cover_url} className="h-24 sm:h-28" /><div className="p-3 sm:p-4"><BrandBadge name={c.brand?.name ?? null} logoUrl={c.brand?.logo_url} instagram={c.brand?.instagram} compact /><div className="mt-3 flex items-center justify-between gap-3"><p className="truncate text-sm font-bold text-gray-900">{c.name}</p><ArrowRight className="h-4 w-4 shrink-0 text-violet-500 transition-transform group-hover:translate-x-1" /></div>{(() => {
           const cd = eventCountdown(c.event_starts_at)
           const spots = c.max_influencers ? Math.max(c.max_influencers - (c.accepted_count ?? 0), 0) : null
           if (!cd && spots === null) return null

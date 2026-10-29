@@ -305,6 +305,22 @@ function CampaignWhatsappCard({ campaign, confirmed }: { campaign: CampaignRow['
   )
 }
 
+// Descripción larga: 4 líneas en móvil con "Ver más"; completa desde sm.
+function ClampedText({ text, className = '' }: { text: string; className?: string }) {
+  const [open, setOpen] = useState(false)
+  const long = text.length > 220
+  return (
+    <div className={className}>
+      <p className={cn('text-sm text-gray-600 whitespace-pre-wrap', long && !open && 'line-clamp-4 sm:line-clamp-none')}>{text}</p>
+      {long && (
+        <button type="button" onClick={() => setOpen(v => !v)} className="mt-1 text-xs font-semibold text-violet-600 sm:hidden">
+          {open ? 'Ver menos' : 'Ver más'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function CampaignBenefitsCard({ benefits }: { benefits: CampaignBenefitOffer[] | null | undefined }) {
   if (!benefits?.length) return null
   return (
@@ -842,16 +858,16 @@ export function InfluencerCampaignView({ id }: { id: string }) {
     const noSpots = !!p.max_influencers && p.accepted_count >= p.max_influencers
     const applicationsClosed = !!p.applications_closed_at || deadlinePassed || noSpots
     return (
-      <div className="space-y-5">
-        <div className="flex items-center gap-3">
+      <div className="space-y-3 sm:space-y-5">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h1 className="text-lg font-bold text-gray-900 truncate flex-1">Campaña abierta</h1>
+          <h1 className="text-base sm:text-lg font-bold text-gray-900 truncate flex-1">Campaña abierta</h1>
         </div>
 
         {/* Card combinada: nombre, marca, badge, fechas, brief colapsado */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white rounded-2xl border border-gray-100 p-3.5 sm:p-5">
           <div className="flex items-start gap-3 mb-3">
             {p.brand?.logo_url
               ? <img src={p.brand.logo_url} alt={p.brand.name} className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
@@ -860,10 +876,12 @@ export function InfluencerCampaignView({ id }: { id: string }) {
                 </div>}
             <div className="flex-1 min-w-0">
               <h2 className="text-base font-bold text-gray-900 leading-snug">{p.name}</h2>
-              {p.brand && <p className="text-sm text-gray-400 mt-0.5">{p.brand.name}</p>}
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                {p.brand && <p className="text-sm text-gray-400">{p.brand.name}</p>}
+                <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', pStatus.color)}>{pStatus.label}</span>
+                {p.visibility === 'private' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-violet-100 text-violet-700">Privada · Pro</span>}
+              </div>
             </div>
-            <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', pStatus.color)}>{pStatus.label}</span>
-            {p.visibility === 'private' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-violet-100 text-violet-700">Privada · Pro</span>}
           </div>
 
           {/* Fecha, hora, lugar y canje ANTES que la descripción: es lo que la
@@ -884,7 +902,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
               isAccepted más abajo, y hoy solo cubre el PDF/link de brief_url —
               content_guidelines quedó deprecado, ver fix 2026-09-05). Única
               fuente de "descripción" para la influencer: description. */}
-          {p.description && <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{p.description}</p>}
+          {p.description && <ClampedText text={p.description} className="mt-3" />}
 
           {/* Con evento cargado, la fecha que importa es la del evento (ya está
               arriba, en "Información del evento"): el rango Inicio/Termina de la
@@ -1184,7 +1202,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             tarjeta del marketplace. Debe seguir visible en pending; el brief
             privado (solo el PDF/link de brief_url) sigue gateado por isAccepted
             más abajo, sin cambios en ese gate. */}
-        {c.description && <p className="text-sm text-gray-600 mt-4 whitespace-pre-wrap">{c.description}</p>}
+        {c.description && <ClampedText text={c.description} className="mt-4" />}
 
       {/* El brief es la primera acción disponible luego del resumen del evento. */}
         {/* Un brief cargado como archivo es la versión operativa más reciente.

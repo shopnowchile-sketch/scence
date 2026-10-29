@@ -37,7 +37,7 @@ export function PhoneField({ label = 'Teléfono', value, onChange, required }: P
         <select
           value={iso} aria-label="País del teléfono"
           onChange={e => { setIso(e.target.value); setNational(formatNational(national, e.target.value)); emit(e.target.value, national) }}
-          className="w-[7.25rem] shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm outline-none focus:border-violet-400"
+          className="w-[7.25rem] shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-sm outline-none focus:border-violet-400"
         >
           {PHONE_COUNTRIES.map(c => <option key={c.iso} value={c.iso}>{phoneCountryFlag(c.iso)} +{c.dial}</option>)}
         </select>
@@ -47,7 +47,7 @@ export function PhoneField({ label = 'Teléfono', value, onChange, required }: P
           onBlur={() => setTouched(true)}
           placeholder={country.iso === 'CL' ? '9 1234 5678' : '…'}
           aria-invalid={Boolean(error)}
-          className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-violet-400"
+          className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-violet-400"
         />
       </div>
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}

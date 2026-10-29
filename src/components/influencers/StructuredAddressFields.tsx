@@ -9,7 +9,7 @@ import type { AddressParts } from '@/lib/address-parts'
 type Node = { id: string; name: string; level: string }
 
 const LEVEL_LABEL: Record<string, string> = { country: 'País', region: 'Región', city: 'Ciudad', commune: 'Comuna' }
-const SELECT_CLASS = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-violet-400'
+const SELECT_CLASS = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-violet-400'
 const INPUT_CLASS = SELECT_CLASS
 
 const fold = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()

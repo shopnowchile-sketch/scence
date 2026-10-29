@@ -1,6 +1,23 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getAttendanceState } from '@/lib/attendance-state'
+import { isAttendanceDeliverable } from '@/lib/deliverable-status'
 
 const COMPLETED_DELIVERABLE_STATUSES = new Set(['approved', 'published'])
+
+type CommitmentDeliverable = { status: string; type?: string | null; attendance_response?: string | null; due_date?: string | null }
+
+/**
+ * Compromiso de campaña: un entregable no bloquea la cancelación si está aprobado/publicado o si es una asistencia
+ * que la influencer declinó o dejó vencer sin respuesta (decisión 2026-10-29). Declinar o no responder no es una
+ * obligación pendiente; el contenido sin entregar o en revisión sigue bloqueando. La asistencia confirmada cuenta
+ * por su status (approved) como cualquier otro entregable.
+ */
+export function isCommitmentSatisfied(row: CommitmentDeliverable, now = new Date()): boolean {
+  if (COMPLETED_DELIVERABLE_STATUSES.has(row.status)) return true
+  if (!isAttendanceDeliverable(row)) return false
+  const state = getAttendanceState(row.attendance_response, row.due_date, now)
+  return state === 'declined' || state === 'no_confirmed'
+}
 
 type CommitmentMetadata = { influencer_id?: string; campaign_id?: string; campaign_commitments?: string[] }
 
@@ -28,14 +45,14 @@ export async function hasActiveCampaignCommitment(admin: SupabaseClient, influen
   const acceptedCampaignIds = accepted.map(row => row.campaign_id)
   const [{ data: campaigns, error: campaignsError }, { data: deliverables, error: deliverablesError }] = await Promise.all([
     admin.from('campaigns').select('id, name, status').in('id', acceptedCampaignIds),
-    admin.from('campaign_deliverables').select('id, campaign_id, status').eq('influencer_id', influencerId).in('campaign_id', acceptedCampaignIds),
+    admin.from('campaign_deliverables').select('id, campaign_id, status, type, attendance_response, due_date').eq('influencer_id', influencerId).in('campaign_id', acceptedCampaignIds),
   ])
   if (campaignsError) throw campaignsError
   if (deliverablesError) throw deliverablesError
 
   for (const campaign of campaigns ?? []) {
     const campaignDeliverables = (deliverables ?? []).filter(row => row.campaign_id === campaign.id)
-    const completedDeliverables = campaignDeliverables.filter(row => COMPLETED_DELIVERABLE_STATUSES.has(row.status)).length
+    const completedDeliverables = campaignDeliverables.filter(row => isCommitmentSatisfied(row)).length
     const commitment = { campaignId: campaign.id, campaignName: campaign.name, campaignEnded: campaign.status === 'completed', completedDeliverables, totalDeliverables: campaignDeliverables.length }
     if (!commitment.campaignEnded) return { blocked: true, reason: 'campaign_active', commitment }
     if (completedDeliverables !== campaignDeliverables.length) return { blocked: true, reason: 'deliverables_pending', commitment }

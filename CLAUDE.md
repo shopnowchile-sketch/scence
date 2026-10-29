@@ -498,8 +498,8 @@ Una marca tiene **dos** roles: `owner` (`organization_members.is_owner`) y `memb
 - **La confirmación de la influencer NO requiere aprobación.** `attendance_response` (`confirmed`/`declined`) manda; `status` deriva de ella (trigger `trg_campaign_deliverables_attendance_status`: confirmed → approved, declined → rejected). El equipo no aprueba ni rechaza asistencia.
 - **Estados reales en PROD:** confirmada (`approved` + respuesta); declinada (`rejected` + respuesta); **sin respuesta vencida** (`rejected`, `attendance_response` NULL: la marcó el cron `expire-attendance-confirmations`; es un hecho legítimo, no un error, y no se «repara»); aprobada legada sin respuesta (aprobación manual anterior a la regla; cuenta como completa). No modificar estas filas sin autorización.
 - **Toda consulta que alimente `isDeliverableComplete` debe seleccionar `attendance_response`** (la omisión causó el falso 50 %/pendiente/vencida de Diego Bravo). Lo vigilan `tests/attendance-single-source.test.ts` y `tests/deliverable-kpi-and-privacy-regression.test.ts`.
-- `campaign_deliverables.progress` sigue al status por trigger (`approved/published/completed` → 100); ningún KPI lo lee.
-- **Pendiente de decisión (Plan Pro):** `influencer-pro-commitment.ts` cuenta como completados solo `approved`/`published`; una asistencia declinada o vencida (`rejected`) y un contenido en revisión cuentan como pendientes y pueden bloquear cancelar el Pro o desactivar la cuenta (409). No cambiar sin decisión de producto: afecta pagos y plan.
+- `campaign_deliverables.progress` sigue al status por trigger (`approved/published/completed` → 100; el trigger escucha también `attendance_response`, migración `20261029140000`, aplicada solo en DEV hasta validar); ningún KPI lo lee.
+- **Plan Pro (decidido 2026-10-29):** `influencer-pro-commitment.ts` (`isCommitmentSatisfied`) no cuenta como obligación pendiente una asistencia declinada o vencida sin respuesta; el contenido sin entregar o en revisión sigue bloqueando cancelar/desactivar. Probado en `tests/influencer-pro-commitment-attendance.test.ts`.
 
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 

@@ -369,12 +369,9 @@ export default function InfluencerDashboard() {
             <Lightbulb className="h-4 w-4" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-violet-950">Tu participación abre nuevas oportunidades</h2>
-            <p className="text-xs text-violet-800 leading-relaxed mt-1.5">
-              En SCENCE existe un ranking interno que considera tu participación, el cumplimiento de plazos y la calidad de tus entregas. Antes de postular, revisa el brief y confirma que puedes cumplir con la campaña.
-            </p>
-            <p className="text-xs text-violet-800 leading-relaxed mt-2">
-              Cumplir tus compromisos y entregar a tiempo fortalece tu perfil y aumenta tus posibilidades de ser considerada para nuevas campañas y colaboraciones exclusivas.
+            <h2 className="text-sm font-bold text-violet-950">Cumple y destaca</h2>
+            <p className="text-xs text-violet-800 leading-relaxed mt-1">
+              Tu ranking considera participación, plazos y calidad. Revisa el brief antes de postular.
             </p>
           </div>
         </div>

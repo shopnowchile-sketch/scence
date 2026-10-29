@@ -308,15 +308,15 @@ function CampaignWhatsappCard({ campaign, confirmed }: { campaign: CampaignRow['
 function CampaignBenefitsCard({ benefits }: { benefits: CampaignBenefitOffer[] | null | undefined }) {
   if (!benefits?.length) return null
   return (
-    <div className="mt-4 rounded-2xl border-2 border-violet-200 bg-violet-50/40 p-4">
+    <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50/40 p-3 sm:mt-4 sm:border-2 sm:p-4">
       <div className="flex items-center gap-2 mb-2">
         <Gift className="h-4 w-4 text-violet-600" />
         <p className="text-sm font-extrabold text-violet-900">Canje / Beneficios</p>
       </div>
       <div className="space-y-2">
         {benefits.map((benefit, index) => (
-          <div key={index} className="rounded-lg bg-white px-3 py-2.5">
-            <p className="text-base font-bold leading-snug text-violet-900">{benefit.quantity ?? 1}× {benefit.description}</p>
+          <div key={index} className="rounded-lg bg-white px-3 py-2 sm:py-2.5">
+            <p className="text-sm font-bold leading-snug text-violet-900 sm:text-base">{benefit.quantity ?? 1}× {benefit.description}</p>
             <p className="text-xs text-violet-700 mt-1">{activationText(benefit)}</p>
             {benefit.benefit_type === 'sales_commission' && benefit.commission_rate != null && (
               <p className="text-xs font-bold text-violet-900 mt-1">{benefit.commission_rate}% de comisión sobre ventas</p>
@@ -854,7 +854,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
           <div className="flex items-start gap-3 mb-3">
             {p.brand?.logo_url
-              ? <img src={p.brand.logo_url} alt={p.brand.name} className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
+              ? <img src={p.brand.logo_url} alt={p.brand.name} className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
               : <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center flex-shrink-0">
                   <Building2 className="h-5 w-5 text-violet-400" />
                 </div>}
@@ -1141,8 +1141,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold text-gray-900">Detalle de campaña</h1>
-          <p className="text-xs text-gray-400 mt-0.5 capitalize">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <h1 className="text-base font-bold text-gray-900 sm:text-lg">Detalle de campaña</h1>
+          <p className="mt-0.5 hidden text-xs capitalize text-gray-400 sm:block">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
         <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw className="h-4 w-4" />
@@ -1151,21 +1151,23 @@ export function InfluencerCampaignView({ id }: { id: string }) {
 
       {/* Card combinada: nombre, marca, badge, fechas, fee, brief colapsado */}
       <div className="overflow-hidden bg-white rounded-2xl border border-gray-100">
-        {c.cover_url && <CampaignCover name={c.name} src={c.cover_url} className="h-44" />}
-        <div className="p-5">
+        {c.cover_url && <CampaignCover name={c.name} src={c.cover_url} className="h-32 sm:h-44" />}
+        <div className="p-3.5 sm:p-5">
         <div className="flex items-start gap-3 mb-3">
           {c.brand?.logo_url
-            ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-11 h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
+            ? <img src={c.brand.logo_url} alt={c.brand.name} className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-contain border border-gray-100 flex-shrink-0" />
             : <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-100 to-pink-100 flex items-center justify-center flex-shrink-0">
                 <Building2 className="h-5 w-5 text-violet-400" />
               </div>}
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-bold text-gray-900 leading-snug">{c.name}</h2>
-            {c.brand && <p className="text-sm text-gray-400 mt-0.5">{c.brand.name}</p>}
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              {c.brand && <p className="text-sm text-gray-400">{c.brand.name}</p>}
+              <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', campStatus.color)}>
+                {campStatus.label}
+              </span>
+            </div>
           </div>
-          <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0', campStatus.color)}>
-            {campStatus.label}
-          </span>
         </div>
 
         {/* Mismo orden que el preview: fecha, hora, lugar y canje por encima de

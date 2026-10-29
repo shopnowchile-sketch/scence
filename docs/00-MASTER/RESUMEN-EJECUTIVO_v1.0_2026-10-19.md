@@ -1,3 +1,49 @@
+# Auditoría SCENCE — 2026-10-29
+
+**Estado: parcial, con pendientes de permisos y validación autenticada.** No se crearon ramas, worktrees, proyectos ni infraestructura. Esta auditoría no ejecutó publicación en PROD ni escrituras de datos de producción.
+
+## Flujo y concurrencia
+
+- Inicio: `master`/`origin/master` `1c74f1f`; `origin/staging` `cc401d6`, tres commits detrás y sin divergencia. PR #130 sí integró staging; `62bb56d` (#131) y `1c74f1f` no estaban en staging. Vercel confirmó despliegues productivos de esos dos commits.
+- Durante la auditoría otro proceso creó/publicó `fb624ed` sobre master, incluyendo los cambios de asistencia preexistentes y las dos correcciones de pruebas preparadas aquí. No fue un commit/push de esta auditoría. El árbol y el historial se preservaron; staging quedó cuatro commits detrás antes de sincronizar.
+- Sincronización DEV: se prepara un commit documental sobre `fb624ed`, para avanzar únicamente staging sin force ni mover master. Ver el remoto para el SHA final; no confundir commit en Git con despliegue verificado.
+- Al inicio había cambios previos de dependencias y asistencia. Otro proceso incorporó asistencia y después retiró los cambios de dependencias; esta auditoría no los sobrescribió. Ese proceso también cambió el checkout a `staging` local. No se refactoriza la app.
+
+## Documentación
+
+Actualizados en sus archivos existentes: `CLAUDE.md`, `SETUP.md`, guía de documentación, FDD mantenido, solución/arquitectura, datos, reportes, roadmap, estructura del portal Marca, matriz de riesgos y este resumen. El segundo FDD y diseños antiguos quedan identificados como históricos, sin borrar su contenido. Se corrigieron reglas de ramas/worktrees, roles, campañas privadas y configuración local. Los enlaces a paquetes ausentes ya no se presentan como fuentes disponibles. Requerimientos versionados conservan el catálogo y las evidencias existentes; no se escribió en sus tablas.
+
+## Validación ejecutada
+
+| Prueba | Resultado y alcance |
+|---|---|
+| `npm test` | 712 casos: 709 PASS, 0 FAIL, 0 SKIP, 3 TODO sobre el árbol local probado; incluye 2 pruebas documentales concurrentes aún sin commit. Suite versionada en fb624ed: 710 casos (707 PASS, 3 TODO). Cambios posteriores de otro proceso en Plan Pro no quedan cubiertos por ese resultado. |
+| `tsc --noEmit` | PASS |
+| `next lint` | PASS, 35 advertencias existentes; no se silencian ni se refactoriza para ocultarlas. |
+| `next build` | PASS con `NODE_OPTIONS=--max-old-space-size=8192`. Primer intento sin red falló por Google Fonts; segundo agotó heap tras compilar; tercero completó. No se cambió configuración persistente. |
+| Integración CRM en DEV | 8/8 PASS con Supabase real; datos sintéticos por ejecución y envío simulado, sin correos. No valida RLS porque usa service role. |
+| RLS DEV | Inspección de 8 tablas: RLS habilitado. SELECT como authenticated con UUID sin membresías devuelve 0 filas en influencers, invoices, payroll_runs y organization_members. Sin cambios persistentes (ROLLBACK). No sustituye matriz multiusuario. |
+| LOCAL funcional | Login abierto en navegador; Admin/Marca/Influencer sin sesión → 307 a login. APIs campaigns, brand/campaigns, influencer/my-campaigns y payroll → 401. |
+| DEV navegador | Redirección al login Vercel confirmada. App autenticada pendiente; no se generó enlace de acceso porque revisión automática lo rechazó. |
+
+Se reemplazaron dos pruebas omitidas del insert antiguo por ejecución del `ensureBrandRow` y RPC actuales con el arnés existente. La limpieza de integración CRM usa un identificador por ejecución para no borrar filas de otra ejecución concurrente. No se agregaron librerías ni suites duplicadas.
+
+## Problemas y límites
+
+- Dos TODO de nómina reproducen aceptación de `organization_id` del body e importes inválidos; un tercer TODO ya pasa. La suite no bloquea por TODO. Requieren revisión y aprobación sensible antes de cambiar negocio.
+- Políticas RLS DEV aún consultan `profiles.role`; nómina y participaciones tienen políticas ALL por membresía de organización. Privilegios authenticated revisados incluyen escritura. Hallazgo de DEV, no afirmación de exposición comprobada en PROD. Detalle y seguimiento en matriz de riesgos.
+- Los scripts RLS locales requieren `embedded-postgres`/`pg`, ausentes; no se instalaron ni se creó infraestructura. Faltan escenarios con roles reales y propiedad cruzada, y flujos completos autenticados de los tres portales.
+- CI es manual; npm test no incluye integración real. El prebuild sí ejecuta la suite. No hay medida de cobertura que permita declarar exhaustividad.
+- URL y refs JWT locales/CRM corresponden a DEV; PayPal sandbox y claves externas locales vacías. El respaldo productivo permanece ignorado y no se cargó. Variables remotas completas pendientes; DEV exige acceso Vercel.
+- Historial DEV contiene las migraciones recientes de asistencia/progreso, facturas y RLS revisadas. No se aplicó ninguna ni se certificó paridad total con PROD.
+- Falta verificar acceso público real a archivos Drive: el validador actual solo comprueba esquema/dominio.
+
+Pendientes mantenidos en [roadmap](../IMPLEMENTATION_ROADMAP.md) y [riesgos](RIESGOS-Y-TAREAS_v1.0_2026-10-19.csv). No declarar auditoría cerrada mientras falten las comprobaciones autenticadas y revisión de permisos.
+
+---
+
+## Resumen histórico del 2026-10-19
+
 # Resumen ejecutivo — SCENCE: estado actual
 
 **Versión:** v1.0 · **Fecha:** 2026-10-19 · **Base:** `master` `ad7f76c` · **Estado:** Propuesta

@@ -1,6 +1,6 @@
 # SCENCE — Estructura del Portal Marca
 
-> Documento de referencia permanente. Actualizar si cambia arquitectura. No tocar sin auditoría previa.
+> Referencia especializada; revisión documental 2026-10-29. Reglas de permisos: `CLAUDE.md` §16.13; arquitectura vigente: `SOLUTION_DESIGN.md`. Planes, componentes y estados fechados de abajo requieren contraste con código; no son autorización para activar cobros.
 
 ---
 
@@ -42,7 +42,7 @@ Layout compartido: `src/app/(brand)/brand-settings/layout.tsx`
 |--------|--------|------------|
 | **Plan / Suscripción** | Marca paga a SCENCE por SaaS | `/brand-settings/plan` |
 | **Billing operativo** | Facturas / cobros entre marcas y campañas | `/brand-billing` (módulo separado, en desarrollo) |
-| **Payroll** | Pagos y canjes a influencers | Módulo separado, no implementado aún |
+| **Payroll** | Pagos internos a influencers | Existe en Admin; no disponible para marca. Ver `tests/payroll-bookings-access.test.ts`. |
 
 **Plan ≠ Billing. Billing ≠ Payroll.**
 
@@ -54,7 +54,7 @@ Layout compartido: `src/app/(brand)/brand-settings/layout.tsx`
 - La marca **invita influencers existentes a sus campañas** desde `/brand-campaigns/[id]/invite`.
 - El roster en `/brand-influencers` muestra influencers que ya participan en campañas de la marca.
 - CTA en `/brand-influencers` cuando roster vacío: "Ir a mis campañas".
-- Búsqueda en catálogo global **pendiente de decisión de privacidad**.
+- La marca no tiene acceso a la base global de influencers; no habilitarlo desde esta guía.
 
 ---
 

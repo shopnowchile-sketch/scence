@@ -1,3 +1,5 @@
+> **Histórico, no mantener en paralelo (2026-10-29).** Fuente funcional actual: [FUNCTIONAL_DESIGN.md](FUNCTIONAL_DESIGN.md). Reglas oficiales: [CLAUDE.md](../CLAUDE.md). Se conserva íntegro el contenido fechado como antecedente.
+
 # Table of Contents
 
 **SCENCE — Functional Design Document**

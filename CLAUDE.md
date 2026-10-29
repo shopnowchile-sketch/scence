@@ -1,3 +1,7 @@
+# Flujo permanente — actualizado 2026-10-29
+
+**LOCAL → DEV (`staging`) → PROD (`master`). Nunca crear ramas nuevas, worktrees ni infraestructura paralela.** Esta regla reemplaza cualquier instrucción anterior incompatible, incluso en documentos históricos. Reutilizar el repositorio y DEV existentes. Preservar cambios locales ajenos; nunca forzar un push ni borrar historial. Producción requiere autorización explícita independiente y no se publica durante auditorías.
+
 # 🚨 REGLA CERO — NO CAMBIAR COMPORTAMIENTO DE NEGOCIO SIN AUDITAR
 
 Si un cambio puede afectar:
@@ -327,7 +331,7 @@ Autorizar SIEMPRE con `organization_members`, vía `getUserRole()` (plataforma) 
 - **NUNCA usar `profiles.role` para autorizar.** No es fuente de autorización: solo dato de presentación, y `ensureOrg` lo sobrescribe. Llegó a haber 3 `super_admin` en `profiles` y 1 en `organization_members`.
 - **Nunca definir un `isAdmin()` local** en una ruta. Si falta el helper, importarlo.
 - Para campañas, el helper central es `authorizeCampaignBrandAction()`.
-- RLS está habilitado en todas las tablas, pero 148 de 154 rutas usan la service role key y lo omiten: **la protección real es el chequeo de cada ruta**. No hay segunda línea de defensa.
+- RLS está habilitado en las ocho tablas revisadas en DEV (2026-10-29); las rutas que usan service role omiten RLS: **su protección depende del chequeo de cada ruta**. La cifra histórica de rutas no es una medida actual de cobertura.
 
 ### 16.3 Campañas privadas y Plan Pro
 
@@ -488,6 +492,15 @@ Una marca tiene **dos** roles: `owner` (`organization_members.is_owner`) y `memb
 - La migración `preserve_brand_member_role_sync` se retiró: no se aplica. No re-crearla.
 - El enum `user_role` y los datos existentes no se tocaron; limpiarlos requiere migración y aprobación explícita. Los roles de plataforma (`super_admin`, `influencer`, `finance` de nómina) no cambian.
 
+### 16.14 Asistencia y KPI de entregables: una sola lógica (2026-10-29)
+
+- **Fuente única:** `src/lib/deliverable-status.ts` (`isDeliverableComplete`, `isDeliverableOverdue`, `isAttendanceConfirmed`, `effectiveDeliverableStatus`, `isAwaitingContentReview`, `isContentRejected`) y `src/lib/attendance-state.ts` (`getAttendanceState`, plazo). **Prohibido** recalcular «completado», «pendiente», «vencido» o «confirmada» con listas de estados propias o con `attendance_response === 'confirmed'` suelto.
+- **La confirmación de la influencer NO requiere aprobación.** `attendance_response` (`confirmed`/`declined`) manda; `status` deriva de ella (trigger `trg_campaign_deliverables_attendance_status`: confirmed → approved, declined → rejected). El equipo no aprueba ni rechaza asistencia.
+- **Estados reales en PROD:** confirmada (`approved` + respuesta); declinada (`rejected` + respuesta); **sin respuesta vencida** (`rejected`, `attendance_response` NULL: la marcó el cron `expire-attendance-confirmations`; es un hecho legítimo, no un error, y no se «repara»); aprobada legada sin respuesta (aprobación manual anterior a la regla; cuenta como completa). No modificar estas filas sin autorización.
+- **Toda consulta que alimente `isDeliverableComplete` debe seleccionar `attendance_response`** (la omisión causó el falso 50 %/pendiente/vencida de Diego Bravo). Lo vigilan `tests/attendance-single-source.test.ts` y `tests/deliverable-kpi-and-privacy-regression.test.ts`.
+- `campaign_deliverables.progress` sigue al status por trigger (`approved/published/completed` → 100); ningún KPI lo lee.
+- **Pendiente de decisión (Plan Pro):** `influencer-pro-commitment.ts` cuenta como completados solo `approved`/`published`; una asistencia declinada o vencida (`rejected`) y un contenido en revisión cuentan como pendientes y pueden bloquear cancelar el Pro o desactivar la cuenta (409). No cambiar sin decisión de producto: afecta pagos y plan.
+
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 
 La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.
@@ -517,34 +530,36 @@ Se aplica a cada requerimiento de la fundadora. **No reemplaza** las secciones 0
 2. **AUDITORÍA** (solo lectura). Revisar código, arquitectura, portal, componentes, APIs, base de datos, permisos y RLS, documentación y regresiones potenciales. Aplican la sección 11 (antes de modificar) y la 12 (si es un bug). **No se modifica código antes de terminar la auditoría y definir el plan.**
 3. **PLAN.** Causa raíz, solución mínima, archivos afectados, riesgos y pruebas necesarias. Reutilizar > modificar > crear (sección 6). Si el cambio toca la Regla Cero (visibilidad, postulación, aprobación, briefs, datos de marcas o influencers, pagos, ownership o permisos), **el plan se presenta y se espera aprobación antes de implementar.**
 4. **IMPLEMENTACIÓN.** Solo lo que el requerimiento necesita; no mezclar funcionalidades ajenas (sección 17). Sin modificar producción.
-5. **DOCUMENTACIÓN.** Actualizar los documentos pertinentes (requerimientos, diseño funcional, arquitectura, registro de cambios) **en su fuente única**, sin crear copias. Las reglas de negocio viven en este archivo. Las fuentes por tipo de información y la nomenclatura están en `docs/00-MASTER/GUIA-DE-DOCUMENTACION_v1.0_2026-10-19.md` (es una **propuesta documental pendiente de aprobación**: **no prevalece** sobre las reglas oficiales de este archivo ni oficializa las fuentes en conflicto, como el FDD principal). Hoy no existe un archivo de registro de cambios: no se crea uno sin aprobación; mientras tanto la entrega (paso 10) es el registro.
+5. **DOCUMENTACIÓN.** Actualizar los documentos pertinentes (requerimientos, diseño funcional, arquitectura, registro de cambios) **en su fuente única**, sin crear copias. Las reglas de negocio viven en este archivo. Las fuentes por tipo de información y la nomenclatura están en `docs/00-MASTER/GUIA-DE-DOCUMENTACION_v1.0_2026-10-19.md` (índice vigente de fuentes; los documentos históricos conservan su fecha y no prevalecen sobre estas reglas). Hoy no existe un archivo de registro de cambios: no se crea uno sin aprobación; mientras tanto la entrega (paso 10) es el registro.
 6. **TESTING.** Ejecutar `npm test` y las pruebas de integración o específicas relevantes que existan. Las de integración solo contra su base de pruebas, nunca contra producción, y sin pasar claves por el chat (ver `tests/integration/run-crm-integration.sh`). **No se afirma que un test pasó si no se ejecutó.**
 7. **QA.** Revisar funcionalidad, UI, APIs, base de datos, permisos y RLS, casos límite, casos de otros roles y regresiones relevantes (sección 11).
 8. **SMOKE TESTS.** Flujos críticos en local o en un Preview seguro (definido en «Ruta de despliegue obligatoria»), según corresponda; los cambios se dejan listos para revisión local (sección 17). Sin autorización, **no** ejecutar acciones con efectos externos: correos reales (Resend, envío masivo del CRM), cobros (PayPal), mensajes (WhatsApp) ni escrituras en datos reales. Antes de cualquier smoke test que escriba datos, confirmar a qué base apunta el entorno (ver «Entorno de desarrollo»).
 9. **VALIDACIÓN FINAL.** TypeScript, lint, tests y build según el proyecto y los cambios (16.7, con la fuente simulada en sandbox), más la revisión del diff (sección 11). Lo que no pueda ejecutarse se declara con su motivo y queda **pendiente**.
 10. **ENTREGA.** Formato de la sección 17, ampliado: **RESULTADO** (terminado, incompleto o bloqueado, con su motivo; ver «Criterio de cierre») · **CAMBIOS** (archivos modificados y documentación actualizada) · **VERIFICACIÓN** (pruebas con PASS/FAIL, smoke tests) · **RIESGOS / DECISIONES / PENDIENTES** · **ESTADO** (etapa alcanzada: Localhost · Preview · Producción) · **SIGUIENTE PASO** (una acción). Debe quedar la trazabilidad requerimiento → archivos → documentación → pruebas → resultado.
 
-**Ruta de despliegue obligatoria: LOCALHOST → PREVIEW → PRODUCCIÓN.** Es el proceso oficial y único para todo requerimiento, corrección y mejora (decidido 2026-10-21). Ningún cambio pasa a una etapa sin superar la anterior; no se salta ninguna, tampoco por urgencia. Ordena los pasos 1 a 10 de arriba; no los reemplaza.
+**Ruta de despliegue obligatoria: LOCAL → DEV (`staging`) → PROD (`master`).** Es el proceso oficial y único para todo requerimiento, corrección y mejora (decidido 2026-10-21). Ningún cambio pasa a una etapa sin superar la anterior; no se salta ninguna, tampoco por urgencia. Ordena los pasos 1 a 10 de arriba; no los reemplaza.
 
 1. **LOCALHOST** (`localhost:3000`): pasos 1 a 9 del flujo. Implementar el cambio, ejecutar tests, TypeScript, lint y build según corresponda, y probar la funcionalidad localmente. Sale con el cambio listo y revisado.
 2. **PREVIEW**: desplegar la versión candidata a la rama de pruebas y verificar la funcionalidad en el navegador antes de producción. Requiere autorización para el commit y el push de ese trabajo (sección 11). Dirección fija: `dev.scence.cl`, asignada en Vercel a la rama `staging`, que muestra siempre su último despliegue. Solo se declara «Verificado en Preview» lo que se abrió y comprobó en el navegador; si no, «Por verificar».
 3. **PRODUCCIÓN**: solo después de superar localhost y Preview, y **con autorización explícita para publicar**. Se publica únicamente desde `master`, tras un merge revisado; no se despliegan ramas de trabajo a producción. Las migraciones se revisan antes y se aplican con autorización propia: el mismo archivo de `supabase/migrations/` se aplica primero en DEV y después en producción, y toda migración incluida en el cambio debe estar aplicada en producción antes de publicar el código que la usa. Supabase registra cada migración con la fecha en que se aplica, por lo que la versión del historial puede no coincidir con el prefijo del archivo: la identidad de la migración es su nombre. **Después de publicar:** comprobación funcional en producción (sin efectos reales no autorizados) y actualización de la documentación y del estado del requerimiento (nivel «Confirmado en producción»).
 
+**Reglas inviolables de publicación (2026-10-29).**
+
+- Solo existen las ramas `staging` (DEV) y `master` (PROD). **Nunca crear ramas ni worktrees.**
+- **No hacer push a `master` sin haber validado antes el mismo cambio en DEV** (`staging` → `dev.scence.cl`, base `dexpvoubiklgotuukrml`). Publicar = merge `staging` → `master`; no commits directos a `master`, tampoco por urgencia.
+- **Migraciones:** primero DEV, verificadas con datos o con una prueba explícita; a PROD solo después de validar el código en DEV y con autorización propia, nunca antes del paso por `staging`.
+- Un despliegue en `READY` en Vercel no equivale a «verificado»: declarar la etapa alcanzada (Localhost · DEV · Producción) y qué se abrió realmente en el navegador.
+- Una instrucción de «publicar directamente» no autoriza saltarse DEV; si se recibe, avisar del conflicto con esta regla antes de actuar.
+
 **Preview seguro (definición).** Un Preview es seguro solo si cumple las tres condiciones: (a) usa una base de datos distinta de producción, comprobado por el ref del proyecto de Supabase y sin exponer secretos; (b) sus claves de terceros (correo, pagos, mensajería, scraping) están vacías o en modo de prueba; y (c) su acceso está protegido y no queda abierto al público. Si alguna no se puede confirmar, ese Preview se trata como conectado a producción: solo verificación visual, sin acciones que escriban datos ni envíen correos, cobros o mensajes.
 
-**Estado de la configuración (verificado 2026-10-21).**
+**Estado de configuración auditado 2026-10-29.**
 
-- `staging` existe en GitHub y `dev.scence.cl` está asignado a esa rama en Vercel. El acceso al Preview pide sesión de Vercel.
-- La base de pruebas es la rama de Supabase `campaign-locations-test` (ref `dexpvoubiklgotuukrml`), distinta de producción (`xzzbishzfyovrladcaeb`). Esa rama no es persistente y su esquema se construyó con migraciones propias de DEV (`baseline_*`, `dev_parity_*`), no con las del repositorio.
-- Solo `staging` y `feat/campaign-locations` tienen variables de Supabase propias. Las variables generales de Supabase aplican solo a Producción: un Preview de cualquier otra rama no recibe base de datos y falla en vez de conectarse a producción.
-- Las barreras de entorno no productivo (Capa A, `src/lib/runtime-env.ts`) están en `staging`. Hasta que lleguen a `master`, LOCAL y los Previews de otras ramas no las tienen, y el `.env.local` del proyecto principal apunta a la base de producción y contiene claves reales de PayPal (en modo `live`) y de Resend: hasta que se reemplace por valores de DEV, `npm run dev` puede escribir en producción, cobrar y enviar correos reales. Comprobar su contenido (solo nombres y ref) antes de iniciar el servidor.
-- Las claves de pago del Preview no se han podido inspeccionar (Vercel oculta sus valores): un Preview nunca debe usarse para cobros reales.
-
-Pendiente de cierre (retirar cada punto al confirmarlo):
-
-1. Confirmar que `SUPABASE_SERVICE_ROLE_KEY` de `staging` corresponde a DEV y validar el login y las APIs en `dev.scence.cl`.
-2. Llevar a `master` el código que corre producción y Capa A (hoy producción corre `crm-lapiz`, no `master`).
-3. Confirmar en el panel de Vercel que la rama de producción es `master`.
+- El `.env.local` apunta a DEV `dexpvoubiklgotuukrml`; URL y refs de las claves JWT coinciden. `PAYPAL_ENV=sandbox`; claves de Resend y PayPal vacías. No confundir con `.env.local.respaldo-produccion`, que conserva claves reales, está ignorado por Git y no debe cargarse para pruebas.
+- `runtime-env.ts` y las barreras Capa A ya están en `master`. El estado anterior que las ubicaba solo en staging quedó obsoleto.
+- Vercel confirma `dev.scence.cl` → `staging`; el último despliegue de producción consultado corresponde a `master` `1c74f1f`. Esto verifica origen del despliegue, no todos los ajustes ni los datos de producción.
+- DEV redirigió al login de Vercel en navegador el 2026-10-29: protección observada. El acceso autenticado a la app sigue pendiente; la revisión automática rechazó generar un enlace temporal sin autorización específica.
+- Separación completa de variables remotas: pendiente. El historial DEV incluye `deliverable_progress_follows_status`, `attendance_status_invariant`, `invoice_ownership_and_sharing` y `restrict_influencers_rls`; esto no certifica paridad completa con PROD. No inferir paridad de esquemas por igualdad de commits.
 
 Un Preview solo se considera aislado si cumple las tres condiciones de «Preview seguro»; no afirmarlo sin comprobarlo. Detalle operativo de entornos y variables: `SETUP.md`, sección 7.
 
@@ -554,7 +569,7 @@ Un Preview solo se considera aislado si cumple las tres condiciones de «Preview
 
 **Entorno de desarrollo: `localhost:3000`.** Es la dirección fija de desarrollo y de pruebas visuales (aplica al flujo anterior: implementar → probar en localhost → QA y smoke tests → revisar resultados → pedir aprobación antes de commit, merge o deploy).
 
-- **Repositorio y cambios:** trabajar en el repositorio y la rama o worktree que corresponda, preservando todos los cambios existentes sin commit. No sobrescribir ni revertir cambios ajenos.
+- **Repositorio y cambios:** trabajar en este repositorio siguiendo LOCAL → `staging` → `master`; no crear ramas ni worktrees, preservando todos los cambios existentes sin commit. No sobrescribir ni revertir cambios ajenos.
 - **Servidor:** antes de iniciarlo, comprobar si ya funciona en el puerto 3000 y reutilizarlo cuando corresponda. No iniciar servidores duplicados ni cambiar de puerto en silencio.
 - **Puerto ocupado por otro proceso:** identificarlo antes de actuar. No terminar procesos ni cambiar de puerto sin autorización.
 - **`localhost` no es base local:** usar `localhost:3000` no implica usar una base de datos local. Antes de cualquier operación que escriba datos, comprobar el destino de Supabase **sin exponer secretos** (solo el ref del proyecto, nunca claves).
@@ -572,7 +587,7 @@ Un Preview solo se considera aislado si cumple las tres condiciones de «Preview
 - Si una prueba falla: investigar la causa raíz; no ocultarla ni marcar el requerimiento como terminado.
 - Commit, push, merge o deploy solo con autorización para ese trabajo (sección 11); la autorización de uno no se extiende a los demás. Nunca `git add -A` sin autorización.
 - Si un cambio no es seguro o falta una decisión crítica: detenerse y consultar a la fundadora.
-- **Worktrees:** al iniciar un trabajo en un worktree (`.claude/worktrees/*`), comparar su `CLAUDE.md` con el de la raíz (solo lectura). Si difiere, **advertir** a la fundadora de que sus instrucciones pueden estar desactualizadas. No actualizarlo ni modificarlo automáticamente.
+- **Worktrees históricos:** no crear ni usar otros para este flujo; no borrar los existentes ni su trabajo durante una auditoría.
 - Trabajo solo documental: aplican los pasos 1, 2, 3, 5 y 10; los pasos 6 a 9 solo si hay algo que ejecutar, y nunca se declara ejecutado lo que no se ejecutó.
 
 ## Regla final para Claude

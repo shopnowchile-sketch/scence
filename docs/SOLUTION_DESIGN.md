@@ -1,3 +1,18 @@
+# Arquitectura vigente — revisión del código 2026-10-29
+
+- Next.js 14 App Router, React 18 y TypeScript; versiones exactas en `package.json`/lockfile. CI y entorno local usan Node 24.
+- Portales en `src/app/(dashboard)`, `(brand)` e `(influencer)`. Marca reutiliza experiencia administrativa con permisos; no construir una vista paralela reducida.
+- `src/middleware.ts` enruta y protege navegación; cada API debe autorizar su recurso. `src/lib/supabase/ensureOrg.ts`, `brand-permissions.ts` y `invoice-access.ts` concentran resolución de roles y ownership. `profiles.role` y metadata de usuario no autorizan.
+- Clientes Supabase en `src/lib/supabase/`; service role omite RLS, por lo que las pruebas de handlers no validan políticas PostgreSQL. `runtime-env.ts` impide acceso a PROD desde entornos no productivos conocidos.
+- Registro de marca: `registerBrand.ts` → RPC `register_brand`, sin fallback de inserts no atómicos. Ubicaciones: `locations` (ver `CLAUDE.md` §16.11).
+- KPI de completado: `deliverable-status.ts`; asistencia: `attendance-state.ts`; evidencia de stories: `deliverables/submission-rules.ts`. Reutilizar estos helpers.
+- Correo por `getResend()` con barreras no productivas; pagos PayPal según `CLAUDE.md` §16.5. Las integraciones heredadas no son prueba de uso real.
+- Entornos y validación: [SETUP.md](../SETUP.md). Flujo único: LOCAL → DEV (`staging`) → PROD (`master`), sin ramas ni infraestructura nuevas.
+
+## Diseño histórico (junio 2026; no especificación vigente)
+
+Se conserva el diseño inicial para trazabilidad. Sus diagramas, versiones de PostgreSQL, Stripe, roles y propuestas de escalabilidad no certifican el sistema actual. Prevalecen las responsabilidades revisadas arriba y las reglas de `CLAUDE.md`.
+
 # SCENCE — Solution Design Document (SDD)
 **Versión:** 1.0 | **Fecha:** 2026-06-03
 

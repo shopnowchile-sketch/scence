@@ -1,3 +1,18 @@
+# Modelo de datos — alcance vigente 2026-10-29
+
+La fuente ejecutable del esquema es `supabase/migrations/`; su presencia en Git no confirma aplicación en DEV ni PROD. No se ejecutaron migraciones en esta auditoría.
+
+- Autorización: `organization_members`, no `profiles.role` ni metadata editable.
+- Marca: organización técnica propia; SCENCE SpA no representa privilegios de plataforma.
+- Ubicaciones: `locations`; `brand_locations` es antecedente histórico. Ver `CLAUDE.md` §16.11.
+- Facturas: `owner_brand_id` y `invoice_shares`; no inferir propiedad de `organization_id`.
+- Postulación: `campaign_influencers.application_status`; asistencia y contenido son estados distintos. Reglas en `CLAUDE.md`.
+- Requerimientos versionados: tablas consumidas por `src/app/api/admin/requirements/[key]/route.ts`; no recrear catálogo ni duplicar evidencias.
+
+## Diseño histórico y cambios fechados
+
+El ERD siguiente conserva el diseño inicial; no constituye un inventario validado del esquema desplegado. Las comprobaciones de RLS real pendientes están en el roadmap.
+
 # SCENCE — Data Design Document (DDD)
 **Versión:** 1.0 | **Fecha:** 2026-06-03
 

@@ -1,3 +1,16 @@
+# KPI y reportes — revisión 2026-10-29
+
+Fuentes ejecutables: `src/lib/deliverable-status.ts` (completado/vencimiento), `src/lib/attendance-state.ts` (asistencia), APIs de dashboard/campañas y `src/app/api/admin/requirements/[key]/route.ts` (evidencias de DASH-001).
+
+- Asistencia resuelta no equivale a asistencia confirmada: rechazar asistencia puede completar la respuesta, pero no otorga acceso operativo al brief. No calcular ambas cosas con el mismo indicador.
+- Contenido rechazado no cuenta completo aunque conserve URL. Vencido requiere fecha anterior a hoy y entregable incompleto.
+- Stories: URL HTTPS de Drive/Docs según `submission-rules.ts`; el validador de dominio **no comprueba que el archivo sea público**. La verificación de acceso real sigue pendiente.
+- Regresiones: `tests/kpi-deliverable-completion.test.ts`, `tests/attendance-vs-content-status.test.ts`, `tests/deliverable-kpi-and-privacy-regression.test.ts`, `tests/requirements-dashboard-kpi.test.ts` e `invoice-kpis.test.ts`. Son lógica/contratos, no conciliación con datos productivos.
+
+## Diseño histórico (junio 2026)
+
+Las fórmulas y estados siguientes son antecedentes; para cifras actuales contrastar la API y la definición aprobada del requerimiento. No se certificaron KPI de producción en esta auditoría.
+
 # SCENCE — Report Design Document (RDD)
 **Versión:** 1.0 | **Fecha:** 2026-06-03
 

@@ -1,3 +1,5 @@
+> **Fuente funcional mantenida — revisión 2026-10-29.** Reglas de negocio: `CLAUDE.md`; arquitectura: `SOLUTION_DESIGN.md`. El control de cambios, anexos de bugs y decisiones fechadas conservan historia, no certifican el estado actual de PROD. El FDD `SCENCE_FDD_v2.2.md` es histórico. Requerimientos versionados DASH-001: `/admin-requirements`; no duplicar sus evidencias en documentos.
+
 **SCENCE — Functional Design Document**
 
 **Plataforma de gestión de campañas de influencer marketing**
@@ -95,9 +97,9 @@ La siguiente tabla resume las reglas de negocio activas del sistema — el equiv
 
 | ID | Regla | Descripción |
 |---|---|---|
-| BR-01 | Multi-tenancy | Todo dato está scoped por `organization_id`, reforzado en cada query server-side. |
-| BR-02 | Roles de usuario | `super_admin` → Admin (ve todo); `is_brand=true` → Marca (`brand_manager`, owner); `is_influencer=true` → Influencer (sin sub-roles). `src/middleware.ts` enforza el routing por rol vía listas `ADMIN_ONLY`/`BRAND_ONLY`/`INFLUENCER_ONLY`. **Corregido 2026-07-01:** el rol `agency_manager` existía en el enum y en RLS/código (2 perfiles reales, ambos de prueba) pero no correspondía a ninguna persona del modelo de producto real; se eliminó de todo uso activo (ver changelog). |
-| BR-03 | Campañas private vs. open | `private`: la marca agrega influencers por invitación. `open`: los influencers postulan y la marca decide. |
+| BR-01 | Aislamiento | Usar ownership y permisos por recurso; `organization_id` no basta para autorizar facturas, campañas ni influencers. Reglas y excepciones: `CLAUDE.md` §16.2, §16.9 y §16.12. |
+| BR-02 | Roles | Autorizar por `organization_members` con helpers centrales. Marca: `owner`/`member` (valores heredados normalizados); plataforma e influencer según `CLAUDE.md` §16.2 y §16.13. El middleware no sustituye autorización en API. |
+| BR-03 | Campañas private/open | `private` requiere Pro para postular; no significa oculta ni exclusivamente por invitación. Visibilidad, invitaciones y acceso al brief: `CLAUDE.md` §8 y §16.3. |
 | BR-04 | Auto-creación de deliverables | Al aceptar invitación/postulación (o al agregar un influencer a una campaña) se crean automáticamente los `campaign_deliverables` desde la plantilla de la campaña; la campaña pasa a `active`. Cada deliverable sincroniza 1:1 una `influencer_task` vinculada (`deliverable_id`) — es la única fuente de "tareas" que debe ver el influencer. **Corregido el 2026-07-01 (bug B-10):** antes también se creaban 4 tareas genéricas sin vincular a ningún deliverable real; ver Anexo A. |
 | BR-05 | `deliverables_spec` inmutable | Una vez creada la invitación, no se modifica — es el "contrato informal". Los `campaign_deliverables` son la fuente de verdad operacional. |
 | BR-06 | Visibilidad entre portales | La marca no ve: email/teléfono de influencers, tarifas históricas con otras marcas, campañas de otras marcas, base completa de influencers, notas internas, payroll interno. El influencer no ve: tarifas de otros influencers ni datos financieros de campaña. |
@@ -151,7 +153,7 @@ Usuario ──▶ Next.js 14 (App Router, Vercel)
 ### 2.4 Restricciones
 
 - Sin app móvil nativa.
-- Cobro a marcas vía Stripe: UI y código plan-aware activos (MK-12); cobro real pendiente de Price IDs y API keys de producción.
+- Pasarela vigente: PayPal. Los apartados de Stripe describen antecedentes; no habilitar nuevos cobros durante auditorías. Ver `CLAUDE.md` §16.5.
 - Sin firma electrónica de contratos (DocuSign).
 - Sin tracking de performance post-publicación en tiempo real (views/likes).
 - Sin marketplace público de influencers.
@@ -212,7 +214,7 @@ Acceso: `role: super_admin`. Rutas: `admin-*`. Equipo interno de SCENCE — acce
 | Nombre * | 1 Información | Identificador visible |
 | Descripción | 1 | Brief interno |
 | Tipo * | 1 | Sponsored Post / Embajador / UGC / Evento / Product Seeding / Live |
-| Visibilidad * | 1 | `private` (invitación) vs `open` (postulación) — BR-03 |
+| Visibilidad * | 1 | `private` (requiere Pro para postular) vs `open`; ver BR-03. |
 | Fechas inicio/fin | 2 Budget | Ventana de ejecución |
 | Budget + Moneda | 2 | Techo de gasto (CLP) |
 | Comisión % | 2 | Margen de agencia sobre budget |
@@ -551,7 +553,7 @@ La marca crea, lista y consulta **sus** facturas (BR-12), las envía, edita camp
 **Regla:** No tocar Stripe, Transbank, ni billing real hasta fase habilitada explícitamente por Pri.
 
 #### MK-13 Marcas colaboradoras — 🔜 pendiente
-**Estado M5 (2026-10-23):** API `GET|POST|DELETE /api/brand/collaborators` (sin UI): relación **direccional** (A agregó a B), solo con marcas **ya existentes y `approved`** identificadas por Instagram normalizado (se reutiliza su `brand_id`; no se crea ni fusiona nada). Agregar/quitar: solo `owner` y `super_admin`; el resto de roles autorizados de la marca (`member`, `brand_manager`, `finance`) solo consulta la lista de su propia marca; la marca debe estar `approved`. Una marca inexistente o no aprobada responde igual (404) y **no se revela su estado**. La lista expone solo `id`, nombre, logo e Instagram. Crear marcas nuevas desde aquí queda **deshabilitado** hasta resolver M3 (`register_brand`). Colaborar **no concede acceso** a campañas, influencers ni datos privados de la otra marca; sin backfill desde `campaign_brands`. Regla de negocio en `CLAUDE.md` §16.9.
+**Estado M5 (2026-10-23):** API `GET|POST|DELETE /api/brand/collaborators` (sin UI): relación **direccional** (A agregó a B), solo con marcas **ya existentes y `approved`** identificadas por Instagram normalizado (se reutiliza su `brand_id`; no se crea ni fusiona nada). Agregar/quitar: solo `owner` y `super_admin`; el resto de roles autorizados de la marca (`member`; valores heredados según §16.13 de `CLAUDE.md`) solo consulta la lista de su propia marca; la marca debe estar `approved`. Una marca inexistente o no aprobada responde igual (404) y **no se revela su estado**. La lista expone solo `id`, nombre, logo e Instagram. Crear marcas nuevas desde aquí queda **deshabilitado** hasta resolver M3 (`register_brand`). Colaborar **no concede acceso** a campañas, influencers ni datos privados de la otra marca; sin backfill desde `campaign_brands`. Regla de negocio en `CLAUDE.md` §16.9.
 
 | Nivel de verificación | Estado |
 |---|---|
@@ -817,7 +819,7 @@ Asunto implícito: invitación de marca a campaña. Incluye nombre del influence
 | `is_brand` / `is_influencer` | Flags en `user_metadata` de Supabase Auth que determinan el portal del usuario |
 | `organization_id` | Identificador de tenant — todo dato queda scoped a una organización (BR-01) |
 | `application_status` | Estado del ciclo invitación/postulación (`pending`, `accepted`, `rejected`, etc.) |
-| Campaña `private` vs `open` | Visibilidad de campaña: por invitación directa vs. postulación abierta (BR-03) |
+| Campaña `private` vs `open` | Ver BR-03 y `CLAUDE.md` §16.3. |
 | Portal | Uno de los 3 frontends de la app: Admin, Marca, Influencer |
 
 ---

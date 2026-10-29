@@ -1,21 +1,22 @@
 # SCENCE App — Setup de Instalación
 
-## 1. Instalar dependencias
+## 1. Reutilizar el proyecto existente
+
 ```bash
-cd scence-app
-npm install
+cd "/Users/priscillaperez/Claude/Projects/APP SCENCE/scence-app-clean"
+node --version # Node 24, igual que CI
+npm ci
 ```
 
-## 2. Configurar variables de entorno
-```bash
-cp .env.local.example .env.local
-# Edita .env.local con tus credenciales reales
-```
+No crear ramas, worktrees, proyectos Supabase ni infraestructura paralela. Antes de instalar, conservar cualquier trabajo local de dependencias.
 
-## 3. Crear proyecto en Supabase
-1. Ve a https://supabase.com → Nuevo proyecto
-2. En SQL Editor, pega el contenido de `../schema.sql` y ejecuta
-3. Copia `Project URL` y `anon key` al `.env.local`
+## 2. Variables de entorno
+
+Reutilizar `.env.local`, sin sobrescribirlo. Comprobar el destino de la URL y de las claves sin imprimir secretos: deben pertenecer a DEV `dexpvoubiklgotuukrml`. Mantener pagos en sandbox y servicios externos sin claves reales. No cargar `.env.local.respaldo-produccion`.
+
+## 3. Base de datos
+
+Usar DEV existente. No ejecutar un schema inicial ni aplicar migraciones automáticamente. El historial versionado está en `supabase/migrations/`; comprobar su aplicación real antes de cada cambio que dependa del esquema.
 
 ## 4. Configurar Google Cloud
 1. Ir a https://console.cloud.google.com
@@ -44,11 +45,11 @@ npm run dev
 ```
 
 ## 7. Entornos y despliegue
-El proceso oficial es **LOCALHOST → PREVIEW → PRODUCCIÓN**. Las reglas viven en `CLAUDE.md`, sección 18 («Ruta de despliegue obligatoria»); aquí solo queda el detalle operativo de cada entorno.
+El proceso oficial es **LOCAL → DEV (`staging`) → PROD (`master`)**. Las reglas viven en `CLAUDE.md`, sección 18 («Ruta de despliegue obligatoria»); aquí solo queda el detalle operativo de cada entorno.
 
 | Etapa | Dónde corre | Rama | Base de datos |
 |---|---|---|---|
-| LOCALHOST | `localhost:3000` (`npm run dev`) | rama o worktree de trabajo | Si la prueba escribe datos, no producción: comprobar antes el ref de Supabase de `.env.local`, que en el proyecto principal apunta a producción |
+| LOCALHOST | `localhost:3000` (`npm run dev`) | repositorio existente, sin ramas nuevas | Si la prueba escribe datos, no producción: comprobar antes el ref de Supabase de `.env.local`, y de sus claves (DEV confirmado el 2026-10-29) |
 | PREVIEW (DEV) | Vercel Preview, dirección fija `dev.scence.cl` | `staging` | Rama de Supabase `campaign-locations-test` (ref `dexpvoubiklgotuukrml`), separada de producción |
 | PRODUCCIÓN | Vercel Production | `master` | Producción |
 
@@ -57,7 +58,7 @@ Reglas de variables de entorno en Vercel:
 - Las claves de correo, pagos, mensajería y scraping existen en Producción; en Preview van vacías o en modo de prueba.
 - Comprobar el destino de una base solo por el ref del proyecto; nunca imprimir ni pegar claves.
 
-> Estado verificado al 2026-10-21 y pendientes de cierre: `CLAUDE.md`, sección 18 («Estado de la configuración»).
+> Estado auditado al 2026-10-29 y pendientes de cierre: `CLAUDE.md`, sección 18 («Estado de la configuración»).
 
 Migraciones: el mismo archivo de `supabase/migrations/` se aplica primero en la base DEV y, con autorización, en producción. Supabase las registra con la fecha de aplicación, así que la versión del historial puede diferir del prefijo del archivo; se identifican por nombre.
 
@@ -92,11 +93,17 @@ src/
 └── types/index.ts              ← Todos los tipos TypeScript
 ```
 
-## Próximos módulos a implementar
-- [ ] Dashboard con KPIs reales (query Supabase)
-- [ ] Campaigns CRUD completo
-- [ ] Billing + generación de PDF de invoices
-- [ ] Payroll runs con aprobación
-- [ ] Contratos con DocuSign
-- [ ] Analytics con Recharts
-- [ ] Perfil de influencer `/influencers/[id]` con mapa de dirección
+## Validación y pendientes
+
+```bash
+npm test
+npx tsc --noEmit
+npx next lint
+npx next build
+```
+
+`npm test` descubre `tests/*.test.ts`: lógica pura, contratos estáticos y rutas con Supabase simulado. No ejecuta integración PostgreSQL ni prueba RLS real. El workflow `.github/workflows/recovery-validation.yml` es manual; `prebuild` ejecuta la suite, pero no rechaza TODO. No interpretar salida cero como ausencia de pendientes.
+
+Integración CRM existente: `bash tests/integration/run-crm-integration.sh`, solo con credenciales DEV verificadas y datos sintéticos. Los scripts `scripts/test-*-local.mjs` requieren `embedded-postgres`/`pg`, ausentes del proyecto; no instalar infraestructura para esta auditoría.
+
+Resultados y pendientes actuales: [resumen ejecutivo](docs/00-MASTER/RESUMEN-EJECUTIVO_v1.0_2026-10-19.md) y [roadmap](docs/IMPLEMENTATION_ROADMAP.md).

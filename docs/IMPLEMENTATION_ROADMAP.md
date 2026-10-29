@@ -1,3 +1,24 @@
+# Pendientes actuales — auditoría 2026-10-29
+
+Flujo obligatorio: LOCAL → DEV (`staging`) → PROD (`master`). Sin ramas nuevas, worktrees ni infraestructura paralela. No publicar PROD durante esta auditoría.
+
+| Prioridad | Pendiente | Criterio de cierre |
+|---|---|---|
+| Alta | Nómina: dos TODO reproducen aceptación de organización del body e importes inválidos | Auditar impacto y aprobar cambio sensible; pruebas activas que rechacen ambos casos. No convertir TODO a PASS sin resolver. |
+| Alta | RLS DEV: campañas consulta profiles.role; payroll y campaign_influencers permiten ALL por membresía de organización | Auditar y aprobar política mínima por recurso antes de cambiar RLS; probar owner/member/influencer/admin y aislamiento cruzado. |
+| Alta | RLS real, permisos PostgreSQL y paridad de migraciones | Ejecutar contra DEV existente con roles reales y fixtures aisladas; nunca inferirlo del arnés en memoria. Scripts locales requieren dependencias ausentes. |
+| Alta | Protección y configuración remota de DEV | Protección Vercel observada en navegador. Falta confirmar todas las variables remotas y acceder con sesión de pruebas sin ampliar permisos. |
+| Media | Flujos completos de Admin, Marca e Influencer autenticados | Sesiones de prueba y datos sintéticos: campañas → postulación → asistencia → entregables; comprobar aislamiento entre marcas. |
+| Media | Cobertura de CI | Workflow actual manual, `npm test` excluye integración; prebuild sí ejecuta suite. Definir gate sin ocultar TODO conocidos. |
+| Media | Documentación histórica | No tomar conteos, porcentajes ni propuestas antiguas como estado actual; usar guía de fuentes. |
+| Baja | Advertencias lint y memoria de build | Resolver por alcance propio, sin refactorización masiva; registrar recursos necesarios para reproducir build. |
+
+Resultados ejecutados: [resumen ejecutivo](00-MASTER/RESUMEN-EJECUTIVO_v1.0_2026-10-19.md). Requerimientos funcionales: [FDD](FUNCTIONAL_DESIGN.md); DASH-001 conserva su catálogo y evidencias existentes en la aplicación.
+
+## Roadmap histórico (junio 2026, no estado actual)
+
+Los porcentajes y tareas siguientes se conservan como antecedente, no como pendientes vigentes ni autorización para implementar integraciones.
+
 # SCENCE — Implementation Roadmap
 **Versión:** 1.0 | **Fecha:** 2026-06-03
 

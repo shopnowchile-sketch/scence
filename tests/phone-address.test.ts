@@ -99,7 +99,8 @@ test('selector de ubicación con búsqueda al escribir y perfil mostrando comuna
   assert.match(form, /role="combobox"/)
   assert.match(form, /normalize\('NFD'\)/)
   const page = read('src/app/(influencer)/inf-profile/page.tsx')
-  assert.match(page, /profile\.commune \?\? profile\.city, profile\.region, profile\.country/)
+  assert.match(page, /\[profile\.commune \?\? profile\.city, profile\.region, profile\.country\]/)
+  assert.match(page, /<span>\{profile\.address\}<\/span>/)
 })
 
 test('catálogo de ubicaciones: páginas bajo el tope de filas del proyecto y con orden estable', () => {

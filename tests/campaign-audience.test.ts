@@ -153,3 +153,14 @@ test('editor de zonas: País → Región → Comunas (varias) con selectores dep
   // sigue guardando por la misma API y solo ids de locations
   assert.match(editor, /location_ids: next\.map\(z => z\.id\)/)
 })
+
+test('campaña nueva: la dirección por defecto es la de la marca, solo en creación y sin pisar lo elegido', () => {
+  const editor = read('src/components/locations/CampaignLocationsEditor.tsx')
+  assert.match(editor, /fetchBrandDefaultPlace\(portal, brandId \?\? null\)/)
+  assert.match(editor, /\/api\/brand\/locations\?mine=1/)
+  assert.match(editor, /\/api\/brands\/\$\{brandId\}\/locations/)
+  assert.match(editor, /if \(isServer \|\| !canEdit\) return/)              // nunca en campañas ya creadas
+  assert.match(editor, /const onlyAuto = pending\.length === 0 \|\|/)          // no pisa lo elegido a mano
+  assert.match(editor, /Number\(!a\.address\?\.trim\(\)\)/)                   // prefiere un lugar que tenga dirección
+  assert.match(editor, /influencer_home/)                                       // jamás un domicilio de influencer
+})

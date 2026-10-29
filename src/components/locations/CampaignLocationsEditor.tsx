@@ -3,7 +3,7 @@
 // Direcciones de una campaña: agregar, consultar, quitar, elegir la principal.
 // Una sola pieza para Admin y Marca, en creación (campaña aún sin id → lista
 // pendiente que el formulario envía al crearla) y en edición (API directa).
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, MapPin, Star, X } from 'lucide-react'
 import { PhysicalLocationPicker, type PlaceSelection } from './PhysicalLocationPicker'
 import {
@@ -28,10 +28,57 @@ type Props = {
 
 type Row = { key: string; item: PendingCampaignLocation | CampaignLocationItem }
 
+type BrandPlace = {
+  id: string; name: string; address?: string | null; type?: string | null
+  city?: string | null; region?: string | null; country?: string | null
+  breadcrumb?: { level: string; name: string }[]
+}
+const TYPE_RANK: Record<string, number> = { brand_venue: 0, showroom: 1, store: 2 }
+
+/** Lugar por defecto de una campaña nueva: la sede de la marca con dirección (o su local más representativo). */
+async function fetchBrandDefaultPlace(portal: 'admin' | 'brand', brandId: string | null): Promise<PlaceSelection | null> {
+  const url = portal === 'brand' ? '/api/brand/locations?mine=1' : brandId ? `/api/brands/${brandId}/locations` : null
+  if (!url) return null
+  try {
+    const res = await fetch(url, { credentials: 'same-origin' })
+    if (!res.ok) return null
+    const json = await res.json()
+    const places = ((json.data ?? []) as BrandPlace[])
+      .filter(p => p.type !== 'influencer_home')
+      .sort((a, b) => Number(!a.address?.trim()) - Number(!b.address?.trim()) || (TYPE_RANK[a.type ?? ''] ?? 9) - (TYPE_RANK[b.type ?? ''] ?? 9) || a.name.localeCompare(b.name, 'es'))
+    const place = places[0]
+    if (!place) return null
+    const by = (level: string) => place.breadcrumb?.find(i => i.level === level)?.name ?? null
+    return {
+      locationId: place.id, name: place.name, address: place.address ?? null,
+      commune: by('commune') ?? place.city ?? null, region: by('region') ?? place.region ?? null, country: by('country') ?? place.country ?? null,
+    }
+  } catch { return null }
+}
+
 export function CampaignLocationsEditor({ campaignId, portal, brandId = null, canEdit = true, pending = [], onPendingChange, onChanged }: Props) {
   const server = useCampaignLocations(campaignId)
   const [draft, setDraft] = useState<Record<string, string>>({})
   const isServer = Boolean(campaignId)
+
+  // Campaña nueva: la dirección por defecto es la de la marca. Solo se propone si no hay nada elegido
+  // (o si lo único elegido es la propuesta anterior y cambió la marca); quitarla a mano se respeta.
+  const autoPlaceId = useRef<string | null>(null)
+  useEffect(() => {
+    if (isServer || !canEdit) return
+    if (portal === 'admin' && !brandId) return
+    let alive = true
+    void fetchBrandDefaultPlace(portal, brandId ?? null).then(place => {
+      if (!alive || !place) return
+      const onlyAuto = pending.length === 0 || (pending.length === 1 && pending[0].location_id === autoPlaceId.current)
+      if (!onlyAuto || pending[0]?.location_id === place.locationId) return
+      if (pending.length === 0 && autoPlaceId.current === place.locationId) return
+      autoPlaceId.current = place.locationId
+      onPendingChange?.([placeToPending(place, true)])
+    })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isServer, canEdit, portal, brandId])
 
   const rows: Row[] = isServer
     ? server.items.map(item => ({ key: item.id, item }))

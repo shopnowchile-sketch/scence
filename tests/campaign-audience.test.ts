@@ -143,3 +143,13 @@ test('URL de perfil social se deriva del usuario (la influencer solo escribe su 
   assert.doesNotMatch(read('src/app/(influencer)/inf-profile/page.tsx'), /URL perfil/)
   assert.doesNotMatch(read('src/app/api/influencer/me/route.ts'), /profile_url: sp\.profile_url/)
 })
+
+test('editor de zonas: País → Región → Comunas (varias) con selectores dependientes y chip LATAM agrupado', () => {
+  const editor = read('src/components/locations/CampaignAudienceEditor.tsx')
+  assert.match(editor, /fetchNodes\('parent=root'\)/)
+  assert.match(editor, /fetchNodes\(`parent=\$\{encodeURIComponent\(id\)\}`\)/)
+  assert.match(editor, /function MultiSelect/)
+  assert.match(editor, /LATAM · \$\{latamIds\.length\} países/)
+  // sigue guardando por la misma API y solo ids de locations
+  assert.match(editor, /location_ids: next\.map\(z => z\.id\)/)
+})

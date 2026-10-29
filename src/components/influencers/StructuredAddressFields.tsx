@@ -6,7 +6,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AddressParts } from '@/lib/address-parts'
 
-type Node = { id: string; name: string; level: string }
+export type GeoNode = { id: string; name: string; level: string }
+type Node = GeoNode
 
 const LEVEL_LABEL: Record<string, string> = { country: 'País', region: 'Región', city: 'Ciudad', commune: 'Comuna' }
 const SELECT_CLASS = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-violet-400'
@@ -15,8 +16,8 @@ const INPUT_CLASS = SELECT_CLASS
 const fold = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 // Selector con búsqueda: se escribe y la lista se filtra (sin tildes ni mayúsculas).
-function SearchSelect({ label, options, value, disabled, onChange }: {
-  label: string; options: Node[]; value: string; disabled?: boolean; onChange: (id: string) => void
+export function SearchSelect({ label, options, value, disabled, required = true, onChange }: {
+  label: string; options: Node[]; value: string; disabled?: boolean; required?: boolean; onChange: (id: string) => void
 }) {
   const selected = options.find(o => o.id === value)
   const [query, setQuery] = useState('')
@@ -31,11 +32,11 @@ function SearchSelect({ label, options, value, disabled, onChange }: {
   const shown = (q ? options.filter(o => fold(o.name).includes(q)) : options).slice(0, 60)
   return (
     <div ref={box} className="relative">
-      <label className="mb-1 block text-xs font-semibold text-gray-500">{label} *</label>
+      <label className="mb-1 block text-xs font-semibold text-gray-500">{label}{required ? ' *' : ''}</label>
       <input
         role="combobox" aria-expanded={open} aria-label={label} disabled={disabled}
         value={open ? query : selected?.name ?? ''}
-        placeholder={`Escribe para buscar ${label.toLowerCase()}…`}
+        placeholder="Escribe para buscar…"
         onFocus={() => { setQuery(''); setOpen(true) }}
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
         className={SELECT_CLASS}
@@ -57,7 +58,7 @@ function SearchSelect({ label, options, value, disabled, onChange }: {
   )
 }
 
-async function fetchNodes(query: string): Promise<Node[]> {
+export async function fetchNodes(query: string): Promise<Node[]> {
   try {
     const res = await fetch(`/api/influencer/locations?${query}`, { cache: 'no-store' })
     const json = await res.json()

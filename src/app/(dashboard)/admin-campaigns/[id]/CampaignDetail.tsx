@@ -28,6 +28,7 @@ import { getAttendanceState } from '@/lib/attendance-state'
 import { COMUNAS_CHILE, groupCommunes } from '@/lib/communes-chile'
 import { toast } from 'sonner'
 import { CampaignLocationsEditor } from '@/components/locations/CampaignLocationsEditor'
+import { CampaignAudienceEditor } from '@/components/locations/CampaignAudienceEditor'
 import { NewInvoiceModal } from '@/app/(dashboard)/admin-billing/BillingClient'
 import { DeliverableTemplateBuilder, CAMPAIGN_DELIVERABLE_DEFAULTS, type DeliverableTemplate } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { BrandSelector, brandMatchesQuery } from '@/components/campaigns/BrandSelector'
@@ -4360,6 +4361,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
             </p>
           </div>
           <CampaignLocationsEditor campaignId={id} portal={isBrandPortal ? 'brand' : 'admin'} brandId={isBrandPortal ? null : (c.brand_id ?? null)} canEdit={canEditCampaign} onChanged={() => void refetch()} />
+          <div className="border-t border-gray-100 pt-3">
+            <h3 className="text-sm font-semibold text-gray-700">¿Dónde se publica?</h3>
+            <p className="mb-2 mt-0.5 text-xs text-gray-400">Solo la verán influencers de estas zonas. Vacío = todas. Es independiente de la dirección del evento.</p>
+            <CampaignAudienceEditor campaignId={id} canEdit={canEditCampaign} />
+          </div>
         </div>
       )}
 

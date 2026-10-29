@@ -4,6 +4,7 @@ import { acceptCampaignApplication } from '@/lib/campaign-applications'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
+import { audienceMatcherFor } from '@/lib/campaign-audience'
 import { canReapplyAfterProExpiry, canReapplyAfterWithdrawal } from '@/lib/campaign-pro-reapply'
 
 type Params = { params: { id: string } }
@@ -79,6 +80,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     ? campaign.metadata as Record<string, unknown>
     : {}
   const accessMode = isInvitationOnlyCampaign(campaignMetadata) ? 'invitation' : campaign.visibility === 'private' ? 'private_pro' : 'public'
+
+  // Segmentación geográfica: postular exige estar en las zonas elegidas (falla cerrado).
+  // Una invitación o postulación previa (fila existente) no se ve afectada.
+  const { data: priorRow } = await admin
+    .from('campaign_influencers').select('id').eq('campaign_id', params.id).eq('influencer_id', influencer.id).maybeSingle()
+  if (!priorRow) {
+    let allowed = false
+    try { allowed = (await audienceMatcherFor(admin, [params.id])).allows(params.id, influencer.location_id) } catch { allowed = false }
+    if (!allowed) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
 
   if (accessMode === 'invitation') {
     return NextResponse.json({ error: 'Esta campaña es solo por invitación.', code: 'INVITATION_ONLY' }, { status: 403 })

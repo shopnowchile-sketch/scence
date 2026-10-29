@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const params = new URL(req.url).searchParams
   const q = (params.get('q') ?? '').trim()
   const id = (params.get('id') ?? '').trim()
+  const level = (params.get('level') ?? '').trim()
 
   const { data: locations, error } = await fetchAllRows(
     (from, to) => admin
@@ -69,6 +70,8 @@ export async function GET(req: NextRequest) {
   })
 
   if (id) return NextResponse.json({ data: data.filter(row => row.id === id) })
+
+  if (level === 'country') return NextResponse.json({ data: data.filter(row => row.level === 'country') })
 
   const normalizedQ = normalize(q)
   const filtered = normalizedQ

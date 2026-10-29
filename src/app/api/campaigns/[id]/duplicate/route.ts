@@ -75,6 +75,25 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: insertError?.message ?? 'No se pudo crear la copia' }, { status: 500 })
   }
 
+  // La copia conserva dónde se publica (queda en borrador: no se publica sola). Si no se puede
+  // copiar, se descarta la copia: nunca debe nacer sin restricción por error.
+  const { data: audience, error: audienceError } = await admin
+    .from('campaign_audience_locations').select('location_id').eq('campaign_id', params.id)
+  if (!audienceError && audience?.length) {
+    const { error: copyError } = await admin
+      .from('campaign_audience_locations')
+      .insert(audience.map(row => ({ campaign_id: campaign.id, location_id: row.location_id })))
+    if (copyError) {
+      console.error('[duplicate campaign audience]', copyError)
+      await admin.from('campaigns').delete().eq('id', campaign.id)
+      return NextResponse.json({ error: 'No se pudo copiar la segmentación geográfica' }, { status: 500 })
+    }
+  } else if (audienceError) {
+    console.error('[duplicate campaign audience]', audienceError)
+    await admin.from('campaigns').delete().eq('id', campaign.id)
+    return NextResponse.json({ error: 'No se pudo copiar la segmentación geográfica' }, { status: 500 })
+  }
+
   const [{ data: collaborators }, { data: event }] = await Promise.all([
     admin.from('campaign_brands').select('brand_id').eq('campaign_id', params.id),
     admin.from('bookings').select('title, description, event_type, location, location_details, is_virtual, virtual_link, starts_at, ends_at, fee, currency, travel_covered, travel_budget, wardrobe_provided, notes, internal_notes, metadata').eq('campaign_id', params.id).order('starts_at', { ascending: true }).limit(1).maybeSingle(),

@@ -159,6 +159,7 @@ export default function MyCampaignsPage() {
   // aplica a "Disponibles para postular".
   const [campStatusFilter, setCampStatusFilter] = useState<string>('')
   const [instagramPublicWarning, setInstagramPublicWarning] = useState(false)
+  const [missingLocation, setMissingLocation] = useState(false)
 
   // FIX (2026-07-04): antes, si /api/influencer/my-campaigns fallaba (o
   // simplemente tardaba/erroraba por lo que sea), el `throw` cortaba la
@@ -215,8 +216,10 @@ export default function MyCampaignsPage() {
     if (profileResult.status === 'fulfilled') {
       const instagram = (profileResult.value?.influencer_social_profiles ?? []).find((sp: { platform?: string }) => sp.platform === 'instagram')
       setInstagramPublicWarning(instagram?.sync_status === 'not_found')
+      setMissingLocation(Boolean(profileResult.value) && !profileResult.value.location_id)
     } else {
       setInstagramPublicWarning(false)
+      setMissingLocation(false)
     }
 
     setLoading(false)
@@ -493,6 +496,13 @@ export default function MyCampaignsPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {missingLocation && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" data-testid="missing-location-banner">
+          <strong>Completa tu ubicación:</strong> algunas campañas se muestran solo por zona. Agrega tu comuna para verlas.{' '}
+          <a href="/inf-profile" className="font-semibold underline">Completar perfil</a>
         </div>
       )}
 

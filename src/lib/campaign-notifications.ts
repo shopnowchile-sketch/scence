@@ -1,3 +1,4 @@
+import { audienceMatcherFor } from '@/lib/campaign-audience'
 import { createAdminClient } from '@/lib/supabase/server'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getInfluencerProIds } from '@/lib/influencer-pro'
@@ -96,9 +97,9 @@ export async function resolvePendingCampaignAnnouncement(
   // Sin filtro por organization_id: las marcas quedan con organization_id propia
   // y aislada (fix 2026-07-02), así que filtrar por la org de la campaña dejaría
   // fuera a casi todo el roster.
-  const { data: candidates, error: infErr } = await fetchAllRows<{ id: string; user_id: string | null; display_name: string | null; email: string | null }>((from, to) => admin
+  const { data: candidates, error: infErr } = await fetchAllRows<{ id: string; user_id: string | null; display_name: string | null; email: string | null; location_id: string | null }>((from, to) => admin
     .from('influencers')
-    .select('id, user_id, display_name, email')
+    .select('id, user_id, display_name, email, location_id')
     .eq('is_active', true)
     .not('email', 'is', null)
     .order('id')
@@ -142,9 +143,19 @@ export async function resolvePendingCampaignAnnouncement(
     }
   }
 
+  // Segmentación geográfica: solo se avisa a quien está en las zonas elegidas (misma regla que el marketplace).
+  let audience: Awaited<ReturnType<typeof audienceMatcherFor>>
+  try {
+    audience = await audienceMatcherFor(admin, [campaignId])
+  } catch (e) {
+    console.error('[resolvePendingCampaignAnnouncement] error leyendo segmentación', e)
+    return { campaign, pending: [], skipped: 'query_error' as const }
+  }
+
   const pending = candidates
     .filter(inf => !excludeIds.has(inf.id))
     .filter(inf => !inf.user_id || !optedOut.has(inf.user_id))
+    .filter(inf => audience.allows(campaignId, inf.location_id))
 
   return { campaign, pending, skipped: undefined }
 }

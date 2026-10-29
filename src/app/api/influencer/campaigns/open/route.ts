@@ -4,6 +4,7 @@ import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { getCampaignDateKey } from '@/lib/attendance-state'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign } from '@/lib/campaign-field-guards'
+import { audienceMatcherFor } from '@/lib/campaign-audience'
 import { canReapplyAfterProExpiry, canReapplyAfterWithdrawal } from '@/lib/campaign-pro-reapply'
 
 // GET /api/influencer/campaigns/open
@@ -18,7 +19,7 @@ export async function GET() {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, organization_id, is_active')
+    .select('id, organization_id, is_active, location_id')
     .eq('user_id', user.id)
     .single()
 
@@ -102,9 +103,18 @@ export async function GET() {
   const pendingRowIds = new Set(
     (myRows ?? []).filter(r => r.application_status === 'pending').map(r => r.campaign_id as string)
   )
+  // Segmentación geográfica: una campaña con zonas solo se lista a quien las cumple.
+  // Quien ya tiene una postulación pendiente conserva su campaña visible.
+  let audience: Awaited<ReturnType<typeof audienceMatcherFor>>
+  try {
+    audience = await audienceMatcherFor(admin, (data ?? []).map(c => c.id as string))
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'No se pudo leer la segmentación' }, { status: 500 })
+  }
   const marketplaceRows = (data ?? [])
     .filter(c => !influencerCreatorIds.has(c.created_by as string))
     .filter(c => !isInvitationOnlyCampaign(c.metadata) || pendingRowIds.has(c.id as string))
+    .filter(c => pendingMap.has(c.id as string) || audience.allows(c.id as string, influencer.location_id))
 
   // Fecha del evento para el contador de días de la tarjeta. Solo se lee
   // `starts_at` del booking de campaña (influencer_id null) — la MISMA fecha

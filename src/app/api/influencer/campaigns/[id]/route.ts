@@ -4,6 +4,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign, publicCampaignMetadata } from '@/lib/campaign-field-guards'
+import { audienceMatcherFor } from '@/lib/campaign-audience'
 import { canReapplyAfterProExpiry, canReapplyAfterWithdrawal } from '@/lib/campaign-pro-reapply'
 import { publicDeliverableTemplates } from '@/lib/deliverable-template-title'
 import { isAttendanceConfirmed } from '@/lib/deliverable-status'
@@ -25,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, organization_id')
+    .select('id, organization_id, location_id')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
@@ -85,6 +86,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (!existing && campaign.visibility !== 'open' && campaign.visibility !== 'private') {
     return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  }
+
+  // Segmentación geográfica: sin relación previa con la campaña, solo la ve quien está en las zonas elegidas.
+  if (!existing) {
+    try {
+      const audience = await audienceMatcherFor(admin, [campaign.id])
+      if (!audience.allows(campaign.id, influencer.location_id)) {
+        return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+      }
+    } catch {
+      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+    }
   }
 
   // Solo por invitación (mismo criterio que /apply → INVITATION_ONLY): no es

@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { PLATFORM_ICONS, PLATFORM_LABELS } from '@/lib/utils'
 import { DeliverableTemplateBuilder, DELIVERABLE_TYPES, CAMPAIGN_DELIVERABLE_DEFAULTS } from '@/components/campaigns/DeliverableTemplateBuilder'
 import { CampaignLocationsEditor } from '@/components/locations/CampaignLocationsEditor'
+import { CampaignAudienceEditor, savePendingCampaignAudience, type AudienceZone } from '@/components/locations/CampaignAudienceEditor'
 import { savePendingCampaignLocations, type PendingCampaignLocation } from '@/hooks/useCampaignLocations'
 import { BrandSelector } from '@/components/campaigns/BrandSelector'
 
@@ -260,12 +261,14 @@ interface StepProps {
 }
 
 // ── Step 1 — Info (defined OUTSIDE CampaignForm to avoid remount on re-render)
-function Step1({ register, control, errors, eventDays, setEventDays, campaignId, pendingLocations, setPendingLocations, setRemovedEventBookingIds, portal = 'admin', campaignType }: StepProps & {
+function Step1({ register, control, errors, eventDays, setEventDays, campaignId, pendingLocations, setPendingLocations, pendingAudience, setPendingAudience, setRemovedEventBookingIds, portal = 'admin', campaignType }: StepProps & {
   eventDays: Array<{ id?: string; starts_at: string; ends_at: string }>
   setEventDays: React.Dispatch<React.SetStateAction<Array<{ id?: string; starts_at: string; ends_at: string }>>>
   campaignId: string | null
   pendingLocations: PendingCampaignLocation[]
   setPendingLocations: (value: PendingCampaignLocation[]) => void
+  pendingAudience: AudienceZone[]
+  setPendingAudience: (value: AudienceZone[]) => void
   setRemovedEventBookingIds: React.Dispatch<React.SetStateAction<string[]>>
   portal?: 'admin' | 'brand'
 }) {
@@ -303,6 +306,12 @@ function Step1({ register, control, errors, eventDays, setEventDays, campaignId,
           pending={pendingLocations}
           onPendingChange={setPendingLocations}
         />
+
+        <div className="border-t border-gray-200 pt-3">
+          <p className="text-xs font-semibold text-gray-700">¿Dónde se publica?</p>
+          <p className="mb-1.5 text-[11px] text-gray-500">Solo la verán influencers de estas zonas. Vacío = todas. Es independiente de la dirección del evento.</p>
+          <CampaignAudienceEditor campaignId={campaignId} pending={pendingAudience} onPendingChange={setPendingAudience} />
+        </div>
 
         <div className="border-t border-gray-200 pt-3">
           <div className="flex items-center justify-between gap-3 mb-2">
@@ -416,6 +425,7 @@ export function CampaignForm({
   const [eventDays, setEventDays] = useState<Array<{ id?: string; starts_at: string; ends_at: string }>>([{ starts_at: '', ends_at: '' }])
   const [removedEventBookingIds, setRemovedEventBookingIds] = useState<string[]>([])
   const [pendingLocations, setPendingLocations] = useState<PendingCampaignLocation[]>([])
+  const [pendingAudience, setPendingAudience] = useState<AudienceZone[]>([])
 
   const { register, control, handleSubmit, getValues, setValue, trigger, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -435,7 +445,7 @@ export function CampaignForm({
   const campaignType = useWatch({ control, name: 'type' })
   // A diferencia del autosave anterior (solo al avanzar), esta firma observa
   // todas las ediciones del borrador, incluida la guía de contenido.
-  const autosaveSignature = JSON.stringify({ form: useWatch({ control }), eventDays, pendingLocations })
+  const autosaveSignature = JSON.stringify({ form: useWatch({ control }), eventDays, pendingLocations, pendingAudience })
 
   useEffect(() => {
     if (portal !== 'brand') return
@@ -489,6 +499,12 @@ export function CampaignForm({
 
   // Las direcciones elegidas antes de que existiera la campaña se asocian apenas se crea.
   // Va ANTES de syncEventBookings: así los bookings nacen con la dirección principal.
+  async function flushPendingAudience(savedCampaignId: string) {
+    if (!pendingAudience.length) return
+    if (await savePendingCampaignAudience(savedCampaignId, pendingAudience)) setPendingAudience([])
+    else toast.error('No se pudo guardar dónde se publica la campaña. Revísalo en el paso 1.')
+  }
+
   async function flushPendingLocations(savedCampaignId: string) {
     if (!pendingLocations.length) return
     const failed = await savePendingCampaignLocations(savedCampaignId, pendingLocations)
@@ -545,6 +561,7 @@ export function CampaignForm({
           const { data: campaign } = await res.json()
           setCampaignId(campaign.id)
           await flushPendingLocations(campaign.id)
+          await flushPendingAudience(campaign.id)
           await syncEventBookings(campaign.id, getValues())
           setDraftSavedAt(new Date())
         }
@@ -631,6 +648,7 @@ export function CampaignForm({
       const savedCampaignId = campaign?.id ?? campaignId
       if (!savedCampaignId) throw new Error('No se pudo identificar la campaña creada')
       await flushPendingLocations(savedCampaignId)
+      await flushPendingAudience(savedCampaignId)
       await syncEventBookings(savedCampaignId, data)
 
       // La marca sigue trabajando sobre un borrador durante el autosave, pero
@@ -697,7 +715,7 @@ export function CampaignForm({
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
         <div className="card p-3">
-          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} campaignId={campaignId} pendingLocations={pendingLocations} setPendingLocations={setPendingLocations} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
+          {step === 1 && <Step1 register={register} control={control} errors={errors} eventDays={eventDays} setEventDays={setEventDays} campaignId={campaignId} pendingLocations={pendingLocations} setPendingLocations={setPendingLocations} pendingAudience={pendingAudience} setPendingAudience={setPendingAudience} setRemovedEventBookingIds={setRemovedEventBookingIds} portal={portal} campaignType={campaignType} />}
         </div>
 
         {/* Navigation */}

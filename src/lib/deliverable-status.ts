@@ -41,6 +41,9 @@ export const ATTENDANCE_TYPE = 'event_attendance'
 
 export const isAttendanceDeliverable = (d: { type?: string | null }): boolean => d.type === ATTENDANCE_TYPE
 
+/** La influencer confirmó asistencia. Única definición; también es la compuerta de acceso operativo (brief, lugar exacto). */
+export const isAttendanceConfirmed = (d: { attendance_response?: string | null }): boolean => d.attendance_response === 'confirmed'
+
 /** Estado que corresponde a una respuesta de asistencia (confirmed → approved, declined → rejected). */
 export function attendanceStatusForResponse(response: string | null | undefined): 'approved' | 'rejected' | 'pending' {
   if (response === 'confirmed') return 'approved'

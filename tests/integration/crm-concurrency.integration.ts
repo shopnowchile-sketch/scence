@@ -26,7 +26,8 @@ if (enabled && url!.includes(PRODUCTION_PROJECT_REF)) {
   throw new Error('RECHAZADO: la URL apunta al proyecto de PRODUCCIÓN. Esta prueba solo corre contra una base de pruebas.')
 }
 
-const SOURCE = 'it_synthetic'
+// Cada ejecución elimina únicamente sus propias filas, incluso si corre en paralelo.
+const SOURCE = `it_synthetic_${randomUUID()}`
 const T0 = new Date()
 
 describe('CRM: concurrencia real contra Supabase de pruebas', { skip: enabled ? false : 'omitida: faltan CRM_IT_ALLOW=yes, CRM_IT_SUPABASE_URL o CRM_IT_SERVICE_KEY' }, () => {

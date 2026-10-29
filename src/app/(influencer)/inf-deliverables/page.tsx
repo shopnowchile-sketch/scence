@@ -42,7 +42,6 @@ type CampaignGroup = {
 }
 
 // Criterio único de "completado" — ver src/lib/deliverable-status.ts.
-const isCompleteDeliverable = isDeliverableComplete
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -390,7 +389,7 @@ function DeliverablesPageInner() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [focusCampaignId, loading])
 
-  const pendingDeliverables = deliverables.filter(d => !isCompleteDeliverable(d))
+  const pendingDeliverables = deliverables.filter(d => !isDeliverableComplete(d))
 
   // Agrupar por campaña — `deliverables` ya viene ordenado (pendientes
   // primero), así que el orden de aparición de los grupos respeta esa
@@ -411,7 +410,7 @@ function DeliverablesPageInner() {
   // oculta grupos que se quedan sin filas tras filtrar.
   function matchesDelivFilter(d: Deliverable) {
     if (delivFilter === 'all') return true
-    return delivFilter === 'done' ? isCompleteDeliverable(d) : !isCompleteDeliverable(d)
+    return delivFilter === 'done' ? isDeliverableComplete(d) : !isDeliverableComplete(d)
   }
   const visibleCampaignGroups = campaignGroups.filter(g => g.deliverables.some(matchesDelivFilter))
 
@@ -484,8 +483,8 @@ function DeliverablesPageInner() {
             </div>
           ) : visibleCampaignGroups.map(g => {
             const total    = g.deliverables.length
-            const doneCt   = g.deliverables.filter(isCompleteDeliverable).length
-            const pending  = g.deliverables.filter(d => !isCompleteDeliverable(d))
+            const doneCt   = g.deliverables.filter(isDeliverableComplete).length
+            const pending  = g.deliverables.filter(d => !isDeliverableComplete(d))
             const pct      = total > 0 ? Math.round((doneCt / total) * 100) : 0
             const nextDue  = pending.map(d => d.due_date).filter(Boolean).sort()[0] ?? null
             const typeCounts = new Map<string, number>()

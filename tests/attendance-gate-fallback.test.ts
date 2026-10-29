@@ -6,8 +6,8 @@ import test from 'node:test'
 const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
 
 test('las tres rutas conservan el acceso por aceptación cuando no hay entregable de asistencia', () => {
-  assert.match(src('src/app/api/influencer/campaigns/[id]/route.ts'), /attendanceConfirmed = !attendance \|\| attendance\.attendance_response === 'confirmed'/)
-  assert.match(src('src/lib/campaign-asset-access.ts'), /attendanceConfirmed = !attendance \|\| attendance\.attendance_response === 'confirmed'/)
+  assert.match(src('src/app/api/influencer/campaigns/[id]/route.ts'), /attendanceConfirmed = !attendance \|\| isAttendanceConfirmed\(attendance\)/)
+  assert.match(src('src/lib/campaign-asset-access.ts'), /attendanceConfirmed = !attendance \|\| isAttendanceConfirmed\(attendance\)/)
   assert.match(src('src/app/api/influencer/my-campaigns/route.ts'), /attendanceItems\.length === 0 \|\| attendanceItems\.some/)
 })
 

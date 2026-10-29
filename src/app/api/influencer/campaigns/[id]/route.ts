@@ -6,6 +6,7 @@ import { isInfluencerPro } from '@/lib/influencer-pro'
 import { isInvitationOnlyCampaign, publicCampaignMetadata } from '@/lib/campaign-field-guards'
 import { canReapplyAfterProExpiry, canReapplyAfterWithdrawal } from '@/lib/campaign-pro-reapply'
 import { publicDeliverableTemplates } from '@/lib/deliverable-template-title'
+import { isAttendanceConfirmed } from '@/lib/deliverable-status'
 
 type Params = { params: { id: string } }
 
@@ -130,7 +131,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('type', 'event_attendance')
       .maybeSingle()
     // Sin entregable de asistencia no hay confirmación que exigir (campañas sin evento): rige solo la aceptación.
-    attendanceConfirmed = !attendance || attendance.attendance_response === 'confirmed'
+    attendanceConfirmed = !attendance || isAttendanceConfirmed(attendance)
   }
   const operationalAccess = isAccepted && attendanceConfirmed
   const payload: Record<string, unknown> = { ...campaign }

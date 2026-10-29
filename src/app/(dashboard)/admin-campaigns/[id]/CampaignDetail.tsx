@@ -189,6 +189,7 @@ function DeliverableContent({
   if (d.type === 'event_attendance') {
     const confirmed = d.attendance_response === 'confirmed'
     const declined = d.attendance_response === 'declined'
+    const noConfirmed = getAttendanceState(d.attendance_response, d.due_date) === 'no_confirmed'
     const noShow = d.attendance_outcome === 'no_show'
     const markNoShow = async () => {
       try {
@@ -196,7 +197,7 @@ function DeliverableContent({
         toast.success('Marcada como no asistió. Sus métricas ya no cuentan en el resultado.')
       } catch { /* handled in hook */ }
     }
-    return <div className="flex items-center justify-between gap-3 py-1"><div><p className="text-sm font-semibold text-gray-800">Confirmación de asistencia</p><p className="text-xs text-gray-400">{d.due_date ? `Plazo: ${formatDate(d.due_date)}` : 'Sin fecha límite'}</p></div><div className="flex items-center gap-2"><span className={cn('badge text-[11px]', noShow ? 'badge-red' : confirmed ? 'badge-green' : declined ? 'badge-red' : 'badge-gray')}>{noShow ? 'No asistió' : confirmed ? 'Confirmada' : declined ? 'No asistirá' : 'Pendiente'}</span>{confirmed && !noShow && <button type="button" onClick={() => void markNoShow()} disabled={action.isPending} title="Marcar que confirmó pero no asistió; se excluirá de los KPI" className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"><ChevronDown className="h-3.5 w-3.5" /> No asistió</button>}</div></div>
+    return <div className="flex items-center justify-between gap-3 py-1"><div><p className="text-sm font-semibold text-gray-800">Confirmación de asistencia</p><p className="text-xs text-gray-400">{d.due_date ? `Plazo: ${formatDate(d.due_date)}` : 'Sin fecha límite'}</p></div><div className="flex items-center gap-2"><span className={cn('badge text-[11px]', noShow ? 'badge-red' : confirmed ? 'badge-green' : declined ? 'badge-red' : noConfirmed ? 'badge-orange' : 'badge-gray')}>{noShow ? 'No asistió' : confirmed ? 'Confirmada' : declined ? 'No asistirá' : noConfirmed ? 'Sin respuesta' : 'Pendiente'}</span>{confirmed && !noShow && <button type="button" onClick={() => void markNoShow()} disabled={action.isPending} title="Marcar que confirmó pero no asistió; se excluirá de los KPI" className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"><ChevronDown className="h-3.5 w-3.5" /> No asistió</button>}</div></div>
   }
 
   async function handle(act: 'approve' | 'reject') {

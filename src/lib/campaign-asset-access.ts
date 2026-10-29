@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
+import { isAttendanceConfirmed } from '@/lib/deliverable-status'
 
 export async function resolveCampaignAssetAccess(
   userId: string,
@@ -81,7 +82,7 @@ export async function resolveCampaignAssetAccess(
         .eq('type', 'event_attendance')
         .maybeSingle()
       // Sin entregable de asistencia no hay confirmación que exigir: rige solo la aceptación.
-      attendanceConfirmed = !attendance || attendance.attendance_response === 'confirmed'
+      attendanceConfirmed = !attendance || isAttendanceConfirmed(attendance)
     }
     const canView = isSelfCreated || (membership?.application_status === 'accepted' && attendanceConfirmed)
     // Briefs and operational files are private until the influencer confirms

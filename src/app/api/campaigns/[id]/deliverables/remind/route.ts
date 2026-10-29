@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // (mismo criterio de "completado" que el resumen visual de la campaña).
   const { data: deliverables, error } = await admin
     .from('campaign_deliverables')
-    .select('id, title, type, status, content_url, published_url')
+    .select('id, title, type, status, content_url, published_url, attendance_response')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencer_id)
 

@@ -4,6 +4,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCampaignCoverUrls } from '@/lib/campaign-cover'
 import { publicCampaignMetadata } from '@/lib/campaign-field-guards'
 import { validateSelfCampaignCreate, buildSelfCampaignUpdate } from '@/lib/influencer-self-campaign'
+import { isAttendanceConfirmed } from '@/lib/deliverable-status'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -265,7 +266,7 @@ export async function GET() {
       // Sin entregable de asistencia no hay confirmación que exigir: rige solo la aceptación.
       const attendanceItems = ((row.campaign_deliverables as Array<Record<string, unknown>> | null) ?? [])
         .filter(d => d.type === 'event_attendance')
-      const attendanceConfirmed = attendanceItems.length === 0 || attendanceItems.some(d => d.attendance_response === 'confirmed')
+      const attendanceConfirmed = attendanceItems.length === 0 || attendanceItems.some(d => isAttendanceConfirmed(d as { attendance_response?: string | null }))
       const operationalAccess = row._self_created === true || (accepted && attendanceConfirmed)
       if (operationalAccess) {
         // La dirección exacta, instrucciones y demás datos operativos quedan

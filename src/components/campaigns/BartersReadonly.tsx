@@ -67,9 +67,9 @@ export function BartersReadonly({ endpoint, variant = 'default' }: { endpoint: s
           const tracking = b.benefit_tracking?.find(row => row.benefit_index === index)
           const status = tracking?.status ?? b.simple_status ?? 'pending'
           const commission = benefit.benefit_type === 'sales_commission'
-          return <div key={`${b.id}-${index}`} className={cn('rounded-xl border p-3', commission ? 'border-amber-100 bg-amber-50/70' : 'border-violet-100 bg-violet-50/60')}>
+          return <div key={`${b.id}-${index}`} className={cn('rounded-xl border px-3 py-2 sm:p-3', commission ? 'border-amber-100 bg-amber-50/70' : 'border-violet-100 bg-violet-50/60')}>
             <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{commission ? 'Comisión por venta' : 'Canje'}</p>
-            <p className={cn('text-xl font-bold mt-0.5', commission ? 'text-amber-700' : 'text-violet-700')}>{commission && benefit.commission_rate ? `${benefit.commission_rate}%` : benefit.description}</p>
+            <p className={cn('text-sm sm:text-xl font-bold mt-0.5 line-clamp-2 sm:line-clamp-none', commission ? 'text-amber-700' : 'text-violet-700')}>{commission && benefit.commission_rate ? `${benefit.commission_rate}%` : benefit.description}</p>
             <p className="text-[11px] text-gray-500 mt-1">{status === 'completed' ? (commission ? 'Marca vinculada' : 'Canje listo') : status === 'problem' ? 'Requiere revisión' : commission ? 'Esperando registro de marca' : 'Pendiente'}</p>
           </div>
         })

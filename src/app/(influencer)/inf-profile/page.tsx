@@ -481,20 +481,12 @@ export default function ProfilePage() {
               <div className="flex items-start gap-2">
                 <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p>
-                    <b>Falta completar:</b>{' '}
-                    {editMissing.map(item => item.label).join(', ')}.
-                  </p>
-                  {editMissing.some(item => item.blocking) && (
-                    <p className="mt-1 text-xs text-amber-700">
-                      Necesitas estos datos para postular a campañas y recibir productos.
-                    </p>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <p><b>Falta completar</b></p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {editMissing.map(item => (
                       <button key={item.label} type="button" onClick={() => scrollToSection(item.section)}
                         className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100">
-                        Ir a {item.label}
+                        {item.label}
                       </button>
                     ))}
                   </div>
@@ -502,7 +494,7 @@ export default function ProfilePage() {
               </div>
             </div>
           )}
-          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><Camera className="h-4 w-4 text-gray-400" /> Foto de perfil</h2>
             <div className="mt-4 flex items-center gap-4">
               <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 text-white flex items-center justify-center text-2xl font-bold">

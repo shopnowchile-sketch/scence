@@ -637,10 +637,10 @@ export default function MyCampaignsPage() {
 
       {/* Filtro por status — aplica a "Asignadas por agencia" y "Mis campañas" */}
       {campaigns.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:px-0">
           <button
             onClick={() => setCampStatusFilter('')}
-            className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+            className={cn('shrink-0 px-3 py-1 rounded-lg text-xs font-medium transition-colors',
               campStatusFilter === '' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             )}
           >
@@ -650,7 +650,7 @@ export default function MyCampaignsPage() {
             <button
               key={key}
               onClick={() => setCampStatusFilter(key)}
-              className={cn('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+              className={cn('shrink-0 px-3 py-1 rounded-lg text-xs font-medium transition-colors',
                 campStatusFilter === key ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               )}
             >

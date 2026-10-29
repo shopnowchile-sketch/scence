@@ -248,7 +248,7 @@ function EventBookingCard({ booking, showLocation, fallbackDate }: { booking: Ev
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">Fecha del evento</p>
           {rows.length
-            ? rows.map((row, index) => <p key={index} className="mt-0.5 text-base font-extrabold capitalize leading-tight text-violet-950">{row.day}</p>)
+            ? rows.map((row, index) => <p key={index} className="mt-0.5 text-base font-extrabold first-letter:uppercase leading-tight text-violet-950">{row.day}</p>)
             : <p className="mt-0.5 text-base font-extrabold leading-tight text-violet-950">Por confirmar</p>}
           {/* Contador destacado bajo la fecha, mismo pill que ya usa el resto
               del portal (rounded-md + uppercase + tracking). */}

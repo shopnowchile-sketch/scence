@@ -137,6 +137,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   delete payload.created_by
   const covers = await getCampaignCoverUrls(admin, [campaign.id])
   payload.cover_url = covers.get(campaign.id) ?? null
+  // Marcas colaboradoras: nunca visibles para la influencer, ni siquiera aceptada (solo ve las cuentas a
+  // etiquetar de cada entregable autorizado).
+  delete payload.campaign_brands
   if (!operationalAccess) {
     // El brief y el lugar exacto son privados hasta confirmar asistencia; la descripción,
     // requisitos y entregables siguen visibles para decidir si postular.

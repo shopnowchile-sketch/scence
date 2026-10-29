@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
       ? fetchAllRows<{ campaign_id: string }>((from, to) => admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds).eq('application_status', 'accepted').order('id').range(from, to))
       : { data: [] },
     campaignIds.length
-      ? fetchAllRows<{ campaign_id: string; influencer_id: string | null; type: string; status: string; attendance_outcome: string | null; content_url: string | null; published_url: string | null; performance: unknown; engagement_rate: number | null }>((from, to) => admin.from('campaign_deliverables').select('campaign_id, influencer_id, type, status, attendance_outcome, content_url, published_url, performance, engagement_rate').in('campaign_id', campaignIds).order('id').range(from, to))
+      ? fetchAllRows<{ campaign_id: string; influencer_id: string | null; type: string; status: string; attendance_response: string | null; attendance_outcome: string | null; content_url: string | null; published_url: string | null; performance: unknown; engagement_rate: number | null }>((from, to) => admin.from('campaign_deliverables').select('campaign_id, influencer_id, type, status, attendance_response, attendance_outcome, content_url, published_url, performance, engagement_rate').in('campaign_id', campaignIds).order('id').range(from, to))
       : { data: [] },
   ])
 

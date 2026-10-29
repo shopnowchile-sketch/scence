@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils'
 import { isDeliverableComplete, effectiveDeliverableStatus } from '@/lib/deliverable-status'
 import { isAttendanceDeadlineExpired } from '@/lib/attendance-state'
+import { submissionRuleFor, validateSubmissionUrl } from '@/lib/deliverables/submission-rules'
 import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -139,10 +140,12 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
       : { label: 'Por confirmar', color: 'bg-amber-100 text-amber-700' })
     : DELIVERABLE_STATUS[d.status] ?? { label: d.status, color: 'bg-gray-100 text-gray-500' }
   const canSubmit = d.type !== 'event_attendance' && (d.status === 'pending' || d.status === 'rejected')
-  const isDone = d.status === 'approved' || d.status === 'published' || (isAttendance && !!d.attendance_response)
+  const isDone = isDeliverableComplete(d)
 
   async function submit() {
     if (!url) { toast.error('Agrega el link del contenido'); return }
+    const urlError = validateSubmissionUrl(d.type, url)
+    if (urlError) { toast.error(urlError); return }
     setSaving(true)
     try {
       const res = await fetch(`/api/influencer/deliverables/${d.id}/submit`, {
@@ -250,13 +253,14 @@ function DeliverableRow({ d, onUpdate, showCampaignLink = false }: { d: Delivera
       {open && (
         <div className="space-y-2 pt-2 border-t border-gray-100">
           <div>
-            <label className="text-[10px] font-semibold text-gray-400 uppercase">Link del reel / contenido</label>
+            <label className="text-[10px] font-semibold text-gray-400 uppercase">{submissionRuleFor(d.type).label}</label>
+            {submissionRuleFor(d.type).hint && <p className="mt-1 text-xs leading-relaxed text-gray-500">{submissionRuleFor(d.type).hint}</p>}
             <div className="flex gap-2 mt-1">
               <input
                 type="url"
                 value={url}
                 onChange={e => setUrl(e.target.value)}
-                placeholder="https://www.instagram.com/reel/…"
+                placeholder={submissionRuleFor(d.type).placeholder}
                 className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400"
               />
               {url && (

@@ -150,6 +150,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   switch (action) {
     case 'approve':
       updatePayload.status      = 'approved'
+      updatePayload.progress    = 100 // aprobado = 100% (progress nunca se actualizaba al aprobar)
       updatePayload.reviewed_at = now     // DB column: reviewed_at
       updatePayload.reviewed_by = user.id // DB column: reviewed_by
       break
@@ -165,6 +166,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       break
     case 'publish':
       updatePayload.status       = 'published'
+      updatePayload.progress     = 100
       updatePayload.published_at = now
       break
     case 'update_progress':

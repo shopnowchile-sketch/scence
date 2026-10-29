@@ -4,6 +4,7 @@ import { ADMIN_NOTIFICATION_EMAIL, getResend, FROM_EMAIL } from '@/lib/resend'
 import { didContentUrlChange, normalizeContentUrl } from '@/lib/deliverables/metrics-state'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import { escapeHtml } from '@/lib/utils'
+import { validateSubmissionUrl } from '@/lib/deliverables/submission-rules'
 
 type Params = { params: { id: string } }
 
@@ -73,6 +74,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const nextContentUrl = normalizeContentUrl(body.content_url)
+  const urlError = validateSubmissionUrl(deliverable.type, nextContentUrl)
+  if (urlError) return NextResponse.json({ error: urlError }, { status: 422 })
   const contentUrlChanged = didContentUrlChange(deliverable.content_url, nextContentUrl)
 
   const updatePayload: Record<string, unknown> = {

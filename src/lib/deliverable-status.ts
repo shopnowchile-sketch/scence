@@ -19,7 +19,11 @@ export interface DeliverableStatusFields {
 }
 
 export function isDeliverableComplete(d: DeliverableStatusFields): boolean {
-  if (d.type === 'event_attendance') return !!d.attendance_response
+  // Asistencia: completa con respuesta (confirmó o avisó que no va) o si ya quedó aprobada/publicada; así una fila
+  // sin attendance_response cargado (consulta que no lo pide, dato legado) no cuenta como pendiente.
+  if (d.type === 'event_attendance') {
+    return !!d.attendance_response || d.status === 'approved' || d.status === 'published' || d.status === 'completed'
+  }
   // Un link rechazado sigue guardado para que la influencer y el equipo
   // puedan revisarlo, pero ya no cuenta como avance. Debe volver a pendiente
   // hasta que se suba una corrección y se apruebe.
@@ -57,3 +61,7 @@ export const isAwaitingContentReview = (d: DeliverableStatusFields): boolean =>
 /** Corrección pendiente = contenido rechazado. Una asistencia "No asistiré" no es una corrección. */
 export const isContentRejected = (d: DeliverableStatusFields): boolean =>
   !isAttendanceDeliverable(d) && d.status === 'rejected'
+
+/** Vencido = fecha límite (YYYY-MM-DD) anterior a hoy y sin completar. Fuente única para listas, KPI y filtros. */
+export const isDeliverableOverdue = (d: DeliverableStatusFields & { due_date?: string | null }, todayKey: string): boolean =>
+  !!d.due_date && d.due_date.slice(0, 10) < todayKey && !isDeliverableComplete(d)

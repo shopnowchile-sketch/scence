@@ -161,15 +161,15 @@ export async function GET() {
     return contractedIds.has(ciId) || invoicedIds.has(ciId) || (!!campId && bookedCampaignIds.has(campId))
   })
 
-  // Las marcas colaboradoras y sus handles forman parte del brief operativo.
-  // No se exponen a quien todavía está postulando o debe aceptar una invitación.
+  // Las marcas colaboradoras NUNCA se exponen a la influencer (ni antes ni después de aceptar):
+  // solo ve las cuentas a etiquetar dentro de sus entregables (tag_accounts, más abajo).
   // Lo mismo campaigns.metadata (dirección, WhatsApp, instrucciones, links):
   // antes de aceptar solo viajan las claves públicas (publicCampaignMetadata).
   const assignedWithAllowedBrands = visibleAssignedFiltered.map((row: Record<string, unknown>) => {
     const campaign = row.campaign as Record<string, unknown> | null
     // Aceptada: ve lo operativo (dirección vigente incluida), nunca la copia histórica interna.
     if (row.application_status === 'accepted') {
-      return campaign ? { ...row, campaign: { ...campaign, metadata: metadataForInfluencer(campaign.metadata) } } : row
+      return campaign ? { ...row, campaign: { ...campaign, campaign_brands: [], metadata: metadataForInfluencer(campaign.metadata) } } : row
     }
     return {
       ...row,
@@ -545,7 +545,7 @@ export async function PATCH(req: NextRequest) {
     .select(`
       id, name, status, description, start_date, end_date, currency, created_by,
       brand:brands!brand_id(id, name, logo_url, website),
-      campaign_deliverables(id, title, type, status, due_date, scheduled_at, sequence_number, platform, content_url, description, hashtags, tag_brand_ids, tag_handles)
+      campaign_deliverables(id, title, type, status, due_date, scheduled_at, sequence_number, platform, content_url, published_url, attendance_response, description, hashtags, tag_brand_ids, tag_handles)
     `)
     .eq('id', id)
     .single()

@@ -13,12 +13,13 @@ import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
-import { isDeliverableComplete, isAttendanceDeliverable, isAwaitingContentReview, isContentRejected, effectiveDeliverableStatus } from '@/lib/deliverable-status'
+import { isDeliverableComplete, isDeliverableOverdue, isAttendanceDeliverable, isAwaitingContentReview, isContentRejected, effectiveDeliverableStatus } from '@/lib/deliverable-status'
 import { deliverableTemplateTitle } from '@/lib/deliverable-template-title'
 import { isAttendanceDeadlineExpired, getCampaignDateKey } from '@/lib/attendance-state'
 import Link from 'next/link'
 import { acceptCurrentInfluencerProTerms, hasAcceptedCurrentInfluencerProTerms } from '@/lib/influencer-pro-terms'
 import { ApplyConfirmDialog } from '@/components/campaigns/ApplyConfirmDialog'
+import { submissionRuleFor, validateSubmissionUrl } from '@/lib/deliverables/submission-rules'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Deliverable = {
@@ -356,8 +357,8 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
   // isDeliverableComplete() (fuente única) y getCampaignDateKey() (mismo huso
   // horario que ya usa asistencia) — no crea un estado nuevo.
   const isContentOverdue = (deliverable: Deliverable) => {
-    if (deliverable.type === 'event_attendance' || !deliverable.due_date) return false
-    return !isDeliverableComplete(deliverable) && deliverable.due_date < getCampaignDateKey()
+    if (deliverable.type === 'event_attendance') return false
+    return isDeliverableOverdue(deliverable, getCampaignDateKey())
   }
   const daysRemaining = (dueDate: string) =>
     Math.round((new Date(`${dueDate}T00:00:00`).getTime() - new Date(`${getCampaignDateKey()}T00:00:00`).getTime()) / 86400000)
@@ -389,6 +390,8 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
 
   async function submit(d: Deliverable) {
     if (!url.trim()) return toast.error('Agrega el link del contenido')
+    const urlError = validateSubmissionUrl(d.type, url)
+    if (urlError) return toast.error(urlError)
     setSaving(true)
     try {
       const res = await fetch(`/api/influencer/deliverables/${d.id}/submit`, {
@@ -509,6 +512,13 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
                   </div>
                 )}
 
+                {/* Descripción y hashtags propios de ESTE entregable (cada Reel/Story es independiente).
+                    Son instrucciones: solo con la participación aceptada. */}
+                {canAct && !isAttendance && d.description && <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-gray-600">{d.description}</p>}
+                {canAct && !isAttendance && (d.hashtags?.length ?? 0) > 0 && (
+                  <p className="mt-1 text-xs font-semibold text-violet-700">{(d.hashtags ?? []).map(h => (h.startsWith('#') ? h : `#${h}`)).join(' ')}</p>
+                )}
+
                 {/* Cuentas a etiquetar de ESTE entregable (Reel y Story pueden
                     tener distintas). Solo cuando ya está aceptada — antes de
                     aprobar no se revelan, y el aviso corto vive una sola vez
@@ -535,7 +545,9 @@ function CampaignDeliverables({ items, onUpdated, canAct }: { items: Deliverable
               </button>)}
             </div>
             {canAct && opened && <div className="mt-3 pt-3 border-t border-amber-100 space-y-2">
-              <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{submissionRuleFor(d.type).label}</p>
+              {submissionRuleFor(d.type).hint && <p className="text-xs leading-relaxed text-gray-500">{submissionRuleFor(d.type).hint}</p>}
+              <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder={submissionRuleFor(d.type).placeholder} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
               <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo (opcional)" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400" />
               <div className="flex justify-end gap-2"><button onClick={() => setOpenId(null)} className="text-sm text-gray-500 px-3 py-2">Cancelar</button><button disabled={saving || !url.trim()} onClick={() => submit(d)} className="text-sm font-semibold bg-violet-600 text-white px-3 py-2 rounded-lg disabled:opacity-50">{saving ? 'Enviando…' : 'Enviar para revisión'}</button></div>
             </div>}
@@ -1053,7 +1065,8 @@ export function InfluencerCampaignView({ id }: { id: string }) {
   const campStatus   = isPending
     ? { label: 'En revisión', color: 'bg-amber-100 text-amber-700' }
     : CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS.draft
-  const participantBrands = [c.brand, ...(c.campaign_brands ?? []).map(row => row.brand)]
+  // Solo la marca titular: las marcas colaboradoras no se muestran a la influencer (solo sus cuentas a etiquetar por entregable).
+  const participantBrands = [c.brand]
     .filter((brand): brand is NonNullable<typeof c.brand> => !!brand)
     .filter((brand, index, all) => all.findIndex(item => item.id === brand.id) === index)
   // Los entregables se muestran también aquí: esta es la ruta natural al

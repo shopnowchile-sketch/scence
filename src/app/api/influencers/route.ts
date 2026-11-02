@@ -75,14 +75,11 @@ export async function GET(request: NextRequest) {
     .filter((id): id is string => Boolean(id))
   const requestedLocationIds = communeList.length ? communeLocationIds : country ? countryLocationIds : []
 
-  const locationSearchIds = search
-    ? Array.from(locationDisplayById.entries())
-        .filter(([, location]) =>
-          [location.commune, location.city, location.region, location.country]
-            .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false)
-        )
-        .map(([id]) => id)
-    : []
+  // Búsqueda resuelta en Postgres: `search_text` (nombre + país/región/ciudad/comuna, sin tildes, con índice trigram)
+  // y email. Sin listas de ids en la URL: un término corto («a») ya no revienta el largo de URL de PostgREST.
+  const searchFilter = search
+    ? `search_text.ilike.%${normalizeLocationName(search)}%,email.ilike.%${search}%`
+    : null
 
   const verified   = searchParams.get('verified')
   const isActive   = searchParams.get('is_active')
@@ -119,10 +116,7 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
         if (verified === 'true') q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
         if (isActive === 'true') q = q.eq('is_active', true)
-        if (search) {
-          const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
-          q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%${locationOr}`)
-        }
+        if (searchFilter) q = q.or(searchFilter)
         if (category) q = q.contains('categories', [category])
         return q
       },
@@ -245,10 +239,7 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
         if (verified === 'true') q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
         if (isActive === 'true') q = q.eq('is_active', true)
-        if (search) {
-          const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
-          q = q.or(`display_name.ilike.%${search}%,email.ilike.%${search}%${locationOr}`)
-        }
+        if (searchFilter) q = q.or(searchFilter)
         if (category) q = q.contains('categories', [category])
         return q
       },
@@ -363,10 +354,7 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
     if (verified === 'true') query = query.eq('is_verified', true)
     if (isActive === 'false') query = query.eq('is_active', false)
     if (isActive === 'true') query = query.eq('is_active', true)
-    if (search) {
-      const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
-      query = query.or(`display_name.ilike.%${search}%,email.ilike.%${search}%${locationOr}`)
-    }
+    if (searchFilter) query = query.or(searchFilter)
     if (category) {
       query = query.contains('categories', [category])
     }

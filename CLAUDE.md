@@ -527,7 +527,7 @@ Una marca (owner o `member`) **solo** ve influencers con relación comprobable c
 
 - **Fuente única:** `getBrandInfluencerScope()` (`src/lib/brand-influencer-scope.ts`). Todo endpoint de marca que liste, busque, abra, invite o agregue influencers debe usarla (hoy: `brand/influencers`, `/ranking`, `/[id]`, `/communes`, `brand/campaigns/[id]/invite`, `campaigns/[id]/influencers` POST/PATCH). No recalcular el alcance con consultas propias.
 - **Exportaciones:** solo Super Admin (ver 16.16).
-- **RLS (migración `20261102120000_brand_influencer_privacy_rls.sql`, aplicada solo en DEV):** `influencers` y `campaign_influencers` se leen por relación (`can_view_influencer`, `can_view_campaign_participants`, `current_user_brand_ids`, `is_platform_super_admin`); sin escrituras para `authenticated` (solo service role). **Producción: pendiente de autorización propia.**
+- **RLS (migración `20261102130000_brand_influencer_privacy_rls.sql`, aplicada solo en DEV):** `influencers` y `campaign_influencers` se leen por relación (`can_view_influencer`, `can_view_campaign_participants`, `current_user_brand_ids`, `is_platform_super_admin`); sin escrituras para `authenticated` (solo service role). **Producción: pendiente de autorización propia.**
 - **Verificado en DEV + app local (2026-11-02):** 44 comprobaciones reales (PostgREST directo con JWT de marcas de prueba y API local) sin fallos: marca A ve solo lo suyo, marca B 0, anon 0, Super Admin 153/153, inserciones/updates directos denegados, exportación 403 para marcas.
 - **Conocido, no corregido:** buscar un término corto («a») en `/api/brand/influencers` devuelve 500 (`.or()` con cientos de `location_id` excede el largo de URL); falla cerrado, sin fuga.
 

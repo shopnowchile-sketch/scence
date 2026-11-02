@@ -48,10 +48,11 @@ const ROUTES: Record<string, () => Promise<Response>> = {
   collab: () => (collab as any).PUT(mk('http://x/api/campaigns/camp-A/collaboration-opportunity', { enabled: false }), ctx),
   duplicate: () => (dup as any).POST(mk('http://x/api/campaigns/camp-A/duplicate'), ctx),
 }
-// quién puede cada operación: report/export → report.read; collab/duplicate → campaign.manage
+// quién puede cada operación: report → report.read; export → solo Super Admin; collab/duplicate → campaign.manage
 const WHO: Record<string, { yes: string[]; no: string[] }> = {
   report:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
-  export:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
+  // Exportar datos personales de influencers: SOLO Super Admin activo (2026-11-02); ninguna marca, ni la dueña.
+  export:    { yes: ['uAdmin', 'uDual'], no: ['uExAdmin', 'uOwnerA', 'uMgrA', 'uMemA', 'uFinA', 'uMgrB', 'uNoBrand'] },
   collab:    { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
   duplicate: { yes: ['uAdmin', 'uDual', 'uOwnerA', 'uMgrA', 'uMemA'], no: ['uExAdmin', 'uFinA', 'uMgrB', 'uNoBrand'] },
 }

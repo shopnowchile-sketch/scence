@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 import { getAttendanceState, getCampaignDateKey } from '@/lib/attendance-state'
 import { isAttendanceConfirmed, isAttendanceDeliverable, isDeliverableComplete, isDeliverableOverdue } from '@/lib/deliverable-status'
@@ -19,46 +19,31 @@ const ATTENDANCE_LABEL = {
 
 // GET /api/campaigns/[id]/influencers/export?filter=confirmed|approved|all&columns=a,b,c&format=xlsx|csv
 // Descarga datos personales únicamente de participantes aceptadas (application_status = 'accepted').
-// Disponible para Admin y para la marca dueña/creadora; no para co-marcas de solo lectura.
-// Columnas: lista cerrada (lib/campaign-export-columns.ts). El RUT es solo para admin de plataforma.
+// SOLO Super Admin. Columnas: lista cerrada (lib/campaign-export-columns.ts).
 export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+  // Exportar datos personales de influencers es EXCLUSIVO del Super Admin (decisión de la fundadora, 2026-11-02):
+  // ninguna marca descarga datos personales de influencers, ni siquiera de sus propias campañas. Fuente: isPlatformAdmin
+  // (organization_members activo con rol super_admin). Sin acceso → 403 (la marca puede ver la campaña, no descargar).
+  if (!(await isPlatformAdmin(user.id, admin))) return NextResponse.json({ error: 'Solo el Super Admin puede descargar estos datos' }, { status: 403 })
+
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, name, organization_id, brand_id, created_by_brand_id')
+    .select('id, name')
     .eq('id', params.id)
     .maybeSingle()
 
   if (!campaign) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
-
-  // Administración de plataforma primero (super_admin ACTIVO); el resto, solo la marca dueña/creadora con report.read.
-  let authorized = false
-  const platformAdmin = await isPlatformAdmin(user.id, admin)
-  const access = platformAdmin ? null : await resolveBrandAccess(user.id)
-  if (platformAdmin) {
-    authorized = true
-  } else if (access) {
-    authorized = hasBrandPermission(access, 'report.read') && (
-      campaign.brand_id === access.brandId || campaign.created_by_brand_id === access.brandId
-    )
-  }
-
-  if (!authorized) return NextResponse.json({ error: 'No tienes permiso para descargar estos datos' }, { status: 403 })
 
   const url = new URL(req.url)
   const filter = parseExportFilter(url.searchParams.get('filter'))
   const format = parseExportFormat(url.searchParams.get('format'))
   const requestedColumns = url.searchParams.has('columns') ? parseExportColumns(url.searchParams.get('columns')) : DEFAULT_EXPORT_COLUMNS
   if (requestedColumns.length === 0) return NextResponse.json({ error: 'Elige al menos una columna' }, { status: 422 })
-  // El RUT es dato personal sensible: solo administración de plataforma (decisión de la fundadora, 2026-11-02).
-  const adminOnlyKeys = new Set(EXPORT_COLUMNS.filter(column => column.adminOnly).map(column => column.key))
-  if (!platformAdmin && requestedColumns.some(key => adminOnlyKeys.has(key))) {
-    return NextResponse.json({ error: 'No tienes permiso para exportar esa columna' }, { status: 403 })
-  }
   const columns = EXPORT_COLUMNS.filter(column => requestedColumns.includes(column.key))
 
   const { data: participants, error } = await admin
@@ -105,9 +90,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
   const locationDisplayById = await getOfficialLocationDisplayMap(admin)
 
-  // RUT: solo si se pidió y el usuario es admin (ya validado arriba); solo de las influencers aceptadas seleccionadas.
+  // RUT: solo si se pidió (la ruta ya es solo Super Admin); solo de las influencers aceptadas seleccionadas.
   const ruts = new Map<string, string>()
-  if (platformAdmin && requestedColumns.includes('rut') && selected.length > 0) {
+  if (requestedColumns.includes('rut') && selected.length > 0) {
     const { data: rutRows, error: rutError } = await admin
       .from('influencer_private_data')
       .select('influencer_id, rut')

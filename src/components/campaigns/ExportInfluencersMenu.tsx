@@ -8,7 +8,7 @@ import {
 } from '@/lib/campaign-export-columns'
 
 // Selector de columnas, filtro (aprobadas / confirmadas / ambas) y formato (Excel / CSV) de la descarga de influencers.
-// La autorización y la lista de columnas permitidas las decide el servidor; aquí solo se ocultan las de admin.
+// Solo se muestra al Super Admin; la autorización la decide el servidor (403 para cualquier otro).
 // La última selección se recuerda por navegador (localStorage, solo conveniencia: nunca es fuente de verdad).
 const STORAGE_KEY = 'scence.campaign-export.v1'
 
@@ -19,8 +19,8 @@ function readSaved(): { columns: string; filter: ExportFilter; format: ExportFor
   } catch { return null }
 }
 
-export function ExportInfluencersMenu({ campaignId, canExportRut }: { campaignId: string; canExportRut: boolean }) {
-  const available = EXPORT_COLUMNS.filter(column => canExportRut || !column.adminOnly)
+export function ExportInfluencersMenu({ campaignId }: { campaignId: string }) {
+  const available = EXPORT_COLUMNS
   const [open, setOpen] = useState(false)
   const [columns, setColumns] = useState<string[]>(DEFAULT_EXPORT_COLUMNS)
   const [filter, setFilter] = useState<ExportFilter>('confirmed')

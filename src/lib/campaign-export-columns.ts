@@ -1,14 +1,14 @@
 // Catálogo CERRADO de columnas de la exportación de influencers de una campaña (fuente única para API y pantalla).
-// El servidor solo acepta claves de esta lista; `adminOnly` (RUT) nunca se entrega a la marca.
+// El servidor solo acepta claves de esta lista. La exportación completa es exclusiva del Super Admin.
 // Módulo PURO (cliente y servidor).
 
 export type ExportColumnKey =
   | 'name' | 'instagram' | 'followers' | 'engagement' | 'rut' | 'phone' | 'whatsapp' | 'email'
   | 'attendance' | 'commune' | 'region' | 'country' | 'categories' | 'deliverables' | 'fee' | 'currency' | 'accepted_at'
 
-export const EXPORT_COLUMNS: ReadonlyArray<{ key: ExportColumnKey; label: string; width: number; adminOnly?: boolean }> = [
+export const EXPORT_COLUMNS: ReadonlyArray<{ key: ExportColumnKey; label: string; width: number }> = [
   { key: 'name', label: 'Nombre', width: 28 },
-  { key: 'rut', label: 'RUT', width: 16, adminOnly: true },
+  { key: 'rut', label: 'RUT', width: 16 },
   { key: 'email', label: 'Email', width: 30 },
   { key: 'phone', label: 'Teléfono', width: 18 },
   { key: 'whatsapp', label: 'WhatsApp', width: 18 },

@@ -3559,8 +3559,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   />
                 </div>
               )}
-              {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-                <ExportInfluencersMenu campaignId={id} canExportRut={!isBrandPortal} />
+              {confirmedInfluencers.length > 0 && !isBrandPortal && (
+                <ExportInfluencersMenu campaignId={id} />
               )}
               {c.status !== 'completed' && confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
                 <>

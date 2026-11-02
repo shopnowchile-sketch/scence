@@ -130,21 +130,18 @@ test('export: selector de columnas (asistencia, entregables con lógica única, 
   assert.equal(lines[2], 'Beto Sin Confirmar,Pendiente,,,Sin entregables')
 })
 
-test('export: RUT solo para admin de plataforma y solo de aceptadas; la marca (owner o member) recibe 403', async () => {
+test('export: RUT solo de aceptadas, y SOLO el Super Admin descarga: ninguna marca (owner, member u otra) ni sin sesión', async () => {
   const lines = await csv('uAdmin', 'filter=all&columns=name,rut')
   assert.deepEqual(lines, ['Nombre,RUT', 'Ana Confirmada,12.345.678-5', 'Beto Sin Confirmar,'])
   assert.ok(!lines.join('\n').includes('11.111.111'), 'el RUT de una influencer rechazada nunca sale')
-  for (const brandUser of ['uOwnerA', 'uMemA']) {
-    const res = await get(brandUser, 'filter=all&columns=name,rut')
-    assert.equal(res.status, 403, brandUser)
-    assert.doesNotMatch(await res.text(), /12\.345\.678/)
+  for (const brandUser of ['uOwnerA', 'uMemA', 'uOwnerB']) {
+    for (const query of ['', 'columns=name', 'filter=all&columns=name,phone,email', 'filter=all&columns=name,rut', 'format=csv']) {
+      const res = await get(brandUser, query)
+      assert.equal(res.status, 403, `${brandUser} ?${query}`)
+      const body = await res.text()
+      assert.doesNotMatch(body, /ana@test|beto@test|\+56 9|12\.345\.678|Ana Confirmada/)
+    }
   }
-})
-
-test('export: la marca dueña sí descarga las columnas permitidas; otra marca y anónimo no', async () => {
-  const own = await get('uOwnerA', 'filter=all&columns=name,phone,attendance&format=csv')
-  assert.equal(own.status, 200)
-  assert.equal((await get('uOwnerB', 'columns=name')).status, 403)
   assert.equal((await get(null, 'columns=name')).status, 401)
 })
 

@@ -82,3 +82,10 @@ test('nunca aparecen influencers ajenas (otra marca, roster ajeno, catálogo glo
   const ids = (await call('member')).body.data.map((row: any) => row.id)
   for (const foreign of ['foreign', 'foreign-roster', 'global']) assert.equal(ids.includes(foreign), false)
 })
+test('la búsqueda filtra dentro del alcance y nunca lo amplía (término corto incluido)', async () => {
+  assert.deepEqual((await call('member', fixture(), '?search=acc')).body.data.map((row: any) => row.id), ['accepted'])
+  const short = await call('member', fixture(), '?search=a')
+  assert.equal(short.status, 200)
+  for (const foreign of ['foreign', 'foreign-roster', 'global']) assert.equal(short.body.data.some((row: any) => row.id === foreign), false)
+  assert.equal((await call('member', fixture(), '?search=zzz')).body.data.length, 0)
+})

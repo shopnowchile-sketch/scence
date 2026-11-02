@@ -530,7 +530,7 @@ Una marca (owner o `member`) **solo** ve influencers con relación comprobable c
 - **Exportaciones:** solo Super Admin (ver 16.16).
 - **RLS (migración `20261102130000_brand_influencer_privacy_rls.sql`, aplicada solo en DEV):** `influencers` y `campaign_influencers` se leen por relación (`can_view_influencer`, `can_view_campaign_participants`, `current_user_brand_ids`, `is_platform_super_admin`); sin escrituras para `authenticated` (solo service role). **Producción: pendiente de autorización propia.**
 - **Verificado en DEV + app local (2026-11-02):** 44 comprobaciones reales (PostgREST directo con JWT de marcas de prueba y API local) sin fallos: marca A ve solo lo suyo, marca B 0, anon 0, Super Admin 153/153, inserciones/updates directos denegados, exportación 403 para marcas.
-- **Conocido, no corregido:** buscar un término corto («a») en `/api/brand/influencers` devuelve 500 (`.or()` con cientos de `location_id` excede el largo de URL); falla cerrado, sin fuga.
+- **Búsqueda de marca:** nombre/ubicación se resuelven en memoria sobre el alcance (antes un término corto como «a» daba 500 por URL demasiado larga en `.or()`); probado en DEV. Pendiente de verificar: `/api/influencers` (admin) usa el mismo patrón `location_id.in.(...)`.
 
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 

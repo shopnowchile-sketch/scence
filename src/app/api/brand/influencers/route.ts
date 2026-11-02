@@ -85,7 +85,27 @@ export async function GET(req: NextRequest) {
   // Fuente única: getBrandInfluencerScope. Nunca datos de otras marcas.
   const scope_ = await getBrandInfluencerScope(admin, brand.id)
   if (scope_.error) return NextResponse.json({ error: scope_.error }, { status: 500 })
-  const restrictedInfluencerIds: string[] = Array.from(scope_.influencerIds)
+  let restrictedInfluencerIds: string[] = Array.from(scope_.influencerIds)
+
+  // Búsqueda por nombre o ubicación SOBRE el alcance de la marca, resuelta en memoria: meter cientos de location_id en
+  // .or() superaba el largo de URL de PostgREST (500 con términos cortos como «a»). Nunca amplía el alcance.
+  if (search && restrictedInfluencerIds.length > 0) {
+    const needle = normalizeLocationName(search)
+    const matched: string[] = []
+    for (let i = 0; i < restrictedInfluencerIds.length; i += 100) {
+      const { data: candidates, error: candidatesError } = await admin
+        .from('influencers')
+        .select('id, display_name, location_id')
+        .in('id', restrictedInfluencerIds.slice(i, i + 100))
+      if (candidatesError) return NextResponse.json({ error: candidatesError.message }, { status: 500 })
+      for (const row of candidates ?? []) {
+        const location = row.location_id ? locationDisplayById.get(row.location_id) : undefined
+        const haystack = [row.display_name, location?.country, location?.region, location?.city, location?.commune]
+        if (haystack.some(value => value && normalizeLocationName(String(value)).includes(needle))) matched.push(row.id)
+      }
+    }
+    restrictedInfluencerIds = matched
+  }
 
   if (restrictedInfluencerIds.length === 0) {
     if (summaryOnly) {
@@ -114,15 +134,6 @@ export async function GET(req: NextRequest) {
         if (verified === 'true') q = q.eq('is_verified', true)
         if (isActive === 'false') q = q.eq('is_active', false)
         if (isActive === 'true') q = q.eq('is_active', true)
-        if (search) {
-          const locationSearchIds = Array.from(locationDisplayById.entries())
-            .filter(([, location]) => [location.country, location.region, location.city, location.commune]
-              .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false))
-            .map(([id]) => id)
-          q = locationSearchIds.length
-            ? q.or(`display_name.ilike.%${search}%,location_id.in.(${locationSearchIds.join(',')})`)
-            : q.ilike('display_name', `%${search}%`)
-        }
         if (category) q = q.contains('categories', [category])
         return q
       },
@@ -198,16 +209,6 @@ export async function GET(req: NextRequest) {
   if (verified === 'true') query = query.eq('is_verified', true)
   if (isActive === 'false') query = query.eq('is_active', false)
   if (isActive === 'true') query = query.eq('is_active', true)
-  if (search) {
-    const locationSearchIds = Array.from(locationDisplayById.entries())
-      .filter(([, location]) => [location.country, location.region, location.city, location.commune]
-        .some(value => value ? normalizeLocationName(value).includes(normalizeLocationName(search)) : false))
-      .map(([id]) => id)
-    const locationOr = locationSearchIds.length ? `,location_id.in.(${locationSearchIds.join(',')})` : ''
-    query = locationSearchIds.length
-      ? query.or(`display_name.ilike.%${search}%${locationOr}`)
-      : query.ilike('display_name', `%${search}%`)
-  }
   if (category) {
     query = query.contains('categories', [category])
   }

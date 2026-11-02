@@ -11,6 +11,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { register } from 'node:module'
 
+// El build de Vercel en producción corre `npm test` (prebuild) con VERCEL_ENV=production y la clave real de Resend:
+// sin esto, firmar un NDA ficticio enviaba correos reales. Estas pruebas NUNCA deben tener efectos externos.
+process.env.VERCEL_ENV = 'test'
 register('./support/ts-resolve.mjs', import.meta.url)
 register('./support/route-harness.mjs', import.meta.url)
 

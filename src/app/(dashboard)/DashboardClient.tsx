@@ -1,5 +1,6 @@
 'use client'
 
+import { KpiCard, KpiGrid } from '@/components/ui/KpiCard'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -268,56 +269,6 @@ function fetchDashboard() {
     dashboardRequest = { expiresAt: Date.now() + 30_000, promise }
   }
   return dashboardRequest.promise
-}
-
-function KpiCard({
-  icon,
-  value,
-  title,
-  subtitle,
-  tone,
-  href,
-}: {
-  icon: React.ReactNode
-  value: string
-  title: string
-  subtitle: string
-  tone: 'purple' | 'blue' | 'green' | 'red' | 'yellow' | 'gray'
-  href?: string
-}) {
-  const tones = {
-    purple: 'bg-purple-100 text-purple-600',
-    blue: 'bg-blue-100 text-blue-600',
-    green: 'bg-emerald-100 text-emerald-600',
-    red: 'bg-rose-100 text-rose-600',
-    yellow: 'bg-amber-100 text-amber-600',
-    gray: 'bg-gray-100 text-gray-600',
-  }
-
-  const content = (
-    <>
-      <div className={`mb-5 flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone]}`}>
-        {icon}
-      </div>
-      <div className="text-3xl font-black tracking-tight text-gray-950">{value}</div>
-      <div className="mt-1 text-sm font-medium text-gray-500">{title}</div>
-      <div className="mt-1 text-xs text-gray-300">{subtitle}</div>
-    </>
-  )
-
-  if (href) {
-    return (
-      <Link href={href} className="block rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hover:border-purple-300 hover:shadow-md transition-all">
-        {content}
-      </Link>
-    )
-  }
-
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      {content}
-    </div>
-  )
 }
 
 function PortalAccessCard({
@@ -702,7 +653,7 @@ export function DashboardClient() {
 
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Operación</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <KpiGrid>
             <KpiCard
               icon={<CalendarDays className="h-5 w-5" />}
               value={String(computed.campaignCount)}
@@ -735,23 +686,23 @@ export function DashboardClient() {
               tone="gray"
               href="/admin-brands"
             />
-          </div>
+          </KpiGrid>
         </section>
 
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Pendiente de revisión</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <KpiGrid>
             <KpiCard icon={<Building2 className="h-5 w-5" />} value={String(computed.pendingBrandsCount)} title="Marcas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-brands?status=pending_approval" />
             <KpiCard icon={<CalendarDays className="h-5 w-5" />} value={String(computed.pendingCampaignsCount)} title="Campañas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-campaigns?status=pending_approval" />
             <KpiCard icon={<UserCheck className="h-5 w-5" />} value={String(computed.pendingDeliverablesCount)} title="Contenido por revisar" subtitle="entregables enviados" tone="purple" href="/admin-campaigns" />
-          </div>
+          </KpiGrid>
         </section>
 
         {/* Plan Pro: funnel real. El KPI cuenta influencers únicas, no filas de
             suscripción; abajo se separan pagadas, manuales, intentos y cobros. */}
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">Plan Pro</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <KpiGrid>
             <KpiCard
               icon={<Star className="h-5 w-5" />}
               value={String(computed.proPlan.active)}
@@ -760,7 +711,7 @@ export function DashboardClient() {
               tone="green"
               href="/admin-influencers?plan=pro"
             />
-            <button type="button" onClick={() => setShowProAttempts(v => !v)} className="text-left">
+            <button type="button" onClick={() => setShowProAttempts(v => !v)} className="block h-full w-full text-left">
               <KpiCard
                 icon={<AlertTriangle className="h-5 w-5" />}
                 value={String(computed.proPlan.attempts)}
@@ -784,7 +735,7 @@ export function DashboardClient() {
               tone="blue"
               href="/admin-influencers"
             />
-          </div>
+          </KpiGrid>
 
           {showProAttempts && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4">

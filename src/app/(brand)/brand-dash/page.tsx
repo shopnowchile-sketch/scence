@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { KpiCard, KpiGrid } from '@/components/ui/KpiCard'
 import Link from 'next/link'
 import {
   Target, CheckCircle2, Clock, AlertCircle,
@@ -151,21 +152,11 @@ export default function BrandDashboard() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: 'Campañas activas', value: activeCampaigns.length, icon: Target, color: 'text-violet-600', bg: 'bg-violet-50' },
-          { label: 'Influencers',      value: totalInfluencers,        icon: Users,  color: 'text-blue-600',   bg: 'bg-blue-50' },
-          { label: 'Para revisar',     value: totalPendingItems, icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
-        ].map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="bg-white rounded-2xl border border-gray-100 p-5">
-            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center mb-3', bg)}>
-              <Icon className={cn('h-5 w-5', color)} />
-            </div>
-            <div className="text-2xl font-bold text-gray-900">{value}</div>
-            <div className="text-sm text-gray-500 mt-0.5">{label}</div>
-          </div>
-        ))}
-      </div>
+      <KpiGrid>
+        <KpiCard icon={<Target />} value={String(activeCampaigns.length)} title="Campañas activas" tone="purple" />
+        <KpiCard icon={<Users />} value={String(totalInfluencers)} title="Influencers" tone="blue" />
+        <KpiCard icon={<AlertCircle />} value={String(totalPendingItems)} title="Para revisar" tone="yellow" />
+      </KpiGrid>
 
       {/* Contenido para revisar */}
       {pendingDeliverables.length > 0 && (

@@ -4,6 +4,7 @@ import { buildRankingRows, sortRankingRows, type RankingSortBy } from '@/lib/inf
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getOfficialInfluencerLocations } from '@/lib/influencer-location'
+import { getBrandInfluencerScope } from '@/lib/brand-influencer-scope'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -46,28 +47,11 @@ export async function GET(req: NextRequest) {
   // real tiene 1452 influencers y el cap recortaba la respuesta, no la query.
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') ?? '200', 10), 1), 5000)
 
-  const { data: primaryCampaigns, error: primaryErr } = await admin
-    .from('campaigns')
-    .select('id')
-    .eq('brand_id', brand.id)
-
-  if (primaryErr) {
-    return NextResponse.json({ error: primaryErr.message }, { status: 500 })
-  }
-
-  const { data: collaboratorRows, error: cbErr } = await admin
-    .from('campaign_brands')
-    .select('campaign_id')
-    .eq('brand_id', brand.id)
-
-  if (cbErr) {
-    return NextResponse.json({ error: cbErr.message }, { status: 500 })
-  }
-
-  const campaignIds = Array.from(new Set([
-    ...(primaryCampaigns ?? []).map(c => c.id),
-    ...(collaboratorRows ?? []).map(r => r.campaign_id),
-  ].filter(Boolean)))
+  // Visibilidad: toda influencer con relación comprobable con la marca (cualquier estado de postulación, campañas
+  // donde colabora y roster propio). Las métricas del ranking siguen contando solo participaciones aceptadas.
+  const scope = await getBrandInfluencerScope(admin, brand.id)
+  if (scope.error) return NextResponse.json({ error: scope.error }, { status: 500 })
+  const campaignIds = scope.campaignIds
 
   let campaignInfluencers: Array<{ id?: string | null; influencer_id?: string | null; status?: string | null; campaign_name?: string | null }> = []
 
@@ -94,9 +78,7 @@ export async function GET(req: NextRequest) {
     }))
   }
 
-  const influencerIds = Array.from(new Set(
-    campaignInfluencers.map(ci => ci.influencer_id).filter(Boolean)
-  )) as string[]
+  const influencerIds = Array.from(scope.influencerIds)
 
   if (influencerIds.length === 0) {
     return NextResponse.json({ data: [], total: 0, sort_by: sortBy, sort_dir: sortDir })

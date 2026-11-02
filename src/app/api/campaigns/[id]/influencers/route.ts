@@ -7,6 +7,7 @@ import { buildManualAttendanceUpdate, type ManualAttendanceAction } from '@/lib/
 import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { ensureEventAttendanceDeliverable } from '@/lib/campaign-applications'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
+import { getBrandInfluencerScope } from '@/lib/brand-influencer-scope'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -83,6 +84,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+
+  // Sin catálogo global: una marca solo incorpora influencers con relación comprobable con ella. Super Admin, sin límite.
+  if (!auth.isPlatformAdmin && auth.brandAccess) {
+    const scope = await getBrandInfluencerScope(admin, auth.brandAccess.brandId)
+    if (scope.error) return NextResponse.json({ error: scope.error }, { status: 500 })
+    if (!scope.influencerIds.has(influencer_id as string)) {
+      return NextResponse.json({ error: 'Influencer no encontrada' }, { status: 404 })
+    }
+  }
 
   const { data: targetInfluencer } = await admin.from('influencers').select('is_active').eq('id', influencer_id as string).maybeSingle()
   if (!targetInfluencer) return NextResponse.json({ error: 'Influencer no encontrada' }, { status: 404 })
@@ -426,6 +436,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
+
+  // Sin catálogo global: la marca solo opera sobre influencers con relación comprobable con ella.
+  if (!auth.isPlatformAdmin && auth.brandAccess && typeof influencer_id === 'string') {
+    const scope = await getBrandInfluencerScope(admin, auth.brandAccess.brandId)
+    if (scope.error) return NextResponse.json({ error: scope.error }, { status: 500 })
+    if (!scope.influencerIds.has(influencer_id)) return NextResponse.json({ error: 'Influencer no encontrada' }, { status: 404 })
+  }
 
   // No se permite incorporar una influencer inactiva a una campaña, incluso si el admin manipula directamente el endpoint.
   if (typeof influencer_id === 'string') {

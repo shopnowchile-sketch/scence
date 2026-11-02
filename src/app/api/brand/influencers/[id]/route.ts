@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isInfluencerPro } from '@/lib/influencer-pro'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getOfficialInfluencerLocations } from '@/lib/influencer-location'
+import { getBrandInfluencerScope } from '@/lib/brand-influencer-scope'
 
 type Params = { params: { id: string } }
 
@@ -41,36 +42,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
 
-  // Campañas donde la marca es principal o colaboradora
-  const { data: primaryCampaigns, error: primaryErr } = await admin
-    .from('campaigns')
-    .select('id')
-    .or(`brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`)
-
-  if (primaryErr) {
-    console.error('[GET /api/brand/influencers/[id]] campaigns:', primaryErr)
-    return NextResponse.json({ error: primaryErr.message }, { status: 500 })
+  // Relación comprobable con la marca (misma fuente que el listado y el ranking).
+  const scope = await getBrandInfluencerScope(admin, brand.id)
+  if (scope.error) {
+    console.error('[GET /api/brand/influencers/[id]] scope:', scope.error)
+    return NextResponse.json({ error: scope.error }, { status: 500 })
   }
-
-  const campaignIds = Array.from(new Set((primaryCampaigns ?? []).map(c => c.id).filter(Boolean)))
-
-  let campaignInfluencerIds: string[] = []
-  if (campaignIds.length > 0) {
-    const { data: ciRows, error: ciErr } = await admin
-      .from('campaign_influencers')
-      .select('influencer_id')
-      .in('campaign_id', campaignIds)
-      .eq('application_status', 'accepted')
-
-    if (ciErr) {
-      console.error('[GET /api/brand/influencers/[id]] campaign_influencers:', ciErr)
-      return NextResponse.json({ error: ciErr.message }, { status: 500 })
-    }
-
-    campaignInfluencerIds = (ciRows ?? []).map(r => r.influencer_id).filter(Boolean)
-  }
-
-  const allowedIds = new Set(campaignInfluencerIds)
+  const allowedIds = scope.influencerIds
 
   if (!allowedIds.has(params.id)) {
     // Mismo mensaje que "no encontrado" real — no confirmar existencia del ID

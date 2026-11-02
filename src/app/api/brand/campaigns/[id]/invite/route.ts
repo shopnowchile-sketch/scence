@@ -4,6 +4,7 @@ import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
 import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
+import { getBrandInfluencerScope } from '@/lib/brand-influencer-scope'
 import type { DeliverableTemplateInput } from '@/lib/deliverable-templates'
 
 type Params = { params: { id: string } }
@@ -115,17 +116,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Influencer no encontrado o inactivo' }, { status: 404 })
   }
 
-  // limit(1): una influencer puede estar relacionada con varias campañas de la
-  // marca; maybeSingle() sin limit fallaba con ≥2 filas y devolvía 403.
-  const { data: relatedRow, error: relatedErr } = campaignIds.length > 0
-    ? await admin.from('campaign_influencers').select('id')
-        .in('campaign_id', campaignIds).eq('influencer_id', influencer_id).limit(1).maybeSingle()
-    : { data: null, error: null }
-  if (relatedErr) {
-    console.error('[POST /api/brand-campaigns/[id]/invite] related lookup', relatedErr)
-    return NextResponse.json({ error: relatedErr.message }, { status: 500 })
+  // Misma fuente que listado/ranking: relación por campañas (cualquier estado, incluidas colaboradoras) o roster propio.
+  const scope = await getBrandInfluencerScope(admin, brand.id)
+  if (scope.error) {
+    console.error('[POST /api/brand-campaigns/[id]/invite] scope', scope.error)
+    return NextResponse.json({ error: scope.error }, { status: 500 })
   }
-  if (!relatedRow) {
+  if (!scope.influencerIds.has(influencer_id)) {
     return NextResponse.json({
       error: 'Solo puedes invitar influencers relacionadas con tus campañas.',
       code: PLAN_ERROR_CODES.INFLUENCER_BASE,

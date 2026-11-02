@@ -6,9 +6,10 @@ import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
 import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
 import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
+import { getBrandInfluencerScope } from '@/lib/brand-influencer-scope'
 
 // GET /api/brand/influencers
-// Marca ve influencers relacionadas a SUS campañas/asignaciones.
+// Marca ve solo influencers con relación comprobable (ver brand-influencer-scope.ts).
 // Misma shape que /api/influencers para reutilizar InfluencersClient.
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -79,61 +80,24 @@ export async function GET(req: NextRequest) {
   const isLocationSort = rawSort === 'country' || rawSort === 'city' || rawSort === 'commune'
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
-  // La marca nunca ve el catálogo global: solo creadoras con las que trabajó (aceptadas), que postularon a sus
-  // campañas (pendientes) o que su marca agregó / SCENCE le asignó (brand_influencers). Nunca datos de otras marcas.
-  let restrictedInfluencerIds: string[] | null = null
+  // La marca nunca ve el catálogo global: solo influencers con relación comprobable con ella (postularon, fueron
+  // invitadas o participaron en sus campañas —cualquier estado—, campañas donde colabora, o su roster).
+  // Fuente única: getBrandInfluencerScope. Nunca datos de otras marcas.
+  const scope_ = await getBrandInfluencerScope(admin, brand.id)
+  if (scope_.error) return NextResponse.json({ error: scope_.error }, { status: 500 })
+  const restrictedInfluencerIds: string[] = Array.from(scope_.influencerIds)
 
-  {
-    const { data: primaryCampaigns, error: primaryError } = await admin
-      .from('campaigns')
-      .select('id')
-      .or(`brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`)
-
-    if (primaryError) return NextResponse.json({ error: primaryError.message }, { status: 500 })
-
-    const campaignIds = Array.from(new Set((primaryCampaigns ?? []).map(row => row.id).filter(Boolean)))
-
-    let acceptedInfluencerIds: string[] = []
-
-    if (campaignIds.length > 0) {
-      const { data: acceptedRows, error: acceptedError } = await admin
-        .from('campaign_influencers')
-        .select('influencer_id')
-        .in('campaign_id', campaignIds)
-        .in('application_status', ['accepted', 'pending'])
-
-      if (acceptedError) {
-        return NextResponse.json({ error: acceptedError.message }, { status: 500 })
-      }
-
-      acceptedInfluencerIds = (acceptedRows ?? [])
-        .map(row => row.influencer_id)
-        .filter(Boolean)
+  if (restrictedInfluencerIds.length === 0) {
+    if (summaryOnly) {
+      return NextResponse.json({ summary: { total: 0, followers: 0, avg_engagement: 0, verified: 0 } })
     }
-
-    const { data: ownRosterRows, error: ownRosterError } = await admin
-      .from('brand_influencers')
-      .select('influencer_id')
-      .eq('brand_id', brand.id)
-    if (ownRosterError) return NextResponse.json({ error: ownRosterError.message }, { status: 500 })
-
-    restrictedInfluencerIds = Array.from(new Set([
-      ...acceptedInfluencerIds,
-      ...(ownRosterRows ?? []).map(row => row.influencer_id).filter(Boolean),
-    ]))
-
-    if (restrictedInfluencerIds.length === 0) {
-      if (summaryOnly) {
-        return NextResponse.json({ summary: { total: 0, followers: 0, avg_engagement: 0, verified: 0 } })
-      }
-      return NextResponse.json({
-        data: [],
-        total: 0,
-        page,
-        limit,
-        full_access: false,
-      })
-    }
+    return NextResponse.json({
+      data: [],
+      total: 0,
+      page,
+      limit,
+      full_access: false,
+    })
   }
 
   if (summaryOnly) {
@@ -143,7 +107,7 @@ export async function GET(req: NextRequest) {
           id, display_name, location_id, categories, is_verified,
           social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
         `).range(from, to)
-        if (restrictedInfluencerIds) q = q.in('id', restrictedInfluencerIds)
+        q = q.in('id', restrictedInfluencerIds)
         if (requestedLocationIds.length === 0 && (country || communeList.length)) q = q.in('location_id', ['00000000-0000-0000-0000-000000000000'])
         else if (requestedLocationIds.length === 1) q = q.eq('location_id', requestedLocationIds[0])
         else if (requestedLocationIds.length > 1) q = q.in('location_id', requestedLocationIds)
@@ -224,9 +188,7 @@ export async function GET(req: NextRequest) {
       )
     `, { count: 'exact' })
 
-  if (restrictedInfluencerIds) {
-    query = query.in('id', restrictedInfluencerIds)
-  }
+  query = query.in('id', restrictedInfluencerIds)
 
   if (!isLocationSort) query = query.order(sortBy, { ascending: sortDir }).range((page - 1) * limit, page * limit - 1)
 

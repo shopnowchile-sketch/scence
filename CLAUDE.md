@@ -521,6 +521,16 @@ Causa raíz del NDA de THE COLOR RUN: el RUT personal y el cargo se pedían en d
 - **WhatsApp:** `PhoneLink` (`src/components/ui/PhoneLink.tsx`) sobre `whatsappUrl()`; usarlo en todo teléfono visible, sin `tel:` sueltos. No cambia quién ve el teléfono.
 - Pruebas: `tests/influencer-rut-export-whatsapp.test.ts`. Migración `20261102120000_influencer_private_data.sql`: aplicada en DEV; **pendiente en producción**.
 
+### 16.17 Privacidad de influencers hacia marcas (2026-11-02)
+
+Una marca (owner o `member`) **solo** ve influencers con relación comprobable con ella: postularon, fueron invitadas o participaron en sus campañas (cualquier estado, incluida rechazada), están en campañas donde colabora (`campaign_brands`) o en su roster (`brand_influencers`). **No existe catálogo global para marcas.** `brand_collaborators` no concede acceso. Super Admin conserva acceso global.
+
+- **Fuente única:** `getBrandInfluencerScope()` (`src/lib/brand-influencer-scope.ts`). Todo endpoint de marca que liste, busque, abra, invite o agregue influencers debe usarla (hoy: `brand/influencers`, `/ranking`, `/[id]`, `/communes`, `brand/campaigns/[id]/invite`, `campaigns/[id]/influencers` POST/PATCH). No recalcular el alcance con consultas propias.
+- **Exportaciones:** solo Super Admin (ver 16.16).
+- **RLS (migración `20261102120000_brand_influencer_privacy_rls.sql`, aplicada solo en DEV):** `influencers` y `campaign_influencers` se leen por relación (`can_view_influencer`, `can_view_campaign_participants`, `current_user_brand_ids`, `is_platform_super_admin`); sin escrituras para `authenticated` (solo service role). **Producción: pendiente de autorización propia.**
+- **Verificado en DEV + app local (2026-11-02):** 44 comprobaciones reales (PostgREST directo con JWT de marcas de prueba y API local) sin fallos: marca A ve solo lo suyo, marca B 0, anon 0, Super Admin 153/153, inserciones/updates directos denegados, exportación 403 para marcas.
+- **Conocido, no corregido:** buscar un término corto («a») en `/api/brand/influencers` devuelve 500 (`.or()` con cientos de `location_id` excede el largo de URL); falla cerrado, sin fuga.
+
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 
 La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.

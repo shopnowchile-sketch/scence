@@ -501,6 +501,18 @@ Una marca tiene **dos** roles: `owner` (`organization_members.is_owner`) y `memb
 - `campaign_deliverables.progress` sigue al status por trigger (`approved/published/completed` → 100; el trigger escucha también `attendance_response`, migración `20261029140000`, aplicada solo en DEV hasta validar); ningún KPI lo lee.
 - **Plan Pro (decidido 2026-10-29):** `influencer-pro-commitment.ts` (`isCommitmentSatisfied`) no cuenta como obligación pendiente una asistencia declinada o vencida sin respuesta; el contenido sin entregar o en revisión sigue bloqueando cancelar/desactivar. Probado en `tests/influencer-pro-commitment-attendance.test.ts`.
 
+### 16.15 Perfil legal de marca y NDA: un flujo, una fuente por dato (2026-11-02)
+
+Causa raíz del NDA de THE COLOR RUN: el RUT personal y el cargo se pedían en dos lugares (modal del NDA y Mi perfil) y la firma validaba contra una tercera fuente, sin decir qué faltaba. Decisión de la fundadora: **un solo flujo y una sola fuente por dato.**
+
+- **Captura y edición: solo `/brand-settings/organization` (Perfil legal).** Empresa (RUT, domicilio legal) y representante legal (nombre, RUT personal, cargo). El bloque del representante lo ve y lo edita solo el owner (que es el representante legal). **Mi perfil y el modal del NDA no piden esos datos.**
+- **Fuentes de verdad:** RUT empresa = `brands.rut`; domicilio = `brands.address_street/city/region/country` (+ número); razón social = `brands.name`; representante = `profiles.full_name`, `profiles.signer_rut`, `profiles.signer_role` **del owner que firma**. `organizations.tax_id` y `brands.metadata.rut/legal_name` **no** son fuentes de nada de esto: no leerlos ni escribirlos.
+- **Una sola definición de reglas:** `src/lib/brand-legal-profile.ts` (qué se exige, etiquetas, domicilio, copia al firmar). No volver a escribir listas de obligatorios en rutas ni componentes; importar el helper.
+- **NDA:** `PATCH /api/brand/documents/[id]` firma solo con los datos registrados; el cuerpo trae únicamente `accepted` y cualquier `signer_*` se ignora. Solo el owner firma (`legal_document.manage`, sin cambios). Si falta algo responde 422 `LEGAL_PROFILE_INCOMPLETE` con `missing[]` (clave, etiqueta, sección) y `fix_url`; la pantalla lista lo que falta y enlaza a Organización. Nunca se firma automáticamente.
+- **Copia histórica al firmar:** `content_snapshot` renderizado, `signer_*` del documento y `metadata.signed_legal_data` (empresa y representante). Un NDA firmado no se modifica ni se re-firma; los NDA firmados antes de esta fecha conservan su `content_snapshot` y `signer_*` (no tienen `signed_legal_data`, y no se rellenan).
+- **Facturación/colaboración:** `collaboration-opportunities` exige `brands.rut` (antes `metadata.rut/legal_name`, que ningún formulario escribía).
+- Pruebas: `tests/brand-legal-profile.test.ts` (rutas reales sobre base en memoria + guardias estáticas contra reglas duplicadas).
+
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 
 La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -15,8 +14,6 @@ const schema = z.object({
   phone:        z.string().optional(),
   timezone:     z.string().optional(),
   locale:       z.string().optional(),
-  signer_rut:   z.string().optional(),
-  signer_role:  z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -30,8 +27,6 @@ export default function ProfileSettingsPage() {
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
   const [email, setEmail]       = useState('')
-  const pathname = usePathname()
-  const isBrandPortal = pathname.startsWith('/brand-settings')
   const { locale: activeLocale, setLocale } = useScenceLocale()
 
   const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<FormValues>({
@@ -49,8 +44,6 @@ export default function ProfileSettingsPage() {
             phone:        data.phone        ?? '',
             timezone:     data.timezone     ?? 'America/Mexico_City',
             locale:       data.locale === 'en' || data.locale === 'es' ? data.locale : activeLocale,
-            signer_rut:   data.signer_rut   ?? '',
-            signer_role:  data.signer_role  ?? '',
           })
           setEmail(data.email ?? '')
         }
@@ -122,11 +115,6 @@ export default function ProfileSettingsPage() {
             <input {...register('phone')} className="input-base w-full" placeholder="+52 55 0000 0000" type="tel" />
           </div>
 
-          {isBrandPortal && <>
-            <div className="col-span-2 pt-3 mt-1 border-t border-gray-100"><p className="text-sm font-semibold text-gray-900">Datos del representante para documentos</p><p className="text-xs text-gray-400 mt-1">Se usarán para completar y firmar los NDA de tu Marca.</p></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">RUT personal</label><input {...register('signer_rut')} className="input-base w-full" placeholder="12.345.678-9" /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Cargo / representación</label><input {...register('signer_role')} className="input-base w-full" placeholder="Representante legal" /></div>
-          </>}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Zona horaria</label>

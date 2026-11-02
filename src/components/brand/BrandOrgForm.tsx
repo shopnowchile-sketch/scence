@@ -8,11 +8,12 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle, ImagePlus, Link2 } from 'lucide-react'
+import { Building2, Save, Loader2, Globe, Instagram, Mail, Phone, User, AlertCircle, ImagePlus, Link2, Scale } from 'lucide-react'
 import { toast } from 'sonner'
 import { COUNTRY_OPTIONS } from '@/lib/utils'
 import { GooglePlacesAddress } from '@/components/brand/GooglePlacesAddress'
 import { COMUNAS_CHILE } from '@/lib/communes-chile'
+import { missingCompanyLegalFields, missingRepresentativeFields } from '@/lib/brand-legal-profile'
 
 interface BrandProfile {
   name:          string | null
@@ -33,6 +34,10 @@ interface BrandProfile {
   address_lat: number | null
   address_lng: number | null
 }
+
+// Representante legal = owner. Fuente de verdad: profiles.full_name / signer_rut / signer_role.
+interface Representative { full_name: string; signer_rut: string; signer_role: string }
+const EMPTY_REPRESENTATIVE: Representative = { full_name: '', signer_rut: '', signer_role: '' }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -63,6 +68,8 @@ export function BrandOrgForm() {
   const [addressSearch, setAddressSearch] = useState('')
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [isOwner, setIsOwner] = useState(false)
+  const [representative, setRepresentative] = useState<Representative>(EMPTY_REPRESENTATIVE)
 
   const set = (k: keyof BrandProfile) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
@@ -73,6 +80,10 @@ export function BrandOrgForm() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setOrganizationId(json.data.organization_id ?? '')
+      setIsOwner(json.data.is_owner === true)
+      setRepresentative(json.data.representative ? {
+        full_name: json.data.representative.full_name ?? '', signer_rut: json.data.representative.signer_rut ?? '', signer_role: json.data.representative.signer_role ?? '',
+      } : EMPTY_REPRESENTATIVE)
       setForm({
         name:          json.data.name          ?? '',
         logo_url:      json.data.logo_url      ?? '',
@@ -117,8 +128,9 @@ export function BrandOrgForm() {
   }
 
   async function handleSave() {
-    if (!form.rut?.trim() || !form.address_street?.trim() || !form.address_city?.trim() || !form.address_region?.trim() || !form.address_country?.trim()) {
-      toast.error('Completa RUT y todos los datos de dirección legal')
+    const missingCompany = missingCompanyLegalFields(form)
+    if (missingCompany.length > 0) {
+      toast.error(`Completa: ${missingCompany.map(field => field.label).join(', ')}`)
       return
     }
     setSaving(true)
@@ -126,7 +138,7 @@ export function BrandOrgForm() {
       const res  = await fetch('/api/brand/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(isOwner ? { ...form, representative } : form),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
@@ -252,6 +264,33 @@ export function BrandOrgForm() {
           </Field>
         </div>
       </div>
+
+      {/* Representante legal (owner): único lugar donde se registra; el NDA lo lee desde aquí */}
+      {isOwner && (
+        <div id="representante-legal" className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+          <SectionTitle icon={Scale} label="Representante legal" />
+          <p className="text-xs text-gray-400">El owner es el representante legal de la empresa. Estos datos se usan para firmar el NDA y otros documentos legales; se registran solo aquí.</p>
+          {missingRepresentativeFields(representative).length > 0 && (
+            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>Para firmar el NDA falta: {missingRepresentativeFields(representative).map(field => field.label).join(', ')}.</span>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Field label="Nombre completo *">
+                <input value={representative.full_name} onChange={e => setRepresentative(r => ({ ...r, full_name: e.target.value }))} placeholder="Ana García Pérez" className="input-base w-full" />
+              </Field>
+            </div>
+            <Field label="RUT personal *">
+              <input value={representative.signer_rut} onChange={e => setRepresentative(r => ({ ...r, signer_rut: e.target.value }))} placeholder="12.345.678-9" className="input-base w-full" />
+            </Field>
+            <Field label="Cargo *">
+              <input value={representative.signer_role} onChange={e => setRepresentative(r => ({ ...r, signer_role: e.target.value }))} placeholder="Representante legal" className="input-base w-full" />
+            </Field>
+          </div>
+        </div>
+      )}
 
       {/* Contacto */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">

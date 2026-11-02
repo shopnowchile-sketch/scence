@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { renderDocument } from '@/lib/document-templates'
+import { BRAND_LEGAL_SELECT, PROFILE_LEGAL_SELECT, buildBrandLegalProfile, legalDocumentContext, legalIncompleteBody, signedLegalData } from '@/lib/brand-legal-profile'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 import { escapeHtml } from '@/lib/utils'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
@@ -14,33 +15,31 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveBrandAccess(user.id)
   if (!access || !hasBrandPermission(access, 'legal_document.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const body = await request.json().catch(() => null) as { signer_name?: string; signer_rut?: string; signer_role?: string; accepted?: boolean } | null
-  if (!body?.accepted || !body.signer_name?.trim() || !body.signer_rut?.trim() || !body.signer_role?.trim()) {
-    return NextResponse.json({ error: 'Completa nombre, RUT, cargo y aceptación' }, { status: 422 })
-  }
+  // El NDA NO pide datos: usa los registrados en Organización (perfil legal). El cuerpo solo trae la aceptación;
+  // cualquier signer_* que llegue se ignora a propósito (fuente única: lib/brand-legal-profile.ts).
+  const body = await request.json().catch(() => null) as { accepted?: boolean } | null
+  if (body?.accepted !== true) return NextResponse.json({ error: 'Debes aceptar el documento para firmarlo' }, { status: 422 })
   const admin = createAdminClient()
-  const [{ data: brand }, { data: document, error: documentError }, { data: signer }] = await Promise.all([
-    admin.from('brands').select('id, organization_id, name, rut, address_street, address_number, address_city, address_region, address_country').eq('id', access.brandId).single(),
-    admin.from('brand_documents').select('id, template_id, title, document_type').eq('id', params.id).eq('brand_id', access.brandId).eq('status', 'pending').single(),
-    admin.from('profiles').select('full_name, display_name, signer_rut, signer_role').eq('id', user.id).maybeSingle(),
+  const [{ data: brand }, { data: document, error: documentError }, { data: representative }] = await Promise.all([
+    admin.from('brands').select(BRAND_LEGAL_SELECT).eq('id', access.brandId).single(),
+    admin.from('brand_documents').select('id, template_id, title, document_type, metadata').eq('id', params.id).eq('brand_id', access.brandId).eq('status', 'pending').single(),
+    admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('id', user.id).maybeSingle(),
   ])
   if (documentError || !document) return NextResponse.json({ error: 'Documento pendiente no encontrado' }, { status: 404 })
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  const missing = [brand?.rut, brand?.address_street, brand?.address_city, brand?.address_region, brand?.address_country].some(value => !String(value ?? '').trim())
-  if (missing) return NextResponse.json({ error: 'Completa los datos legales de la empresa en Mi perfil → Organización antes de firmar.' }, { status: 422 })
-  if (!signer?.signer_rut || !signer?.signer_role) return NextResponse.json({ error: 'Completa tu RUT y cargo en Mi perfil antes de firmar.' }, { status: 422 })
+  const legal = buildBrandLegalProfile(brand, representative)
+  if (!legal.complete) return NextResponse.json(legalIncompleteBody(legal.missing), { status: 422 })
   const { data: template } = document.template_id ? await admin.from('contract_templates').select('content').eq('id', document.template_id).single() : { data: null }
-  const address = [brand.address_street, brand.address_number, brand.address_city, brand.address_region, brand.address_country].filter(Boolean).join(', ')
-  const contentSnapshot = template?.content ? renderDocument(template.content, {
-    brand_name: brand.name, brand_rut: brand.rut, brand_address: address,
-    signer_name: body.signer_name.trim(), signer_rut: body.signer_rut.trim(), signer_role: body.signer_role.trim(),
-  }) : undefined
+  const contentSnapshot = template?.content ? renderDocument(template.content, legalDocumentContext(legal)) : undefined
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
+  const signedTimestamp = new Date().toISOString()
   const { data, error } = await admin.from('brand_documents').update({
-    status: 'signed', signer_name: body.signer_name.trim(), signer_rut: body.signer_rut.trim(), signer_email: user.email ?? null,
-    signer_role: body.signer_role.trim(), accepted_at: new Date().toISOString(), signed_at: new Date().toISOString(),
+    status: 'signed', signer_name: legal.representative.name, signer_rut: legal.representative.rut, signer_email: user.email ?? null,
+    signer_role: legal.representative.role, accepted_at: signedTimestamp, signed_at: signedTimestamp,
     signed_by: user.id, acceptance_ip: ip,
     ...(contentSnapshot ? { content_snapshot: contentSnapshot } : {}),
+    // Copia histórica de empresa y representante al momento de firmar (no cambia aunque luego se edite el perfil).
+    metadata: { ...((document.metadata as Record<string, unknown> | null) ?? {}), signed_legal_data: signedLegalData(legal, user.id) },
   }).eq('id', params.id).eq('brand_id', access.brandId).eq('status', 'pending')
     .select('id, status, signed_at').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -55,7 +54,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const admins = (members ?? []).filter(member => member.is_owner || member.role === 'super_admin')
     const title = document.document_type === 'nda' ? `NDA firmado por ${brand.name}` : `Documento firmado por ${brand.name}`
     const signedAt = data.signed_at ? new Date(data.signed_at).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' }) : 'recién'
-    const bodyText = `${body.signer_name.trim()} (${body.signer_role.trim()}) firmó ${document.title} el ${signedAt}.`
+    const bodyText = `${legal.representative.name} (${legal.representative.role}) firmó ${document.title} el ${signedAt}.`
 
     if (admins.length > 0) {
       await admin.from('notifications').insert(admins.map(member => ({

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
+import { hasCompanyRut } from '@/lib/brand-legal-profile'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 function opportunity(metadata: unknown) {
@@ -46,9 +47,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as { campaign_id?: string; sampling?: string; activation_details?: string; links?: string }
   if (!body.campaign_id) return NextResponse.json({ error: 'campaign_id requerido' }, { status: 422 })
   const admin = createAdminClient()
-  const { data: brand } = await admin.from('brands').select('id,name,instagram,contact_email,contact_name,metadata').eq('id', access.brandId).single()
-  const meta = brand?.metadata && typeof brand.metadata === 'object' ? brand.metadata as Record<string, unknown> : {}
-  const hasBilling = Boolean(meta.legal_name || meta.rut || meta.tax_id || meta.billing_email)
+  const { data: brand } = await admin.from('brands').select('id,name,instagram,contact_email,contact_name,rut').eq('id', access.brandId).single()
+  // Datos de facturación = RUT legal de la marca (fuente única: brands.rut). Antes dependía de metadata.rut/legal_name,
+  // que ningún formulario escribe, y bloqueaba a marcas con RUT válido.
+  const hasBilling = hasCompanyRut(brand)
   if (!brand?.name || !brand.instagram || !brand.contact_email || !brand.contact_name || !hasBilling) {
     return NextResponse.json({ error: 'Completa tu perfil comercial: Instagram, nombre, contacto y datos de facturación.' }, { status: 422 })
   }

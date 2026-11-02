@@ -4,6 +4,7 @@ import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
 import { renderDocument } from '@/lib/document-templates'
 import { FROM_EMAIL, getResend } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { formatBrandAddress } from '@/lib/brand-legal-profile'
 
 type Params = { params: { id: string } }
 
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (brandError || !brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 })
   if (templateError || !template) return NextResponse.json({ error: 'Template not found' }, { status: 404 })
 
-  const address = [brand.address_street, brand.address_number, brand.address_city, brand.address_region, brand.address_country].filter(Boolean).join(', ')
+  const address = formatBrandAddress(brand)
   const content = renderDocument(template.content, {
     brand_name: brand.name, brand_rut: brand.rut, brand_address: address,
     signer_name: brand.contact_name, signer_rut: '', signer_role: '',

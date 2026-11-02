@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandPlanAccess } from '@/lib/plan-limits'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
+import { PROFILE_LEGAL_SELECT, missingCompanyLegalFields } from '@/lib/brand-legal-profile'
 
 const BRAND_FIELDS = `
   id, name, logo_url, logo_path, website, instagram, industry, rut,
@@ -16,20 +17,20 @@ const BRAND_FIELDS = `
 // `brands.user_id = user.id` (owner). Ahora resuelve por resolveBrandAccess
 // (owner o miembro activo de brand_members) — ver spec Pri "Opción A".
 async function getBrandAccess(): Promise<
-  { access: BrandAccess; error: null } | { access: null; error: 'Unauthorized' | 'Forbidden' }
+  { access: BrandAccess; userId: string; error: null } | { access: null; userId: null; error: 'Unauthorized' | 'Forbidden' }
 > {
   const supabase = createServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return { access: null, error: 'Unauthorized' }
+  if (error || !user) return { access: null, userId: null, error: 'Unauthorized' }
   const access = await resolveBrandAccess(user.id)
-  if (!access) return { access: null, error: 'Forbidden' }
+  if (!access) return { access: null, userId: null, error: 'Forbidden' }
 
-  return { access, error: null }
+  return { access, userId: user.id, error: null }
 }
 
 // GET /api/brand/me — perfil completo de la marca
 export async function GET() {
-  const { access, error: authErr } = await getBrandAccess()
+  const { access, userId, error: authErr } = await getBrandAccess()
   if (!access) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
   if (!hasBrandPermission(access, 'brand.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -45,9 +46,16 @@ export async function GET() {
   // Plan y acceso desde la fuente única: override administrativo o
   // suscripción de MARCA activa (nunca una de influencer).
   const planAccess = await resolveBrandPlanAccess(admin, data.id)
+  // Representante legal (owner): fuente única profiles.full_name / signer_rut / signer_role. Solo lo ve su propio owner.
+  const { data: representative } = access.isOwner && userId
+    ? await admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('id', userId).maybeSingle()
+    : { data: null }
   return NextResponse.json({
     data: {
       ...data,
+      representative: access.isOwner ? {
+        full_name: representative?.full_name ?? '', signer_rut: representative?.signer_rut ?? '', signer_role: representative?.signer_role ?? '',
+      } : null,
       org_plan: planAccess.plan,
       has_active_subscription: planAccess.hasActiveAccess,
       member_role: access.role,
@@ -61,7 +69,7 @@ export async function GET() {
 // roles finance/member tienen acceso de lectura (campañas, billing) pero no
 // deberían poder cambiar los datos públicos/legales de la marca.
 export async function PATCH(request: Request) {
-  const { access, error: authErr } = await getBrandAccess()
+  const { access, userId, error: authErr } = await getBrandAccess()
   if (!access) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 403 })
   if (!hasBrandPermission(access, 'brand.manage')) {
     return NextResponse.json({ error: 'No tienes permiso para editar el perfil de la marca' }, { status: 403 })
@@ -74,6 +82,7 @@ export async function PATCH(request: Request) {
     address_street, address_number, address_city, address_region, address_country,
     address_place_id, address_lat, address_lng,
     address2_street, address2_number, address2_city, address2_region, address2_country,
+    representative,
   } = body
 
   const admin = createAdminClient()
@@ -94,16 +103,25 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Instagram es obligatorio para usar el portal de marca' }, { status: 400 })
   }
 
-  const requiredLegalFields = [
-    ['RUT', rut],
-    ['calle', address_street],
-    ['comuna', address_city],
-    ['región', address_region],
-    ['país', address_country],
-  ] as const
-  const missingLegalField = requiredLegalFields.find(([, value]) => !String(value ?? '').trim())
+  // Reglas legales de la empresa: fuente única en lib/brand-legal-profile.ts.
+  const missingLegalField = missingCompanyLegalFields({ rut, address_street, address_city, address_region, address_country })[0]
   if (missingLegalField) {
-    return NextResponse.json({ error: `${missingLegalField[0]} es obligatorio para la organización` }, { status: 400 })
+    return NextResponse.json({ error: `${missingLegalField.label} es obligatorio para la organización` }, { status: 400 })
+  }
+
+  // Representante legal (solo el owner): se guarda en su perfil, que es la fuente de verdad. Se valida antes de
+  // escribir la marca para no dejar una actualización a medias.
+  let representativeUpdate: Record<string, string> | null = null
+  if (representative && typeof representative === 'object') {
+    if (!access.isOwner || !userId) return NextResponse.json({ error: 'Solo el owner puede editar al representante legal' }, { status: 403 })
+    const rep = representative as Record<string, unknown>
+    representativeUpdate = {}
+    for (const key of ['full_name', 'signer_rut', 'signer_role'] as const) {
+      if (key in rep) representativeUpdate[key] = String(rep[key] ?? '').trim()
+    }
+    if ('full_name' in representativeUpdate && !representativeUpdate.full_name) {
+      return NextResponse.json({ error: 'El nombre del representante legal no puede quedar vacío' }, { status: 400 })
+    }
   }
 
   const { data, error } = await admin
@@ -136,5 +154,11 @@ export async function PATCH(request: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (representativeUpdate && Object.keys(representativeUpdate).length > 0 && userId) {
+    const { error: profileError } = await admin.from('profiles')
+      .update({ ...representativeUpdate, updated_at: new Date().toISOString() }).eq('id', userId)
+    if (profileError) return NextResponse.json({ error: `Se guardó la empresa, pero no el representante legal: ${profileError.message}` }, { status: 500 })
+  }
   return NextResponse.json({ data })
 }

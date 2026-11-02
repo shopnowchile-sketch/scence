@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
+import { missingCompanyLegalFields } from '@/lib/brand-legal-profile'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 
 type OnboardingState = {
@@ -33,8 +34,7 @@ export async function GET() {
 
   const organizationComplete = Boolean(
     brand?.instagram?.trim() && brand?.contact_name?.trim() && brand?.contact_email?.trim() &&
-    brand?.rut?.trim() && brand?.address_street?.trim() && brand?.address_city?.trim() &&
-    brand?.address_region?.trim() && brand?.address_country?.trim() && brand?.address_place_id?.trim(),
+    missingCompanyLegalFields(brand).length === 0 && brand?.address_place_id?.trim(),
   )
   const ndaSigned = (documents ?? []).some(document => document.status === 'signed')
 

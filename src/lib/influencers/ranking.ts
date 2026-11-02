@@ -24,6 +24,8 @@ export type RankingInfluencerRow = {
   display_name?: string | null
   email?: string | null
   user_id?: string | null
+  /** Solo en respuestas a marcas (sin user_id): la influencer tiene cuenta en SCENCE. */
+  has_account?: boolean
   last_sign_in_at?: string | null
   // Geography is derived from influencer.location_id by the API boundary.
   city?: string | null

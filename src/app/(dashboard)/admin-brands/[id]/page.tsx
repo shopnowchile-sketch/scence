@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
 import { BrandDocumentsAdmin } from '@/components/brands/BrandDocumentsAdmin'
+import { PhoneLink } from '@/components/ui/PhoneLink'
 
 type Campaign = {
   id: string
@@ -831,7 +832,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
               </div>
               <div>
                 <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Teléfono</p>
-                <p>{brand.contact_phone ?? '—'}</p>
+                <p>{brand.contact_phone ? <PhoneLink phone={brand.contact_phone} country="Chile" /> : '—'}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Website</p>

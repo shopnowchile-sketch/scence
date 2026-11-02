@@ -72,6 +72,7 @@ export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
         const conds = expr.split(',').map(part => {
           const [col, kind, ...rest] = part.split('.')
           const val = rest.join('.')
+          if (kind === 'eq') return (r: Row) => r[col] != null && String(r[col]) === val
           return (r: Row) => kind === 'is' ? (r[col] ?? null) === null : r[col] != null && String(r[col]) < val
         })
         filters.push(r => conds.some(c => c(r)))

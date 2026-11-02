@@ -8,6 +8,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import AttachmentPicker, { type CrmAttachment } from '../AttachmentPicker'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { PhoneLink } from '@/components/ui/PhoneLink'
 
 type Activity = {
   id: string
@@ -421,7 +422,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
 
             {!editingContact && <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
               <div className="flex items-center gap-2 text-gray-600"><Mail className="h-3.5 w-3.5 text-gray-300" /> {lead.email || '—'}</div>
-              <div className="flex items-center gap-2 text-gray-600"><Phone className="h-3.5 w-3.5 text-gray-300" /> {lead.phone_1 || '—'}</div>
+              <div className="flex items-center gap-2 text-gray-600"><Phone className="h-3.5 w-3.5 text-gray-300" /> {lead.phone_1 ? <PhoneLink phone={lead.phone_1} country="Chile" /> : '—'}</div>
               <div className="flex items-center gap-2 text-gray-600">
                 <AtSign className="h-3.5 w-3.5 text-gray-300" />
                 {lead.instagram ? (

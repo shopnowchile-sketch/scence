@@ -16,6 +16,7 @@ import { useInfluencer } from '@/hooks/useInfluencersList'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { PhoneLink } from '@/components/ui/PhoneLink'
 import { ProSubscriptionSection } from '@/components/subscription/ProSubscriptionSection'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -640,10 +641,10 @@ export function InfluencerProfile({ id }: { id: string }) {
                     </a>
                   )}
                   {influencer.phone && (
-                    <a href={`tel:${influencer.phone}`} className="flex items-center gap-1 hover:text-violet-600 transition-colors">
+                    <span className="flex items-center gap-1">
                       <Phone className="h-3.5 w-3.5" />
-                      {influencer.phone}
-                    </a>
+                      <PhoneLink phone={influencer.phone} country={influencer.country} />
+                    </span>
                   )}
                 </div>
 

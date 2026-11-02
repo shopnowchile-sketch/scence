@@ -164,8 +164,8 @@ export function InfluencerRanking({
         if (connectionFilter === 'connected_any') return Boolean(last)
         if (connectionFilter === 'last_7_days') return Boolean(last && now - last <= 7 * 24 * 60 * 60 * 1000)
         if (connectionFilter === 'last_30_days') return Boolean(last && now - last <= 30 * 24 * 60 * 60 * 1000)
-        if (connectionFilter === 'never_connected') return Boolean(inf.user_id) && !last
-        if (connectionFilter === 'no_access') return !inf.user_id
+        if (connectionFilter === 'never_connected') return (inf.has_account ?? Boolean(inf.user_id)) && !last
+        if (connectionFilter === 'no_access') return !(inf.has_account ?? Boolean(inf.user_id))
 
         return true
       })
@@ -496,7 +496,7 @@ export function InfluencerRanking({
                             hour: '2-digit',
                             minute: '2-digit',
                           })
-                        : inf.user_id ? 'Sin conexión' : 'Sin acceso'}
+                        : (inf.has_account ?? Boolean(inf.user_id)) ? 'Sin conexión' : 'Sin acceso'}
                     </td>
                   )}
 

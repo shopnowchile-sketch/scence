@@ -343,19 +343,19 @@ export default function InfluencerDashboard() {
           </div>
         </button>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => router.push('/inf-campaigns')} className="rounded-3xl border border-gray-100 bg-white p-5 text-left transition-all hover:border-violet-200 hover:shadow-sm">
+        <div className="grid grid-cols-2 gap-2.5">
+          <button onClick={() => router.push('/inf-campaigns')} className="rounded-2xl border border-gray-100 bg-white p-3 text-left transition-all hover:border-violet-200 hover:shadow-sm">
             <CalendarClock className="h-5 w-5 text-violet-500" />
-            <p className="mt-5 text-3xl font-bold tracking-tight text-gray-950">{activasCount}</p>
+            <p className="mt-2 text-2xl font-bold leading-none tracking-tight text-gray-950">{activasCount}</p>
             <p className="mt-1 text-xs font-medium text-gray-500">Campañas activas</p>
           </button>
-          <button onClick={() => router.push('/inf-campaigns')} className="rounded-3xl border border-gray-100 bg-white p-5 text-left transition-all hover:border-amber-200 hover:shadow-sm">
+          <button onClick={() => router.push('/inf-campaigns')} className="rounded-2xl border border-gray-100 bg-white p-3 text-left transition-all hover:border-amber-200 hover:shadow-sm">
             <Sparkles className="h-5 w-5 text-amber-500" />
-            <p className="mt-5 text-3xl font-bold tracking-tight text-gray-950">{postuladasCount}</p>
+            <p className="mt-2 text-2xl font-bold leading-none tracking-tight text-gray-950">{postuladasCount}</p>
             <p className="mt-1 text-xs font-medium text-gray-500">En revisión</p>
           </button>
-          <button onClick={() => router.push('/inf-deliverables')} className="col-span-2 flex items-center gap-3 rounded-3xl border border-emerald-100 bg-emerald-50/60 p-4 text-left transition-all hover:border-emerald-200">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-500"><CheckCircle2 className="h-5 w-5" /></span>
+          <button onClick={() => router.push('/inf-deliverables')} className="col-span-2 flex items-center gap-2.5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3 text-left transition-all hover:border-emerald-200">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-emerald-500"><CheckCircle2 className="h-4 w-4" /></span>
             <span><span className="block text-sm font-bold text-gray-900">{totalDeliverables - pendingDeliverablesCount} de {totalDeliverables} entregables al día</span><span className="text-xs text-gray-500">Revisa avances y próximos plazos</span></span>
           </button>
         </div>

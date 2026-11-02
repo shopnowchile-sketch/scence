@@ -37,6 +37,7 @@ import { CampaignEmailModal } from '@/components/campaigns/CampaignEmailModal'
 import { createClient } from '@/lib/supabase/client'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import { GenerateContractModal } from '@/components/campaigns/GenerateContractModal'
+import { ExportInfluencersMenu } from '@/components/campaigns/ExportInfluencersMenu'
 
 // ── Orden de la tabla de postulaciones pendientes ──────────────────────────
 // Un solo header activo a la vez (como cualquier tabla ordenable). 'pro' es el
@@ -3558,15 +3559,8 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   />
                 </div>
               )}
-              {confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
-                <a
-                  href={`/api/campaigns/${id}/influencers/export`}
-                  title="Descargar Excel"
-                  aria-label="Descargar Excel"
-                  className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 transition-colors hover:bg-emerald-100"
-                >
-                  <FileDown className="h-4 w-4" />
-                </a>
+              {confirmedInfluencers.length > 0 && !isBrandPortal && (
+                <ExportInfluencersMenu campaignId={id} />
               )}
               {c.status !== 'completed' && confirmedInfluencers.length > 0 && (!isBrandPortal || c._brand_permissions?.canEdit) && (
                 <>

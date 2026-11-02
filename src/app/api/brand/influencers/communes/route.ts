@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getOfficialInfluencerLocations } from '@/lib/influencer-location'
+import { getBrandInfluencerScope } from '@/lib/brand-influencer-scope'
 
 // GET /api/brand/influencers/communes
-// Mismo alcance de influencers que /api/brand/influencers: exclusivamente
-// relaciones en campaign_influencers — lista de comunas para poblar
+// Mismo alcance de influencers que /api/brand/influencers (getBrandInfluencerScope) — lista de comunas para poblar
 // el filtro "Comuna" en /brand-influencers.
 export async function GET() {
   const supabase = createServerClient()
@@ -20,21 +20,9 @@ export async function GET() {
   if (!hasBrandPermission(access, 'influencer.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const brand = { id: access.brandId }
 
-  const { data: primaryCampaigns } = await admin.from('campaigns').select('id').eq('brand_id', brand.id)
-  const { data: collaboratorRows } = await admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id)
-
-  const campaignIds = Array.from(new Set([
-    ...(primaryCampaigns ?? []).map(c => c.id),
-    ...(collaboratorRows ?? []).map(r => r.campaign_id),
-  ].filter(Boolean)))
-
-  let campaignInfluencerIds: string[] = []
-  if (campaignIds.length > 0) {
-    const { data: ciRows } = await admin.from('campaign_influencers').select('influencer_id').in('campaign_id', campaignIds)
-    campaignInfluencerIds = (ciRows ?? []).map(r => r.influencer_id).filter(Boolean)
-  }
-
-  const influencerIds = Array.from(new Set(campaignInfluencerIds))
+  const scope = await getBrandInfluencerScope(admin, brand.id)
+  if (scope.error) return NextResponse.json({ error: scope.error }, { status: 500 })
+  const influencerIds = Array.from(scope.influencerIds)
   if (influencerIds.length === 0) return NextResponse.json({ data: [] })
 
   const { data, error } = await admin

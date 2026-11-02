@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import type { BrandPermission } from '@/lib/supabase/ensureOrg'
 import { authorizeCampaignBrandAction } from '@/lib/campaign-brand-access'
+import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { scrubInfluencerRelation } from '@/lib/brand-influencer-privacy'
 
 type Params = { params: { id: string } }
 
@@ -44,9 +46,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Ordenar el historial de cada canje cronológicamente (asc)
+  // Ordenar el historial de cada canje cronológicamente (asc). El email de la influencer es solo del Super Admin.
+  const seeContact = await isPlatformAdmin(user.id, admin)
   const normalized = (data ?? []).map((b: any) => ({
-    ...b,
+    ...(seeContact ? b : scrubInfluencerRelation(b)),
     campaign_benefits: campaign.campaign_benefits ?? [],
     history: [...(b.history ?? [])].sort(
       (a: any, z: any) => (a.created_at < z.created_at ? -1 : 1)
@@ -199,7 +202,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     .eq('id', data.id)
     .single()
 
-  return NextResponse.json({ data: created ?? data }, { status: 201 })
+  const createdRow = created ?? data
+  return NextResponse.json({ data: (await isPlatformAdmin(user.id, admin)) ? createdRow : scrubInfluencerRelation(createdRow as any) }, { status: 201 })
 }
 
 // ── PATCH /api/campaigns/[id]/barters — avanzar estado / editar ───────────────
@@ -344,7 +348,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const normalized = {
-    ...data,
+    ...((await isPlatformAdmin(user.id, admin)) ? data : scrubInfluencerRelation(data as any)),
     campaign_benefits: campaign.campaign_benefits ?? [],
     history: [...((data as any).history ?? [])].sort(
       (a: any, z: any) => (a.created_at < z.created_at ? -1 : 1)

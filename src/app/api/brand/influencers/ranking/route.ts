@@ -136,7 +136,9 @@ export async function GET(req: NextRequest) {
     ...(officialLocations.get(String(inf.id)) ?? { country: null, city: null, commune: null }),
   }))
 
+  // La marca nunca recibe el user_id (identificador interno de cuenta): solo si la influencer tiene acceso a SCENCE.
   let rows = buildRankingRows(influencersWithOfficialLocation, campaignInfluencers, deliverables)
+    .map(({ user_id, ...rest }) => ({ ...rest, has_account: Boolean(user_id) }))
 
   if (search) {
     rows = rows.filter(inf =>

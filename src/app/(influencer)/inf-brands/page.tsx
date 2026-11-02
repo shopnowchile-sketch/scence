@@ -5,6 +5,7 @@ import { Building2, ExternalLink, Instagram, Loader2, Mail, Pencil, Phone, Plus,
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
+import { PhoneLink } from '@/components/ui/PhoneLink'
 
 type OwnedBrand = {
   id: string; organization_id: string; name: string; industry: string | null; status: 'pending_approval' | 'approved' | 'rejected'; contact_name: string | null
@@ -92,7 +93,7 @@ export default function InfluencerBrandsPage() {
             <div className="mt-4 space-y-2 border-t border-gray-50 pt-4 text-sm text-gray-600">
               {brand.contact_name && <p className="font-medium text-gray-700">{brand.contact_name}</p>}
               {brand.contact_email && <a className="flex items-center gap-2 hover:text-violet-600" href={`mailto:${brand.contact_email}`}><Mail className="h-3.5 w-3.5" />{brand.contact_email}</a>}
-              {brand.contact_phone && <a className="flex items-center gap-2 hover:text-violet-600" href={`tel:${brand.contact_phone}`}><Phone className="h-3.5 w-3.5" />{brand.contact_phone}</a>}
+              {brand.contact_phone && <span className="flex items-center gap-2"><Phone className="h-3.5 w-3.5" /><PhoneLink phone={brand.contact_phone} country="Chile" /></span>}
               {brand.instagram && <a className="flex items-center gap-2 hover:text-violet-600" href={`https://instagram.com/${brand.instagram.replace(/^@/, '')}`} target="_blank" rel="noreferrer"><Instagram className="h-3.5 w-3.5" />{brand.instagram}</a>}
               {brand.website && <a className="flex items-center gap-2 hover:text-violet-600" href={brand.website.startsWith('http') ? brand.website : `https://${brand.website}`} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" />Sitio web</a>}
               {!brand.contact_name && !brand.contact_email && !brand.contact_phone && !brand.instagram && !brand.website && <p className="text-xs italic text-gray-400">Sin datos de contacto</p>}

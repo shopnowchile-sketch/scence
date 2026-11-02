@@ -14,6 +14,7 @@ import { SortableTH } from '@/components/ui/SortableTH'
 import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
 import { getPlanTier, PLAN_LIMITS, PLAN_TIERS } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
+import { PhoneLink } from '@/components/ui/PhoneLink'
 
 type SortKey = 'name' | 'status' | 'industry' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy' | 'plan'
 type SortOrder = 'asc' | 'desc'
@@ -724,7 +725,7 @@ export default function BrandsPage() {
                 )}
                 {selected.contact_phone && (
                   <div className="flex items-center gap-2 text-gray-600">
-                    <Phone className="h-3.5 w-3.5 text-gray-400" /> {selected.contact_phone}
+                    <Phone className="h-3.5 w-3.5 text-gray-400" /> <PhoneLink phone={selected.contact_phone} country="Chile" />
                   </div>
                 )}
                 {selected.website && (

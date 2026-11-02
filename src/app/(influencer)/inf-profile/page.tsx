@@ -1,6 +1,8 @@
 'use client'
 
 import { PhoneField } from '@/components/forms/PhoneField'
+import { PhoneLink } from '@/components/ui/PhoneLink'
+import { formatRut, isValidRut } from '@/lib/rut'
 import { StructuredAddressFields } from '@/components/influencers/StructuredAddressFields'
 import { composeAddress, EMPTY_ADDRESS_PARTS, partsFromProfile, type AddressParts } from '@/lib/address-parts'
 import { useEffect, useState, useCallback, useRef } from 'react'
@@ -166,6 +168,9 @@ export default function ProfilePage() {
   const [editing,   setEditing]   = useState(false)
   const [saving,    setSaving]    = useState(false)
   const [phoneError, setPhoneError] = useState<string | null>(null)
+  // RUT privado y opcional (tabla influencer_private_data): solo lo ve y edita la propia influencer.
+  const [savedRut, setSavedRut] = useState<string | null>(null)
+  const [rutInput, setRutInput] = useState('')
   const [addressParts, setAddressParts] = useState<AddressParts>(EMPTY_ADDRESS_PARTS)
   const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', address: '', location_id: '', birth_date: '', categories: '' })
   const [socials,   setSocials]   = useState<SocialProfile[]>([])
@@ -222,8 +227,13 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile])
 
+  useEffect(() => {
+    fetch('/api/influencer/rut').then(r => r.ok ? r.json() : null).then(j => { if (j?.data) setSavedRut(j.data.rut ?? null) }).catch(() => {})
+  }, [])
+
   function startEdit() {
     if (!profile) return
+    setRutInput(savedRut ? formatRut(savedRut) : '')
     setEditForm({
       display_name: profile.display_name ?? '',
       bio: profile.bio ?? '',
@@ -257,6 +267,7 @@ export default function ProfilePage() {
 
   async function saveProfile() {
     if (phoneError) { toast.error(phoneError); scrollToSection('personal'); return }
+    if (rutInput.trim() && !isValidRut(rutInput)) { toast.error('El RUT no es válido. Revisa el número y el dígito verificador.'); scrollToSection('personal'); return }
     const blocking = currentMissing().filter(item => item.blocking)
     if (blocking.length > 0) {
       toast.error(`Falta completar: ${blocking.map(item => item.label).join(', ')}`)
@@ -277,6 +288,14 @@ export default function ProfilePage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
+      // RUT: solo se envía si cambió (vacío lo borra).
+      const currentRut = savedRut ? formatRut(savedRut) : ''
+      if (rutInput.trim() !== currentRut) {
+        const rutRes = await fetch('/api/influencer/rut', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rut: rutInput }) })
+        const rutJson = await rutRes.json()
+        if (!rutRes.ok) throw new Error(rutJson.error)
+        setSavedRut(rutJson.data.rut ?? null)
+      }
       setProfile(json.data)
       setEditing(false)
       toast.success('Perfil actualizado')
@@ -434,7 +453,8 @@ export default function ProfilePage() {
             <h2 className="text-sm font-bold text-gray-900">Información personal</h2>
             <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-3 text-sm text-gray-600 sm:grid-cols-2">
               {profile.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-gray-300" />{profile.email}</div>}
-              {profile.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-gray-300" />{profile.phone}</div>}
+              {profile.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-gray-300" /><PhoneLink phone={profile.phone} country={profile.country} /></div>}
+              {savedRut && <div className="flex items-center gap-2 text-gray-500"><span className="text-xs font-semibold text-gray-300">RUT</span>{formatRut(savedRut)}</div>}
               {profile.address && <div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" /><span>{profile.address}</span></div>}
               {(profile.commune || profile.city || profile.region || profile.country) && <div className="flex items-start gap-2"><Globe className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" /><span>{[profile.commune ?? profile.city, profile.region, profile.country].filter(Boolean).join(' · ')}</span></div>}
               {profile.birth_date && <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-300" />{new Date(profile.birth_date).toLocaleDateString('es-CL')}</div>}
@@ -533,6 +553,10 @@ export default function ProfilePage() {
               <Field label="Nombre" value={editForm.display_name} onChange={v => setEditForm(f => ({ ...f, display_name: v }))} placeholder="Tu nombre" />
               <PhoneField value={editForm.phone} onChange={(v, err) => { setEditForm(f => ({ ...f, phone: v })); setPhoneError(err) }} />
               <Field label="Fecha de nacimiento" value={editForm.birth_date} onChange={v => setEditForm(f => ({ ...f, birth_date: v }))} type="date" />
+              <div>
+                <Field label="RUT (opcional)" value={rutInput} onChange={setRutInput} placeholder="12.345.678-5" />
+                <p className="mt-1 text-xs text-gray-400">Privado: no se muestra en tu perfil público.</p>
+              </div>
             </div>
             <Field label="Bio" value={editForm.bio} onChange={v => setEditForm(f => ({ ...f, bio: v }))} textarea placeholder="Cuéntanos sobre ti…" />
             {/* Categorías como bubbles seleccionables */}

@@ -513,6 +513,14 @@ Causa raíz del NDA de THE COLOR RUN: el RUT personal y el cargo se pedían en d
 - **Facturación/colaboración:** `collaboration-opportunities` exige `brands.rut` (antes `metadata.rut/legal_name`, que ningún formulario escribía).
 - Pruebas: `tests/brand-legal-profile.test.ts` (rutas reales sobre base en memoria + guardias estáticas contra reglas duplicadas).
 
+### 16.16 RUT de influencer, exportación de campaña y WhatsApp (2026-11-02)
+
+- **RUT de influencer: dato privado, opcional, en `influencer_private_data` (tabla aparte, NO columna de `influencers`).** Varias rutas devuelven `select('*')` de `influencers` a marcas y `anon` tiene SELECT en esa tabla; una columna `rut` ahí se filtraría. La tabla no da privilegios a `anon`/`authenticated`: solo service role. Forma guardada `12345678-5`; validar y formatear solo con `src/lib/rut.ts`.
+- **Quién lo lee/escribe:** la propia influencer (`GET/PUT /api/influencer/rut`, la influencer sale de la sesión, nunca del cuerpo) y, **solo para admin de plataforma, en la exportación de campaña** y únicamente de participantes aceptadas (decisión de la fundadora). La marca recibe 403 si pide la columna `rut`. No agregar el RUT a otra ruta sin autorización.
+- **Exportación (`GET /api/campaigns/[id]/influencers/export`):** parámetros `filter` (`confirmed` por defecto | `approved` = aceptadas sin confirmar | `all`), `columns`, `format` (`xlsx` | `csv`). Columnas: lista cerrada en `src/lib/campaign-export-columns.ts` (fuente única de API y pantalla). Asistencia y entregables salen de `attendance-state.ts` / `deliverable-status.ts`. Sin parámetros, mismas columnas históricas (se retiró la columna constante «Estado: Seleccionada»).
+- **WhatsApp:** `PhoneLink` (`src/components/ui/PhoneLink.tsx`) sobre `whatsappUrl()`; usarlo en todo teléfono visible, sin `tel:` sueltos. No cambia quién ve el teléfono.
+- Pruebas: `tests/influencer-rut-export-whatsapp.test.ts`. Migración `20261102120000_influencer_private_data.sql`: aplicada en DEV; **pendiente en producción**.
+
 ## 17. Modo SCENCE — forma de trabajo (permanente)
 
 La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.

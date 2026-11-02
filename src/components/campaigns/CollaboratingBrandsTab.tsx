@@ -29,6 +29,7 @@ import {
   useUpdateCollaboration,
   type CollaborationOwner,
 } from '@/hooks/useCampaignCollaborations'
+import { PhoneLink } from '@/components/ui/PhoneLink'
 
 const STATUS_STYLE: Record<CollabStatus, { badge: string; dot: string }> = {
   to_contact: { badge: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' },
@@ -522,7 +523,7 @@ function SummaryTab({ campaignId, row, owners, plans, onSeeNotes }: { campaignId
               </div>
             )}
             {row.contact_email && <a href={`mailto:${row.contact_email}`} className="flex items-center gap-3 text-gray-700 hover:underline"><Mail className="h-4 w-4 text-gray-400" aria-hidden />{row.contact_email}</a>}
-            {row.contact_phone && <p className="flex items-center gap-3 text-gray-700"><Phone className="h-4 w-4 text-gray-400" aria-hidden />{row.contact_phone}</p>}
+            {row.contact_phone && <p className="flex items-center gap-3 text-gray-700"><Phone className="h-4 w-4 text-gray-400" aria-hidden /><PhoneLink phone={row.contact_phone} country="Chile" /></p>}
             {row.instagram && <p className="pl-7 text-gray-700">{row.instagram}</p>}
           </div>
         ) : <p className="mt-2 text-sm text-gray-500">Sin datos de contacto en la ficha.</p>}

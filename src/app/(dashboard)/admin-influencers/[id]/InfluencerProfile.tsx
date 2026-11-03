@@ -17,6 +17,7 @@ import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PhoneLink } from '@/components/ui/PhoneLink'
+import { formatRut } from '@/lib/rut'
 import { ProSubscriptionSection } from '@/components/subscription/ProSubscriptionSection'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -273,6 +274,11 @@ export function InfluencerProfile({ id }: { id: string }) {
   const [changingPro, setChangingPro] = useState(false)
   const { data: res, isLoading, error, refetch } = useInfluencer(id)
   const { isAdmin } = useIsAdmin()
+  const [rut, setRut] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isAdmin) return
+    fetch(`/api/influencers/${id}/rut`).then(r => r.ok ? r.json() : null).then(j => setRut(j?.data?.rut ?? null)).catch(() => {})
+  }, [isAdmin, id])
   const router = useRouter()
   const searchParams = useSearchParams()
   const backHref = searchParams.get('from') || '/admin-influencers'
@@ -644,6 +650,12 @@ export function InfluencerProfile({ id }: { id: string }) {
                     <span className="flex items-center gap-1">
                       <Phone className="h-3.5 w-3.5" />
                       <PhoneLink phone={influencer.phone} country={influencer.country} />
+                    </span>
+                  )}
+                  {isAdmin && rut && (
+                    <span className="flex items-center gap-1" title="Dato privado: solo Super Admin">
+                      <span className="text-xs font-semibold text-gray-400">RUT</span>
+                      {formatRut(rut)}
                     </span>
                   )}
                 </div>

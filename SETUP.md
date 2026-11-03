@@ -36,7 +36,7 @@ Usar DEV existente. No ejecutar un schema inicial ni aplicar migraciones automá
    - Copiar Calendar ID → `GOOGLE_CALENDAR_ID`
 
 ## 5. Pagos (PayPal)
-PayPal es la única pasarela de pago (ver `CLAUDE.md` §16.5). Variables: `PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_INFLUENCER_WEBHOOK_ID` y los IDs de plan `PAYPAL_BASIC_PLAN_ID`, `PAYPAL_GROWTH_PLAN_ID`, `PAYPAL_PRO_PLAN_ID`, `PAYPAL_INFLUENCER_PRO_PLAN_ID`. Webhook: `/api/paypal/webhook`. En local y Preview usar credenciales de prueba (`PAYPAL_ENV=sandbox`).
+PayPal es la única pasarela de pago (ver `CLAUDE.md` §16.5). Variables: `PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_INFLUENCER_WEBHOOK_ID` y los IDs de plan `PAYPAL_BASIC_PLAN_ID`, `PAYPAL_GROWTH_PLAN_ID`, `PAYPAL_PRO_PLAN_ID`, `PAYPAL_INFLUENCER_PRO_PLAN_ID` y `PAYPAL_AGENCY_PLAN_ID` (mensualidad por marca de agencia; ver `CLAUDE.md` §16.18). Webhook: `/api/paypal/webhook`. En local y Preview usar credenciales de prueba (`PAYPAL_ENV=sandbox`).
 
 ## 6. Levantar en desarrollo
 ```bash

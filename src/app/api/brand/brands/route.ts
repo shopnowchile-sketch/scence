@@ -4,6 +4,7 @@ import { getOrgId, hasBrandPermission, isPlatformAdmin, resolveBrandAccess } fro
 import { authorizeBrandRegistration, registerBrandAtomic } from '@/lib/supabase/registerBrand'
 import { registrationDeniedMessage, registrationKey } from '@/lib/brand-registration-policy'
 import { isPlausibleEmail } from '@/lib/email-match'
+import { resolveAgencyContext } from '@/lib/agency-brands'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
@@ -144,9 +145,14 @@ export async function POST(req: NextRequest) {
   // Pueden registrar marcas: influencers, usuarios de una marca APROBADA y admins
   // de plataforma, siempre con cuenta verificada y activa. Registrar no concede
   // brand_manager ni acceso a otras marcas (CLAUDE.md §16.9).
-  const decision = await authorizeBrandRegistration(admin, user)
-  if (!decision.allowed) {
-    return NextResponse.json({ error: registrationDeniedMessage(decision.reason) }, { status: 403 })
+  // Agencia multimarca (Impulso Consulting): su owner administra las marcas que registra
+  // (excepción acotada de §16.9). Cualquier otro actor sigue la política de registro normal.
+  const agency = user.email_confirmed_at ? await resolveAgencyContext(admin, user.id) : null
+  if (!agency) {
+    const decision = await authorizeBrandRegistration(admin, user)
+    if (!decision.allowed) {
+      return NextResponse.json({ error: registrationDeniedMessage(decision.reason) }, { status: 403 })
+    }
   }
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
@@ -193,6 +199,7 @@ export async function POST(req: NextRequest) {
       created_from_brand_portal: true,
       // Org de la persona que registra (referencia informativa; no es un vínculo marca→marca).
       invited_by_organization_id: orgId,
+      ...(agency ? { managed_by_org_id: agency.organizationId } : {}),
     },
   }
   const registered = await registerBrandAtomic(admin, {
@@ -208,6 +215,20 @@ export async function POST(req: NextRequest) {
     // No se revela el nombre ni el id de la marca existente: pertenece a otra
     // organización y las marcas no se ven entre sí.
     return NextResponse.json({ error: 'Ya existe una marca registrada con ese email' }, { status: 409 })
+  }
+
+  // Marca de agencia: crear marcas es gratis y la agencia opera sin esperar la revisión de la marca;
+  // la revisión de SCENCE recae en cada campaña (super_admin). El vínculo con la agencia se fija en servidor.
+  if (agency && registered.outcome === 'created') {
+    const { data: fresh } = await admin.from('brands').select('metadata').eq('id', registered.brandId).single()
+    const { error: agencyError } = await admin.from('brands').update({
+      status: 'approved',
+      metadata: { ...((fresh?.metadata as Record<string, unknown> | null) ?? {}), managed_by_org_id: agency.organizationId },
+    }).eq('id', registered.brandId)
+    if (agencyError) {
+      console.error('[POST /api/brand/brands] agency link', agencyError)
+      return NextResponse.json({ error: 'La marca se registró, pero no se pudo vincular a la agencia' }, { status: 500 })
+    }
   }
 
   const { data, error } = await admin.from('brands').select('*').eq('id', registered.brandId).single()

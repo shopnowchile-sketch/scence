@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { Check, RefreshCw, Sparkles, Clock, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { AgencyPlanCard } from './AgencyPlanCard'
 import { PLAN_LIMITS, BRAND_PLAN_USD_PRICING, getPlanTier, formatPriceCLP, type PlanTier } from '@/lib/plan-limits'
 
 const PLAN_DEFS: Array<{
@@ -74,6 +75,8 @@ export function BrandPlanSettings() {
   const [prices, setPrices] = useState<Partial<Record<PlanTier, number>>>({})
   const [paymentProcessing, setPaymentProcessing] = useState(false)
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false)
+  // Agencia multimarca: la marca activa paga su propia mensualidad (en vez de los planes Basic/Growth/Pro).
+  const [agency, setAgency] = useState<{ brandId: string; brandName: string | null } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -81,6 +84,9 @@ export function BrandPlanSettings() {
       const res  = await fetch('/api/brand/billing')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
+      const agencyRes = await fetch('/api/brand/agency', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null)
+      const agencyBrand = agencyRes?.is_agency ? agencyRes.brands?.find((b: { id: string }) => b.id === agencyRes.active_brand_id) : null
+      setAgency(agencyBrand ? { brandId: agencyBrand.id, brandName: agencyBrand.name } : null)
       setOrgPlan(json.org_plan ?? 'free')
       setHasActiveSubscription(json.has_active_subscription === true)
       const nextPrices: Partial<Record<PlanTier, number>> = {}
@@ -109,10 +115,13 @@ export function BrandPlanSettings() {
       .then(async (res) => {
         const json = await res.json()
         if (!res.ok) throw new Error(json.error)
-        toast.success('Tu pago fue confirmado. Ahora crea tu primera campaña.')
+        const params = new URLSearchParams(window.location.search)
+        const campaign = params.get('campaign')
+        toast.success(json.tier === 'agency' ? 'Mensualidad activa. Ahora envía tu campaña a aprobación.' : 'Tu pago fue confirmado. Ahora crea tu primera campaña.')
         window.history.replaceState({}, '', window.location.pathname)
         await load()
-        router.replace('/brand-campaigns/new')
+        // El pago solo habilita el envío: la campaña sigue en borrador hasta que la envíes y SCENCE la apruebe.
+        router.replace(json.tier === 'agency' ? (campaign ? `/brand-campaigns/${campaign}` : '/brand-campaigns') : '/brand-campaigns/new')
       })
       .catch((error) => toast.error(error.message ?? 'Estamos confirmando tu pago.'))
       .finally(() => setPaymentProcessing(false))
@@ -149,6 +158,15 @@ export function BrandPlanSettings() {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
         <div className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (agency) {
+    return (
+      <div className="max-w-lg space-y-4">
+        {paymentProcessing && <p className="text-sm text-amber-700">Estamos confirmando tu pago con PayPal…</p>}
+        <AgencyPlanCard brandId={agency.brandId} brandName={agency.brandName} />
       </div>
     )
   }

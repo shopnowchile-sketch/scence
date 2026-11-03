@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { payPalBaseUrl } from '@/lib/paypal-env'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { canPayBrandPlan, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { canPayBrandPlan, resolveAgencyManagedBrandAccess, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import { BRAND_PLAN_USD_PRICING, PLAN_LIMITS, isInfluencerSubscription, type PlanTier } from '@/lib/plan-limits'
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const access = await resolveBrandAccess(user.id)
+  let access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
   // Pagar el plan sigue siendo exclusivo del owner; vale para marcas pendientes (eligen plan) y suspendidas (reactivan).
   if (!canPayBrandPlan(access)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -27,10 +27,17 @@ export async function POST(request: NextRequest) {
   if (!tokenResponse.ok || !token.access_token) return NextResponse.json({ error: 'No se pudo validar PayPal.' }, { status: 502 })
   const detailsResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: { Authorization: `Bearer ${token.access_token}` }, cache: 'no-store' })
   const subscription = await detailsResponse.json()
-  const [organizationId, planId, tier] = String(subscription.custom_id ?? '').split(':')
-  if (!detailsResponse.ok || organizationId !== access.organizationId || !['basic', 'growth', 'pro'].includes(tier) || subscription.status !== 'ACTIVE') return NextResponse.json({ error: 'La suscripción aún no está activa.' }, { status: 409 })
+  const [organizationId, planId, tier, agencyBrandId] = String(subscription.custom_id ?? '').split(':')
+  // Plan de agencia: la marca que paga viene en el custom_id fijado al crear la suscripción; solo vale si la agencia
+  // del usuario la administra y su organización es la de la suscripción. Nunca se confía en el navegador.
+  if (tier === 'agency') {
+    const managed = agencyBrandId ? await resolveAgencyManagedBrandAccess(user.id, agencyBrandId) : null
+    if (!managed || managed.organizationId !== organizationId || !canPayBrandPlan(managed)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    access = managed
+  }
+  if (!detailsResponse.ok || organizationId !== access.organizationId || !['basic', 'growth', 'pro', 'agency'].includes(tier) || subscription.status !== 'ACTIVE') return NextResponse.json({ error: 'La suscripción aún no está activa.' }, { status: 409 })
   // La suscripción debe ser del plan de PayPal de ese tier (no otro plan con un custom_id alterado).
-  const expectedPayPalPlan = ({ basic: process.env.PAYPAL_BASIC_PLAN_ID, growth: process.env.PAYPAL_GROWTH_PLAN_ID, pro: process.env.PAYPAL_PRO_PLAN_ID } as Record<string, string | undefined>)[tier]
+  const expectedPayPalPlan = ({ basic: process.env.PAYPAL_BASIC_PLAN_ID, growth: process.env.PAYPAL_GROWTH_PLAN_ID, pro: process.env.PAYPAL_PRO_PLAN_ID, agency: process.env.PAYPAL_AGENCY_PLAN_ID } as Record<string, string | undefined>)[tier]
   if (!expectedPayPalPlan || subscription.plan_id !== expectedPayPalPlan) return NextResponse.json({ error: 'La suscripción no corresponde al plan elegido.' }, { status: 409 })
   const admin = createAdminClient()
   const { data: planRow, error: planError } = await admin.from('subscription_plans').select('id, tier').eq('id', planId).maybeSingle()
@@ -57,7 +64,7 @@ export async function POST(request: NextRequest) {
     current_period_end: subscription.billing_info?.next_billing_time ?? subscription.start_time ?? subscription.create_time,
     paypal_subscription_id: subscriptionId,
     paypal_payer_id: subscription.subscriber?.payer_id ?? null,
-    metadata: { ...((existingRow?.metadata as Record<string, unknown> | null) ?? {}), account_type: 'brand', brand_id: access.brandId },
+    metadata: { ...((existingRow?.metadata as Record<string, unknown> | null) ?? {}), account_type: 'brand', brand_id: access.brandId, ...(tier === 'agency' ? { agency_plan: true } : {}) },
     updated_at: new Date().toISOString(),
   }
   const saved = existingRow
@@ -68,7 +75,8 @@ export async function POST(request: NextRequest) {
   // El pago confirmado aprueba a una marca autorregistrada. El ACCESO pagado
   // se deriva de la suscripción activa (resolveBrandPlanAccess); el override
   // queda reservado a planes otorgados manualmente por un admin.
-  const { error: brandError } = await admin.from('brands').update({ status: 'approved' }).eq('id', access.brandId)
+  // Plan de agencia: el pago NO cambia el estado de la marca ni aprueba nada; las campañas siguen su revisión.
+  const { error: brandError } = tier === 'agency' ? { error: null } : await admin.from('brands').update({ status: 'approved' }).eq('id', access.brandId)
   if (brandError) return NextResponse.json({ error: 'El pago está registrado, pero no se pudo activar la marca.' }, { status: 500 })
 
   // Cambio de plan: otra suscripción de MARCA activa en la misma organización
@@ -90,6 +98,12 @@ export async function POST(request: NextRequest) {
     if (!cancelResponse.ok && cancelResponse.status !== 204) return NextResponse.json({ error: 'El nuevo plan está activo, pero no se pudo cancelar el anterior.' }, { status: 502 })
     const { error: cancelError } = await admin.from('subscriptions').update({ status: 'canceled', canceled_at: new Date().toISOString() }).eq('id', previous.id)
     if (cancelError) return NextResponse.json({ error: 'El plan anterior se canceló en PayPal, pero no se pudo registrar.' }, { status: 500 })
+  }
+  if (tier === 'agency') {
+    const html = `<h2>Mensualidad activa</h2><p>La mensualidad de la marca <strong>${access.brandId}</strong> está activa. Ya puedes enviar campañas a aprobación; SCENCE las revisa antes de publicarlas.</p>`
+    if (user.email) await getResend().emails.send({ from: FROM_EMAIL, to: user.email, tags: [emailAudience('brand')], subject: 'Confirmación de mensualidad SCENCE', html }).catch(() => null)
+    await getResend().emails.send({ from: FROM_EMAIL, to: ADMIN_PAYMENT_EMAIL, tags: [emailAudience('admin')], subject: 'Nuevo pago PayPal · mensualidad de agencia', html: `${html}<p>Suscripción PayPal: <strong>${subscriptionId}</strong></p>` }).catch(() => null)
+    return NextResponse.json({ tier, brand_id: access.brandId })
   }
   const planTier = tier as PlanTier
   const name = PLAN_LIMITS[planTier].label

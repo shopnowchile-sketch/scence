@@ -20,6 +20,21 @@ if (!productId) {
   const response = await fetch(`${baseUrl}/v1/catalogs/products`, { method: 'POST', headers: { Authorization: `Bearer ${tokenResult.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'SCENCE', description: 'Suscripción mensual a la plataforma SCENCE', type: 'SERVICE', category: 'SOFTWARE' }) })
   const product = await response.json(); if (!response.ok) throw new Error(`No se pudo crear producto: ${product.message ?? response.status}`); productId = product.id
 }
+// Mensualidad de agencia (Impulso Consulting): $69.900 CLP/mes por marca, cobrados en USD. Uso:
+//   node scripts/create-paypal-plans.mjs --agency-usd=74.50 [--apply]
+// El monto en USD lo fija quien ejecuta (conversión vigente); el compromiso inicial son 3 mensualidades (TRIAL x3 al
+// mismo precio) y luego sigue mensual (REGULAR) hasta que la marca cancele. Imprime PAYPAL_AGENCY_PLAN_ID.
+const agencyArg = process.argv.find(arg => arg.startsWith('--agency-usd='))
+if (agencyArg) {
+  const usd = Number(agencyArg.split('=')[1])
+  if (!Number.isFinite(usd) || usd <= 0) throw new Error('--agency-usd debe ser un monto positivo, p. ej. --agency-usd=74.50')
+  const value = usd.toFixed(2)
+  const cycle = (tenure_type, sequence, total_cycles) => ({ frequency: { interval_unit: 'MONTH', interval_count: 1 }, tenure_type, sequence, total_cycles, pricing_scheme: { fixed_price: { currency_code: 'USD', value } } })
+  const response = await fetch(`${baseUrl}/v1/billing/plans`, { method: 'POST', headers: { Authorization: `Bearer ${tokenResult.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ product_id: productId, name: 'SCENCE Agencia · marca', description: 'Mensualidad por marca administrada por una agencia ($69.900 CLP, cobrado en USD)', billing_cycles: [cycle('TRIAL', 1, 3), cycle('REGULAR', 2, 0)], payment_preferences: { auto_bill_outstanding: true, setup_fee_failure_action: 'CANCEL', payment_failure_threshold: 1 } }) })
+  const plan = await response.json(); if (!response.ok) throw new Error(`No se pudo crear el plan de agencia: ${plan.message ?? response.status}`)
+  console.log(`PAYPAL_AGENCY_PLAN_ID=${plan.id}`)
+  process.exit(0)
+}
 const plans = [['BASIC', 'Basic', '79.00', '106.65'], ['GROWTH', 'Growth', '279.00', '376.65'], ['PRO', 'Pro', '749.00', '1011.15']]
 console.log(`PAYPAL_PRODUCT_ID=${productId}`)
 for (const [key, name, launchValue, regularValue] of plans) {

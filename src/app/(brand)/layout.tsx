@@ -7,6 +7,8 @@ import { Clock } from 'lucide-react'
 import { pendingBrandPathAllowed } from '@/lib/brand-status-access'
 import { BrandSidebar } from './_components/BrandSidebar'
 import { BrandOnboarding } from '@/components/brand/BrandOnboarding'
+import { AgencyBrandSwitcher } from '@/components/plan/AgencyBrandSwitcher'
+import { AgencyCheckoutGate } from '@/components/plan/AgencyCheckoutGate'
 // Reutilizado del portal Influencer (mismo componente, sin cambios) — pedido
 // de Pri 2026-07-13: profiles.last_seen_at solo se actualizaba vía heartbeat
 // en Influencer; Marca no tenía ningún mecanismo, así que "última conexión"
@@ -26,6 +28,8 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   const [brandStatus, setBrandStatus] = useState<string | null>(null)
   const [brandPlan, setBrandPlan] = useState<string | null>(null)
   const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
+  // Marca de agencia (Impulso Consulting): crear marcas y campañas en borrador es gratis; la mensualidad se pide al enviar a aprobación.
+  const [agencyManaged, setAgencyManaged] = useState(false)
   const pathname = usePathname()
   // NOTA (build fix): NO usar useSearchParams() acá. Este layout envuelve
   // TODAS las rutas /brand-*, y useSearchParams() sin un boundary Suspense
@@ -81,6 +85,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         setBrandStatus(json?.data?.status ?? 'error')
         setBrandPlan(typeof json?.data?.org_plan === 'string' ? json.data.org_plan : null)
         setHasActiveSubscription(json?.data?.has_active_subscription === true)
+        setAgencyManaged(json?.data?.agency_managed === true)
         setInstagramComplete(
           Boolean(
             json?.data?.instagram &&
@@ -172,8 +177,8 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // Planes. Así una cuenta recién creada (o una ya aprobada como Xtronails)
   // no navega el portal ni inicia una campaña sin una suscripción activa.
   useEffect(() => {
-    if (hasActiveSubscription === false && !isPlanPage && !pendingPageAllowed) router.replace('/brand-settings/plan')
-  }, [hasActiveSubscription, isPlanPage, pendingPageAllowed, router])
+    if (hasActiveSubscription === false && !agencyManaged && !isPlanPage && !pendingPageAllowed) router.replace('/brand-settings/plan')
+  }, [hasActiveSubscription, agencyManaged, isPlanPage, pendingPageAllowed, router])
 
   // La suspensión comercial representa el fin del acceso gratuito. Aunque el
   // usuario sea owner, finance o member, solo puede entrar a Planes para
@@ -190,13 +195,15 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   const loadingStatus = instagramComplete === null || brandStatus === null || hasActiveSubscription === null
   const pendingApproval = !loadingStatus && !approved
   const blocked = loadingStatus
-    || (hasActiveSubscription === false && !isPlanPage && !pendingPageAllowed)
+    || (hasActiveSubscription === false && !agencyManaged && !isPlanPage && !pendingPageAllowed)
     || (approved && instagramComplete === false && !isProfilePage)
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <PresenceHeartbeat />
       <BrandSidebar plan={brandPlan} />
+      <AgencyBrandSwitcher />
+      <AgencyCheckoutGate />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
           {pendingApproval && !isPlanPage && !pendingPageAllowed ? (

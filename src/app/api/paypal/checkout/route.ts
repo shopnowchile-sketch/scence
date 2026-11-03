@@ -3,7 +3,7 @@ import { payPalBaseUrl } from '@/lib/paypal-env'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { canPayBrandPlan, resolveAgencyManagedBrandAccess, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { type PlanTier } from '@/lib/plan-limits'
-import { AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_CLP, brandHasCurrentAgencyMonth, isAgencyScopedBrand } from '@/lib/agency-brands'
+import { AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_CLP, brandHasCurrentSubscription } from '@/lib/agency-brands'
 
 // 'agency' = mensualidad por marca de una agencia (Impulso Consulting): una suscripción por marca.
 type CheckoutTier = PlanTier | 'agency'
@@ -27,13 +27,15 @@ function planIdFor(tier: CheckoutTier) {
   return ({ basic: process.env.PAYPAL_BASIC_PLAN_ID, growth: process.env.PAYPAL_GROWTH_PLAN_ID, pro: process.env.PAYPAL_PRO_PLAN_ID, agency: process.env.PAYPAL_AGENCY_PLAN_ID } as Record<CheckoutTier, string | undefined>)[tier]
 }
 
-// Acceso a la marca que paga. Plan de agencia: la marca viene del cuerpo y solo vale si la agencia del
-// usuario la administra; el resto de los planes sigue usando la marca de la sesión.
+// Acceso a la marca que paga. Mensualidad ('agency'): la marca viene del cuerpo y vale si la agencia del usuario
+// la administra; si no, solo la marca de su propia sesión (y si indica otra, no coincide → null). Los demás
+// planes siguen usando la marca de la sesión.
 async function resolvePayerAccess(userId: string, tier: CheckoutTier, brandId?: string) {
   if (tier !== 'agency') return resolveBrandAccess(userId)
-  const access = brandId ? await resolveAgencyManagedBrandAccess(userId, brandId) : await resolveBrandAccess(userId)
-  if (!access) return null
-  return (await isAgencyScopedBrand(createAdminClient(), access.brandId)) ? access : null
+  const managed = brandId ? await resolveAgencyManagedBrandAccess(userId, brandId) : null
+  if (managed) return managed
+  const own = await resolveBrandAccess(userId)
+  return own && (!brandId || own.brandId === brandId) ? own : null
 }
 
 // GET /api/paypal/checkout?tier=agency&brand_id=… — monto EXACTO en USD que PayPal cobrará (leído del plan en PayPal).
@@ -57,7 +59,7 @@ export async function GET(request: NextRequest) {
       brand_id: access.brandId,
       amount_usd: amount.value, currency: amount.currency_code ?? 'USD',
       price_clp: AGENCY_PLAN_PRICE_CLP, commitment_months: AGENCY_COMMITMENT_MONTHS,
-      already_current: await brandHasCurrentAgencyMonth(createAdminClient(), access.brandId),
+      already_current: await brandHasCurrentSubscription(createAdminClient(), access.brandId),
     })
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo conectar con PayPal.' }, { status: 502 }) }
 }
@@ -80,7 +82,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient()
   // Plan de agencia: una mensualidad vigente ya paga ese período (no se cobra dos veces) y un alta reciente
   // sin completar se reutiliza en vez de abrir otra suscripción en PayPal.
-  if (tier === 'agency' && await brandHasCurrentAgencyMonth(admin, access.brandId)) {
+  if (tier === 'agency' && await brandHasCurrentSubscription(admin, access.brandId)) {
     return NextResponse.json({ error: 'Esta marca ya tiene su mensualidad vigente.', code: 'ALREADY_ACTIVE' }, { status: 409 })
   }
   // En la base, el plan que la UI llama Basic se almacena como `starter`.

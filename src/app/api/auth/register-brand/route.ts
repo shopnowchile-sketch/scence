@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       type: 'magiclink',
       email,
       options: {
-        redirectTo: `${APP_URL}/brand-settings/plan`,
+        redirectTo: `${APP_URL}/brand-dash`,
         data: {
           is_brand: true,
           full_name: contactName,
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
     `${APP_URL}/auth/confirm` +
     `?token_hash=${encodeURIComponent(linkData.properties.hashed_token)}` +
     `&type=magiclink` +
-    `&next=${encodeURIComponent('/brand-settings/plan')}`
+    `&next=${encodeURIComponent('/brand-dash')}`
 
   const { error: emailError } = await getResend().emails.send({
     from: FROM_EMAIL,

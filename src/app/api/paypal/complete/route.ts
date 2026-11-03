@@ -28,10 +28,12 @@ export async function POST(request: NextRequest) {
   const detailsResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: { Authorization: `Bearer ${token.access_token}` }, cache: 'no-store' })
   const subscription = await detailsResponse.json()
   const [organizationId, planId, tier, agencyBrandId] = String(subscription.custom_id ?? '').split(':')
-  // Plan de agencia: la marca que paga viene en el custom_id fijado al crear la suscripción; solo vale si la agencia
-  // del usuario la administra y su organización es la de la suscripción. Nunca se confía en el navegador.
+  // Mensualidad: la marca que paga viene en el custom_id fijado al crear la suscripción; solo vale si la agencia
+  // del usuario la administra (o es su propia marca) y su organización es la de la suscripción. Nunca se confía en el navegador.
   if (tier === 'agency') {
-    const managed = agencyBrandId ? await resolveAgencyManagedBrandAccess(user.id, agencyBrandId) : null
+    const managed = agencyBrandId
+      ? (await resolveAgencyManagedBrandAccess(user.id, agencyBrandId)) ?? (access.brandId === agencyBrandId ? access : null)
+      : null
     if (!managed || managed.organizationId !== organizationId || !canPayBrandPlan(managed)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     access = managed
   }

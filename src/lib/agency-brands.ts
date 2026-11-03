@@ -113,14 +113,18 @@ type SubscriptionRow = {
 const planTier = (row: SubscriptionRow) => (Array.isArray(row.plan) ? row.plan[0]?.tier : row.plan?.tier) ?? null
 
 /**
- * Mensualidad vigente de ESA marca. Cuenta una suscripción de plan `agency` de la
- * organización propia de la marca (nunca de otra), activa o con período pagado
- * futuro. Un override administrativo (otorgado por un admin) también habilita.
+ * Suscripción vigente de ESA marca (regla para TODAS las marcas, decisión 2026-11-03: se paga al enviar a
+ * aprobación, no al entrar). Cuenta una suscripción de la organización propia de la marca (nunca de otra):
+ * la mensualidad `agency` (activa o con período pagado futuro) o un plan Basic/Growth/Pro existente con acceso.
+ * Un override administrativo (otorgado por un admin) también habilita.
  */
 export function agencyMonthIsCurrent(rows: SubscriptionRow[], override: unknown, now: number = Date.now()): boolean {
   if (typeof override === 'string' && override.trim()) return true
   return rows.some(row => {
-    if (planTier(row) !== AGENCY_PLAN_TIER) return false
+    // Suscripciones existentes (Basic/Growth/Pro) siguen valiendo con su regla de siempre: no se les pide pagar de nuevo.
+    if (planTier(row) !== AGENCY_PLAN_TIER) {
+      return brandSubscriptionGrantsAccess({ status: row.status, current_period_end: row.current_period_end, metadata: row.metadata }, now)
+    }
     if (!brandSubscriptionGrantsAccess({ status: row.status, current_period_end: row.current_period_end, metadata: row.metadata }, now)) return false
     const end = row.current_period_end ? Date.parse(row.current_period_end) : NaN
     if (!Number.isFinite(end)) return false
@@ -128,7 +132,7 @@ export function agencyMonthIsCurrent(rows: SubscriptionRow[], override: unknown,
   })
 }
 
-export async function brandHasCurrentAgencyMonth(admin: SupabaseClient, brandId: string, now: number = Date.now()): Promise<boolean> {
+export async function brandHasCurrentSubscription(admin: SupabaseClient, brandId: string, now: number = Date.now()): Promise<boolean> {
   const { data: brand } = await admin.from('brands').select('id, organization_id, subscription_plan_override').eq('id', brandId).maybeSingle()
   if (!brand?.organization_id) return false
   const { data, error } = await admin

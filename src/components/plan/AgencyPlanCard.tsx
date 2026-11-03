@@ -28,6 +28,7 @@ export function AgencyPlanCard({ brandId, campaignId, brandName, onCancel }: {
     fetch(`/api/paypal/checkout?tier=agency&brand_id=${encodeURIComponent(brandId)}`, { cache: 'no-store' })
       .then(async res => {
         const json = await res.json()
+        if (res.status === 403) throw new Error('Solo el owner de la marca puede activar la mensualidad. Pídele que lo haga.')
         if (!res.ok) throw new Error(json.error ?? 'No se pudo leer el monto')
         if (active) setInfo(json)
       })

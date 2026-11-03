@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import {
-  AGENCY_ACTIVE_BRAND_COOKIE, AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_CLP, brandHasCurrentAgencyMonth,
+  AGENCY_ACTIVE_BRAND_COOKIE, AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_CLP, brandHasCurrentSubscription,
   listAgencyBrands, resolveAgencyBrandAccess, resolveAgencyContext,
 } from '@/lib/agency-brands'
 
@@ -21,7 +21,7 @@ export async function GET() {
     name: brand.name,
     status: brand.status,
     is_agency_own: brand.organization_id === agency.organizationId,
-    subscription_current: await brandHasCurrentAgencyMonth(admin, brand.id),
+    subscription_current: await brandHasCurrentSubscription(admin, brand.id),
   })))
   let activeBrandId: string | null = null
   try {

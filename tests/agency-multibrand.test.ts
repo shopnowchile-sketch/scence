@@ -55,7 +55,8 @@ test('agencyMonthIsCurrent: activa vigente, gracia, vencida, cancelada, otro pla
   assert.equal(agency.agencyMonthIsCurrent([sub('o', 'b', { status: 'canceled', current_period_end: PAST })], null, now), false)
   assert.equal(agency.agencyMonthIsCurrent([sub('o', 'b', { status: 'canceled' })], null, now), true, 'cancelada con período pagado futuro')
   for (const status of ['past_due', 'incomplete', 'unpaid', 'paused']) assert.equal(agency.agencyMonthIsCurrent([sub('o', 'b', { status })], null, now), false, status)
-  assert.equal(agency.agencyMonthIsCurrent([sub('o', 'b', { plan: { tier: 'pro' } })], null, now), false, 'otro plan no habilita')
+  assert.equal(agency.agencyMonthIsCurrent([sub('o', 'b', { plan: { tier: 'pro' } })], null, now), true, 'plan existente con acceso: no se vuelve a cobrar')
+  assert.equal(agency.agencyMonthIsCurrent([sub('o', 'b', { plan: { tier: 'pro' }, status: 'past_due' })], null, now), false, 'plan existente sin acceso (past_due)')
   assert.equal(agency.agencyMonthIsCurrent([sub('o', 'b', { metadata: { account_type: 'influencer' } })], null, now), false)
   assert.equal(agency.agencyMonthIsCurrent([], 'pro', now), true, 'override administrativo')
   assert.equal(agency.agencyMonthIsCurrent([], null, now), false)
@@ -89,15 +90,15 @@ test('listAgencyBrands: las de la agencia (propia + administradas), nunca las de
 })
 
 // ── Una suscripción por marca ────────────────────────────────────────────────
-test('brandHasCurrentAgencyMonth: cada marca con su suscripción; la de una no habilita a otra', async () => {
+test('brandHasCurrentSubscription: cada marca con su suscripción; la de una no habilita a otra', async () => {
   const db = fresh(); db.subscriptions.push(sub('org-A', 'brand-A'))
   const { admin } = adminWith(db)
-  assert.equal(await agency.brandHasCurrentAgencyMonth(admin, 'brand-A'), true)
-  assert.equal(await agency.brandHasCurrentAgencyMonth(admin, 'brand-B'), false)
-  assert.equal(await agency.brandHasCurrentAgencyMonth(admin, 'brand-IC'), false)
+  assert.equal(await agency.brandHasCurrentSubscription(admin, 'brand-A'), true)
+  assert.equal(await agency.brandHasCurrentSubscription(admin, 'brand-B'), false)
+  assert.equal(await agency.brandHasCurrentSubscription(admin, 'brand-IC'), false)
   // Una fila atada a otra marca dentro de la misma organización no cuenta.
   db.subscriptions.push(sub('org-B', 'brand-A'))
-  assert.equal(await agency.brandHasCurrentAgencyMonth(admin, 'brand-B'), false)
+  assert.equal(await agency.brandHasCurrentSubscription(admin, 'brand-B'), false)
 })
 
 test('isAgencyScopedBrand: IC y sus marcas sí; una marca normal no (su flujo no cambia)', async () => {
@@ -149,11 +150,54 @@ test('la mensualidad de la marca A no habilita enviar campañas de la marca B', 
   assert.equal(db.campaigns.find(c => c.id === 'camp-B')!.status, 'draft')
 })
 
-test('una marca normal sigue sin compuerta de mensualidad de agencia', async () => {
+test('toda marca: guardar y editar borradores es gratis (sin suscripción)', async () => {
+  const db = fresh(); as('ownerX', db)
+  const route = await import('../src/app/api/brand/campaigns/[id]/route.ts')
+  const res = await (route as any).PATCH(req({ name: 'Borrador editado', description: 'texto' }), { params: { id: 'camp-X' } })
+  assert.equal(res.status, 200)
+  assert.equal(db.campaigns.find(c => c.id === 'camp-X')!.status, 'draft')
+  // Un borrador público no se bloquea por el tope de plan: el límite se aplica al enviar a revisión.
+  db.campaigns.push({ id: 'camp-X-open', brand_id: 'brand-X', created_by_brand_id: 'brand-X', organization_id: 'org-X', status: 'open-previous', visibility: 'open', metadata: {}, deliverable_templates: [] })
+  const open = await (route as any).PATCH(req({ visibility: 'open' }), { params: { id: 'camp-X' } })
+  assert.equal(open.status, 200)
+})
+
+test('toda marca sin suscripción: «Enviar a aprobación» pide el pago (402) y la campaña sigue en borrador', async () => {
   const db = fresh(); as('ownerX', db)
   const res = await submit('camp-X')
-  assert.notEqual(res.status, 402)
-  assert.equal(db.campaigns.find(c => c.id === 'camp-X')!.status, 'pending_approval')
+  assert.equal(res.status, 402)
+  const json = await res.json()
+  assert.equal(json.code, 'AGENCY_SUBSCRIPTION_REQUIRED'); assert.equal(json.brand_id, 'brand-X')
+  assert.equal(db.campaigns.find(c => c.id === 'camp-X')!.status, 'draft')
+})
+
+test('suscripciones existentes (Basic/Growth/Pro) y overrides siguen valiendo: sin cobrar de nuevo', async () => {
+  for (const tier of ['basic', 'growth', 'pro']) {
+    const db = fresh(); db.subscriptions.push(sub('org-X', 'brand-X', { plan: { tier }, paypal_subscription_id: `I-${tier}` })); as('ownerX', db)
+    assert.equal((await submit('camp-X')).status, 200, tier)
+    assert.equal(db.campaigns.find(c => c.id === 'camp-X')!.status, 'pending_approval', tier)
+  }
+  const db = fresh(); db.brands.find(b => b.id === 'brand-X')!.subscription_plan_override = 'pro'; as('ownerX', db)
+  assert.equal((await submit('camp-X')).status, 200, 'override administrativo')
+})
+
+test('la suscripción de una marca no habilita a otra marca normal', async () => {
+  const db = fresh(); db.subscriptions.push(sub('org-A', 'brand-A', { plan: { tier: 'pro' } }))
+  db.campaigns.push({ id: 'camp-Y', brand_id: 'brand-Y', created_by_brand_id: 'brand-Y', organization_id: 'org-Y', status: 'draft', visibility: 'private', metadata: {}, deliverable_templates: [] })
+  db.brands.push({ id: 'brand-Y', name: 'Y', organization_id: 'org-Y', status: 'approved', metadata: {}, subscription_plan_override: null })
+  db.organization_members.push({ id: 'm5', user_id: 'ownerY', organization_id: 'org-Y', role: 'brand_manager', is_owner: true, is_active: true, brand_id: 'brand-Y' })
+  as('ownerY', db)
+  assert.equal((await submit('camp-Y')).status, 402)
+})
+
+test('el portal de marca ya no redirige a Planes ni bloquea por falta de suscripción', async () => {
+  const { readFileSync } = await import('node:fs')
+  const layout = readFileSync(new URL('../src/app/(brand)/layout.tsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(layout, /hasActiveSubscription/)
+  // La única redirección a Planes que queda es la de marca suspendida.
+  const redirects = layout.match(/router\.replace\('\/brand-settings\/plan'\)/g) ?? []
+  assert.equal(redirects.length, 1)
+  assert.match(layout, /brandStatus === 'suspended'[^\n]*router\.replace\('\/brand-settings\/plan'\)/)
 })
 
 test('cookie de marca activa ajena a la agencia se ignora (sin escalada de permisos)', async () => {

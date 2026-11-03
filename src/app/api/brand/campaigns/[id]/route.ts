@@ -19,7 +19,7 @@ import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
 import { loadCampaignLocations, lockCanonicalLocationMetadata } from '@/lib/campaign-locations'
-import { AGENCY_SUBSCRIPTION_REQUIRED, brandHasCurrentAgencyMonth, isAgencyScopedBrand } from '@/lib/agency-brands'
+import { AGENCY_SUBSCRIPTION_REQUIRED, brandHasCurrentSubscription } from '@/lib/agency-brands'
 
 type Params = { params: { id: string } }
 
@@ -255,12 +255,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     )
   }
 
-  // Marcas de agencia (Impulso Consulting): enviar a revisión exige la mensualidad vigente
-  // de ESA marca (la dueña de la campaña), nunca la de otra. El pago no activa nada:
-  // la campaña queda en pending_approval hasta que el super_admin la apruebe.
-  if (updates.status === 'pending_approval' && campaignBase.status !== 'pending_approval') {
+  // Toda marca: crear, editar y guardar borradores es gratis; enviar a revisión exige la suscripción vigente de
+  // ESA marca (la dueña de la campaña), nunca la de otra. El pago no activa nada: la campaña queda en
+  // pending_approval hasta que el super_admin la apruebe.
+  const submitting = updates.status === 'pending_approval' && campaignBase.status !== 'pending_approval'
+  if (submitting) {
     const gateBrandId = (campaignBase.brand_id as string | null) ?? brand.id
-    if (await isAgencyScopedBrand(admin, gateBrandId) && !(await brandHasCurrentAgencyMonth(admin, gateBrandId))) {
+    if (!(await brandHasCurrentSubscription(admin, gateBrandId))) {
       return NextResponse.json({
         error: 'Esta marca necesita su mensualidad vigente para enviar campañas a aprobación.',
         code: AGENCY_SUBSCRIPTION_REQUIRED,
@@ -299,10 +300,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ? updates.visibility
       : campaignBase.visibility
 
+  // El borrador es libre (sin pago ni topes de plan): el límite de campañas públicas se aplica al enviar a revisión.
   if (
     nextVisibility === 'open' &&
     campaignBase.visibility !== 'open' &&
-    !limits.can_create_open_campaigns
+    !limits.can_create_open_campaigns &&
+    (campaignBase.status !== 'draft' || submitting || updates.status === 'active')
   ) {
     const { count: previousOpenCount, error: openCountError } = await admin
       .from('campaigns')

@@ -19,6 +19,7 @@ import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
 import { loadCampaignLocations, lockCanonicalLocationMetadata } from '@/lib/campaign-locations'
+import { AGENCY_SUBSCRIPTION_REQUIRED, brandHasCurrentAgencyMonth, isAgencyScopedBrand } from '@/lib/agency-brands'
 
 type Params = { params: { id: string } }
 
@@ -252,6 +253,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       { error: 'Solo la marca creadora puede editar esta campaña' },
       { status: 403 },
     )
+  }
+
+  // Marcas de agencia (Impulso Consulting): enviar a revisión exige la mensualidad vigente
+  // de ESA marca (la dueña de la campaña), nunca la de otra. El pago no activa nada:
+  // la campaña queda en pending_approval hasta que el super_admin la apruebe.
+  if (updates.status === 'pending_approval' && campaignBase.status !== 'pending_approval') {
+    const gateBrandId = (campaignBase.brand_id as string | null) ?? brand.id
+    if (await isAgencyScopedBrand(admin, gateBrandId) && !(await brandHasCurrentAgencyMonth(admin, gateBrandId))) {
+      return NextResponse.json({
+        error: 'Esta marca necesita su mensualidad vigente para enviar campañas a aprobación.',
+        code: AGENCY_SUBSCRIPTION_REQUIRED,
+        brand_id: gateBrandId,
+      }, { status: 402 })
+    }
   }
 
   if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {

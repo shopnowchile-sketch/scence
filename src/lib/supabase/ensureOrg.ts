@@ -3,6 +3,7 @@ import { roleHasBrandPermission, normalizeBrandRole, type BrandPermission, type 
 import { brandStatusAllows, capabilityForPermission, type BrandCapability } from '@/lib/brand-status-access'
 import { exactEmailPattern } from '@/lib/email-match'
 import { reconcileOrphanProSubscriptions } from '@/lib/influencer-pro'
+import { AGENCY_ACTIVE_BRAND_COOKIE, activeAgencyBrandAccess, resolveAgencyBrandAccess } from '@/lib/agency-brands'
 export type { BrandPermission } from '@/lib/brand-permissions'
 
 export type OrgRole = 'super_admin' | 'brand_manager' | 'member' | 'finance' | 'influencer'
@@ -388,8 +389,34 @@ export function canPayBrandPlan(access: BrandAccess | null): boolean {
   return brandStatusAllows(access.status, 'billing_manage') || brandStatusAllows(access.status, 'onboarding')
 }
 
+/** Marca activa elegida en el portal de agencia (cookie). Fuera de una petición no hay cookie. */
+async function readActiveBrandCookie(): Promise<string | null> {
+  try {
+    const { cookies } = await import('next/headers')
+    return cookies().get(AGENCY_ACTIVE_BRAND_COOKIE)?.value ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Acceso a UNA marca concreta del alcance de la agencia del usuario (Impulso
+ * Consulting). Solo el owner de una org `agency_portal`; null para cualquier otro.
+ */
+export async function resolveAgencyManagedBrandAccess(userId: string, brandId: string): Promise<BrandAccess | null> {
+  return resolveAgencyBrandAccess(createAdminClient(), userId, brandId)
+}
+
 export async function resolveBrandAccess(userId: string): Promise<BrandAccess | null> {
   const admin = createAdminClient()
+
+  // Agencia multimarca: si eligió una marca activa que su agencia administra, esa manda.
+  // Sin cookie válida, el flujo normal (su propia marca) no cambia para nadie.
+  const activeBrandId = await readActiveBrandCookie()
+  if (activeBrandId) {
+    const agencyAccess = await activeAgencyBrandAccess(admin, userId, activeBrandId)
+    if (agencyAccess) return agencyAccess
+  }
 
   const { data: orgMemberships } = await admin
     .from('organization_members')

@@ -72,7 +72,7 @@ export const PLAN_LIMITS = {
  */
 export function getPlanLimits(orgPlan: string | null | undefined): PlanLimits {
   const p = (orgPlan ?? '').toLowerCase().trim()
-  if (p === 'growth')                          return PLAN_LIMITS.growth
+  if (p === 'growth' || p === 'agency')        return PLAN_LIMITS.growth  // 'agency' = mensualidad por marca de agencia (campañas ilimitadas)
   if (p === 'pro' || p === 'plus' || p === 'enterprise') return PLAN_LIMITS.pro
   return PLAN_LIMITS.basic  // 'free' | '' | null | 'starter' | 'basic' | desconocido
 }
@@ -80,7 +80,7 @@ export function getPlanLimits(orgPlan: string | null | undefined): PlanLimits {
 /** Tier canónico desde el valor del campo DB (para UI). */
 export function getPlanTier(orgPlan: string | null | undefined): PlanTier {
   const p = (orgPlan ?? '').toLowerCase().trim()
-  if (p === 'growth')                                    return 'growth'
+  if (p === 'growth' || p === 'agency')                  return 'growth'
   if (p === 'pro' || p === 'plus' || p === 'enterprise') return 'pro'
   return 'basic'
 }

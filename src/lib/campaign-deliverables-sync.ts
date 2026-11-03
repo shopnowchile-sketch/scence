@@ -37,8 +37,10 @@ type ExistingDeliverable = {
 }
 
 export class DeliverableTemplateSyncError extends Error {
-  constructor(message: string, public readonly status = 422) {
+  readonly status: number
+  constructor(message: string, status = 422) {
     super(message)
+    this.status = status
   }
 }
 

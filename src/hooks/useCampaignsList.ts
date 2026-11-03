@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Campaign, CampaignDetail } from '@/types'
+import { notifyAgencyPaymentRequired } from '@/components/plan/AgencyCheckoutGate'
 
 // ── Fetch list ────────────────────────────────────────────────────────────────
 interface ListParams {
@@ -90,6 +91,8 @@ export function useCampaignDetail(id: string, apiBase = '/api/campaigns') {
   })
 }
 
+class AgencyPaymentRequired extends Error {}
+
 // ── Patch campaign status ─────────────────────────────────────────────────────
 export function usePatchCampaign(id: string, apiBase = '/api/campaigns') {
   const qc = useQueryClient()
@@ -102,6 +105,11 @@ export function usePatchCampaign(id: string, apiBase = '/api/campaigns') {
       })
       if (!res.ok) {
         const err = await res.json()
+        // Mensualidad de agencia pendiente: abre el checkout PayPal de la marca en vez de solo mostrar un error.
+        if (res.status === 402 && err.code === 'AGENCY_SUBSCRIPTION_REQUIRED' && typeof err.brand_id === 'string') {
+          notifyAgencyPaymentRequired({ brandId: err.brand_id, campaignId: id })
+          throw new AgencyPaymentRequired(err.error)
+        }
         throw new Error(err.error ?? 'Error al actualizar campaña')
       }
       return res.json()
@@ -110,7 +118,7 @@ export function usePatchCampaign(id: string, apiBase = '/api/campaigns') {
       qc.invalidateQueries({ queryKey: ['campaign', apiBase, id] })
       qc.invalidateQueries({ queryKey: ['campaigns'] })
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => { if (!(err instanceof AgencyPaymentRequired)) toast.error(err.message) },
   })
 }
 

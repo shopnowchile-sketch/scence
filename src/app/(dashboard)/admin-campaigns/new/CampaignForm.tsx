@@ -1,5 +1,6 @@
 'use client'
 
+import { notifyAgencyPaymentRequired } from '@/components/plan/AgencyCheckoutGate'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm, useWatch, Controller, type UseFormRegister, type Control, type FieldErrors } from 'react-hook-form'
@@ -661,6 +662,16 @@ export function CampaignForm({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'submit_for_approval' }),
         })
+        if (reviewRes.status === 402) {
+          // Marca de agencia sin mensualidad vigente: la campaña queda en borrador y se abre el pago de ESA marca.
+          const payment = await reviewRes.json().catch(() => ({}))
+          if (payment.code === 'AGENCY_SUBSCRIPTION_REQUIRED' && typeof payment.brand_id === 'string') {
+            notifyAgencyPaymentRequired({ brandId: payment.brand_id, campaignId: savedCampaignId })
+            toast.info('Campaña guardada como borrador. Activa la mensualidad de la marca para enviarla a aprobación.')
+            router.push(`${redirectBase}/${savedCampaignId}`)
+            return
+          }
+        }
         if (!reviewRes.ok) {
           const reviewError = await reviewRes.json().catch(() => ({}))
           throw new Error(reviewError.error ?? 'La campaña se creó, pero no se pudo enviar a revisión')

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandPlanAccess } from '@/lib/plan-limits'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
+import { isAgencyScopedBrand } from '@/lib/agency-brands'
 import { PROFILE_LEGAL_SELECT, missingCompanyLegalFields } from '@/lib/brand-legal-profile'
 
 const BRAND_FIELDS = `
@@ -57,6 +58,7 @@ export async function GET() {
         full_name: representative?.full_name ?? '', signer_rut: representative?.signer_rut ?? '', signer_role: representative?.signer_role ?? '',
       } : null,
       org_plan: planAccess.plan,
+      agency_managed: await isAgencyScopedBrand(admin, data.id),
       has_active_subscription: planAccess.hasActiveAccess,
       member_role: access.role,
       is_owner: access.isOwner,

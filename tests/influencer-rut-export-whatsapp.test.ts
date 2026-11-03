@@ -17,6 +17,7 @@ const phone = await import('../src/lib/phone.ts')
 const cols = await import('../src/lib/campaign-export-columns.ts')
 const exp = await import('../src/app/api/campaigns/[id]/influencers/export/route.ts')
 const rutRoute = await import('../src/app/api/influencer/rut/route.ts')
+const rutAdminRoute = await import('../src/app/api/influencers/[id]/rut/route.ts')
 
 type Row = Record<string, any>
 const m = (user_id: string, organization_id: string, role: string, brand_id: string | null, is_owner = false) =>
@@ -111,8 +112,8 @@ test('export: sin parámetros = comportamiento histórico (solo confirmadas, col
   assert.match(res.headers.get('Content-Type') ?? '', /spreadsheetml/)
   const lines = await csv('uAdmin', '')
   assert.equal(lines.length, 2) // cabecera + Ana
-  assert.match(lines[0], /^Nombre,Email,Teléfono,WhatsApp,Instagram,Seguidores,Engagement \(%\),Comuna,Categorías,Fee,Moneda,Fecha de aceptación$/)
-  assert.match(lines[1], /^Ana Confirmada,ana@test\.invalid,\+56 9 1111 1111,/)
+  assert.match(lines[0], /^Nombre,RUT,Email,Teléfono,WhatsApp,Instagram,Seguidores,Engagement \(%\),Comuna,Categorías,Fee,Moneda,Fecha de aceptación$/)
+  assert.match(lines[1], /^Ana Confirmada,12\.345\.678-5,ana@test\.invalid,\+56 9 1111 1111,/)
 })
 
 test('export: filtro confirmadas / aprobadas (sin confirmar) / ambas, nunca rechazadas', async () => {
@@ -189,6 +190,7 @@ test('el RUT no vive en influencers ni se selecciona fuera de la tabla privada y
   assert.deepEqual(users.sort(), [
     'src/app/api/campaigns/[id]/influencers/export/route.ts',
     'src/app/api/influencer/rut/route.ts',
+    'src/app/api/influencers/[id]/rut/route.ts',
   ])
   assert.doesNotMatch(read('src/app/api/influencer/rut/route.ts'), /body\??\.influencer_id|body\??\.user_id/)
 })
@@ -207,4 +209,42 @@ test('WhatsApp: los teléfonos visibles usan el componente compartido (sin tel: 
     assert.match(src, /<PhoneLink /, file)
     assert.doesNotMatch(src, /href=\{`tel:/, file)
   }
+})
+
+test('RUT: formato progresivo al escribir y valor por defecto en la exportación', () => {
+  assert.equal(rut.formatRutInput('123456785'), '12.345.678-5')
+  assert.equal(rut.formatRutInput('12.345.678-5'), '12.345.678-5')
+  assert.equal(rut.formatRutInput('6000000k'), '6.000.000-K')
+  assert.equal(rut.formatRutInput('1'), '1')
+  assert.equal(rut.formatRutInput('12'), '1-2')
+  assert.equal(rut.formatRutInput('abc'), '')
+  assert.equal(rut.formatRutInput(''), '')
+  assert.ok(rut.isValidRut(rut.formatRutInput('123456785')))
+  assert.ok((cols as any).DEFAULT_EXPORT_COLUMNS.includes('rut'))
+})
+
+test('export sin parámetros: incluye RUT por defecto (Super Admin) y sigue cerrado a marcas', async () => {
+  const lines = await csv('uAdmin', 'filter=all')
+  assert.match(lines[0], /RUT/)
+  assert.match(lines.join('\n'), /12\.345\.678-5/)
+  assert.equal((await get('uOwnerA', 'filter=all')).status, 403)
+})
+
+test('GET /api/influencers/[id]/rut: solo Super Admin; marcas (owner/member), la propia influencer y anónimos no', async () => {
+  const call = (user: string | null, id = 'inf-1') => { as(user); return (rutAdminRoute as any).GET(mk('http://x'), { params: { id } }) as Promise<Response> }
+  assert.equal((await call(null)).status, 401)
+  for (const u of ['uOwnerA', 'uMemA', 'uOwnerB', 'uInf1']) {
+    const res = await call(u)
+    assert.equal(res.status, 403, u)
+    assert.doesNotMatch(await res.text(), /12345678/)
+  }
+  assert.equal((await (await call('uAdmin')).json()).data.rut, '12345678-5')
+  assert.equal((await (await call('uAdmin', 'inf-2')).json()).data.rut, null)
+})
+
+test('privacidad: RUT fuera del resumen del perfil; influencer-report no consulta email ni teléfono', () => {
+  const prof = read('src/app/(influencer)/inf-profile/page.tsx')
+  assert.doesNotMatch(prof, /savedRut &&/)
+  assert.match(prof, /formatRutInput/)
+  assert.doesNotMatch(read('src/app/api/campaigns/[id]/influencer-report/route.ts'), /select\([\s\S]*?\b(email|phone)\b/)
 })

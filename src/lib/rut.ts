@@ -36,3 +36,11 @@ export function formatRut(input: unknown): string {
   const [body, dv] = rut.split('-')
   return `${body.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}-${dv}`
 }
+
+/** Formato progresivo para campos de texto: "123456785" → "12.345.678-5". Acepta puntos, guion y K; no valida. */
+export function formatRutInput(input: string): string {
+  const raw = String(input ?? '').replace(/[^0-9kK]/g, '').toUpperCase().replace(/K(?=.)/g, '').slice(0, 9)
+  if (raw.length <= 1) return raw
+  const body = raw.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${body}-${raw.slice(-1)}`
+}

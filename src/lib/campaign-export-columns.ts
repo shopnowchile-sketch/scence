@@ -28,7 +28,7 @@ export const EXPORT_COLUMNS: ReadonlyArray<{ key: ExportColumnKey; label: string
 
 /** Selección por defecto = columnas históricas de la descarga (sin cambios para quien no elige nada). */
 export const DEFAULT_EXPORT_COLUMNS: ExportColumnKey[] = [
-  'name', 'email', 'phone', 'whatsapp', 'instagram', 'followers', 'engagement', 'commune', 'categories', 'fee', 'currency', 'accepted_at',
+  'name', 'rut', 'email', 'phone', 'whatsapp', 'instagram', 'followers', 'engagement', 'commune', 'categories', 'fee', 'currency', 'accepted_at',
 ]
 
 /** aprobadas = aceptadas aún sin confirmar asistencia · confirmadas = aceptadas con asistencia confirmada · all = ambas. */

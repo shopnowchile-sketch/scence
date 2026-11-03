@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Get influencer + membership
   const [{ data: influencer }, { data: membership }] = await Promise.all([
     admin.from('influencers').select(`
-      id, display_name, avatar_url, email, phone,
+      id, display_name, avatar_url,
       influencer_social_profiles (platform, username, followers, engagement_rate)
     `).eq('id', influencer_id).single(),
     admin.from('campaign_influencers').select('fee, currency, notes')

@@ -15,6 +15,7 @@ import {
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,
+  isGoogleCalendarEnabled,
 } from '@/lib/google-calendar'
 
 /**
@@ -168,7 +169,8 @@ export async function POST(req: NextRequest) {
   let gcalEventId: string | null = null
   let gcalLink: string | null = null
 
-  try {
+  // Google Calendar desactivado por defecto (ver isGoogleCalendarEnabled): la reserva se crea igual, sin evento ni invitaciones.
+  if (isGoogleCalendarEnabled()) try {
     const gcalEvent = await createCalendarEvent({
       title,
       description: description
@@ -291,7 +293,7 @@ export async function PUT(req: NextRequest) {
     ? { location_id: canonicalLocation.location_id, location_details: mergeBookingLocationDetails(existing.location_details, rest.location_details, canonicalLocation.details) }
     : picked ? { location_id: picked.locationId } : {}
 
-  if (existing?.calendar_event_id) {
+  if (existing?.calendar_event_id && isGoogleCalendarEnabled()) {
     try {
       await updateCalendarEvent(existing.calendar_event_id, {
         title, description, location,
@@ -339,7 +341,7 @@ export async function DELETE(req: NextRequest) {
   const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id)
   if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para quitar este evento' }, { status: 403 })
 
-  if (existing?.calendar_event_id) {
+  if (existing?.calendar_event_id && isGoogleCalendarEnabled()) {
     try { await deleteCalendarEvent(existing.calendar_event_id) } catch {}
   }
 

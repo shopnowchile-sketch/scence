@@ -17,7 +17,17 @@ import type { CreateCalendarEventInput, GoogleCalendarEvent } from '@/types'
 const SCENCE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID!
 const SCOPES = ['https://www.googleapis.com/auth/calendar']
 
+/**
+ * Interruptor general. La integración está DESACTIVADA por defecto (decisión de la fundadora, 2026-11-04) hasta
+ * que el requerimiento esté completo y entendido: no se crean, actualizan ni borran eventos, y no se envían
+ * invitaciones por correo (`sendUpdates: 'all'`). Para reactivarla: GOOGLE_CALENDAR_ENABLED=true en Vercel.
+ */
+export function isGoogleCalendarEnabled(): boolean {
+  return process.env.GOOGLE_CALENDAR_ENABLED === 'true'
+}
+
 function getAuth() {
+  if (!isGoogleCalendarEnabled()) throw new Error('Google Calendar está desactivado (GOOGLE_CALENDAR_ENABLED != true).')
   // Choke point: toda operación de Calendar pasa por aquí. Fuera de producción falla antes de crear credenciales.
   assertProductionRuntime('Google Calendar')
   return new google.auth.JWT({

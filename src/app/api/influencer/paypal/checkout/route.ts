@@ -50,8 +50,11 @@ export async function POST(request: NextRequest) {
   // (aún no aceptada, por eso no puede reusar el campaign_id de arriba).
   const returnCampaignId = typeof body.return_campaign_id === 'string' && body.return_campaign_id.trim() ? body.return_campaign_id.trim() : null
   const returnQuery = returnCampaignId ? `&return_campaign_id=${encodeURIComponent(returnCampaignId)}` : ''
+  // Un mismo PayPal-Request-Id por influencer y ventana de 15 min: si reintenta (la página de PayPal tarda o se
+  // cuelga) PayPal devuelve la MISMA suscripción pendiente en vez de abrir otra. Antes cada clic creaba una nueva
+  // (una influencer llegó a acumular 9 pendientes) y aprobar dos habría significado dos cobros mensuales.
   const response = await fetch(`${influencerPayPalBaseUrl()}/v1/billing/subscriptions`, {
-    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `scence-influencer-${influencer.id}-${Date.now()}` },
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `scence-influencer-${influencer.id}-${body.campaign_id ?? 'x'}-${returnCampaignId ?? 'x'}-${Math.floor(Date.now() / (15 * 60_000))}` },
     body: JSON.stringify({ plan_id: paypalPlanId, custom_id: customId, application_context: { brand_name: 'SCENCE', user_action: 'SUBSCRIBE_NOW', return_url: `${appUrl}/inf-profile?tab=plan&checkout=processing${returnQuery}`, cancel_url: `${appUrl}/inf-profile?tab=plan&checkout=cancelled${returnQuery}` } }),
   })
   const result = await response.json().catch(() => null)

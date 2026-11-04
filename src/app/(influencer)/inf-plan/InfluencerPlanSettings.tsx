@@ -81,10 +81,19 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
     // de la suscripción en sí.
     const returnCampaignId = params.get('return_campaign_id')
     setUpgrading(true)
-    fetch(`/api/influencer/paypal/complete?subscription_id=${encodeURIComponent(subscriptionId)}`, { method: 'POST' })
-      .then(async response => {
+    // PayPal puede tardar unos segundos en dejar la suscripción en ACTIVE al volver: se reintenta antes de dar
+    // error (409 «aún no está activa»); si no, la influencer veía un error aunque el pago sí se completaba.
+    const confirmSubscription = async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const response = await fetch(`/api/influencer/paypal/complete?subscription_id=${encodeURIComponent(subscriptionId)}`, { method: 'POST' })
         const result = await responseJson(response)
-        if (!response.ok) throw new Error(result.error)
+        if (response.ok) return result
+        if (response.status !== 409 || attempt === 4) throw new Error(response.status === 409 ? 'PayPal aún está procesando tu pago. Espera un minuto y recarga esta página: tu Plan Pro se activará solo.' : result.error)
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+    }
+    confirmSubscription()
+      .then(async () => {
         toast.success('Tu Plan Pro está activo.')
         if (returnCampaignId) { window.location.replace(`/inf-campaign/${returnCampaignId}`); return }
         window.history.replaceState({}, '', '/inf-profile?tab=plan')
@@ -93,6 +102,12 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       .catch(error => toast.error(error instanceof Error ? error.message : 'No se pudo confirmar la suscripción.'))
       .finally(() => setUpgrading(false))
   }, [load])
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('checkout') === 'cancelled') {
+      toast.info('Cancelaste el pago. Cuando quieras, puedes volver a intentarlo desde Mi Plan.')
+    }
+  }, [])
 
   async function upgradeToPro() {
     setUpgrading(true)
@@ -108,6 +123,14 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       })
       const result = await responseJson(response)
       if (!response.ok || !result.url) throw new Error(result.error ?? 'No se pudo iniciar PayPal.')
+      // Los navegadores internos de Instagram, Facebook, WhatsApp, TikTok o Snapchat suelen dejar la página de PayPal
+      // en blanco con el candado girando. Se avisa y se copia el enlace para abrirlo en Chrome o Safari.
+      const inAppBrowser = /(FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Snapchat|TikTok|musical_ly|Line\/|MicroMessenger)/i.test(navigator.userAgent)
+      if (inAppBrowser) {
+        try { await navigator.clipboard?.writeText(result.url) } catch { /* sin portapapeles */ }
+        const keepGoing = window.confirm('Estás dentro de otra app (Instagram, WhatsApp, TikTok…) y PayPal suele quedarse cargando ahí. Copiamos el enlace de pago: ábrelo en Chrome o Safari. ¿Quieres intentarlo igualmente aquí?')
+        if (!keepGoing) { setUpgrading(false); toast.info('Enlace de pago copiado. Pégalo en Chrome o Safari para pagar.'); return }
+      }
       window.location.href = result.url
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo iniciar PayPal.')

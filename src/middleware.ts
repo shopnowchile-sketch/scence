@@ -11,6 +11,7 @@ const PUBLIC_ROUTES = [
   '/api/auth/forgot-password', // genera el link de recuperación — llamado sin sesión
   '/api/auth/register-brand',  // autorregistro de marca — llamado sin sesión
   '/api/auth/register-influencer', // autorregistro de creadora — llamado sin sesión
+  '/api/auth/resend-confirmation', // reenvío del enlace de confirmación — llamado desde el login, sin sesión
   '/terms', '/privacy',
   '/api/webhooks/resend',  // Resend webhook — no auth needed (verified by Svix signature)
   '/api/crm-leads/bulk-send/process', // job interno server-to-server — verificado con INTERNAL_JOB_SECRET, no lleva cookies de usuario
@@ -87,9 +88,13 @@ export async function middleware(request: NextRequest) {
       return withLocale(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
     }
     // Pages → redirect to login with return param
+    // El destino conserva la query (p. ej. el retorno de PayPal con subscription_id): sin
+    // ella, quien vuelve sin sesión terminaba en el inicio y la inscripción no se confirmaba.
+    const returnTo = path + request.nextUrl.search
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('redirect', path)
+    url.search = ''
+    url.searchParams.set('redirect', returnTo)
     return withLocale(NextResponse.redirect(url))
   }
 

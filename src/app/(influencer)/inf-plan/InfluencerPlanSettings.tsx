@@ -74,7 +74,21 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
     const params = new URLSearchParams(window.location.search)
     if (params.get('checkout') !== 'processing') return
     const subscriptionId = params.get('subscription_id')
-    if (!subscriptionId) return
+    // Sin subscription_id (volvió desde otro navegador o sin el enlace de retorno): el servidor
+    // revisa en PayPal, solo lectura, si ya hay un pago aprobado y lo activa. No cobra ni crea nada.
+    if (!subscriptionId) {
+      setUpgrading(true)
+      fetch('/api/influencer/paypal/complete', { method: 'POST' })
+        .then(async response => {
+          if (response.status === 401) { window.location.href = `/login?redirect=${encodeURIComponent('/inf-profile?tab=plan')}`; return }
+          const result = await responseJson(response)
+          if (response.ok && result.plan === 'pro') { toast.success('Tu Plan Pro está activo.'); window.history.replaceState({}, '', '/inf-profile?tab=plan'); await load() }
+          else if (result.state === 'processing') toast.info('PayPal aún está confirmando tu pago. Recarga en unos minutos: tu Plan Pro se activará solo.')
+        })
+        .catch(() => { /* silencioso: la persona puede reintentar desde el botón */ })
+        .finally(() => setUpgrading(false))
+      return
+    }
     // Si el upgrade se inició desde una campaña (return_campaign_id viaja en
     // el return_url de PayPal, ver /api/influencer/paypal/checkout), volvemos
     // ahí en vez de quedarnos en Mi Plan — no cambia nada de la confirmación
@@ -86,6 +100,12 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
     const confirmSubscription = async () => {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const response = await fetch(`/api/influencer/paypal/complete?subscription_id=${encodeURIComponent(subscriptionId)}`, { method: 'POST' })
+        // Sesión perdida al volver de PayPal: se inicia sesión y se regresa a esta misma pantalla
+        // (con el subscription_id) para confirmar el pago; no se pierde nada.
+        if (response.status === 401) {
+          window.location.href = `/login?redirect=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`
+          return null
+        }
         const result = await responseJson(response)
         if (response.ok) return result
         if (response.status !== 409 || attempt === 4) throw new Error(response.status === 409 ? 'PayPal aún está procesando tu pago. Espera un minuto y recarga esta página: tu Plan Pro se activará solo.' : result.error)
@@ -93,7 +113,8 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       }
     }
     confirmSubscription()
-      .then(async () => {
+      .then(async result => {
+        if (result === null) return
         toast.success('Tu Plan Pro está activo.')
         if (returnCampaignId) { window.location.replace(`/inf-campaign/${returnCampaignId}`); return }
         window.history.replaceState({}, '', '/inf-profile?tab=plan')
@@ -116,16 +137,23 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
       const acceptanceResult = await responseJson(acceptanceResponse)
       if (!acceptanceResponse.ok) throw new Error(acceptanceResult.error)
       const returnCampaignId = new URLSearchParams(window.location.search).get('return_campaign_id')
-      const response = await fetch('/api/influencer/paypal/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(returnCampaignId ? { return_campaign_id: returnCampaignId } : {}),
-      })
-      const result = await responseJson(response)
-      if (!response.ok || !result.url) throw new Error(result.error ?? 'No se pudo iniciar PayPal.')
       // Los navegadores internos de Instagram, Facebook, WhatsApp, TikTok o Snapchat suelen dejar la página de PayPal
       // en blanco con el candado girando. Se avisa y se copia el enlace para abrirlo en Chrome o Safari.
       const inAppBrowser = /(FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Snapchat|TikTok|musical_ly|Line\/|MicroMessenger)/i.test(navigator.userAgent)
+      const response = await fetch('/api/influencer/paypal/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(returnCampaignId ? { return_campaign_id: returnCampaignId } : {}), in_app_browser: inAppBrowser }),
+      })
+      const result = await responseJson(response)
+      // Ya tenía un pago aprobado en PayPal (p. ej. cambió de navegador): se activó sin cobrar de nuevo.
+      if (response.ok && result.activated) {
+        toast.success('Tu Plan Pro ya estaba pagado y quedó activo.')
+        await load()
+        setUpgrading(false)
+        return
+      }
+      if (!response.ok || !result.url) throw new Error(result.error ?? 'No se pudo iniciar PayPal.')
       if (inAppBrowser) {
         try { await navigator.clipboard?.writeText(result.url) } catch { /* sin portapapeles */ }
         const keepGoing = window.confirm('Estás dentro de otra app (Instagram, WhatsApp, TikTok…) y PayPal suele quedarse cargando ahí. Copiamos el enlace de pago: ábrelo en Chrome o Safari. ¿Quieres intentarlo igualmente aquí?')
@@ -194,6 +222,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
             <button onClick={upgradeToPro} disabled={upgrading} className="mt-3 w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-violet-700 disabled:opacity-50">
               {upgrading ? 'ABRIENDO PAYPAL…' : 'CAMBIAR A PLAN PRO'}
             </button>
+            <p className="mt-2 text-center text-[11px] text-gray-500">Tip: paga desde Chrome o Safari (no desde el navegador de Instagram o WhatsApp). Si PayPal te pide iniciar sesión en otro navegador, al volver entra a SCENCE con tu cuenta y tu Plan Pro se activará solo; no vuelvas a pagar.</p>
             <p className="mt-2 text-center text-[11px] text-gray-400">Pago mensual con PayPal. Al continuar aceptas los <Link href="/terms/influencer-pro" target="_blank" className="text-violet-600 hover:underline">términos del Plan Pro</Link>.</p>
           </div>
         </section>

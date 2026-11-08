@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { buildInfluencerSubscriptionRow, getInfluencerPayPalToken, influencerPayPalBaseUrl, parseInfluencerReference } from '@/lib/influencer-paypal'
+import { reconcileInfluencerProSubscriptions } from '@/lib/influencer-pro-recovery'
 
 export async function POST(request: NextRequest) {
   const subscriptionId = request.nextUrl.searchParams.get('subscription_id')
-  if (!subscriptionId) return NextResponse.json({ error: 'Falta la suscripción de PayPal.' }, { status: 422 })
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = createAdminClient()
   const { data: influencer } = await admin.from('influencers').select('id, organization_id, user_id, is_active').eq('user_id', user.id).maybeSingle()
   if (!influencer?.is_active || !influencer.organization_id) return NextResponse.json({ error: 'Cuenta de influencer inválida.' }, { status: 403 })
+  // Sin subscription_id (la persona volvió sin el enlace de retorno, con otra sesión u otro
+  // navegador): se revisan en PayPal, solo lectura, sus intentos pendientes y se sincroniza
+  // el que ya esté activo. No crea ni modifica nada en PayPal.
+  if (!subscriptionId) {
+    const recovery = await reconcileInfluencerProSubscriptions(admin, { id: influencer.id, organization_id: influencer.organization_id, user_id: influencer.user_id })
+    return NextResponse.json({ plan: recovery.state === 'active' ? 'pro' : 'free', state: recovery.state })
+  }
   const accessToken = await getInfluencerPayPalToken()
   if (!accessToken) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
   const detailsResponse = await fetch(`${influencerPayPalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' })

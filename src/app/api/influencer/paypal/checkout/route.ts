@@ -3,13 +3,14 @@ import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getInfluencerPayPalToken, influencerPayPalBaseUrl } from '@/lib/influencer-paypal'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { reconcileInfluencerProSubscriptions, recordProCheckout } from '@/lib/influencer-pro-recovery'
 
 export async function POST(request: NextRequest) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = createAdminClient()
-  const { data: influencer } = await admin.from('influencers').select('id, organization_id, is_active').eq('user_id', user.id).maybeSingle()
+  const { data: influencer } = await admin.from('influencers').select('id, organization_id, user_id, is_active').eq('user_id', user.id).maybeSingle()
   if (!influencer?.is_active) return NextResponse.json({ error: 'Tu cuenta de influencer no está activa.' }, { status: 403 })
   if (!influencer.organization_id) return NextResponse.json({ error: 'Tu cuenta no tiene una organización asociada.' }, { status: 409 })
 
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
   const { data: termsAcceptance } = await admin.from('influencer_terms_acceptances').select('id').eq('influencer_id', influencer.id).eq('document_key', INFLUENCER_PRO_TERMS.key).eq('document_version', INFLUENCER_PRO_TERMS.version).eq('status', 'accepted').maybeSingle()
   if (!termsAcceptance) return NextResponse.json({ error: 'Debes aceptar los Términos y Condiciones vigentes antes de continuar.' }, { status: 409 })
 
-  const body = await request.json().catch(() => ({})) as { campaign_id?: string; return_campaign_id?: string }
+  const body = await request.json().catch(() => ({})) as { campaign_id?: string; return_campaign_id?: string; in_app_browser?: boolean }
   if (body.campaign_id) {
     const { data: relationship } = await admin.from('campaign_influencers').select('id, campaigns!inner(status)').eq('campaign_id', body.campaign_id).eq('influencer_id', influencer.id).eq('application_status', 'accepted').maybeSingle()
     const campaign = relationship?.campaigns as unknown as { status?: string } | null
@@ -41,6 +42,22 @@ export async function POST(request: NextRequest) {
   if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavía no está configurado para Influencer Pro.' }, { status: 503 })
   const accessToken = await getInfluencerPayPalToken()
   if (!accessToken) return NextResponse.json({ error: 'PayPal no está configurado.' }, { status: 503 })
+
+  // Antes de abrir una suscripción nueva se revisan, solo lectura, los intentos
+  // anteriores de esta influencer en PayPal. Si ya aprobó una (aunque SCENCE no lo
+  // haya registrado por haber perdido la sesión o cambiado de navegador) se activa
+  // o se espera, nunca se abre otra: así no hay suscripciones duplicadas ni doble cobro.
+  const recoveryInfluencer = { id: influencer.id, organization_id: influencer.organization_id, user_id: influencer.user_id }
+  const recovery = await reconcileInfluencerProSubscriptions(admin, recoveryInfluencer, { accessToken })
+  if (recovery.state === 'active') return NextResponse.json({ activated: true, plan: 'pro' })
+  if (recovery.state === 'processing') {
+    return NextResponse.json({ error: 'PayPal todavía está confirmando tu pago anterior. Espera unos minutos y recarga esta página; si ya pagaste, no vuelvas a pagar: tu Plan Pro se activará solo.', code: 'PRO_PAYMENT_PROCESSING' }, { status: 409 })
+  }
+  if (recovery.state === 'unavailable') {
+    return NextResponse.json({ error: 'No pudimos verificar tu suscripción anterior. Intenta nuevamente en unos minutos.', code: 'PRO_VERIFY_UNAVAILABLE' }, { status: 503 })
+  }
+  if (recovery.state === 'pending') return NextResponse.json({ url: recovery.approveUrl, subscription_id: recovery.paypalSubscriptionId, reused: true })
+
   const appUrl = process.env.VERCEL_ENV === 'preview' ? request.nextUrl.origin : (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin)
   const customId = `influencer:${influencer.id}${body.campaign_id ? `:${body.campaign_id}` : ''}`
   // return_campaign_id (2026-09-03, Pri): solo afecta a dónde vuelve el
@@ -61,5 +78,11 @@ export async function POST(request: NextRequest) {
   if (!response.ok) return NextResponse.json({ error: result?.message ?? 'No se pudo iniciar la suscripción con PayPal.' }, { status: 502 })
   const url = result?.links?.find((link: { rel?: string; href?: string }) => link.rel === 'approve')?.href
   if (!url) return NextResponse.json({ error: 'PayPal no devolvió una URL de aprobación.' }, { status: 502 })
+  // Registro inmediato del intento (no bloquea el pago si falla): permite recuperarlo
+  // sin depender de que llegue el webhook CREATED y deja el contexto del navegador.
+  await recordProCheckout(admin, {
+    influencer: recoveryInfluencer, paypalSubscriptionId: result.id, campaignId: body.campaign_id ?? null,
+    context: { in_app_browser: body.in_app_browser === true, return_campaign_id: returnCampaignId },
+  }).catch(error => console.error('[POST /api/influencer/paypal/checkout] registro del intento:', error))
   return NextResponse.json({ url, subscription_id: result.id })
 }

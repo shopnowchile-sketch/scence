@@ -156,3 +156,7 @@ test('checkout revisa intentos previos antes de crear la suscripción en PayPal'
   const src = read('src/app/api/influencer/paypal/checkout/route.ts')
   assert.ok(src.indexOf('reconcileInfluencerProSubscriptions(') < src.indexOf('/v1/billing/subscriptions`'))
 })
+
+test('la revisión cubre hasta 25 intentos pendientes por influencer (antes 8)', () => {
+  assert.match(read('src/lib/influencer-pro-recovery.ts'), /MAX_ATTEMPTS_CHECKED = 25/)
+})

@@ -23,7 +23,7 @@ export type ProRecoveryResult =
   | { state: 'pending'; paypalSubscriptionId: string; approveUrl: string }
   | { state: 'unavailable' }
 
-const MAX_ATTEMPTS_CHECKED = 8
+const MAX_ATTEMPTS_CHECKED = 25
 const PENDING_REUSE_WINDOW_MS = 24 * 60 * 60_000
 
 export function paypalLookupFor(accessToken: string): PayPalSubscriptionLookup {

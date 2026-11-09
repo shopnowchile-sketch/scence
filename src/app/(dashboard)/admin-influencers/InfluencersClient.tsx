@@ -10,6 +10,7 @@ import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { InfluencerFilters } from '@/components/influencers/InfluencerFilters'
 import { InfluencerTable } from '@/components/influencers/InfluencerTable'
 import { BulkUploadModal } from '@/components/influencers/BulkUploadModal'
+import { ProFollowupPanel } from '@/components/influencers/ProFollowupPanel'
 import { cn, formatFollowers } from '@/lib/utils'
 import type { Influencer } from '@/types'
 import Link from 'next/link'
@@ -27,9 +28,6 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
   const [deleting, setDeleting] = useState(false)
   const [assigning, setAssigning] = useState(false)
   const [showProFollowup, setShowProFollowup] = useState(false)
-  const [sendingProFollowup, setSendingProFollowup] = useState(false)
-  const [proFollowupSubject, setProFollowupSubject] = useState('¿Tuviste un problema activando SCENCE Pro?')
-  const [proFollowupMessage, setProFollowupMessage] = useState('Hola, vimos que intentaste activar SCENCE Pro pero el pago no se completó. Si quieres, te podemos ayudar a terminar la activación. Escríbenos si tuviste algún problema con el pago.')
   const { isAdmin } = useIsAdmin()
 
   // Modo "asignar a marca" — se llega acá desde el tab Influencers del
@@ -143,28 +141,6 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
     } catch (e) {
       toast.error(e instanceof Error ? e.message : `Error al ${verb}`)
     } finally { setDeleting(false) }
-  }
-
-  async function sendProFollowup() {
-    const ids = idsForBulkAction(selectedIds, visibleInfluencers.map(inf => inf.id))
-    if (!ids.length) return
-    setSendingProFollowup(true)
-    try {
-      const response = await fetch('/api/influencers/pro-attempt-followup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ influencer_ids: ids, subject: proFollowupSubject, message: proFollowupMessage }),
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? 'No se pudieron enviar los correos.')
-      toast.success(`Seguimiento enviado a ${result.sent} influencer(s)${result.failed ? ` · ${result.failed} fallaron` : ''}`)
-      setShowProFollowup(false)
-      clearSelection()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudieron enviar los correos.')
-    } finally {
-      setSendingProFollowup(false)
-    }
   }
 
   async function assignSelectedToBrand() {
@@ -454,9 +430,9 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
             {selectedIds.size} seleccionado(s)
           </div>
           <div className="flex items-center gap-2">
-            {proAttemptParam && (
+            {!isBrandPortal && (
               <button onClick={() => setShowProFollowup(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-white text-violet-700 hover:bg-violet-50">
-                <Mail className="h-3.5 w-3.5" /> Enviar seguimiento Pro
+                <Mail className="h-3.5 w-3.5" /> Seguimiento Pro
               </button>
             )}
             {assignToBrand && (
@@ -519,28 +495,11 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
       )}
 
       {showProFollowup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => !sendingProFollowup && setShowProFollowup(false)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={event => event.stopPropagation()}>
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-black text-gray-950">Seguimiento de Pro</h2>
-                <p className="mt-1 text-sm text-gray-500">Enviar a {selectedIds.size} influencer(s) que intentaron activar Pro.</p>
-              </div>
-              <button type="button" onClick={() => setShowProFollowup(false)} disabled={sendingProFollowup} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="space-y-4">
-              <div><label className="mb-1.5 block text-xs font-semibold text-gray-500">Asunto</label><input value={proFollowupSubject} onChange={event => setProFollowupSubject(event.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400" /></div>
-              <div><label className="mb-1.5 block text-xs font-semibold text-gray-500">Mensaje</label><textarea value={proFollowupMessage} onChange={event => setProFollowupMessage(event.target.value)} rows={7} className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400" /></div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowProFollowup(false)} disabled={sendingProFollowup} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancelar</button>
-                <button type="button" onClick={() => void sendProFollowup()} disabled={sendingProFollowup || !proFollowupSubject.trim() || !proFollowupMessage.trim()} className="flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">
-                  {sendingProFollowup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                  {sendingProFollowup ? 'Enviando…' : 'Enviar seguimiento'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ProFollowupPanel
+          ids={idsForBulkAction(selectedIds, visibleInfluencers.map(inf => inf.id))}
+          onClose={() => setShowProFollowup(false)}
+          onDone={() => {}}
+        />
       )}
 
       {/* Pagination */}

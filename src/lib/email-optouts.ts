@@ -62,6 +62,29 @@ export function verifyUnsubscribeToken(leadId: string, token: string | null | un
   return timingSafeEqual(a, b)
 }
 
+// Baja de una influencer (seguimiento Pro comercial). Mismo secreto, otro
+// prefijo: un token de lead no sirve para una influencer ni al revés.
+export function signInfluencerUnsubscribeToken(influencerId: string): string | null {
+  const secret = unsubscribeSecret()
+  if (!secret) return null
+  return createHmac('sha256', secret).update(`unsubscribe-influencer:${influencerId}`).digest('base64url')
+}
+
+export function verifyInfluencerUnsubscribeToken(influencerId: string, token: string | null | undefined): boolean {
+  const expected = signInfluencerUnsubscribeToken(influencerId)
+  if (!expected || !token) return false
+  const a = Buffer.from(expected)
+  const b = Buffer.from(token)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
+export function buildInfluencerUnsubscribeUrl(influencerId: string, appUrl: string = APP_URL): string | null {
+  const token = signInfluencerUnsubscribeToken(influencerId)
+  if (!token) return null
+  return `${appUrl}/api/unsubscribe?i=${encodeURIComponent(influencerId)}&t=${token}`
+}
+
 /** URL pública de baja para un lead. `null` si no hay secreto configurado. */
 export function buildUnsubscribeUrl(leadId: string, appUrl: string = APP_URL): string | null {
   const token = signUnsubscribeToken(leadId)

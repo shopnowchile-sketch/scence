@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { recordOptOut, verifyUnsubscribeToken } from '@/lib/email-optouts'
+import { recordOptOut, verifyUnsubscribeToken, verifyInfluencerUnsubscribeToken } from '@/lib/email-optouts'
 import { escapeHtml } from '@/lib/utils'
 
 // Ruta PÚBLICA: sin sesión, sin cookies. La autoriza el HMAC del token, no el
@@ -63,16 +63,22 @@ function invalidLinkPage() {
 function readParams(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const leadId = searchParams.get('l') ?? ''
+  const influencerId = searchParams.get('i') ?? ''
   const token = searchParams.get('t')
-  return { leadId, token, valid: Boolean(leadId) && verifyUnsubscribeToken(leadId, token) }
+  const valid = influencerId
+    ? verifyInfluencerUnsubscribeToken(influencerId, token)
+    : Boolean(leadId) && verifyUnsubscribeToken(leadId, token)
+  return { leadId, influencerId, token, valid }
 }
 
 // ── GET — clic en el link del pie del correo. NO escribe nada. ───────────────
 export async function GET(request: NextRequest) {
-  const { leadId, token, valid } = readParams(request)
+  const { leadId, influencerId, token, valid } = readParams(request)
   if (!valid) return invalidLinkPage()
 
-  const action = `/api/unsubscribe?l=${encodeURIComponent(leadId)}&t=${encodeURIComponent(token ?? '')}`
+  const action = influencerId
+    ? `/api/unsubscribe?i=${encodeURIComponent(influencerId)}&t=${encodeURIComponent(token ?? '')}`
+    : `/api/unsubscribe?l=${encodeURIComponent(leadId)}&t=${encodeURIComponent(token ?? '')}`
 
   return page(
     '¿Quieres dejar de recibir comunicaciones comerciales de SCENCE?',
@@ -92,10 +98,25 @@ export async function GET(request: NextRequest) {
 // usuario. Un 2xx basta para el cliente de correo; devolvemos HTML porque la
 // misma respuesta sirve para la persona que pulsó el botón.
 export async function POST(request: NextRequest) {
-  const { leadId, valid } = readParams(request)
+  const { leadId, influencerId, valid } = readParams(request)
   if (!valid) return invalidLinkPage()
 
   const admin = createAdminClient()
+
+  if (influencerId) {
+    // Baja comercial de una influencer: solo corta el seguimiento comercial; los
+    // correos de asistencia, cuenta y campañas siguen llegando.
+    const { data: inf, error: infError } = await admin.from('influencers').select('id, email').eq('id', influencerId).maybeSingle()
+    if (infError || !inf?.email) return invalidLinkPage()
+    const r = await recordOptOut(admin, { email: inf.email, reason: 'unsubscribe', source: 'influencer_link' })
+    if (!r.ok) return page('No pudimos procesar la baja', `<p style="${P}">Hubo un problema al guardar tu solicitud. Vuelve a intentarlo en unos minutos.</p>`, 503)
+    return page(
+      'Listo, te diste de baja',
+      `<p style="${P}">No volverás a recibir correos comerciales de SCENCE en esta dirección.</p>
+     <p style="${P}">Los correos de tu cuenta, campañas y ayuda con pagos siguen funcionando normalmente.</p>`,
+      200,
+    )
+  }
 
   const { data: lead, error } = await admin
     .from('crm_leads')

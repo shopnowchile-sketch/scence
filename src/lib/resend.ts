@@ -263,16 +263,25 @@ export function crmCatalogEmail({
   buttonLabel,
   buttonUrl,
   unsubscribeUrl,
+  registerLinks,
 }: {
   message: string
   buttonLabel?: string
   buttonUrl?: string
   unsubscribeUrl?: string | null
+  registerLinks?: { brandUrl: string; creatorUrl: string }
 }): string {
   const safeMessage = escapeEmailHtml(message).replaceAll('\n', '<br>')
   const safeButtonLabel = buttonLabel ? escapeEmailHtml(buttonLabel) : ''
   const safeButtonUrl = buttonUrl ? escapeEmailHtml(buttonUrl) : ''
   const safeUnsubscribeUrl = unsubscribeUrl ? escapeEmailHtml(unsubscribeUrl) : ''
+  const linkStyle = 'display:inline-block;margin-top:6px;background:#7c3aed;color:#fff;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px;padding:10px 18px'
+  const registerSection = registerLinks ? `<div style="margin-top:28px;padding:20px;border:1px solid #ede9fe;border-radius:12px;background:#faf5ff">
+        <p style="margin:0 0 6px;color:#374151;font-size:15px"><strong>Si eres marca</strong>, regístrate para crear una campaña.</p>
+        <a href="${escapeEmailHtml(registerLinks.brandUrl)}" style="${linkStyle}">Registrar mi marca</a>
+        <p style="margin:20px 0 6px;color:#374151;font-size:15px"><strong>Si eres creador de contenido</strong>, regístrate para crear contenido para marcas.</p>
+        <a href="${escapeEmailHtml(registerLinks.creatorUrl)}" style="${linkStyle}">Unirme como creador de contenido</a>
+      </div>` : ''
 
   return `<!DOCTYPE html>
 <html>
@@ -284,14 +293,18 @@ export function crmCatalogEmail({
     </div>
     <div style="padding:32px">
       <div style="color:#374151;font-size:15px;line-height:1.7">${safeMessage}</div>
+      ${registerSection}
       ${safeButtonLabel && safeButtonUrl ? `<a href="${safeButtonUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px;margin-top:24px">${safeButtonLabel}</a>` : ''}
     </div>
     <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
+      <p style="color:#374151;font-size:13px;font-weight:600;margin:0 0 8px">Síguenos en Instagram</p>
+      <p style="color:#6b7280;font-size:13px;line-height:1.9;margin:0 0 12px">
+        <a href="https://www.instagram.com/scence.cl/" style="color:#7c3aed;font-weight:600;text-decoration:none">@scence.cl</a> · <a href="https://www.instagram.com/scence.cl/" style="color:#6b7280;text-decoration:underline">instagram.com/scence.cl</a><br>
+        <a href="https://www.instagram.com/influencers.snc/" style="color:#7c3aed;font-weight:600;text-decoration:none">@influencers.snc</a> · <a href="https://www.instagram.com/influencers.snc/" style="color:#6b7280;text-decoration:underline">instagram.com/influencers.snc</a>
+      </p>
       <p style="color:#6b7280;font-size:12px;line-height:1.7;margin:0 0 8px">
         <a href="mailto:hola@scence.cl" style="color:#7c3aed;text-decoration:none">hola@scence.cl</a> ·
-        <a href="https://scence.cl" style="color:#7c3aed;text-decoration:none">scence.cl</a><br>
-        Instagram: <a href="https://www.instagram.com/scence.cl/" style="color:#7c3aed;text-decoration:none">@scence.cl</a> ·
-        <a href="https://www.instagram.com/influencers.snc/" style="color:#7c3aed;text-decoration:none">@influencers.snc</a>
+        <a href="https://scence.cl" style="color:#7c3aed;text-decoration:none">scence.cl</a>
       </p>
       <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence</p>
       ${safeUnsubscribeUrl ? `<p style="color:#9ca3af;font-size:11px;line-height:1.6;margin:8px 0 0">Si no quieres recibir más correos como este, <a href="${safeUnsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">date de baja aquí</a>.</p>` : ''}

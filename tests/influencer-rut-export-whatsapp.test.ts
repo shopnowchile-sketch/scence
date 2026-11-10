@@ -191,6 +191,8 @@ test('el RUT no vive en influencers ni se selecciona fuera de la tabla privada y
     'src/app/api/campaigns/[id]/influencers/export/route.ts',
     'src/app/api/influencer/rut/route.ts',
     'src/app/api/influencers/[id]/rut/route.ts',
+    // Registro: copia el RUT de la persona (crm_leads.contact_rut) a su perfil solo si está vacío; nunca lo lee hacia afuera.
+    'src/lib/crm-lead-link.ts',
   ])
   assert.doesNotMatch(read('src/app/api/influencer/rut/route.ts'), /body\??\.influencer_id|body\??\.user_id/)
 })

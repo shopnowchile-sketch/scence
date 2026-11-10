@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { normalizeRut } from '@/lib/rut'
 
 /**
  * Al registrarse una influencer o una marca, enlaza su contacto del CRM (mismo email)
@@ -47,6 +48,21 @@ export async function linkCrmLeadToProfile(
       take('address_street', lead.address); take('address_city', lead.commune); take('address_region', lead.region)
     }
     if (Object.keys(fill).length) await admin.from(args.kind === 'influencer' ? 'influencers' : 'brands').update(fill).eq('id', profile.id as string)
+
+    // RUT de la PERSONA (crm_leads.contact_rut, nunca el de la empresa): se copia solo si el perfil aún no lo tiene.
+    const leadRut = normalizeRut(lead.contact_rut)
+    if (leadRut) {
+      if (args.kind === 'influencer') {
+        const { data: priv } = await admin.from('influencer_private_data').select('rut').eq('influencer_id', profile.id as string).maybeSingle()
+        if (!priv?.rut) await admin.from('influencer_private_data').upsert({ influencer_id: profile.id as string, rut: leadRut }, { onConflict: 'influencer_id' })
+      } else {
+        const { data: brandRow } = await admin.from('brands').select('user_id').eq('id', args.brandId).maybeSingle()
+        if (brandRow?.user_id) {
+          const { data: owner } = await admin.from('profiles').select('signer_rut').eq('id', brandRow.user_id as string).maybeSingle()
+          if (owner && empty(owner.signer_rut)) await admin.from('profiles').update({ signer_rut: leadRut }).eq('id', brandRow.user_id as string)
+        }
+      }
+    }
 
     for (const l of leads as LeadRow[]) {
       if (l.qualification_status === 'converted' && (args.kind === 'influencer' || l.converted_brand_id)) continue

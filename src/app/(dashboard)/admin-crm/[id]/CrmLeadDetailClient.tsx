@@ -38,6 +38,7 @@ type Lead = {
   phone_2: string | null
   instagram: string | null
   address: string | null
+  contact_rut?: string | null
   country: string | null
   commune: string | null
   region: string | null
@@ -165,7 +166,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
 
   const CONTACT_FIELDS: Array<[string, string]> = [
     ['contact_name', 'Contacto'], ['company_name', 'Empresa'], ['email', 'Email'], ['phone_1', 'Teléfono'],
-    ['phone_2', 'Teléfono 2'], ['instagram', 'Instagram'], ['website', 'Sitio web'], ['address', 'Dirección'],
+    ['phone_2', 'Teléfono 2'], ['contact_rut', 'RUT'], ['instagram', 'Instagram'], ['website', 'Sitio web'], ['address', 'Dirección'],
     ['country', 'País'], ['commune', 'Comuna'], ['region', 'Región'], ['industry', 'Rubro'],
   ]
 
@@ -447,6 +448,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
               </div>
               <div className="flex items-center gap-2 text-gray-600"><MapPin className="h-3.5 w-3.5 text-gray-300" /> {[lead.commune, lead.region, lead.country].filter(Boolean).join(' · ') || '—'}</div>
               <div className="flex items-center gap-2 text-gray-600"><Briefcase className="h-3.5 w-3.5 text-gray-300" /> {lead.industry || '—'}</div>
+              <div className="flex items-center gap-2 text-gray-600"><span className="w-3.5 text-center text-[10px] font-bold text-gray-300">ID</span> RUT: {lead.contact_rut || '—'}</div>
             </div>}
 
             {lead.economic_activity && (

@@ -132,7 +132,7 @@ function chunksOf<T>(values: T[], size: number) {
 // código de actividad, ej. "181010") + ubicación + origen. Un solo criterio para el
 // listado y para "seleccionar todos los que cumplen el filtro".
 const SEARCH_COLUMNS = [
-  'company_name', 'contact_name', 'email', 'instagram', 'phone_1', 'company_rut',
+  'company_name', 'contact_name', 'email', 'instagram', 'phone_1', 'company_rut', 'contact_rut',
   'industry', 'economic_activity', 'industry_filter', 'position',
   'commune', 'source', 'website',
 ]
@@ -265,7 +265,7 @@ function leadTypeOf(lead: { source?: string | null; converted_brand_id?: string 
 }
 
 // Columnas ordenables (lista cerrada: nunca se interpola texto del cliente en el orden).
-const SORTABLE = ['company_name', 'email', 'instagram', 'country', 'region', 'commune', 'industry', 'source', 'qualification_status', 'contacted_at', 'created_at']
+const SORTABLE = ['company_name', 'contact_rut', 'email', 'instagram', 'country', 'region', 'commune', 'industry', 'source', 'qualification_status', 'contacted_at', 'created_at']
 
 // ── GET /api/crm-leads — lista paginada con filtros ───────────────────────────
 export async function GET(request: NextRequest) {
@@ -367,7 +367,7 @@ export async function GET(request: NextRequest) {
   const authMapPromise = getAuthEmailMap(admin)
   const catalogPromise = getLeadCatalog(admin)
 
-  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, country, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at, marketing_consent, converted_brand_id'
+  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, contact_rut, commune, region, country, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at, marketing_consent, converted_brand_id'
   const buildLeadsQuery = (eventLeadIds?: string[], withCount = false) => {
     let q: any = withCount
       ? admin.from('crm_leads').select(leadFields, { count: 'exact' })

@@ -15,9 +15,12 @@ export type EmailTemplateDefinition = {
   defaultMessage?: string
   defaultButtonLabel?: string
   defaultButtonUrl?: string
+  /** Agrega al correo la sección «Si eres marca… / Si eres creador de contenido…» con sus dos enlaces de registro. */
+  registrationSection?: boolean
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+export const CRM_REGISTER_LINKS = { brandUrl: `${APP_URL}/register/brand`, creatorUrl: `${APP_URL}/register` }
 
 // Registro único de los emails existentes. La persistencia continúa en código:
 // contract_templates sigue reservada exclusivamente para documentos/NDA.
@@ -142,8 +145,7 @@ Trabajamos con marcas que buscan creadoras de contenido para sus campañas. Úne
 Saludos,
 Priscilla
 SCENCE`,
-    defaultButtonLabel: 'Unirme a SCENCE',
-    defaultButtonUrl: `${APP_URL}/register`,
+    registrationSection: true,
   },
   {
     key: 'crm_brand_invite',
@@ -162,8 +164,7 @@ SCENCE`,
 Saludos,
 Priscilla
 SCENCE`,
-    defaultButtonLabel: 'Registrar mi marca',
-    defaultButtonUrl: `${APP_URL}/register/brand`,
+    registrationSection: true,
   },
   { key: 'booking_confirmed', name: 'Booking confirmado', description: 'Confirma fecha, lugar y participación en un booking.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['recipient_name', 'campaign_name', 'event_date', 'event_location'], defaultSubject: 'Booking confirmado: {{campaign_name}}' },
   { key: 'application_approved', name: 'Postulación aprobada', description: 'Informa a la influencer que fue seleccionada.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['influencer_name', 'campaign_name', 'brand_name', 'portal_url'], defaultSubject: '¡Tu postulación a {{campaign_name}} fue aprobada!' },

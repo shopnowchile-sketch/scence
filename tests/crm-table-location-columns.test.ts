@@ -44,3 +44,14 @@ test('registrados en SCENCE (converted) no aparecen en el CRM pero no se borran'
   assert.match(link, /qualification_status: 'converted'/)
   assert.doesNotMatch(link, /\.delete\(/)
 })
+
+test('por defecto solo Chile; sin país ni columna elegida, Chile primero y Estados Unidos al final', () => {
+  assert.match(src, /useState<Record<string, string>>\(\{ country: 'Chile' \}\)/)
+  assert.match(src, /Todos los países/)
+  assert.match(src, /key: 'priority'/)
+  const api = readFileSync(new URL('../src/app/api/crm-leads/route.ts', import.meta.url), 'utf8')
+  assert.match(api, /searchParams\.get\('sort'\) === 'priority' && !\(searchParams\.get\('country'\)/)
+  assert.match(api, /eq\('country', 'Chile'\)/)
+  assert.match(api, /eq\('country', 'Estados Unidos'\)/)
+  assert.match(api, /countryRank\(a\.country\)/)
+})

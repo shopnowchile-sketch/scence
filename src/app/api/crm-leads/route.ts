@@ -295,7 +295,10 @@ export async function GET(request: NextRequest) {
   const campaignFilter = searchParams.get('campaign') ?? ''
   const idsOnly = searchParams.get('ids_only') === '1'
   const sortCol = SORTABLE.includes(searchParams.get('sort') ?? '') ? (searchParams.get('sort') as string) : 'created_at'
-  const ascending = searchParams.get('order') === 'asc'
+  const orderDefaultDesc = searchParams.get('sort') === 'priority'
+  const ascending = !orderDefaultDesc && searchParams.get('order') === 'asc'
+  // Orden por defecto: Chile primero, el resto después y Estados Unidos al final (solo sin elegir país ni columna).
+  const priority = searchParams.get('sort') === 'priority' && !(searchParams.get('country') ?? '')
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
@@ -368,10 +371,18 @@ export async function GET(request: NextRequest) {
   const catalogPromise = getLeadCatalog(admin)
 
   const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, contact_rut, commune, region, country, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at, marketing_consent, converted_brand_id'
-  const buildLeadsQuery = (eventLeadIds?: string[], withCount = false) => {
+  // Tramos de la prioridad por país: 0 = Chile, 1 = otros (y sin país), 2 = Estados Unidos.
+  const SEGMENTS: Array<(q: any) => any> = [
+    q => q.eq('country', 'Chile'),
+    q => q.or('country.is.null,and(country.neq.Chile,country.neq."Estados Unidos")'),
+    q => q.eq('country', 'Estados Unidos'),
+  ]
+  const countryRank = (c: string | null | undefined) => (c === 'Chile' ? 0 : c === 'Estados Unidos' ? 2 : 1)
+  const buildLeadsQuery = (eventLeadIds?: string[], withCount = false, segment?: number, head = false) => {
     let q: any = withCount
-      ? admin.from('crm_leads').select(leadFields, { count: 'exact' })
+      ? admin.from('crm_leads').select(leadFields, { count: 'exact', head })
       : admin.from('crm_leads').select(leadFields)
+    if (segment !== undefined) q = SEGMENTS[segment](q)
     q = q.order(sortCol, { ascending, nullsFirst: false }).order('id', { ascending: true })
     q = q.neq('qualification_status', 'converted') // registrados en SCENCE salen del CRM (su historial se conserva)
     if (qualification) q = q.eq('qualification_status', qualification)
@@ -400,12 +411,31 @@ export async function GET(request: NextRequest) {
       for (const row of rows ?? []) matchingById.set(row.id, row)
     }
     const matching = Array.from(matchingById.values()).sort((a, b) => {
+      if (priority && countryRank(a.country) !== countryRank(b.country)) return countryRank(a.country) - countryRank(b.country)
       const av = String(a[sortCol] ?? ''), bv = String(b[sortCol] ?? '')
       if (!a[sortCol] !== !b[sortCol]) return a[sortCol] ? -1 : 1 // vacíos al final
       return (ascending ? 1 : -1) * av.localeCompare(bv, 'es') || a.id.localeCompare(b.id)
     })
     count = matching.length
     data = matching.slice((page - 1) * limit, page * limit)
+  } else if (priority) {
+    // Chile → otros → Estados Unidos: la página se arma con los tramos que le corresponden (orden por fecha dentro de cada uno).
+    const heads = await Promise.all(SEGMENTS.map((_, i) => buildLeadsQuery(undefined, true, i, true)))
+    const failed = heads.find((h: any) => h.error)
+    if (failed) return NextResponse.json({ error: failed.error.message }, { status: 500 })
+    const counts: number[] = heads.map((h: any) => h.count ?? 0)
+    const start = (page - 1) * limit, end = start + limit
+    let offset = 0
+    for (let i = 0; i < SEGMENTS.length; i++) {
+      const from = Math.max(start, offset), to = Math.min(end, offset + counts[i])
+      if (to > from) {
+        const { data: rows, error } = await buildLeadsQuery(undefined, false, i).range(from - offset, to - offset - 1)
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        data.push(...(rows ?? []))
+      }
+      offset += counts[i]
+    }
+    count = offset
   } else {
     const query = buildLeadsQuery(undefined, true).range((page - 1) * limit, page * limit - 1)
     const result = await query

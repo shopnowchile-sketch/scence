@@ -293,13 +293,18 @@ describe('10 · Los emails transaccionales no se ven afectados', () => {
 })
 
 describe('11 · Templates del CRM sin regresión', () => {
-  test('siguen siendo 5 y con el copy aprobado', () => {
-    assert.equal(CRM_EMAIL_CATALOG.length, 5)
+  test('5 originales + invitación a influencers y a marcas, con el copy aprobado', () => {
+    assert.equal(CRM_EMAIL_CATALOG.length, 7)
     const intro = getEmailTemplate('crm_intro')!
     const render = applyEmailVariables(intro.defaultMessage!, { contact_name: 'Camila', company_name: 'Café Volcán' })
     assert.ok(render.includes('Soy Priscilla de SCENCE. Trabajamos con una comunidad de creadoras de contenido'))
     assert.ok(render.startsWith('Hola Camila!'))
     assert.ok(!render.includes('{{'))
+    const inf = getEmailTemplate('crm_influencer_invite')!
+    const brand = getEmailTemplate('crm_brand_invite')!
+    assert.ok(inf.registrationSection && brand.registrationSection)
+    assert.ok(brand.defaultMessage!.includes('registra tu marca'))
+    assert.ok(inf.defaultMessage!.includes('Únete a nuestra plataforma como influencer'))
   })
 
   test('no reaparece copy legado', () => {
@@ -443,5 +448,28 @@ describe('14 · La baja no se dispara sola (escáneres de links)', () => {
 
   test('la URL de baja sigue sin exponer el email', () => {
     assert.ok(!buildUnsubscribeUrl(LEAD)!.includes('@'))
+  })
+})
+
+describe('12 · Invitaciones CRM: sección de registro y RUT enlazado', () => {
+  test('el correo trae «Si eres marca…» y «Si eres creador de contenido…» con sus enlaces', () => {
+    const resend = readFileSync(new URL('../src/lib/resend.ts', import.meta.url), 'utf8')
+    assert.ok(resend.includes('Si eres marca</strong>, regístrate para crear una campaña'))
+    assert.ok(resend.includes('Si eres creador de contenido</strong>, regístrate para crear contenido para marcas'))
+    assert.match(resend, /\$\{registerSection\}/)
+    assert.ok(resend.includes('https://www.instagram.com/scence.cl/') && resend.includes('https://www.instagram.com/influencers.snc/'), 'Instagram de SCENCE e Influencers.snc en el pie')
+    const catalog = readFileSync(new URL('../src/lib/email-catalog.ts', import.meta.url), 'utf8')
+    assert.ok(catalog.includes('/register/brand') && catalog.includes('/register`'))
+    for (const f of ['src/lib/crm-bulk-send.ts', 'src/app/api/crm-leads/[id]/send-intro/route.ts']) {
+      assert.match(readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'), /registerLinks: template\??\.registrationSection/)
+    }
+  })
+
+  test('RUT: la ficha guarda el de la persona y el registro lo copia al perfil sin pisar', () => {
+    const link = readFileSync(new URL('../src/lib/crm-lead-link.ts', import.meta.url), 'utf8')
+    assert.match(link, /contact_rut/)
+    assert.match(link, /influencer_private_data/)
+    assert.match(link, /signer_rut/)
+    assert.doesNotMatch(link, /company_rut/)
   })
 })

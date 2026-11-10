@@ -21,6 +21,7 @@ type Lead = {
   email: string | null
   phone_1: string | null
   instagram: string | null
+  contact_rut?: string | null
   commune: string | null
   region: string | null
   country?: string | null
@@ -84,7 +85,7 @@ function statusOptions(current: LeadStatus): LeadStatus[] {
   return PIPELINE_STATUSES.includes(current) ? PIPELINE_STATUSES : [...PIPELINE_STATUSES, current]
 }
 
-type ColumnKey = 'contact' | 'type' | 'subscription' | 'instagram' | 'country' | 'region' | 'commune' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
+type ColumnKey = 'contact' | 'rut' | 'type' | 'subscription' | 'instagram' | 'country' | 'region' | 'commune' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
 type EmailStats = {
   sent: number
@@ -98,6 +99,7 @@ type EmailStats = {
 
 const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
   { key: 'contact', label: 'Contacto' },
+  { key: 'rut', label: 'RUT' },
   { key: 'type', label: 'Tipo' },
   { key: 'subscription', label: 'Suscripción' },
   { key: 'instagram', label: 'Instagram' },
@@ -861,6 +863,7 @@ export function CrmLeadsClient() {
               </th>
               {th('Empresa', 'company_name')}
               {isColumnVisible('contact') && th('Contacto', 'email')}
+              {isColumnVisible('rut') && th('RUT', 'contact_rut')}
               {isColumnVisible('type') && <th className="px-4 py-3 font-semibold">Tipo</th>}
               {isColumnVisible('subscription') && <th className="px-4 py-3 font-semibold">Suscripción</th>}
               {isColumnVisible('instagram') && th('Instagram', 'instagram')}
@@ -905,6 +908,7 @@ export function CrmLeadsClient() {
                     {lead.contact_name && <div className="text-xs text-gray-400 truncate max-w-[180px]">{lead.contact_name}</div>}
                   </td>
                   )}
+{isColumnVisible('rut') && <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{lead.contact_rut || '—'}</td>}
 {isColumnVisible('type') && (
                   <td className="px-4 py-3 text-xs">
                     <span className={cn('rounded-full px-2 py-0.5 font-medium', lead.lead_type === 'influencer' ? 'bg-fuchsia-50 text-fuchsia-700' : lead.lead_type === 'customer' ? 'bg-sky-50 text-sky-700' : lead.lead_type === 'brand' ? 'bg-violet-50 text-violet-700' : 'bg-gray-100 text-gray-500')}>

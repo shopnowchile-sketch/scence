@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 import { isCrmAdmin } from '@/lib/crm-auth'
-import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { applyEmailVariables, CRM_EMAIL_CATALOG, CRM_REGISTER_LINKS } from '@/lib/email-catalog'
 import { buildUnsubscribeUrl, commercialEmailHeaders, isOptedOut, OptOutLookupError } from '@/lib/email-optouts'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import { isValidAttachmentPath, loadCrmAttachment, type LoadedAttachment } from '@/lib/crm-attachments'
@@ -92,6 +92,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     buttonLabel: template.defaultButtonLabel,
     buttonUrl: template.defaultButtonUrl,
     unsubscribeUrl,
+    registerLinks: template.registrationSection ? CRM_REGISTER_LINKS : undefined,
   })
 
   // Adjunto opcional: se valida y se lee ANTES de reservar el envío, para que un

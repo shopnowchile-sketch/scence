@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { applyEmailVariables, CRM_EMAIL_CATALOG, CRM_REGISTER_LINKS } from '@/lib/email-catalog'
 import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
 import { buildUnsubscribeUrl, commercialEmailHeaders, getBlockedEmails, normalizeEmail } from '@/lib/email-optouts'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
@@ -64,6 +64,7 @@ export async function sendLeadBatch(
         buttonLabel: template?.defaultButtonLabel,
         buttonUrl: template?.defaultButtonUrl,
         unsubscribeUrl,
+        registerLinks: template?.registrationSection ? CRM_REGISTER_LINKS : undefined,
       })
 
       return {

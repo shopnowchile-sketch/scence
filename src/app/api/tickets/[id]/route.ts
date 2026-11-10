@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { TICKET_PRIORITIES, TICKET_STATUSES } from '@/lib/support-tickets'
 
 type Params = { params: { id: string } }
 
@@ -53,8 +54,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // Only allow updating status and priority
   const allowed: Record<string, unknown> = {}
-  if (body.status)   allowed.status   = body.status
-  if (body.priority) allowed.priority = body.priority
+  if (body.status) {
+    if (!(TICKET_STATUSES as readonly string[]).includes(String(body.status))) return NextResponse.json({ error: 'Estado inválido' }, { status: 422 })
+    allowed.status = body.status
+  }
+  if (body.priority) {
+    if (!(TICKET_PRIORITIES as readonly string[]).includes(String(body.priority))) return NextResponse.json({ error: 'Prioridad inválida' }, { status: 422 })
+    allowed.priority = body.priority
+  }
 
   if (Object.keys(allowed).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 422 })

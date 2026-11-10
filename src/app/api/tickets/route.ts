@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { ACTIVE_STATUSES, proFollowupTicketIds } from '@/lib/support-tickets'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface AIReview {
@@ -85,25 +86,35 @@ export async function GET(request: NextRequest) {
   const limit    = Math.min(100, Math.max(10, Number(searchParams.get('limit') ?? '50') || 50))
 
   if (searchParams.get('counts') === '1') {
-    const countStatus = (ticketStatus?: string) => {
-      let countQuery = admin.from('tickets').select('id', { count: 'exact', head: true }).eq('organization_id', orgId)
-      if (ticketStatus) countQuery = countQuery.eq('status', ticketStatus)
-      return countQuery
-    }
-    const [all, open, inProgress, closed] = await Promise.all([
-      countStatus(), countStatus('open'), countStatus('in_progress'), countStatus('closed'),
+    const countStatus = (ticketStatuses: readonly string[]) =>
+      admin.from('tickets').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).in('status', [...ticketStatuses])
+    const [open, inProgress, closed, pro] = await Promise.all([
+      countStatus(['open']), countStatus(['in_progress']), countStatus(['closed']), proFollowupTicketIds(admin, orgId),
     ])
-    return NextResponse.json({ counts: { all: all.count ?? 0, open: open.count ?? 0, in_progress: inProgress.count ?? 0, closed: closed.count ?? 0 } })
+    // «Todos» = solo activos (Abiertos + En progreso); los cerrados son historial.
+    return NextResponse.json({ counts: { all: (open.count ?? 0) + (inProgress.count ?? 0), open: open.count ?? 0, in_progress: inProgress.count ?? 0, closed: closed.count ?? 0, pro: pro.ids.length } })
   }
 
   let query = admin
     .from('tickets')
     .select('id, title, description, status, priority, category, ai_review, created_by, created_at')
     .eq('organization_id', orgId)
-    .order('created_at', { ascending: false })
 
-  if (status)   query = query.eq('status', status)
+  if (status === 'pro') {
+    const pro = await proFollowupTicketIds(admin, orgId)
+    if (pro.error) return NextResponse.json({ error: pro.error }, { status: 500 })
+    query = query.in('id', pro.ids.length ? pro.ids : ['00000000-0000-0000-0000-000000000000'])
+  } else if (status === 'open' || status === 'in_progress' || status === 'closed') {
+    query = query.eq('status', status)
+  } else {
+    query = query.in('status', [...ACTIVE_STATUSES])
+  }
   if (priority) query = query.eq('priority', priority)
+
+  // Activos: prioridad (P0 → P3) y luego el más antiguo primero. Cerrados (historial): el más reciente primero.
+  query = status === 'closed'
+    ? query.order('created_at', { ascending: false })
+    : query.order('priority', { ascending: true }).order('created_at', { ascending: true })
 
   const from = (page - 1) * limit
   const { data, error } = await query.range(from, from + limit)

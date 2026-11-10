@@ -249,7 +249,6 @@ describe('10 · Los emails transaccionales no se ven afectados', () => {
     'src/app/api/crm-leads/[id]/send-intro/route.ts',
     'src/app/api/webhooks/resend/route.ts',
     'src/app/api/unsubscribe/route.ts',
-    'src/lib/pro-followup.ts', // seguimiento Pro manual: solo el tipo «commercial» consulta bajas
   ]
 
   test('solo los 2 caminos comerciales, el webhook y la ruta de baja conocen el opt-out', () => {
@@ -438,8 +437,7 @@ describe('14 · La baja no se dispara sola (escáneres de links)', () => {
     assert.ok(!invalid.includes('lead.email') && !invalid.includes('${email'), 'nunca muestra la dirección')
     assert.ok(invalid.includes('El enlace no es válido o ya expiró'))
     // El mismo mensaje cubre token malo, lead inexistente y lead sin email.
-    // 3 del flujo de leads + 1 de la rama de influencers (mismo mensaje para todo caso inválido).
-    assert.equal(route.split('return invalidLinkPage()').length - 1, 4)
+    assert.equal(route.split('return invalidLinkPage()').length - 1, 3)
   })
 
   test('la URL de baja sigue sin exponer el email', () => {

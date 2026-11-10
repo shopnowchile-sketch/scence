@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
-import { notifyContactOfSupportReply } from '@/lib/support-notifications'
+import { saveAdminReply, deliverReplyEmail } from '@/lib/ticket-reply'
+import { renderTemplate, planUrl } from '@/lib/support-tickets'
 import { waitUntil } from '@vercel/functions'
 
 type Params = { params: { id: string } }
@@ -19,6 +20,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
 
   let hasAccess = false
+  let viewerIsAdmin = false
   if (orgId && (await getUserRole(user.id, orgId, admin)).isAdmin) {
     const { data: ticket } = await admin
       .from('tickets')
@@ -26,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('id', params.id)
       .eq('organization_id', orgId)
       .single()
-    if (ticket) hasAccess = true
+    if (ticket) { hasAccess = true; viewerIsAdmin = true }
   }
 
   if (!hasAccess) {
@@ -44,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data, error } = await admin
     .from('ticket_replies')
-    .select('id, message, is_admin, user_id, created_at')
+    .select(viewerIsAdmin ? 'id, message, is_admin, user_id, created_at, email_status, email_error' : 'id, message, is_admin, user_id, created_at')
     .eq('ticket_id', params.id)
     .order('created_at', { ascending: true })
 
@@ -91,47 +93,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!ticket) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data, error } = await admin
-    .from('ticket_replies')
-    .insert({
-      ticket_id: params.id,
-      user_id:   user.id,
-      message,
-      is_admin:  isAdmin,
-    })
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // Si admin responde → cambiar status a in_progress si estaba open
-  if (isAdmin) {
-    await admin
-      .from('tickets')
-      .update({ status: 'in_progress', updated_at: new Date().toISOString() })
-      .eq('id', params.id)
-      .eq('status', 'open')
-
-    waitUntil((async () => {
-      const { data: ticket } = await admin.from('tickets').select('title, created_by').eq('id', params.id).single()
-      if (!ticket?.created_by || ticket.created_by === user.id) return
-
-      const [{ data: influencer }, { data: brand }, authResult] = await Promise.all([
-        admin.from('influencers').select('display_name, email').eq('user_id', ticket.created_by).maybeSingle(),
-        admin.from('brands').select('contact_name, contact_email, name').eq('user_id', ticket.created_by).maybeSingle(),
-        admin.auth.admin.getUserById(ticket.created_by),
-      ])
-      const contactEmail = influencer?.email ?? brand?.contact_email ?? authResult.data.user?.email ?? ''
-      const contactName = influencer?.display_name ?? brand?.contact_name ?? brand?.name ?? authResult.data.user?.user_metadata?.full_name ?? contactEmail
-      if (!contactEmail) return
-
-      try {
-        await notifyContactOfSupportReply({ contactEmail, contactName, ticketTitle: ticket.title, message, portal: influencer ? 'influencer' : 'brand' })
-      } catch (emailError) {
-        console.error('[POST /api/tickets/[id]/replies] contact notification failed:', emailError)
-      }
-    })())
+  if (!isAdmin) {
+    const { data, error } = await admin.from('ticket_replies').insert({ ticket_id: params.id, user_id: user.id, message, is_admin: false }).select().single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ data }, { status: 201 })
   }
+
+  // Admin: guarda, pasa Abierto → En progreso y envía el correo dejando el resultado en la respuesta.
+  const finalMessage = renderTemplate(message, { plan_url: planUrl() })
+  const saved = await saveAdminReply(admin, { ticketId: params.id, userId: user.id, message: finalMessage })
+  if (!saved.reply) return NextResponse.json({ error: saved.error }, { status: 500 })
+  waitUntil(deliverReplyEmail(admin, { ticketId: params.id, replyId: saved.reply.id, actorId: user.id, message: finalMessage }))
+  const data = saved.reply
 
   return NextResponse.json({ data }, { status: 201 })
 }

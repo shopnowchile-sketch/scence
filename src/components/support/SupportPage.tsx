@@ -9,6 +9,8 @@ import {
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { idsForBulkAction, toggleAllVisible } from '@/lib/influencers/selection'
+import { TemplateSelect, TemplatesModal, BulkReplyModal, fillTemplate, type SupportTemplate } from './SupportTemplates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface AIReview {
@@ -24,6 +26,8 @@ interface Reply {
   is_admin: boolean
   user_id: string
   created_at: string
+  email_status?: 'sent' | 'failed' | null
+  email_error?: string | null
 }
 
 interface Submitter {
@@ -77,6 +81,7 @@ const FILTER_TABS = [
   { key: 'open',        label: 'Abiertos' },
   { key: 'in_progress', label: 'En progreso' },
   { key: 'closed',      label: 'Cerrados' },
+  { key: 'pro',         label: 'Seguimiento Pro' },
 ]
 
 const CATEGORIES = [
@@ -95,7 +100,14 @@ function fmt(iso: string) {
 // ── Replies sub-component ─────────────────────────────────────────────────────
 const repliesCache = new Map<string, Reply[]>()
 
-function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: boolean }) {
+function TicketReplies({ ticketId, adminMode, templates = [], contactName = '', onEditTemplates, onReplied }: {
+  ticketId: string
+  adminMode: boolean
+  templates?: SupportTemplate[]
+  contactName?: string
+  onEditTemplates?: () => void
+  onReplied?: (ticketId: string) => void
+}) {
   const cachedReplies = repliesCache.get(ticketId)
   const [replies,  setReplies]  = useState<Reply[]>(cachedReplies ?? [])
   const [loading,  setLoading]  = useState(!cachedReplies)
@@ -139,6 +151,15 @@ function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: b
       })
       setMessage('')
       toast.success('Respuesta enviada')
+      onReplied?.(ticketId)
+      // El resultado del correo se guarda en segundo plano: se vuelve a leer para mostrarlo.
+      if (adminMode) setTimeout(() => {
+        fetch(`/api/tickets/${ticketId}/replies`).then(r => r.json()).then(j => {
+          if (!j.data) return
+          repliesCache.set(ticketId, j.data)
+          setReplies(j.data)
+        }).catch(() => {})
+      }, 3000)
     } catch (e) {
       toast.error((e as Error).message ?? 'Error enviando respuesta')
     }
@@ -161,13 +182,20 @@ function TicketReplies({ ticketId, adminMode }: { ticketId: string; adminMode: b
             <p className="text-[11px] font-semibold text-gray-500">
               {r.is_admin ? 'Soporte SCENCE' : 'Usuario'}
             </p>
-            <p className="text-[10px] text-gray-400">{fmt(r.created_at)}</p>
+            <p className="text-[10px] text-gray-400">
+              {fmt(r.created_at)}
+              {adminMode && r.is_admin && r.email_status === 'sent' && <span className="ml-2 font-semibold text-emerald-600">Correo enviado ✓</span>}
+              {adminMode && r.is_admin && r.email_status === 'failed' && <span className="ml-2 font-semibold text-red-500" title={r.email_error ?? ''}>Correo no enviado{r.email_error ? `: ${r.email_error}` : ''}</span>}
+            </p>
           </div>
           <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{r.message}</p>
         </div>
       ))}
 
       {/* Reply form — admin only */}
+      {adminMode && templates.length > 0 && onEditTemplates && (
+        <TemplateSelect templates={templates} onEdit={onEditTemplates} onPick={t => setMessage(fillTemplate(t, contactName))} className="flex items-center gap-3 pt-1" />
+      )}
       {adminMode && (
         <div className="flex gap-2 pt-1">
           <textarea
@@ -197,19 +225,37 @@ function AdminTicketTable({
   onToggle,
   onStatus,
   onDelete,
+  selected,
+  onSelect,
+  onSelectAll,
+  onPriority,
+  templates,
+  onEditTemplates,
+  onReplied,
 }: {
   tickets: Ticket[]
   expanded: string | null
   onToggle: (id: string) => void
   onStatus: (id: string, status: string) => void
   onDelete: (id: string) => void
+  selected: Set<string>
+  onSelect: (id: string) => void
+  onSelectAll: () => void
+  onPriority: (id: string, priority: string) => void
+  templates: SupportTemplate[]
+  onEditTemplates: () => void
+  onReplied: (ticketId: string) => void
 }) {
+  const allSelected = tickets.length > 0 && tickets.every(t => selected.has(t.id))
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/80">
+              <th className="w-10 px-4 py-3">
+                <input type="checkbox" checked={allSelected} onChange={onSelectAll} aria-label="Seleccionar todos" data-testid="select-all-tickets" />
+              </th>
               {['Tipo', 'Contacto', 'Asunto y descripción', 'Estado', 'Prioridad', 'Fecha', ''].map(label => (
                 <th key={label} className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">{label}</th>
               ))}
@@ -227,6 +273,9 @@ function AdminTicketTable({
               return (
                 <Fragment key={ticket.id}>
                   <tr onClick={() => onToggle(ticket.id)} className={cn('cursor-pointer transition-colors', isExpanded ? 'bg-violet-50/40' : 'hover:bg-gray-50/70')}>
+                    <td className="px-4 py-3" onClick={event => event.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(ticket.id)} onChange={() => onSelect(ticket.id)} aria-label={`Seleccionar ${ticket.title}`} data-testid="select-ticket" />
+                    </td>
                     <td className="px-4 py-3">
                       <span className={cn('inline-flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-lg', submitterCfg.color)}>
                         <SubmitterIcon className="h-3.5 w-3.5" /> {submitterCfg.label}
@@ -255,15 +304,22 @@ function AdminTicketTable({
                         <ChevronDown className="h-3 w-3 pointer-events-none" />
                       </label>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={cn('text-[11px] font-bold px-2 py-1 rounded-full', PRIORITY_COLOR[ticket.priority] ?? PRIORITY_COLOR.P2)}>{ticket.priority}</span>
+                    <td className="px-4 py-3" onClick={event => event.stopPropagation()}>
+                      <select
+                        value={ticket.priority}
+                        onChange={event => onPriority(ticket.id, event.target.value)}
+                        aria-label="Prioridad"
+                        className={cn('appearance-none cursor-pointer text-[11px] font-bold px-2 py-1 rounded-full outline-none', PRIORITY_COLOR[ticket.priority] ?? PRIORITY_COLOR.P2)}
+                      >
+                        {['P0', 'P1', 'P2', 'P3'].map(priority => <option key={priority} value={priority}>{priority}</option>)}
+                      </select>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmt(ticket.created_at)}</td>
                     <td className="px-4 py-3 text-right">{isExpanded ? <ChevronUp className="h-4 w-4 text-violet-500" /> : <ChevronDown className="h-4 w-4 text-gray-300" />}</td>
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-5 bg-gray-50/50">
+                      <td colSpan={8} className="px-5 py-5 bg-gray-50/50">
                         <div className="max-w-4xl space-y-4">
                           <div>
                             <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Descripción completa</p>
@@ -285,7 +341,7 @@ function AdminTicketTable({
                               )}
                             </div>
                           )}
-                          <TicketReplies ticketId={ticket.id} adminMode />
+                          <TicketReplies ticketId={ticket.id} adminMode templates={templates} contactName={submitter.name} onEditTemplates={onEditTemplates} onReplied={onReplied} />
                         </div>
                       </td>
                     </tr>
@@ -313,6 +369,11 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
   const [expanded,     setExpanded]     = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState(adminMode ? 'open' : 'all')
   const [form, setForm] = useState({ title: '', description: '', category: 'other' })
+  const [templates,    setTemplates]    = useState<SupportTemplate[]>([])
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [selected,     setSelected]     = useState<Set<string>>(new Set())
+  const [bulk,         setBulk]         = useState<{ initial: string } | null>(null)
+  const [syncingPro,   setSyncingPro]   = useState(false)
 
   const apiUrl = adminMode ? '/api/tickets' : '/api/support'
 
@@ -349,8 +410,65 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
     } catch { /* los badges se quedan con el valor anterior, no es crítico */ }
   }, [adminMode, apiUrl])
 
-  useEffect(() => { void load(1) }, [load])
+  const loadTemplates = useCallback(async () => {
+    if (!adminMode) return
+    try {
+      const res  = await fetch('/api/tickets/templates')
+      const json = await res.json()
+      if (res.ok) setTemplates(json.data ?? [])
+    } catch { /* sin plantillas el selector simplemente no aparece */ }
+  }, [adminMode])
+
+  useEffect(() => { setSelected(new Set()); void load(1) }, [load])
   useEffect(() => { void loadCounts() }, [loadCounts])
+  useEffect(() => { void loadTemplates() }, [loadTemplates])
+
+  async function updatePriority(ticketId: string, priority: string) {
+    try {
+      const res  = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, priority: json.data.priority } : t))
+      toast.success('Prioridad actualizada')
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Error actualizando prioridad')
+    }
+  }
+
+  // Responder pasa Abierto → En progreso en el servidor; la lista local lo refleja sin recargar.
+  function markReplied(ticketId: string) {
+    setTickets(prev => prev.map(t => t.id === ticketId && t.status === 'open' ? { ...t, status: 'in_progress' } : t))
+    void loadCounts()
+  }
+
+  // «Actualizar Pro»: primero cuenta, pide confirmación y recién entonces crea los tickets. Sin correos.
+  async function syncPro() {
+    setSyncingPro(true)
+    try {
+      const call = async (dry_run: boolean) => {
+        const res = await fetch('/api/tickets/pro-followup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dry_run }) })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'Error')
+        return json as { created: number; existing: number; without_account: number }
+      }
+      const preview = await call(true)
+      if (preview.created === 0) { toast.success(`No hay intentos nuevos (${preview.existing} ya tienen ticket${preview.without_account ? `, ${preview.without_account} sin cuenta` : ''}).`); return }
+      if (!confirm(`Se crearán ${preview.created} ticket(s) de Seguimiento Pro (${preview.existing} ya tenían uno${preview.without_account ? `, ${preview.without_account} sin cuenta no se incluyen` : ''}). No se envía ningún correo. ¿Continuar?`)) return
+      const done = await call(false)
+      toast.success(`${done.created} ticket(s) creados. No se envió ningún correo.`)
+      await load(1)
+      void loadCounts()
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Error actualizando Seguimiento Pro')
+    } finally { setSyncingPro(false) }
+  }
+
+  const visibleIds = tickets.map(t => t.id)
+  const selectedIds = idsForBulkAction(selected, visibleIds)
 
   async function submit() {
     if (!form.title.trim())       { toast.error('El título es requerido');     return }
@@ -418,6 +536,11 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {adminMode && statusFilter === 'pro' && (
+            <button onClick={() => void syncPro()} disabled={syncingPro} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold border border-violet-300 text-violet-700 bg-white hover:bg-violet-50 disabled:opacity-60">
+              {syncingPro && <Loader2 className="h-4 w-4 animate-spin" />} Actualizar Pro
+            </button>
+          )}
           <button onClick={() => { void load(1); void loadCounts() }} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
             <RefreshCw className="h-4 w-4" />
           </button>
@@ -459,6 +582,20 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
               </button>
             )
           })}
+        </div>
+      )}
+
+      {/* Selección múltiple — admin */}
+      {adminMode && selectedIds.length > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-medium" data-testid="selection-bar">
+          <button onClick={() => setSelected(new Set())} className="p-1 rounded hover:bg-white/20" aria-label="Quitar selección"><X className="h-4 w-4" /></button>
+          <span>{selectedIds.length} seleccionado(s)</span>
+          <TemplateSelect
+            templates={templates}
+            onEdit={() => setShowTemplates(true)}
+            onPick={t => setBulk({ initial: fillTemplate(t, '{{nombre}}') })}
+            className="ml-auto flex items-center gap-3 [&_select]:text-gray-800 [&_button]:text-white"
+          />
         </div>
       )}
 
@@ -536,6 +673,13 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
             onToggle={ticketId => setExpanded(expanded === ticketId ? null : ticketId)}
             onStatus={updateStatus}
             onDelete={deleteTicket}
+            selected={selected}
+            onSelect={ticketId => setSelected(previous => { const next = new Set(previous); if (next.has(ticketId)) next.delete(ticketId); else next.add(ticketId); return next })}
+            onSelectAll={() => setSelected(toggleAllVisible(selected, visibleIds))}
+            onPriority={updatePriority}
+            templates={templates}
+            onEditTemplates={() => setShowTemplates(true)}
+            onReplied={markReplied}
           />
           {hasMore && <div className="flex justify-center"><button onClick={() => void load(page + 1)} disabled={loadingMore} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:border-violet-200 hover:text-violet-700 disabled:opacity-50">{loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}Cargar más tickets</button></div>}
         </div>
@@ -653,6 +797,21 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
             )
           })}
         </div>
+      )}
+      {showTemplates && <TemplatesModal templates={templates} onChange={() => void loadTemplates()} onClose={() => setShowTemplates(false)} />}
+      {bulk && (
+        <BulkReplyModal
+          ids={selectedIds}
+          initial={bulk.initial}
+          onCancel={() => setBulk(null)}
+          onDone={({ sent, failed, skipped }) => {
+            setBulk(null)
+            setSelected(new Set())
+            toast.success(`Enviados ${sent} · fallidos ${failed} · omitidos ${skipped}`)
+            void load(1)
+            void loadCounts()
+          }}
+        />
       )}
     </div>
   )

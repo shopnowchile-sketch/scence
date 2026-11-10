@@ -106,3 +106,30 @@ export async function syncProTickets(admin: Admin, orgId: string, opts: { dryRun
   }
   return { created, existing, without_account, total: attempts.length }
 }
+
+/**
+ * Contador de Soporte del menú: solo lo que espera nuestra atención. Cuenta un ticket activo cuando
+ *  - es nuevo y nadie del equipo respondió todavía, o
+ *  - la persona respondió después de nuestro último mensaje.
+ * No cuenta los pendientes que ya respondimos ni los tickets que crea «Actualizar Pro» (nacen sin que la
+ * influencer haya escrito nada) hasta que ella conteste.
+ */
+export function countTicketsAwaitingTeam(
+  tickets: Array<{ id: string; category?: string | null }>,
+  replies: Array<{ ticket_id: string; is_admin: boolean | null; created_at: string }>,
+): number {
+  const lastAdmin = new Map<string, string>()
+  const lastUser = new Map<string, string>()
+  for (const r of replies) {
+    const bucket = r.is_admin ? lastAdmin : lastUser
+    const prev = bucket.get(r.ticket_id)
+    if (!prev || r.created_at > prev) bucket.set(r.ticket_id, r.created_at)
+  }
+  let count = 0
+  for (const t of tickets) {
+    const admin = lastAdmin.get(t.id), user = lastUser.get(t.id)
+    if (user && (!admin || user > admin)) count++
+    else if (!user && !admin && t.category !== PRO_CATEGORY) count++
+  }
+  return count
+}

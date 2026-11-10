@@ -146,7 +146,7 @@ export async function resolvePendingCampaignAnnouncement(
   // Segmentación geográfica: solo se avisa a quien está en las zonas elegidas (misma regla que el marketplace).
   let audience: Awaited<ReturnType<typeof audienceMatcherFor>>
   try {
-    audience = await audienceMatcherFor(admin, [campaignId])
+    audience = await audienceMatcherFor(admin, [campaignId], candidates.filter(inf => !excludeIds.has(inf.id)).map(inf => inf.id))
   } catch (e) {
     console.error('[resolvePendingCampaignAnnouncement] error leyendo segmentación', e)
     return { campaign, pending: [], skipped: 'query_error' as const }
@@ -155,7 +155,7 @@ export async function resolvePendingCampaignAnnouncement(
   const pending = candidates
     .filter(inf => !excludeIds.has(inf.id))
     .filter(inf => !inf.user_id || !optedOut.has(inf.user_id))
-    .filter(inf => audience.allows(campaignId, inf.location_id))
+    .filter(inf => audience.allows(campaignId, inf.location_id, inf.id))
 
   return { campaign, pending, skipped: undefined }
 }

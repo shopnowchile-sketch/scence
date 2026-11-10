@@ -34,6 +34,13 @@ export async function sendLeadBatch(
   // alguien que se dio de baja. Si la consulta falla, lanza y la tanda se aborta.
   const blocked = await getBlockedEmails(admin, leads.map(lead => lead.email))
 
+  // Consentimiento: los contactos de la importación best_people_2026_01 solo reciben
+  // campañas si el export confirmó `Accepts Marketing`. Desconocido ⇒ no se envía.
+  // Los contactos anteriores a esa importación mantienen sus reglas de siempre.
+  for (const lead of leads) {
+    if (lead.source?.startsWith('best_people_2026_01') && lead.marketing_consent !== true) blocked.add(normalizeEmail(lead.email))
+  }
+
   return processLeadBatch(admin, { jobId, userId, leads, jobCreatedAt }, {
     isBlocked: email => blocked.has(normalizeEmail(email)),
     pause: () => new Promise(resolve => setTimeout(resolve, 150)),

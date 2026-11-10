@@ -1,0 +1,901 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import Link from 'next/link'
+import {
+  Building2, Plus, X, Globe, Mail, Phone, Target,
+  Pencil, Trash2, ExternalLink, Search, Send,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { useColumnWidths } from '@/hooks/useColumnWidths'
+import { SortableTH } from '@/components/ui/SortableTH'
+import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu'
+import { getPlanTier, PLAN_LIMITS, PLAN_TIERS } from '@/lib/plan-limits'
+import { BrandModal } from '@/components/brands/BrandModal'
+import { PhoneLink } from '@/components/ui/PhoneLink'
+
+type SortKey = 'name' | 'status' | 'industry' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy' | 'plan'
+type SortOrder = 'asc' | 'desc'
+type BrandColumnKey = 'status' | 'industry' | 'contact' | 'active' | 'total' | 'accountCreated' | 'lastSignIn' | 'referredBy' | 'plan'
+
+// Columnas de la tabla de Marcas — "Marca" siempre visible (no se puede ocultar
+// la columna principal). Regla global pedida por Pri: toda tabla debe poder
+// ordenar por header, mostrar/ocultar columnas y ajustar su ancho con drag —
+// mismo patrón ya usado en Campañas (visibilidad) e Influencers (sort).
+const BRAND_COLUMNS: Array<{ key: BrandColumnKey; label: string }> = [
+  { key: 'status',         label: 'Estado' },
+  { key: 'plan',           label: 'Plan' },
+  { key: 'industry',       label: 'Industria' },
+  { key: 'contact',        label: 'Contacto' },
+  { key: 'active',         label: 'Campañas activas' },
+  { key: 'total',          label: 'Total campañas' },
+  { key: 'accountCreated', label: 'Cuenta creada' },
+  { key: 'lastSignIn',     label: 'Última conexión' },
+  { key: 'referredBy',     label: 'Referido por' },
+]
+
+const DEFAULT_BRAND_COLUMNS: Record<BrandColumnKey, boolean> =
+  Object.fromEntries(BRAND_COLUMNS.map(c => [c.key, true])) as Record<BrandColumnKey, boolean>
+
+const DEFAULT_BRAND_WIDTHS: Record<'name' | BrandColumnKey, number> = {
+  name: 240, status: 120, plan: 110, industry: 160, contact: 200, active: 130,
+  total: 130, accountCreated: 130, lastSignIn: 170, referredBy: 140,
+}
+
+// Badge de plan — mismo criterio de color que el resto de badges de estado.
+function planBadgeClass(tier: 'basic' | 'growth' | 'pro', isManual = false) {
+  if (isManual) return 'badge-orange'
+  if (tier === 'pro') return 'badge-green'
+  if (tier === 'growth') return 'badge-blue'
+  return 'badge-gray'
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface Brand {
+  id: string
+  name: string
+  logo_url: string | null
+  website: string | null
+  industry: string | null
+  contact_name: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  notes: string | null
+  created_at: string
+  status?: string | null
+  last_sign_in_at?: string | null
+  account_created_at?: string | null
+  user_id?: string | null
+  metadata?: { referred_by_instagram?: string | null } | null
+  campaigns?: Array<{ id: string; name: string; status: string; budget_total: number | null; currency: string }>
+  org_plan?: string | null
+  subscription_plan_override?: 'basic' | 'growth' | 'pro' | null
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function initials(name: string) {
+  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
+
+interface BrandInfluencer {
+  id: string
+  display_name: string
+  avatar_url: string | null
+  application_status: 'pending' | 'accepted' | 'rejected'
+  campaign_name: string
+}
+
+/**
+ * Tabla de marcas del Admin. Con `managedByBrandId` (pestaña «Marcas» de una ficha) muestra solo las marcas
+ * que esa marca/agencia administra, con el mismo diseño y las mismas acciones.
+ */
+export function BrandsTable({ managedByBrandId }: { managedByBrandId?: string } = {}) {
+  const [brands, setBrands]           = useState<Brand[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [search, setSearch]           = useState('')
+  // Default 'all': con 'pending_approval' la vista partía siempre vacía en la
+  // práctica (ver auditoría de autorregistro — pocas filas llegaban a ese
+  // estado de forma confiable antes de este fix). 'Todas' ya viene soportado
+  // por el <select> y el filtro más abajo.
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortKey, setSortKey]     = useLocalStorageState<SortKey>('scence:admin:brands:sortKey', 'name')
+  const [sortOrder, setSortOrder] = useLocalStorageState<SortOrder>('scence:admin:brands:sortOrder', 'asc')
+  const [visibleColumns, setVisibleColumns] = useLocalStorageState<Record<BrandColumnKey, boolean>>(
+    'scence:admin:brands:visibleColumns', DEFAULT_BRAND_COLUMNS
+  )
+  const { widths, startResize, resetWidths } = useColumnWidths('scence:admin:brands:widths', DEFAULT_BRAND_WIDTHS)
+  const [showModal, setShowModal]     = useState(false)
+  const [editing, setEditing]         = useState<Brand | null>(null)
+  const [selected, setSelected]       = useState<Brand | null>(null)
+  const [view, setView]               = useLocalStorageState<'list' | 'grid'>('scence:admin:brands:view', 'list')
+  const [brandInfluencers, setBrandInfluencers] = useState<BrandInfluencer[]>([])
+  // Selección múltiple para acciones masivas. Cada acción reutiliza el
+  // endpoint que ya usa la ficha de la marca (PATCH /api/brands/[id] y
+  // POST /api/brands/[id]/documents), marca por marca: mismas validaciones,
+  // permisos y efectos que hacerlo una a una.
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [bulkPlan, setBulkPlan] = useState('')
+  const [bulkStatus, setBulkStatus] = useState('')
+  const [bulkTemplateId, setBulkTemplateId] = useState('')
+  const [docTemplates, setDocTemplates] = useState<Array<{ id: string; name: string; document_type?: string }>>([])
+  const [bulkRunning, setBulkRunning] = useState(false)
+  const [loadingInf, setLoadingInf]   = useState(false)
+
+  // Debounce search — only fire API after 350ms of no typing
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const load = useCallback(async (q = '') => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (q) params.set('search', q)
+      if (managedByBrandId) params.set('managed_by_brand_id', managedByBrandId)
+      const query = params.toString() ? `?${params}` : ''
+      const res = await fetch(`/api/brands${query}`)
+      const json = await res.json()
+      setBrands(json.data ?? [])
+    } catch {
+      toast.error('Error al cargar marcas')
+    } finally {
+      setLoading(false)
+    }
+  }, [managedByBrandId])
+
+  useEffect(() => { load() }, [load])
+
+  function handleSearchChange(value: string) {
+    setSearch(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => load(value), 350)
+  }
+
+  async function loadBrandInfluencers(brand: Brand) {
+    setLoadingInf(true)
+    setBrandInfluencers([])
+    try {
+      const campaignIds = (brand.campaigns ?? []).map((c: {id:string}) => c.id)
+      if (!campaignIds.length) { setLoadingInf(false); return }
+      // Fetch influencers from all campaigns of this brand
+      const results = await Promise.all(
+        campaignIds.map((cid: string) =>
+          fetch(`/api/campaigns/${cid}/influencers`).then(r => r.json()).then(j => ({
+            campaign_id: cid,
+            campaign_name: (brand.campaigns ?? []).find((c: {id:string;name:string}) => c.id === cid)?.name ?? '',
+            influencers: j.data ?? [],
+          }))
+        )
+      )
+      const flat: BrandInfluencer[] = []
+      const seen = new Set<string>()
+      for (const r of results) {
+        for (const ci of r.influencers) {
+          if (!ci.influencer || seen.has(ci.influencer.id)) continue
+          seen.add(ci.influencer.id)
+          flat.push({
+            id: ci.influencer.id,
+            display_name: ci.influencer.display_name,
+            avatar_url: ci.influencer.avatar_url,
+            application_status: ci.application_status,
+            campaign_name: r.campaign_name,
+          })
+        }
+      }
+      setBrandInfluencers(flat)
+    } catch { /* non-fatal */ }
+    setLoadingInf(false)
+  }
+
+  const statusLabel = (status?: string | null) => {
+    if (status === 'approved') return 'Aprobada'
+    if (status === 'suspended') return 'Suspendida'
+    return 'Pendiente'
+  }
+
+  const statusClass = (status?: string | null) => {
+    if (status === 'approved') return 'badge-green'
+    if (status === 'suspended') return 'badge-red'
+    return 'badge-orange'
+  }
+
+  function toggleSort(key: SortKey) {
+    setSortOrder(prev => sortKey === key && prev === 'desc' ? 'asc' : 'desc')
+    setSortKey(key)
+  }
+
+  function toggleColumn(key: BrandColumnKey) {
+    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function resetColumnsAndWidths() {
+    setVisibleColumns(DEFAULT_BRAND_COLUMNS)
+    resetWidths()
+  }
+
+  const visibleBrands = useMemo(() => {
+    const rows = [...brands]
+
+    const filtered = statusFilter === 'all'
+      ? rows
+      : rows.filter(b => (b.status ?? 'pending_approval') === statusFilter)
+
+    filtered.sort((a, b) => {
+      const getValue = (br: Brand) => {
+        switch (sortKey) {
+          case 'name':           return br.name ?? ''
+          case 'status':         return br.status ?? 'pending_approval'
+          case 'plan':           return getPlanTier(br.org_plan)
+          case 'industry':       return br.industry ?? ''
+          case 'active':         return (br.campaigns ?? []).filter(c => c.status === 'active').length
+          case 'total':          return br.campaigns?.length ?? 0
+          case 'accountCreated': return br.account_created_at ?? ''
+          case 'lastSignIn':     return br.last_sign_in_at ?? ''
+          case 'referredBy':     return br.metadata?.referred_by_instagram ?? ''
+          default:                return ''
+        }
+      }
+
+      const av = getValue(a)
+      const bv = getValue(b)
+      const result = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv))
+
+      return sortOrder === 'asc' ? result : -result
+    })
+
+    return filtered
+  }, [brands, statusFilter, sortKey, sortOrder])
+
+  useEffect(() => {
+    if (checkedIds.size === 0 || docTemplates.length > 0) return
+    fetch('/api/contracts/templates')
+      .then(res => (res.ok ? res.json() : { data: [] }))
+      .then(json => {
+        const available = (json.data ?? []) as Array<{ id: string; name: string; document_type?: string }>
+        setDocTemplates(available)
+        setBulkTemplateId(current => current || available.find(t => t.document_type === 'nda' || /nda/i.test(t.name))?.id || '')
+      })
+      .catch(() => { /* sin templates no se ofrece el envío */ })
+  }, [checkedIds.size, docTemplates.length])
+
+  function toggleChecked(id: string) {
+    setCheckedIds(previous => {
+      const next = new Set(previous)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function runBulk(label: string, action: (brand: Brand) => Promise<'ok' | 'skipped'>) {
+    const targets = brands.filter(brand => checkedIds.has(brand.id))
+    if (targets.length === 0) return
+    if (!confirm(`${label} para ${targets.length} marca(s). ¿Continuar?`)) return
+    setBulkRunning(true)
+    let ok = 0, skipped = 0
+    const failed: string[] = []
+    // Secuencial a propósito: evita picos de carga en la base y en el envío de emails.
+    for (const brand of targets) {
+      try {
+        const result = await action(brand)
+        if (result === 'ok') ok += 1
+        else skipped += 1
+      } catch {
+        failed.push(brand.name)
+      }
+    }
+    setBulkRunning(false)
+    if (ok > 0) toast.success(`${label}: ${ok} marca(s) actualizada(s)`)
+    if (skipped > 0) toast.message(`${skipped} marca(s) omitida(s)`)
+    if (failed.length > 0) toast.error(`No se pudo en: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? '…' : ''}`)
+    setCheckedIds(new Set())
+    load(search)
+  }
+
+  async function patchBrand(brand: Brand, body: Record<string, unknown>) {
+    const res = await fetch(`/api/brands/${brand.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error()
+    return 'ok' as const
+  }
+
+  async function sendDocument(brand: Brand) {
+    if (!brand.contact_email) return 'skipped' as const
+    const template = docTemplates.find(t => t.id === bulkTemplateId)
+    // No duplica: si la marca ya tiene ese documento pendiente o firmado, se omite.
+    const existingRes = await fetch(`/api/brands/${brand.id}/documents`)
+    const existing = existingRes.ok ? ((await existingRes.json()).data ?? []) as Array<{ title: string; status: string }> : []
+    if (template && existing.some(doc => doc.title === template.name && (doc.status === 'pending' || doc.status === 'signed'))) return 'skipped' as const
+    const res = await fetch(`/api/brands/${brand.id}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_id: bulkTemplateId }),
+    })
+    if (!res.ok) throw new Error()
+    return 'ok' as const
+  }
+
+  function openCreate() {
+    setEditing(null)
+    setShowModal(true)
+  }
+
+  function openEdit(b: Brand) {
+    setEditing(b)
+    setShowModal(true)
+  }
+
+  async function handleDelete(b: Brand) {
+    if (!confirm(`¿Eliminar la marca "${b.name}"? Esto no eliminará las campañas asociadas.`)) return
+    try {
+      const res = await fetch(`/api/brands/${b.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      toast.success('Marca eliminada')
+      setSelected(null)
+      load(search)
+    } catch {
+      toast.error('Error al eliminar')
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className={managedByBrandId ? 'text-base font-bold text-gray-900' : 'text-2xl font-bold text-gray-900 tracking-tight'}>{managedByBrandId ? 'Marcas administradas' : 'Marcas'}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{managedByBrandId ? 'Marcas que esta marca o agencia agregó y administra' : 'Clientes y marcas asociadas a tus campañas'}</p>
+        </div>
+        {!managedByBrandId && (
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" /> Nueva marca
+        </button>
+        )}
+      </div>
+
+      {/* Search + view toggle */}
+      <div className="flex items-center gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            className="input-base pl-9 w-full"
+            placeholder="Buscar marca..."
+            value={search}
+            onChange={e => handleSearchChange(e.target.value)}
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="input-base text-sm w-44"
+        >
+          <option value="all">Todas las marcas</option>
+          <option value="pending_approval">Pendientes</option>
+          <option value="approved">Aprobadas</option>
+          <option value="suspended">Suspendidas</option>
+        </select>
+
+        {view === 'list' && (
+          <ColumnVisibilityMenu
+            columns={BRAND_COLUMNS}
+            visible={visibleColumns}
+            onToggle={toggleColumn}
+            onReset={resetColumnsAndWidths}
+          />
+        )}
+
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          <button onClick={() => setView('list')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === 'list' ? 'bg-violet-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+            ☰ Lista
+          </button>
+          <button onClick={() => setView('grid')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === 'grid' ? 'bg-violet-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+            ⊞ Grid
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-5">
+        {/* Grid */}
+        <div className="flex-1 min-w-0">
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="card p-5 animate-pulse">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-gray-100" />
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-100 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-gray-100 rounded w-1/2" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : visibleBrands.length === 0 ? (
+            <div className="card p-16 text-center max-w-md mx-auto">
+              <Building2 className="h-12 w-12 text-gray-200 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-gray-900 mb-1">
+                {search ? 'Sin resultados' : 'Sin marcas aún'}
+              </h3>
+              <p className="text-sm text-gray-400 mb-4">
+                {search ? `No se encontraron marcas para "${search}".` : 'Agrega las marcas con las que trabajas para asociarlas a campañas y facturas.'}
+              </p>
+              {!search && !managedByBrandId && (
+                <button
+                  onClick={openCreate}
+                  className="px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 transition-colors"
+                >
+                  + Crear primera marca
+                </button>
+              )}
+            </div>
+          ) : view === 'list' ? (
+            /* ── List view ── */
+            <div className="space-y-3">
+            {checkedIds.size > 0 && (
+              <div className="card flex flex-wrap items-center gap-3 p-3">
+                <span className="text-sm font-semibold text-gray-800">{checkedIds.size} seleccionada(s)</span>
+                <div className="flex items-center gap-1.5">
+                  <select value={bulkPlan} onChange={e => setBulkPlan(e.target.value)} className="input-base py-1.5 text-sm" aria-label="Plan">
+                    <option value="">Cambiar plan…</option>
+                    {PLAN_TIERS.map(tier => <option key={tier} value={tier}>{PLAN_LIMITS[tier].label}</option>)}
+                    <option value="inherit">Heredar (según suscripción)</option>
+                  </select>
+                  <button type="button" disabled={!bulkPlan || bulkRunning}
+                    onClick={() => runBulk(`Cambiar plan a ${bulkPlan === 'inherit' ? 'Heredar' : PLAN_LIMITS[bulkPlan as keyof typeof PLAN_LIMITS]?.label ?? bulkPlan}`, brand => patchBrand(brand, { subscription_plan_override: bulkPlan === 'inherit' ? null : bulkPlan }))}
+                    className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">Aplicar</button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} className="input-base py-1.5 text-sm" aria-label="Estado">
+                    <option value="">Cambiar estado…</option>
+                    <option value="approved">Aprobada (activa)</option>
+                    <option value="pending_approval">Pendiente</option>
+                    <option value="suspended">Suspendida</option>
+                  </select>
+                  <button type="button" disabled={!bulkStatus || bulkRunning}
+                    onClick={() => runBulk(`Cambiar estado a ${statusLabel(bulkStatus)}${bulkStatus === 'suspended' ? ' (quita el plan manual)' : ''}`, brand => patchBrand(brand, { status: bulkStatus }))}
+                    className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">Aplicar</button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <select value={bulkTemplateId} onChange={e => setBulkTemplateId(e.target.value)} className="input-base py-1.5 text-sm" aria-label="Documento">
+                    <option value="">Enviar documento…</option>
+                    {docTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  <button type="button" disabled={!bulkTemplateId || bulkRunning}
+                    onClick={() => runBulk(`Enviar "${docTemplates.find(t => t.id === bulkTemplateId)?.name ?? 'documento'}" por email (link a Documentos del portal)`, sendDocument)}
+                    className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"><Send className="h-3.5 w-3.5" /> Enviar</button>
+                </div>
+                <button type="button" onClick={() => setCheckedIds(new Set())} disabled={bulkRunning} className="ml-auto text-xs font-semibold text-gray-500 hover:text-gray-800">
+                  {bulkRunning ? 'Procesando…' : 'Limpiar selección'}
+                </button>
+              </div>
+            )}
+            <div className="card overflow-x-auto">
+              <table className="w-full min-w-[640px]" style={{ tableLayout: 'fixed' }}>
+                <colgroup>
+                  <col style={{ width: 40 }} />
+                  <col style={{ width: widths.name }} />
+                  {visibleColumns.status         && <col style={{ width: widths.status }} />}
+                  {visibleColumns.plan           && <col style={{ width: widths.plan }} />}
+                  {visibleColumns.industry       && <col style={{ width: widths.industry }} />}
+                  {visibleColumns.contact         && <col style={{ width: widths.contact }} />}
+                  {visibleColumns.active          && <col style={{ width: widths.active }} />}
+                  {visibleColumns.total           && <col style={{ width: widths.total }} />}
+                  {visibleColumns.accountCreated && <col style={{ width: widths.accountCreated }} />}
+                  {visibleColumns.lastSignIn      && <col style={{ width: widths.lastSignIn }} />}
+                  {visibleColumns.referredBy      && <col style={{ width: widths.referredBy }} />}
+                  <col style={{ width: 70 }} />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="px-3 py-3">
+                      <input type="checkbox" aria-label="Seleccionar todas"
+                        checked={visibleBrands.length > 0 && visibleBrands.every((brand: Brand) => checkedIds.has(brand.id))}
+                        onChange={event => setCheckedIds(event.target.checked ? new Set(visibleBrands.map((brand: Brand) => brand.id)) : new Set())}
+                        className="h-4 w-4 rounded border-gray-300 text-violet-600" />
+                    </th>
+                    <SortableTH col="name" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('name', e)}>Marca</SortableTH>
+                    {visibleColumns.status && (
+                      <SortableTH col="status" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('status', e)}>Estado</SortableTH>
+                    )}
+                    {visibleColumns.plan && (
+                      <SortableTH col="plan" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('plan', e)}>Plan</SortableTH>
+                    )}
+                    {visibleColumns.industry && (
+                      <SortableTH col="industry" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('industry', e)}>Industria</SortableTH>
+                    )}
+                    {visibleColumns.contact && (
+                      <SortableTH<SortKey> onResizeStart={e => startResize('contact', e)}>Contacto</SortableTH>
+                    )}
+                    {visibleColumns.active && (
+                      <SortableTH col="active" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('active', e)}>Campañas activas</SortableTH>
+                    )}
+                    {visibleColumns.total && (
+                      <SortableTH col="total" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('total', e)}>Total campañas</SortableTH>
+                    )}
+                    {visibleColumns.accountCreated && (
+                      <SortableTH col="accountCreated" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('accountCreated', e)}>Cuenta creada</SortableTH>
+                    )}
+                    {visibleColumns.lastSignIn && (
+                      <SortableTH col="lastSignIn" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('lastSignIn', e)}>Última conexión</SortableTH>
+                    )}
+                    {visibleColumns.referredBy && (
+                      <SortableTH col="referredBy" sortBy={sortKey} sortDir={sortOrder} onSort={toggleSort} onResizeStart={e => startResize('referredBy', e)}>Referido por</SortableTH>
+                    )}
+                    <SortableTH<SortKey>>{''}</SortableTH>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {visibleBrands.map((b: Brand) => {
+                    const allCampaigns = (b.campaigns as Array<{id:string;name:string;status:string;budget_total:number|null;currency:string}>) ?? []
+                    const activeCampaigns = allCampaigns.filter(camp => camp.status === 'active')
+                    return (
+                      <tr key={b.id} onClick={() => { window.location.href = `/admin-brands/${b.id}` }}
+                        className={cn('cursor-pointer hover:bg-gray-50 transition-colors',
+                          selected?.id === b.id || checkedIds.has(b.id) ? 'bg-violet-50' : '')}>
+                        <td className="px-3 py-3" onClick={event => event.stopPropagation()}>
+                          <input type="checkbox" aria-label={`Seleccionar ${b.name}`} checked={checkedIds.has(b.id)} onChange={() => toggleChecked(b.id)}
+                            className="h-4 w-4 rounded border-gray-300 text-violet-600" />
+                        </td>
+                        <td className="px-4 py-3 overflow-hidden">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {b.logo_url
+                              ? <img src={b.logo_url} alt={b.name} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5 flex-shrink-0" />
+                              : <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600 font-bold text-sm flex-shrink-0">{b.name[0]}</div>
+                            }
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-gray-900 truncate">{b.name}</div>
+                              {b.website && <a href={b.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-violet-500 hover:underline truncate block">{b.website.replace(/^https?:\/\//, '')}</a>}
+                            </div>
+                          </div>
+                        </td>
+                        {visibleColumns.status && (
+                          <td className="px-4 py-3 overflow-hidden">
+                            <span className={cn('badge text-xs font-bold', statusClass(b.status))}>
+                              {statusLabel(b.status)}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.plan && (
+                          <td className="px-4 py-3 overflow-hidden">
+                            <span className={cn('badge text-xs font-bold', planBadgeClass(getPlanTier(b.org_plan), !!b.subscription_plan_override))}>
+                              {PLAN_LIMITS[getPlanTier(b.org_plan)].label}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.industry && (
+                          <td className="px-4 py-3 text-sm text-gray-500 truncate">{b.industry ?? '—'}</td>
+                        )}
+                        {visibleColumns.contact && (
+                          <td className="px-4 py-3 text-sm text-gray-500 overflow-hidden">
+                            <div className="truncate">{b.contact_name ?? '—'}</div>
+                            {b.contact_email && <div className="text-xs text-gray-400 truncate">{b.contact_email}</div>}
+                          </td>
+                        )}
+                        {visibleColumns.active && (
+                          <td className="px-4 py-3 overflow-hidden">
+                            <span className={cn('badge text-xs font-bold', activeCampaigns.length > 0 ? 'badge-green' : 'badge-gray')}>
+                              {activeCampaigns.length} activa{activeCampaigns.length !== 1 ? 's' : ''}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.total && (
+                          <td className="px-4 py-3 text-sm text-gray-500 truncate">{allCampaigns.length} total</td>
+                        )}
+                        {visibleColumns.accountCreated && (
+                          <td className="px-4 py-3 text-xs text-gray-400 truncate">
+                            {b.account_created_at
+                              ? new Date(b.account_created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })
+                              : '—'}
+                          </td>
+                        )}
+                        {visibleColumns.lastSignIn && (
+                          <td className="px-4 py-3 text-xs text-gray-400 truncate">
+                            {b.last_sign_in_at
+                              ? new Date(b.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                              : <span className="text-gray-300">Sin acceso</span>}
+                          </td>
+                        )}
+                        {visibleColumns.referredBy && (
+                          <td className="px-4 py-3 text-xs text-gray-500 truncate">
+                            {b.metadata?.referred_by_instagram ? `@${b.metadata.referred_by_instagram}` : <span className="text-gray-300">—</span>}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <button onClick={e => { e.stopPropagation(); setEditing(b); setShowModal(true) }}
+                            className="text-xs text-violet-600 hover:underline font-medium mr-3">Editar</button>
+                          <button onClick={e => { e.stopPropagation(); handleDelete(b) }}
+                            className="text-xs text-red-500 hover:underline font-medium">Eliminar</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {visibleBrands.map((b: Brand) => (
+                <div
+                  key={b.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { window.location.href = `/admin-brands/${b.id}` }}
+                  onKeyDown={e => { if (e.key === 'Enter') window.location.href = `/admin-brands/${b.id}` }}
+                  className={cn(
+                    'card p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer',
+                    selected?.id === b.id ? 'ring-2 ring-violet-400' : ''
+                  )}
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    {b.logo_url ? (
+                      <img src={b.logo_url} alt={b.name} className="w-12 h-12 rounded-xl object-contain border border-gray-100 p-1" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {initials(b.name)}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-900 truncate">{b.name}</p>
+                      {b.industry && <p className="text-xs text-gray-400 truncate">{b.industry}</p>}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-xs text-gray-500">
+                    {b.contact_email && (
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Mail className="h-3 w-3 text-gray-300 flex-shrink-0" />
+                        <span className="truncate">{b.contact_email}</span>
+                      </div>
+                    )}
+                    {b.website && (
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Globe className="h-3 w-3 text-gray-300 flex-shrink-0" />
+                        <span className="truncate">{b.website.replace(/^https?:\/\//, '')}</span>
+                      </div>
+                    )}
+                  </div>
+                  {b.last_sign_in_at && (
+                    <div className="mt-2 text-[10px] text-gray-400">
+                      Últ. acceso: {new Date(b.last_sign_in_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </div>
+                  )}
+                  {(b.campaigns?.length ?? 0) > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-1.5 text-xs text-violet-600 font-medium">
+                      <Target className="h-3 w-3" /> {b.campaigns!.length} campaña{b.campaigns!.length !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                  <div className="mt-3 pt-3 border-t border-gray-50 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); setEditing(b); setShowModal(true) }}
+                      className="text-xs text-violet-600 hover:underline font-medium"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); handleDelete(b) }}
+                      className="text-xs text-red-500 hover:underline font-medium"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Detail panel */}
+        {selected && (
+          <div className="w-80 flex-shrink-0">
+            <div className="card p-5 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  {selected.logo_url ? (
+                    <img src={selected.logo_url} alt={selected.name} className="w-14 h-14 rounded-xl object-contain border border-gray-100 p-1" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold">
+                      {initials(selected.name)}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="font-bold text-gray-900">{selected.name}</h3>
+                    {selected.industry && <p className="text-xs text-gray-400">{selected.industry}</p>}
+                  </div>
+                </div>
+                <button onClick={() => setSelected(null)} className="p-1 rounded-md hover:bg-gray-100 text-gray-400">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Contact */}
+              <div className="space-y-2 text-sm">
+                {selected.contact_name && <div className="text-gray-700 font-medium">{selected.contact_name}</div>}
+                {selected.contact_email && (
+                  <a href={`mailto:${selected.contact_email}`} className="flex items-center gap-2 text-violet-600 hover:underline">
+                    <Mail className="h-3.5 w-3.5" /> {selected.contact_email}
+                  </a>
+                )}
+                {selected.contact_phone && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Phone className="h-3.5 w-3.5 text-gray-400" /> <PhoneLink phone={selected.contact_phone} country="Chile" />
+                  </div>
+                )}
+                {selected.website && (
+                  <a href={selected.website} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-violet-600 hover:underline">
+                    <ExternalLink className="h-3.5 w-3.5" /> {selected.website.replace(/^https?:\/\//, '')}
+                  </a>
+                )}
+                {selected.notes && (
+                  <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-800">{selected.notes}</div>
+                )}
+              </div>
+
+              {/* Campaigns */}
+              {(selected.campaigns?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Campañas</p>
+                  <div className="space-y-1.5">
+                    {selected.campaigns!.map(c => (
+                      <Link
+                        key={c.id}
+                        href={`/campaigns/${c.id}`}
+                        className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 hover:bg-violet-50 transition-colors"
+                      >
+                        <span className="text-sm font-medium text-gray-800 truncate">{c.name}</span>
+                        <span className={cn(
+                          'badge text-[10px] flex-shrink-0',
+                          c.status === 'active' ? 'badge-green' :
+                          c.status === 'completed' ? 'badge-blue' :
+                          c.status === 'draft' ? 'badge-gray' : 'badge-orange'
+                        )}>
+                          {c.status}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Influencers */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Influencers {loadingInf && <span className="text-gray-300">cargando…</span>}
+                </p>
+                {brandInfluencers.length === 0 && !loadingInf && (
+                  <p className="text-xs text-gray-400">Sin influencers en estas campañas.</p>
+                )}
+                <div className="space-y-1.5">
+                  {brandInfluencers.map(inf => (
+                    <a key={inf.id} href={`/influencers/${inf.id}`}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 hover:bg-violet-50 transition-colors">
+                      {inf.avatar_url ? (
+                        <img src={inf.avatar_url} alt={inf.display_name} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                          {inf.display_name.charAt(0)}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{inf.display_name}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{inf.campaign_name}</p>
+                      </div>
+                      <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0',
+                        inf.application_status === 'accepted' ? 'bg-green-100 text-green-700' :
+                        inf.application_status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                        'bg-gray-100 text-gray-500')}>
+                        {inf.application_status === 'pending' ? '⏳ Solicitud' : inf.application_status === 'accepted' ? '✓ Activo' : 'Rechazada'}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                <button
+                  onClick={async () => {
+                    const res = await fetch(`/api/brands/${selected.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status: 'approved' }),
+                    })
+                    if (!res.ok) return toast.error('No se pudo aprobar')
+                    toast.success('Marca aprobada')
+                    load(search)
+                    setSelected({ ...selected, status: 'approved' })
+                  }}
+                  className="py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Aprobar marca
+                </button>
+                <button
+                  onClick={async () => {
+                    const res = await fetch(`/api/brands/${selected.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status: 'suspended' }),
+                    })
+                    if (!res.ok) return toast.error('No se pudo actualizar el acceso de la marca')
+                    toast.success('Acceso actualizado. La marca verá las opciones de plan para continuar en SCENCE.')
+                    load(search)
+                    setSelected({ ...selected, status: 'suspended' })
+                  }}
+                  className="py-2 text-xs font-semibold bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  Suspender
+                </button>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                {/* Invitar al portal de marca */}
+                {selected.contact_email && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(`/api/brands/${selected.id}/invite`, { method: 'POST' })
+                        const json = await res.json()
+                        if (!res.ok) throw new Error(json.error)
+                        toast.success(json.message)
+                        if (json.action_link && !json.email_sent) {
+                          navigator.clipboard.writeText(json.action_link).catch(() => {})
+                          toast.info('Link copiado al portapapeles')
+                        }
+                      } catch (e) {
+                        toast.error((e as Error).message)
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 text-sm font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+                  >
+                    <Send className="h-3.5 w-3.5" /> Invitar al portal
+                  </button>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => openEdit(selected)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Editar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(selected)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-red-500 border border-red-100 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal — rendered as module-level component, form state isolated from BrandsPage */}
+      {showModal && (
+        <BrandModal
+          key={editing?.id ?? 'new'}
+          editing={editing}
+          onClose={() => setShowModal(false)}
+          onSaved={() => load(search)}
+        />
+      )}
+    </div>
+  )
+}

@@ -107,14 +107,14 @@ export async function GET() {
   // Quien ya tiene una postulación pendiente conserva su campaña visible.
   let audience: Awaited<ReturnType<typeof audienceMatcherFor>>
   try {
-    audience = await audienceMatcherFor(admin, (data ?? []).map(c => c.id as string))
+    audience = await audienceMatcherFor(admin, (data ?? []).map(c => c.id as string), [influencer.id])
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'No se pudo leer la segmentación' }, { status: 500 })
   }
   const marketplaceRows = (data ?? [])
     .filter(c => !influencerCreatorIds.has(c.created_by as string))
     .filter(c => !isInvitationOnlyCampaign(c.metadata) || pendingRowIds.has(c.id as string))
-    .filter(c => pendingMap.has(c.id as string) || audience.allows(c.id as string, influencer.location_id))
+    .filter(c => pendingMap.has(c.id as string) || audience.allows(c.id as string, influencer.location_id, influencer.id))
 
   // Fecha del evento para el contador de días de la tarjeta. Solo se lee
   // `starts_at` del booking de campaña (influencer_id null) — la MISMA fecha

@@ -189,6 +189,9 @@ export async function listInterruptedAttempts(
 }
 
 export type BatchLead = {
+  /** Origen y consentimiento: la importación best_people_2026_01 solo se contacta con consentimiento confirmado. */
+  source?: string | null
+  marketing_consent?: boolean | null
   id: string
   contact_name: string | null
   company_name: string | null

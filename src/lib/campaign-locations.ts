@@ -286,6 +286,12 @@ export async function canonicalBookingLocationForCampaign(
  */
 export function lockCanonicalLocationMetadata(existing: unknown, incoming: Json): Json {
   const current = asJson(existing)
+  // Los criterios de segmentación solo se escriben por /api/campaigns/[id]/audience: un PUT/PATCH con
+  // datos obsoletos no los pisa ni los inventa.
+  const withCriteria: Json = { ...incoming }
+  if ('audience_criteria' in current) withCriteria.audience_criteria = current.audience_criteria
+  else delete withCriteria.audience_criteria
+  incoming = withCriteria
   if (!('legacy_location' in current)) return incoming
   const locked: Json = { ...incoming, legacy_location: current.legacy_location }
   for (const key of META_KEYS) locked[key] = current[key] ?? null

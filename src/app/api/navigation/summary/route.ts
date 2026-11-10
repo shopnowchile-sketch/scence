@@ -30,10 +30,10 @@ export async function GET() {
     .select('id', { count: 'exact', head: true })
     .in('status', ['open', 'in_progress'])
 
-  if (!access.isAdmin) {
-    brandsQuery = brandsQuery.eq('organization_id', orgId)
-    ticketsQuery = ticketsQuery.eq('organization_id', orgId)
-  }
+  // Soporte (tabla de /api/tickets) siempre filtra por la organización del usuario;
+  // el contador usa el mismo criterio para que ambos coincidan, también para el admin.
+  ticketsQuery = ticketsQuery.eq('organization_id', orgId)
+  if (!access.isAdmin) brandsQuery = brandsQuery.eq('organization_id', orgId)
 
   const [pendingResult, brandsResult, ticketsResult, bookingsResult] = await Promise.all([
     pendingQuery,

@@ -199,7 +199,7 @@ test('WhatsApp: los teléfonos visibles usan el componente compartido (sin tel: 
   for (const file of [
     'src/app/(dashboard)/admin-influencers/[id]/InfluencerProfile.tsx',
     'src/app/(dashboard)/admin-brands/[id]/page.tsx',
-    'src/app/(dashboard)/admin-brands/page.tsx',
+    'src/components/brands/BrandsTable.tsx',
     'src/app/(dashboard)/admin-crm/[id]/CrmLeadDetailClient.tsx',
     'src/app/(influencer)/inf-brands/page.tsx',
     'src/app/(influencer)/inf-profile/page.tsx',

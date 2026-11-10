@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllRows } from '@/lib/supabase/fetchAllRows'
 import { loadLocationRows, type LocationNode } from '@/lib/influencer-location'
+import {
+  hasCriteria, loadPerformanceMap, matchesCriteria, sanitizeCriteria,
+  type AudienceCriteria, type CriteriaSubject,
+} from '@/lib/influencer-performance'
 
 type Admin = SupabaseClient
 
@@ -49,13 +53,77 @@ export function matchesAudience(targetIds: string[] | undefined, influencerLinea
   return targetIds.some(id => influencerLineage.has(id))
 }
 
-/** Lectura completa para una influencer: carga catálogo + segmentación y devuelve el predicado. */
-export async function audienceMatcherFor(admin: Admin, campaignIds: string[]) {
-  const [targets, nodes] = await Promise.all([loadAudienceTargets(admin, campaignIds), loadLocationRows(admin)])
+/** Criterios de segmentación (seguidores, engagement, rating, desempeño) por campaña. Viven en `campaigns.metadata.audience_criteria`. */
+export async function loadAudienceCriteria(admin: Admin, campaignIds: string[]): Promise<Map<string, AudienceCriteria>> {
+  const result = new Map<string, AudienceCriteria>()
+  for (let i = 0; i < campaignIds.length; i += 100) {
+    const { data, error } = await admin.from('campaigns').select('id, metadata').in('id', campaignIds.slice(i, i + 100))
+    // Falla cerrado, igual que las zonas.
+    if (error) throw error
+    for (const row of data ?? []) {
+      const criteria = sanitizeCriteria((row.metadata as Record<string, unknown> | null)?.audience_criteria)
+      if (hasCriteria(criteria)) result.set(row.id as string, criteria)
+    }
+  }
+  return result
+}
+
+const PERFORMANCE_KEYS: (keyof AudienceCriteria)[] = ['campaigns_min', 'compliance_min', 'no_shows_max', 'late_max']
+
+/** Datos reales de cada influencer para evaluar criterios; lo que no existe queda en null (nunca se inventa). */
+export async function loadCriteriaSubjects(admin: Admin, influencerIds: string[], withPerformance: boolean): Promise<Map<string, CriteriaSubject>> {
+  const ids = Array.from(new Set(influencerIds.filter(Boolean)))
+  const subjects = new Map<string, CriteriaSubject>()
+  const perf = withPerformance ? await loadPerformanceMap(admin, ids) : new Map()
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100)
+    const [infs, socials] = await Promise.all([
+      fetchAllRows<{ id: string; rating: number | null }>((from, to) => admin.from('influencers').select('id, rating').in('id', batch).order('id').range(from, to)),
+      fetchAllRows<{ influencer_id: string; followers: number | null; engagement_rate: number | null; last_synced_at: string | null }>((from, to) => admin
+        .from('influencer_social_profiles').select('influencer_id, followers, engagement_rate, last_synced_at')
+        .in('influencer_id', batch).eq('platform', 'instagram').order('influencer_id').range(from, to)),
+    ])
+    if (infs.error) throw infs.error
+    if (socials.error) throw socials.error
+    const ig = new Map(socials.data.map(r => [r.influencer_id, r]))
+    for (const inf of infs.data) {
+      const sp = ig.get(inf.id)
+      // Un 0 sin sincronizar no es un dato real: se trata como desconocido.
+      const known = (v: number | null | undefined) => (v == null || (Number(v) === 0 && !sp?.last_synced_at) ? null : Number(v))
+      subjects.set(inf.id, {
+        followers: known(sp?.followers),
+        engagement: known(sp?.engagement_rate),
+        rating: inf.rating == null || Number(inf.rating) === 0 ? null : Number(inf.rating),
+        performance: perf.get(inf.id)?.summary ?? null,
+      })
+    }
+  }
+  return subjects
+}
+
+/**
+ * Lectura completa: catálogo + zonas + criterios. `allows(campaña, ubicación, influencer)` combina ambos filtros.
+ * Pasar `influencerIds` cuando se evalúen personas concretas; una campaña con criterios y una influencer sin datos
+ * cargados NO coincide (falla cerrado).
+ */
+export async function audienceMatcherFor(admin: Admin, campaignIds: string[], influencerIds: string[] = []) {
+  const [targets, nodes, criteria] = await Promise.all([
+    loadAudienceTargets(admin, campaignIds), loadLocationRows(admin), loadAudienceCriteria(admin, campaignIds),
+  ])
+  const active = Array.from(criteria.values())
+  const subjects = active.length && influencerIds.length
+    ? await loadCriteriaSubjects(admin, influencerIds, active.some(c => PERFORMANCE_KEYS.some(k => c[k] != null)))
+    : new Map<string, CriteriaSubject>()
   return {
     targets,
     nodes,
-    allows: (campaignId: string, influencerLocationId: string | null | undefined) =>
-      matchesAudience(targets.get(campaignId), locationLineage(influencerLocationId, nodes)),
+    criteria,
+    allows: (campaignId: string, influencerLocationId: string | null | undefined, influencerId?: string | null) => {
+      if (!matchesAudience(targets.get(campaignId), locationLineage(influencerLocationId, nodes))) return false
+      const c = criteria.get(campaignId)
+      if (!c) return true
+      const subject = influencerId ? subjects.get(influencerId) : undefined
+      return subject ? matchesCriteria(c, subject) : false
+    },
   }
 }

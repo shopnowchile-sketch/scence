@@ -50,7 +50,7 @@ export async function notifyContactOfSupportReply(input: {
   const content = `<p style="color:#6b7280;line-height:1.6">Hola ${escapeHtml(input.contactName)}, el equipo de Scence respondió tu solicitud <strong>${escapeHtml(input.ticketTitle)}</strong>.</p>
     <div style="background:#f9fafb;border-radius:10px;padding:16px;color:#374151;white-space:pre-wrap">${escapeHtml(input.message)}</div>`
 
-  const { error } = await getResend().emails.send({
+  const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: input.contactEmail,
     // Respuesta a una marca: declarar la audiencia (CLAUDE.md 16.10). A una
@@ -61,4 +61,6 @@ export async function notifyContactOfSupportReply(input: {
     html: emailShell('Tienes una nueva respuesta', content, portalUrl, 'Ver conversación'),
   })
   if (error) throw new Error(error.message)
+  // Sin id = Resend no envió (p. ej. destinatario omitido por la barrera de influencer inactiva).
+  return data?.id ?? null
 }

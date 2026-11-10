@@ -50,6 +50,16 @@ export async function GET(req: NextRequest) {
 
   if (search) query = query.ilike('name', `%${search}%`)
 
+  // Pestaña «Marcas» de una ficha: solo las marcas que esa marca/agencia administra
+  // (relación existente `brands.metadata.managed_by_org_id`, ver agency-brands.ts). No incluye
+  // a las marcas colaboradoras de campañas ni a la propia marca.
+  const managedBy = sp.get('managed_by_brand_id')
+  if (managedBy) {
+    const { data: parent } = await admin.from('brands').select('id, organization_id').eq('id', managedBy).maybeSingle()
+    if (!parent?.organization_id) return NextResponse.json({ data: [], total: 0 })
+    query = query.eq('metadata->>managed_by_org_id', parent.organization_id).neq('id', parent.id)
+  }
+
   const { data, error, count } = await query
 
   if (error) {

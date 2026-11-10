@@ -17,6 +17,7 @@ import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PhoneLink } from '@/components/ui/PhoneLink'
+import { InfluencerPerformanceCard } from '@/components/influencers/InfluencerPerformanceCard'
 import { formatRut } from '@/lib/rut'
 import { ProSubscriptionSection } from '@/components/subscription/ProSubscriptionSection'
 
@@ -791,6 +792,8 @@ export function InfluencerProfile({ id }: { id: string }) {
                 <p className="text-sm text-gray-700 leading-relaxed">{influencer.bio}</p>
               </div>
             )}
+
+            <InfluencerPerformanceCard influencerId={id} rating={influencer.rating ?? null} />
 
             {/* Platform metrics */}
             <div className="card p-5">

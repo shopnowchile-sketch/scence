@@ -13,6 +13,7 @@ import { SalesPointsPanel } from '@/components/brand/SalesPointsPanel'
 import { cn } from '@/lib/utils'
 import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
+import { BrandsTable } from '@/components/brands/BrandsTable'
 import { BrandDocumentsAdmin } from '@/components/brands/BrandDocumentsAdmin'
 import { PhoneLink } from '@/components/ui/PhoneLink'
 
@@ -87,7 +88,7 @@ function money(value: number | null, currency?: string | null) {
   return `${currency ?? 'CLP'} ${value.toLocaleString('es-CL')}`
 }
 
-const VALID_TABS = ['overview', 'campaigns', 'influencers', 'locations', 'plan', 'billing', 'documents', 'access', 'members', 'history'] as const
+const VALID_TABS = ['overview', 'campaigns', 'influencers', 'brands', 'locations', 'plan', 'billing', 'documents', 'access', 'members', 'history'] as const
 type Tab = typeof VALID_TABS[number]
 
 export default function AdminBrandDetailPage({ params }: { params: { id: string } }) {
@@ -794,6 +795,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             ['overview', 'Overview'],
             ['campaigns', 'Campañas'],
             ['influencers', 'Influencers'],
+            ['brands', 'Marcas'],
             ['locations', 'Puntos de venta'],
             ['plan', 'Plan'],
             ['billing', 'Billing'],
@@ -983,6 +985,8 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       )}
 
 
+
+      {tab === 'brands' && <BrandsTable managedByBrandId={brand.id} />}
 
       {tab === 'locations' && <SalesPointsPanel brandId={brand.id} brandName={brand.name} portal="admin" />}
 

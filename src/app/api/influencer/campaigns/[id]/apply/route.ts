@@ -87,7 +87,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .from('campaign_influencers').select('id').eq('campaign_id', params.id).eq('influencer_id', influencer.id).maybeSingle()
   if (!priorRow) {
     let allowed = false
-    try { allowed = (await audienceMatcherFor(admin, [params.id])).allows(params.id, influencer.location_id) } catch { allowed = false }
+    try { allowed = (await audienceMatcherFor(admin, [params.id], [influencer.id])).allows(params.id, influencer.location_id, influencer.id) } catch { allowed = false }
     if (!allowed) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
   }
 

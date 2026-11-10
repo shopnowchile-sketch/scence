@@ -249,6 +249,7 @@ describe('10 · Los emails transaccionales no se ven afectados', () => {
     'src/app/api/crm-leads/[id]/send-intro/route.ts',
     'src/app/api/webhooks/resend/route.ts',
     'src/app/api/unsubscribe/route.ts',
+    'src/app/api/crm-leads/route.ts', // solo lectura: filtro de suscripción del CRM
   ]
 
   test('solo los 2 caminos comerciales, el webhook y la ruta de baja conocen el opt-out', () => {

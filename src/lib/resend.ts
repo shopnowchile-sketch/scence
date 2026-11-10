@@ -287,6 +287,12 @@ export function crmCatalogEmail({
       ${safeButtonLabel && safeButtonUrl ? `<a href="${safeButtonUrl}" style="display:block;text-align:center;background:#7c3aed;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;padding:14px 24px;margin-top:24px">${safeButtonLabel}</a>` : ''}
     </div>
     <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6">
+      <p style="color:#6b7280;font-size:12px;line-height:1.7;margin:0 0 8px">
+        <a href="mailto:hola@scence.cl" style="color:#7c3aed;text-decoration:none">hola@scence.cl</a> ·
+        <a href="https://scence.cl" style="color:#7c3aed;text-decoration:none">scence.cl</a><br>
+        Instagram: <a href="https://www.instagram.com/scence.cl/" style="color:#7c3aed;text-decoration:none">@scence.cl</a> ·
+        <a href="https://www.instagram.com/influencers.snc/" style="color:#7c3aed;text-decoration:none">@influencers.snc</a>
+      </p>
       <p style="color:#d1d5db;font-size:11px;margin:0">Powered by Scence</p>
       ${safeUnsubscribeUrl ? `<p style="color:#9ca3af;font-size:11px;line-height:1.6;margin:8px 0 0">Si no quieres recibir más correos como este, <a href="${safeUnsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">date de baja aquí</a>.</p>` : ''}
     </div>

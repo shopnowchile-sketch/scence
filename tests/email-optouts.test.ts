@@ -293,13 +293,19 @@ describe('10 · Los emails transaccionales no se ven afectados', () => {
 })
 
 describe('11 · Templates del CRM sin regresión', () => {
-  test('siguen siendo 5 y con el copy aprobado', () => {
-    assert.equal(CRM_EMAIL_CATALOG.length, 5)
+  test('5 originales + invitación a influencers y a marcas, con el copy aprobado', () => {
+    assert.equal(CRM_EMAIL_CATALOG.length, 7)
     const intro = getEmailTemplate('crm_intro')!
     const render = applyEmailVariables(intro.defaultMessage!, { contact_name: 'Camila', company_name: 'Café Volcán' })
     assert.ok(render.includes('Soy Priscilla de SCENCE. Trabajamos con una comunidad de creadoras de contenido'))
     assert.ok(render.startsWith('Hola Camila!'))
     assert.ok(!render.includes('{{'))
+    const inf = getEmailTemplate('crm_influencer_invite')!
+    const brand = getEmailTemplate('crm_brand_invite')!
+    assert.ok(inf.defaultButtonUrl!.endsWith('/register') && inf.defaultButtonLabel)
+    assert.ok(brand.defaultButtonUrl!.endsWith('/register/brand') && brand.defaultButtonLabel)
+    assert.ok(brand.defaultMessage!.includes('registra tu marca'))
+    assert.ok(inf.defaultMessage!.includes('Únete a nuestra plataforma como influencer'))
   })
 
   test('no reaparece copy legado', () => {

@@ -8,13 +8,14 @@ import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { CRM_NICHE_SOURCES } from '@/lib/crm-niches'
-import { fetchNodes, type GeoNode } from '@/components/influencers/StructuredAddressFields'
 import { CrmLocationFields } from '@/components/locations/CrmLocationFields'
 import CommuneMultiSelect from './CommuneMultiSelect'
 import AttachmentPicker, { type CrmAttachment } from './AttachmentPicker'
 
 type Lead = {
   id: string
+  subscription?: 'subscribed' | 'unconfirmed' | 'unsubscribed' | 'blocked' | 'no_email'
+  lead_type?: 'influencer' | 'customer' | 'brand' | 'other'
   contact_name: string | null
   company_name: string | null
   email: string | null
@@ -83,7 +84,7 @@ function statusOptions(current: LeadStatus): LeadStatus[] {
   return PIPELINE_STATUSES.includes(current) ? PIPELINE_STATUSES : [...PIPELINE_STATUSES, current]
 }
 
-type ColumnKey = 'contact' | 'instagram' | 'country' | 'region' | 'commune' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
+type ColumnKey = 'contact' | 'type' | 'subscription' | 'instagram' | 'country' | 'region' | 'commune' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
 type EmailStats = {
   sent: number
@@ -97,6 +98,8 @@ type EmailStats = {
 
 const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
   { key: 'contact', label: 'Contacto' },
+  { key: 'type', label: 'Tipo' },
+  { key: 'subscription', label: 'Suscripción' },
   { key: 'instagram', label: 'Instagram' },
   { key: 'country', label: 'País' },
   { key: 'region', label: 'Región / Estado' },
@@ -125,14 +128,13 @@ export function CrmLeadsClient() {
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
   const [extra, setExtra] = useState<Record<string, string>>({})
-  // País → Región → Comuna salen del catálogo oficial `locations` (mismas listas que influencers, marcas y campañas).
-  const [geoCountries, setGeoCountries] = useState<GeoNode[]>([])
-  const [geoRegions, setGeoRegions] = useState<GeoNode[]>([])
-  const [geoCommunes, setGeoCommunes] = useState<GeoNode[]>([])
+  // País → Región → Comuna: solo valores que existen hoy en los leads (guardados contra el catálogo `locations`).
+  const [geo, setGeo] = useState<Record<string, Record<string, string[]>>>({})
+  const [sort, setSort] = useLocalStorageState<{ key: string; dir: 'asc' | 'desc' }>('scence:admin:crm:sort', { key: 'created_at', dir: 'desc' })
   const [showMore, setShowMore] = useState(false)
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
-    'scence:admin:crm:visibleColumns:v2', DEFAULT_COLUMNS
+    'scence:admin:crm:visibleColumns:v3', DEFAULT_COLUMNS
   )
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [communes, setCommunes] = useState<string[]>([])
@@ -173,6 +175,7 @@ export function CrmLeadsClient() {
     if (source) params.set('source', source)
     if (emailStatus) params.set('email_status', emailStatus)
     if (contactData) params.set('contact_data', contactData)
+    params.set('sort', sort.key); params.set('order', sort.dir)
     Object.entries(extra).forEach(([k, v]) => { if (v) params.set(k, v) })
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
@@ -181,6 +184,7 @@ export function CrmLeadsClient() {
       setLeads(nextLeads)
       setTotal(j.total ?? 0)
       if (j.stats) setStats(j.stats)
+      if (j.geo) setGeo(j.geo)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
       // Si la comuna elegida ya no tiene leads (desapareció de la lista), se quita el filtro.
       if (nextLeads.length === 0 && Array.isArray(j.communes)) {
@@ -193,21 +197,13 @@ export function CrmLeadsClient() {
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, selectedCommunes, source, emailStatus, contactData, extra])
+  }, [page, search, qualification, selectedCommunes, source, emailStatus, contactData, extra, sort])
 
   useEffect(() => { load() }, [load])
 
-  useEffect(() => { fetchNodes('parent=root').then(setGeoCountries) }, [])
-  const countryId = geoCountries.find(c => c.name === extra.country)?.id
-  const regionId = geoRegions.find(r => r.name === extra.region)?.id
-  useEffect(() => {
-    setGeoRegions([])
-    if (countryId) fetchNodes(`parent=${encodeURIComponent(countryId)}`).then(setGeoRegions)
-  }, [countryId])
-  useEffect(() => {
-    setGeoCommunes([])
-    if (regionId) fetchNodes(`parent=${encodeURIComponent(regionId)}`).then(setGeoCommunes)
-  }, [regionId])
+  const geoCountries = Object.keys(geo).filter(Boolean).sort((x, y) => x.localeCompare(y, 'es'))
+  const geoRegions = extra.country ? Object.keys(geo[extra.country] ?? {}).filter(Boolean).sort((x, y) => x.localeCompare(y, 'es')) : []
+  const geoCommunes = extra.country && extra.region ? geo[extra.country]?.[extra.region] ?? [] : []
 
   function chooseCountry(name: string) {
     setPage(1); setSelectedCommunes([])
@@ -365,6 +361,23 @@ export function CrmLeadsClient() {
     }
   }
 
+  // Encabezado ordenable: clic alterna ascendente / descendente (el orden se aplica en el servidor y se recuerda).
+  function th(label: string, col: string) {
+    const active = sort.key === col
+    return (
+      <th key={col} className="px-4 py-3 font-semibold" aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+        <button
+          type="button"
+          onClick={() => { setPage(1); setSort(active ? { key: col, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { key: col, dir: 'asc' }) }}
+          className={cn('inline-flex items-center gap-1 hover:text-gray-700', active && 'text-violet-700')}
+        >
+          {label}
+          <span className="text-[10px]">{active ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+        </button>
+      </th>
+    )
+  }
+
   function isColumnVisible(key: ColumnKey) {
     return visibleColumns.includes(key)
   }
@@ -442,7 +455,6 @@ export function CrmLeadsClient() {
   const extraFilters: Array<{ key: string; label: string; options: Array<[string, string]> }> = [
     { key: 'type', label: 'Tipo', options: [['influencer', 'Influencer'], ['brand', 'Marca'], ['customer', 'Cliente'], ['other', 'Otro']] },
     { key: 'subscription', label: 'Suscripción', options: [['subscribed', 'Suscrito'], ['unsubscribed', 'Desuscrito'], ['unconfirmed', 'Consentimiento no confirmado'], ['blocked', 'Rebotado / spam']] },
-    { key: 'registration', label: 'Registro', options: [['none', 'Sin cuenta'], ['registered', 'Registrado']] },
     { key: 'activity', label: 'Última interacción', options: [['30', 'Últimos 30 días'], ['90', 'Últimos 90 días']] },
     { key: 'campaign', label: 'Campaña', options: campaigns.map(c => [c.id, c.name] as [string, string]) },
   ]
@@ -600,7 +612,7 @@ export function CrmLeadsClient() {
             )}
           >
             <option value="">País</option>
-            {geoCountries.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            {geoCountries.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
 
           <select
@@ -614,12 +626,12 @@ export function CrmLeadsClient() {
             )}
           >
             <option value="">Región / Estado</option>
-            {geoRegions.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+            {geoRegions.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
 
           <div className={cn(!extra.region && 'pointer-events-none opacity-50')}>
             <CommuneMultiSelect
-              options={geoCommunes.map(c => c.name)}
+              options={geoCommunes}
               selected={selectedCommunes}
               onChange={next => { setPage(1); setSelectedCommunes(next) }}
             />
@@ -847,16 +859,18 @@ export function CrmLeadsClient() {
                   className="h-4 w-4 rounded border-gray-300 text-violet-600"
                 />
               </th>
-              <th className="px-4 py-3 font-semibold">Empresa</th>
-              {isColumnVisible('contact') && <th className="px-4 py-3 font-semibold">Contacto</th>}
-              {isColumnVisible('instagram') && <th className="px-4 py-3 font-semibold">Instagram</th>}
-              {isColumnVisible('country') && <th className="px-4 py-3 font-semibold">País</th>}
-              {isColumnVisible('region') && <th className="px-4 py-3 font-semibold">Región / Estado</th>}
-              {isColumnVisible('commune') && <th className="px-4 py-3 font-semibold">Comuna / Ciudad</th>}
-              {isColumnVisible('industry') && <th className="px-4 py-3 font-semibold">Rubro</th>}
-              {isColumnVisible('source') && <th className="px-4 py-3 font-semibold">Origen</th>}
-              {isColumnVisible('qualification') && <th className="px-4 py-3 font-semibold">Calificación</th>}
-              {isColumnVisible('last_email') && <th className="px-4 py-3 font-semibold">Último email</th>}
+              {th('Empresa', 'company_name')}
+              {isColumnVisible('contact') && th('Contacto', 'email')}
+              {isColumnVisible('type') && <th className="px-4 py-3 font-semibold">Tipo</th>}
+              {isColumnVisible('subscription') && <th className="px-4 py-3 font-semibold">Suscripción</th>}
+              {isColumnVisible('instagram') && th('Instagram', 'instagram')}
+              {isColumnVisible('country') && th('País', 'country')}
+              {isColumnVisible('region') && th('Región / Estado', 'region')}
+              {isColumnVisible('commune') && th('Comuna / Ciudad', 'commune')}
+              {isColumnVisible('industry') && th('Rubro', 'industry')}
+              {isColumnVisible('source') && th('Origen', 'source')}
+              {isColumnVisible('qualification') && th('Calificación', 'qualification_status')}
+              {isColumnVisible('last_email') && th('Último email', 'contacted_at')}
               {isColumnVisible('email_opened') && <th className="px-4 py-3 font-semibold">Abrió email</th>}
               {isColumnVisible('connected') && <th className="px-4 py-3 font-semibold">Conectado</th>}
               {isColumnVisible('action') && <th className="px-4 py-3 font-semibold text-right">Acción</th>}
@@ -889,6 +903,20 @@ export function CrmLeadsClient() {
                   <td className="px-4 py-3 text-gray-600">
                     <div className="truncate max-w-[180px]">{lead.email || '—'}</div>
                     {lead.contact_name && <div className="text-xs text-gray-400 truncate max-w-[180px]">{lead.contact_name}</div>}
+                  </td>
+                  )}
+{isColumnVisible('type') && (
+                  <td className="px-4 py-3 text-xs">
+                    <span className={cn('rounded-full px-2 py-0.5 font-medium', lead.lead_type === 'influencer' ? 'bg-fuchsia-50 text-fuchsia-700' : lead.lead_type === 'customer' ? 'bg-sky-50 text-sky-700' : lead.lead_type === 'brand' ? 'bg-violet-50 text-violet-700' : 'bg-gray-100 text-gray-500')}>
+                      {({ influencer: 'Influencer', customer: 'Cliente', brand: 'Marca', other: 'Otro' } as Record<string, string>)[lead.lead_type ?? 'other'] ?? 'Otro'}
+                    </span>
+                  </td>
+                  )}
+{isColumnVisible('subscription') && (
+                  <td className="px-4 py-3 text-xs">
+                    <span className={cn('rounded-full px-2 py-0.5 font-medium', lead.subscription === 'subscribed' ? 'bg-emerald-50 text-emerald-700' : lead.subscription === 'unsubscribed' ? 'bg-red-50 text-red-700' : lead.subscription === 'blocked' ? 'bg-orange-50 text-orange-700' : 'bg-gray-100 text-gray-500')}>
+                      {{ subscribed: 'Suscrito', unsubscribed: 'Dado de baja', blocked: 'Rebotado / spam', unconfirmed: 'Sin confirmar', no_email: 'Sin email' }[lead.subscription ?? 'no_email']}
+                    </span>
                   </td>
                   )}
 {isColumnVisible('instagram') && (

@@ -129,10 +129,11 @@ export function CrmLeadsClient() {
   const [source, setSource] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
-  const [extra, setExtra] = useState<Record<string, string>>({})
+  // Por defecto solo Chile (los demás países se ven eligiendo «Todos los países»).
+  const [extra, setExtra] = useState<Record<string, string>>({ country: 'Chile' })
   // País → Región → Comuna: solo valores que existen hoy en los leads (guardados contra el catálogo `locations`).
   const [geo, setGeo] = useState<Record<string, Record<string, string[]>>>({})
-  const [sort, setSort] = useLocalStorageState<{ key: string; dir: 'asc' | 'desc' }>('scence:admin:crm:sort', { key: 'created_at', dir: 'desc' })
+  const [sort, setSort] = useLocalStorageState<{ key: string; dir: 'asc' | 'desc' }>('scence:admin:crm:sort:v2', { key: 'priority', dir: 'desc' })
   const [showMore, setShowMore] = useState(false)
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
@@ -462,7 +463,7 @@ export function CrmLeadsClient() {
   ]
   const activeFilterCount = [qualification, source, emailStatus, contactData].filter(Boolean).length + (selectedCommunes.length ? 1 : 0) + Object.values(extra).filter(Boolean).length
   const moreCount = [qualification, source, emailStatus, contactData].filter(Boolean).length + Object.entries(extra).filter(([k, v]) => v && k !== 'country' && k !== 'region').length
-  const hasActiveFilters = Boolean(search || activeFilterCount)
+  const hasActiveFilters = Boolean(search || activeFilterCount - (extra.country === 'Chile' ? 1 : 0))
 
   function clearFilters() {
     setSearch('')
@@ -471,7 +472,7 @@ export function CrmLeadsClient() {
     setSource('')
     setEmailStatus('')
     setContactData('')
-    setExtra({})
+    setExtra({ country: 'Chile' })
     setPage(1)
   }
 
@@ -613,7 +614,7 @@ export function CrmLeadsClient() {
               extra.country ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
             )}
           >
-            <option value="">País</option>
+            <option value="">Todos los países</option>
             {geoCountries.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
 

@@ -563,6 +563,13 @@ Un solo módulo, sin sistemas paralelos. Estados `open`/`in_progress`/`closed` (
 
 La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.
 
+**PRIORIDAD ABSOLUTA: SIMPLICIDAD Y CAMBIOS MÍNIMOS (decisión de la fundadora, 2026-11-10).** SCENCE debe ser cada vez más simple, no más complicado. Complementa (no reemplaza) las reglas de abajo y la Regla Cero; no elimina ninguna regla de seguridad.
+
+- **Regla de parada:** si una solución sencilla exige demasiados cambios, o se invierte mucho tiempo o código en algo pequeño, **detenerse**, explicar por qué y proponer una alternativa más simple **antes de seguir**.
+- Sin sobreingeniería, refactorizaciones innecesarias ni auditorías repetitivas. No cambiar la interfaz ni diseños existentes sin autorización.
+- **No repetir pruebas ya verificadas** si el cambio no las afecta; mantener las validaciones necesarias (16.7 y sección 18).
+- **Formato de trabajo:** Problema → Causa → Solución mínima → Pruebas. La entrega final sigue el formato de abajo y el de la sección 18, paso 10.
+
 - **Auditar antes de cambiar:** entender cómo funciona hoy, cuál es la fuente de verdad y qué se puede reutilizar.
 - **Reutilizar antes de crear** (sección 6). Nada de componentes, tablas, APIs, migraciones, estados o configuraciones que el objetivo no necesite.
 - **Una sola fuente de verdad:** no duplicar datos ni crear estados paralelos.

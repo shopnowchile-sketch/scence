@@ -202,3 +202,31 @@ export async function recordOptOut(
 
   return { ok: true, email, inserted: (data?.length ?? 0) > 0 }
 }
+
+/** Lista de bajas/rebotes/quejas (email + motivo), para filtrar el CRM. Solo lectura. */
+export async function listOptOuts(admin: Admin): Promise<Array<{ email: string; reason: string | null }>> {
+  const { data, error } = await admin.from('email_optouts').select('email, reason').limit(10000)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Array<{ email: string; reason: string | null }>
+}
+
+/**
+ * Re-suscripción VOLUNTARIA (la pide la propia persona desde el link de baja).
+ * Solo revierte bajas con motivo 'unsubscribe': un rebote o una queja de spam
+ * siguen bloqueando — no se reactivan por ningún camino automático.
+ */
+export async function removeUnsubscribe(
+  admin: Admin,
+  emailInput: string | null | undefined,
+): Promise<{ ok: boolean; removed: boolean; blockedOther: boolean }> {
+  const email = normalizeEmail(emailInput)
+  if (!email) return { ok: false, removed: false, blockedOther: false }
+
+  const { data, error } = await admin.from('email_optouts').delete().eq('email', email).eq('reason', 'unsubscribe').select('email')
+  if (error) {
+    console.error('[email-optouts] no se pudo revertir la baja', error)
+    return { ok: false, removed: false, blockedOther: false }
+  }
+  const { data: rest } = await admin.from('email_optouts').select('email').eq('email', email).limit(1)
+  return { ok: true, removed: (data?.length ?? 0) > 0, blockedOther: (rest?.length ?? 0) > 0 }
+}

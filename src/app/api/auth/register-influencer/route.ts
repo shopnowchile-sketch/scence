@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerSignupConfirmEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import { rateLimit, clientIp } from '@/lib/simple-rate-limit'
+import { linkCrmLeadToProfile } from '@/lib/crm-lead-link'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -91,6 +92,8 @@ export async function POST(req: NextRequest) {
     console.error('[register-influencer] createUser error:', createError?.message)
     return NextResponse.json({ error: 'No pudimos crear tu cuenta. Intenta nuevamente.' }, { status: 500 })
   }
+
+  await linkCrmLeadToProfile(admin, { email, kind: 'influencer', userId: newUser.user.id })
 
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: 'magiclink',

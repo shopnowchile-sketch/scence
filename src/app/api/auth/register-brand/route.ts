@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { ensureBrandRow } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL, brandSignupConfirmEmail } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
+import { linkCrmLeadToProfile } from '@/lib/crm-lead-link'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
@@ -114,6 +115,8 @@ export async function POST(req: NextRequest) {
     // creó.
     console.error('[register-brand] ensureBrandRow devolvió null para', email, '— revisar logs de ensureOrg/ensureBrandRow')
   }
+
+  if (brandRow) await linkCrmLeadToProfile(admin, { email, kind: 'brand', brandId: brandRow.id })
 
   const { data: linkData, error: linkError } =
     await admin.auth.admin.generateLink({

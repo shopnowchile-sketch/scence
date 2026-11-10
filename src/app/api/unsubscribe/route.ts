@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { recordOptOut, verifyUnsubscribeToken } from '@/lib/email-optouts'
+import { recordOptOut, removeUnsubscribe, verifyUnsubscribeToken } from '@/lib/email-optouts'
 import { escapeHtml } from '@/lib/utils'
 
 // Ruta PÚBLICA: sin sesión, sin cookies. La autoriza el HMAC del token, no el
@@ -92,10 +92,16 @@ export async function GET(request: NextRequest) {
 // usuario. Un 2xx basta para el cliente de correo; devolvemos HTML porque la
 // misma respuesta sirve para la persona que pulsó el botón.
 export async function POST(request: NextRequest) {
-  const { leadId, valid } = readParams(request)
+  const { leadId, token, valid } = readParams(request)
   if (!valid) return invalidLinkPage()
 
   const admin = createAdminClient()
+
+  // Re-suscripción voluntaria: solo el botón explícito de la página de baja.
+  // El POST one-click de Gmail/Outlook (List-Unsubscribe=One-Click) nunca la dispara.
+  if (new URL(request.url).searchParams.get('action') === 'resubscribe') {
+    return (await resubscribe(admin, leadId)) ?? invalidLinkPage()
+  }
 
   const { data: lead, error } = await admin
     .from('crm_leads')
@@ -137,7 +143,34 @@ export async function POST(request: NextRequest) {
     'Listo, te diste de baja',
     `<p style="${P}">No volverás a recibir correos comerciales de SCENCE en esta dirección.</p>
      <p style="${P}">Si tienes una cuenta en SCENCE, los correos de tu cuenta —acceso, campañas y reportes— siguen funcionando normalmente.</p>
-     <p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:20px 0 0">¿Fue sin querer? Escríbenos respondiendo cualquier correo nuestro y lo revertimos.</p>`,
+     <form method="post" action="${escapeHtml(`/api/unsubscribe?l=${encodeURIComponent(leadId)}&t=${encodeURIComponent(token ?? '')}&action=resubscribe`)}" style="margin:20px 0 0">
+       <p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:0 0 8px">¿Fue sin querer?</p>
+       <button type="submit" style="background:#fff;color:#7c3aed;font-size:14px;font-weight:600;border:1px solid #7c3aed;border-radius:10px;padding:10px 18px;cursor:pointer">Volver a suscribirme</button>
+     </form>`,
     200,
   )
+}
+
+async function resubscribe(admin: ReturnType<typeof createAdminClient>, leadId: string) {
+  const { data: lead } = await admin.from('crm_leads').select('id, email').eq('id', leadId).maybeSingle()
+  if (!lead?.email) return null
+
+  const { ok, removed, blockedOther } = await removeUnsubscribe(admin, lead.email)
+  if (!ok) {
+    return page('No pudimos procesar la solicitud', `<p style="${P}">Vuelve a intentarlo en unos minutos.</p>`, 503)
+  }
+  if (blockedOther) {
+    // Rebote o queja de spam: no se reactivan desde el link.
+    return page('No pudimos reactivar esta dirección', `<p style="${P}">Esta dirección no puede recibir correos comerciales. Escríbenos a hola@scence.cl y lo revisamos.</p>`, 200)
+  }
+  if (removed) {
+    await admin.from('crm_leads').update({ marketing_consent: true }).eq('id', lead.id)
+    await admin.from('crm_lead_activities').insert({
+      lead_id: lead.id,
+      action_type: 'note',
+      description: 'Volvió a suscribirse a los emails comerciales desde el link (acción voluntaria).',
+      created_by: null,
+    })
+  }
+  return page('Listo, volviste a suscribirte', `<p style="${P}">Volverás a recibir nuestros correos comerciales en esta dirección. Puedes darte de baja cuando quieras desde cualquier correo.</p>`, 200)
 }

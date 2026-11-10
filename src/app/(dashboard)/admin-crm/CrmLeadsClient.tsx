@@ -117,6 +117,10 @@ export function CrmLeadsClient() {
   const [source, setSource] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
+  const [extra, setExtra] = useState<Record<string, string>>({})
+  const [regions, setRegions] = useState<string[]>([])
+  const [countries, setCountries] = useState<string[]>([])
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
     'scence:admin:crm:visibleColumns', DEFAULT_COLUMNS
   )
@@ -159,6 +163,7 @@ export function CrmLeadsClient() {
     if (source) params.set('source', source)
     if (emailStatus) params.set('email_status', emailStatus)
     if (contactData) params.set('contact_data', contactData)
+    Object.entries(extra).forEach(([k, v]) => { if (v) params.set(k, v) })
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
@@ -173,17 +178,20 @@ export function CrmLeadsClient() {
         if (valid.length !== selectedCommunes.length) setSelectedCommunes(valid)
       }
       if (Array.isArray(j.sources)) setSources(j.sources)
+      if (Array.isArray(j.regions)) setRegions(j.regions)
+      if (Array.isArray(j.countries)) setCountries(j.countries)
+      if (Array.isArray(j.campaigns)) setCampaigns(j.campaigns)
     } catch {
       toast.error('Error cargando leads')
     }
     setLoading(false)
-  }, [page, search, qualification, selectedCommunes, source, emailStatus, contactData])
+  }, [page, search, qualification, selectedCommunes, source, emailStatus, contactData, extra])
 
   useEffect(() => { load() }, [load])
 
   // Cambiar de página conserva una selección global. Cambiar los filtros la
   // reinicia para que nunca se envíe a destinatarios de una búsqueda anterior.
-  useEffect(() => { setSelectedIds([]) }, [search, qualification, selectedCommunes, source, emailStatus, contactData])
+  useEffect(() => { setSelectedIds([]) }, [search, qualification, selectedCommunes, source, emailStatus, contactData, extra])
 
   function updateForm<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -234,6 +242,7 @@ export function CrmLeadsClient() {
       if (source) params.set('source', source)
       if (emailStatus) params.set('email_status', emailStatus)
       if (contactData) params.set('contact_data', contactData)
+      Object.entries(extra).forEach(([k, v]) => { if (v) params.set(k, v) })
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudo seleccionar todos')
@@ -401,7 +410,16 @@ export function CrmLeadsClient() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
-  const activeFilterCount = [qualification, source, emailStatus, contactData].filter(Boolean).length + (selectedCommunes.length ? 1 : 0)
+  const extraFilters: Array<{ key: string; label: string; options: Array<[string, string]> }> = [
+    { key: 'type', label: 'Tipo', options: [['influencer', 'Influencer'], ['brand', 'Marca'], ['customer', 'Cliente'], ['other', 'Otro']] },
+    { key: 'country', label: 'País', options: countries.map(c => [c, c] as [string, string]) },
+    { key: 'region', label: 'Región', options: regions.map(r => [r, r] as [string, string]) },
+    { key: 'subscription', label: 'Suscripción', options: [['subscribed', 'Suscrito'], ['unsubscribed', 'Desuscrito'], ['unconfirmed', 'Consentimiento no confirmado'], ['blocked', 'Rebotado / spam']] },
+    { key: 'registration', label: 'Registro', options: [['none', 'Sin cuenta'], ['registered', 'Registrado']] },
+    { key: 'activity', label: 'Última interacción', options: [['30', 'Últimos 30 días'], ['90', 'Últimos 90 días']] },
+    { key: 'campaign', label: 'Campaña', options: campaigns.map(c => [c.id, c.name] as [string, string]) },
+  ]
+  const activeFilterCount = [qualification, source, emailStatus, contactData].filter(Boolean).length + (selectedCommunes.length ? 1 : 0) + Object.values(extra).filter(Boolean).length
   const hasActiveFilters = Boolean(search || activeFilterCount)
 
   function clearFilters() {
@@ -411,6 +429,7 @@ export function CrmLeadsClient() {
     setSource('')
     setEmailStatus('')
     setContactData('')
+    setExtra({})
     setPage(1)
   }
 
@@ -560,6 +579,35 @@ export function CrmLeadsClient() {
           >
             <option value="">Todas las bases</option>
             {sources.map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+
+          {extraFilters.map(f => (
+            <select
+              key={f.key}
+              value={extra[f.key] ?? ''}
+              aria-label={`Filtrar por ${f.label}`}
+              onChange={e => { setPage(1); setExtra(prev => ({ ...prev, [f.key]: e.target.value })) }}
+              className={cn(
+                'h-9 min-w-[130px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
+                extra[f.key] ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+              )}
+            >
+              <option value="">{f.label}</option>
+              {f.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          ))}
+
+          <select
+            value={emailStatus}
+            aria-label="Filtrar por estado del email"
+            onChange={e => { setPage(1); setEmailStatus(e.target.value) }}
+            className={cn(
+              'h-9 min-w-[130px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
+              emailStatus ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+            )}
+          >
+            <option value="">Email</option>
+            {[['not_sent', 'No enviado'], ['sent', 'Enviado'], ['delivered', 'Entregado'], ['opened', 'Abierto'], ['not_opened', 'No abierto'], ['clicked', 'Clic'], ['bounced', 'Rebotado']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
 
           <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">

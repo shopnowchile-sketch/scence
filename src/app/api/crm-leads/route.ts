@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { listOptOuts } from '@/lib/email-optouts'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
@@ -42,6 +43,8 @@ const EMAIL_STATUS_EVENT_TYPES: Record<string, string[]> = {
 type EmailEventSets = Record<'sent' | 'delivered' | 'opened' | 'clicked' | 'failed' | 'bounced', Set<string>>
 
 function getEmailEventLeadIds(emailStatus: string, emailEventSets: EmailEventSets) {
+  // "No abierto": entregado y sin ninguna apertura registrada.
+  if (emailStatus === 'not_opened') return Array.from(emailEventSets.delivered).filter(id => !emailEventSets.opened.has(id))
   const eventTypes = EMAIL_STATUS_EVENT_TYPES[emailStatus]
   if (!eventTypes) return null
 
@@ -54,6 +57,62 @@ function getEmailEventLeadIds(emailStatus: string, emailEventSets: EmailEventSet
     'email.bounced': emailEventSets.bounced,
   }
   return Array.from(new Set(eventTypes.flatMap(eventType => Array.from(setByEventType[eventType] ?? []))))
+}
+
+// Bajas, rebotes y quejas: fuente única `email_optouts` (misma que usa el envío masivo).
+const getOptOuts = cachedLoader(listOptOuts)
+
+// Última interacción: aperturas o clics en los últimos N días (eventos de email existentes).
+async function recentActivityLeadIds(admin: Admin, days: number) {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  const ids = new Set<string>()
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin.from('crm_email_events').select('lead_id')
+      .in('event_type', ['email.opened', 'email.clicked']).gte('occurred_at', since).not('lead_id', 'is', null)
+      .order('id').range(from, from + 999)
+    if (error) throw new Error(error.message)
+    for (const r of data ?? []) if (r.lead_id) ids.add(r.lead_id)
+    if (!data || data.length < 1000) break
+  }
+  return Array.from(ids)
+}
+
+// Contactos con historial de una campaña (crm_lead_activities ya guarda campaign_id).
+async function campaignLeadIds(admin: Admin, campaignId: string) {
+  const ids = new Set<string>()
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin.from('crm_lead_activities').select('lead_id').eq('campaign_id', campaignId).order('id').range(from, from + 999)
+    if (error) throw new Error(error.message)
+    for (const r of data ?? []) ids.add(r.lead_id)
+    if (!data || data.length < 1000) break
+  }
+  return Array.from(ids)
+}
+
+type ExtraFilters = { type: string; country: string; region: string; registration: string; subscription: string }
+
+function applyExtraFilters(query: any, f: ExtraFilters, optouts: Array<{ email: string; reason: string | null }>) {
+  let q = query
+  if (f.country) q = q.eq('country', f.country)
+  if (f.region) q = q.eq('region', f.region)
+  if (f.type === 'influencer') q = q.like('source', '%_influencer')
+  else if (f.type === 'customer') q = q.like('source', '%_cliente')
+  else if (f.type === 'brand') q = q.not('converted_brand_id', 'is', null)
+  else if (f.type === 'other') q = q.not('source', 'like', '%_influencer').not('source', 'like', '%_cliente').is('converted_brand_id', null)
+  if (f.registration === 'registered') q = q.eq('qualification_status', 'converted')
+  else if (f.registration === 'none') q = q.neq('qualification_status', 'converted')
+  if (f.subscription) {
+    const quote = (emails: string[]) => `(${emails.map(e => `"${e.replace(/"/g, '')}"`).join(',')})`
+    const all = optouts.map(o => o.email)
+    const byReason = (reasons: string[]) => optouts.filter(o => reasons.includes(o.reason ?? '')).map(o => o.email)
+    if (f.subscription === 'subscribed') { q = q.eq('marketing_consent', true); if (all.length) q = q.not('email', 'in', quote(all)) }
+    else if (f.subscription === 'unconfirmed') { q = q.is('marketing_consent', null); if (all.length) q = q.not('email', 'in', quote(all)) }
+    else if (f.subscription === 'unsubscribed' || f.subscription === 'blocked') {
+      const list = f.subscription === 'unsubscribed' ? byReason(['unsubscribe', 'manual']) : byReason(['bounce', 'complaint'])
+      q = list.length ? q.in('email', list) : q.in('id', ['00000000-0000-0000-0000-000000000000'])
+    }
+  }
+  return q
 }
 
 function applyContactDataFilter(query: any, contactData: string) {
@@ -152,16 +211,25 @@ const getLeadCatalog = cachedLoader(async admin => {
   const { count, error } = await admin.from('crm_leads').select('id', { count: 'exact', head: true })
   if (error) throw new Error(error.message)
 
-  const rows = await fetchAllPages<{ commune: string | null; source: string | null }>(count ?? 0, (from, to) =>
-    admin.from('crm_leads').select('commune, source').range(from, to))
+  const rows = await fetchAllPages<{ commune: string | null; source: string | null; region: string | null; country: string | null }>(count ?? 0, (from, to) =>
+    admin.from('crm_leads').select('commune, source, region, country').range(from, to))
 
   const communes = new Set<string>()
   const sources = new Set<string>()
+  const regions = new Set<string>()
+  const countries = new Set<string>()
   for (const r of rows) {
     if (r.commune) communes.add(r.commune)
     if (r.source) sources.add(r.source)
+    if (r.region) regions.add(r.region)
+    if (r.country) countries.add(r.country)
   }
-  return { communes: Array.from(communes).sort(), sources: Array.from(sources).sort() }
+  const { data: campaignRows } = await admin.from('campaigns').select('id, name').order('created_at', { ascending: false }).limit(100)
+  return {
+    communes: Array.from(communes).sort(), sources: Array.from(sources).sort(),
+    regions: Array.from(regions).sort(), countries: Array.from(countries).sort(),
+    campaigns: (campaignRows ?? []) as Array<{ id: string; name: string }>,
+  }
 })
 
 // ── GET /api/crm-leads — lista paginada con filtros ───────────────────────────
@@ -179,12 +247,17 @@ export async function GET(request: NextRequest) {
   // Se interpola en .or() de PostgREST: se limpia antes (sin inyección de filtros).
   const search = sanitizeSearchTerm(searchParams.get('search'))
   const qualification = searchParams.get('qualification') ?? ''
-  const region = searchParams.get('region') ?? ''
   const source = searchParams.get('source') ?? ''
   const industry = searchParams.get('industry') ?? ''
   const communesFilter = searchParams.getAll('commune').filter(Boolean)
   const emailStatus = searchParams.get('email_status') ?? ''
   const contactData = searchParams.get('contact_data') ?? ''
+  const extra: ExtraFilters = {
+    type: searchParams.get('type') ?? '', country: searchParams.get('country') ?? '', region: searchParams.get('region') ?? '',
+    registration: searchParams.get('registration') ?? '', subscription: searchParams.get('subscription') ?? '',
+  }
+  const activityDays = parseInt(searchParams.get('activity') ?? '', 10)
+  const campaignFilter = searchParams.get('campaign') ?? ''
   const idsOnly = searchParams.get('ids_only') === '1'
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
@@ -194,6 +267,22 @@ export async function GET(request: NextRequest) {
     return emptyEmailEventSets()
   })
 
+  // Filtros por conjunto de ids (estado de email, actividad reciente, campaña): se intersectan.
+  let eventLeadIds = getEmailEventLeadIds(emailStatus, emailEventSets)
+  try {
+    const sets: string[][] = []
+    if (activityDays > 0) sets.push(await recentActivityLeadIds(admin, activityDays))
+    if (campaignFilter) sets.push(await campaignLeadIds(admin, campaignFilter))
+    for (const set of sets) {
+      const keep = new Set(set)
+      eventLeadIds = eventLeadIds === null ? set : eventLeadIds.filter(id => keep.has(id))
+    }
+  } catch (error) {
+    console.error('[GET /api/crm-leads filtros por historial]', error)
+    return NextResponse.json({ error: 'No se pudo aplicar el filtro de historial' }, { status: 500 })
+  }
+  const optouts = extra.subscription ? await getOptOuts(admin).catch(() => []) : []
+
   // ── ids_only: trae TODOS los ids que cumplen el filtro (no solo la página
   // actual) — usado por "Seleccionar todos los que cumplen el filtro" en el
   // CRM. Reusa los mismos filtros que el listado paginado. Corta antes de
@@ -202,11 +291,11 @@ export async function GET(request: NextRequest) {
     const buildIdsQuery = (eventLeadIds?: string[]) => {
       let q: any = admin.from('crm_leads').select('id').order('created_at', { ascending: false })
       if (qualification) q = q.eq('qualification_status', qualification)
-      if (region) q = q.eq('region', region)
       if (source) q = q.eq('source', source)
       if (industry) q = q.eq('industry', industry)
       if (communesFilter.length) q = q.in('commune', communesFilter)
       q = applyContactDataFilter(q, contactData)
+      q = applyExtraFilters(q, extra, optouts)
       if (eventLeadIds) q = q.in('id', eventLeadIds)
       if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
       if (search) q = q.or(searchFilter(search))
@@ -215,7 +304,6 @@ export async function GET(request: NextRequest) {
 
     const allIds = new Set<string>()
     const PAGE = 1000
-    const eventLeadIds = getEmailEventLeadIds(emailStatus, emailEventSets)
     const idChunks = eventLeadIds === null ? [undefined] : chunksOf(eventLeadIds, 200)
 
     for (const idChunk of idChunks) {
@@ -248,18 +336,17 @@ export async function GET(request: NextRequest) {
       : admin.from('crm_leads').select(leadFields)
     q = q.order('created_at', { ascending: false })
     if (qualification) q = q.eq('qualification_status', qualification)
-    if (region) q = q.eq('region', region)
     if (source) q = q.eq('source', source)
     if (industry) q = q.eq('industry', industry)
     if (communesFilter.length) q = q.in('commune', communesFilter)
     q = applyContactDataFilter(q, contactData)
+    q = applyExtraFilters(q, extra, optouts)
     if (eventLeadIds) q = q.in('id', eventLeadIds)
     if (emailStatus === 'not_sent') q = q.is('contacted_at', null)
     if (search) q = q.or(searchFilter(search))
     return q
   }
 
-  const eventLeadIds = getEmailEventLeadIds(emailStatus, emailEventSets)
   let data: any[] = []
   let count = 0
 
@@ -326,9 +413,9 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  const { communes, sources } = await catalogPromise.catch(error => {
+  const { communes, sources, regions, countries, campaigns } = await catalogPromise.catch(error => {
     console.error('[GET /api/crm-leads catalog]', error)
-    return { communes: [] as string[], sources: [] as string[] }
+    return { communes: [] as string[], sources: [] as string[], regions: [] as string[], countries: [] as string[], campaigns: [] as Array<{ id: string; name: string }> }
   })
 
   const stats = {
@@ -341,7 +428,7 @@ export async function GET(request: NextRequest) {
     openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
   }
 
-  return NextResponse.json({ data: enriched, total: count, page, limit, communes, sources, stats })
+  return NextResponse.json({ data: enriched, total: count, page, limit, communes, sources, regions, countries, campaigns, stats })
 }
 
 // ── POST /api/crm-leads — crear lead manual ──────────────────────────────────

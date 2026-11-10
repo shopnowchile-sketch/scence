@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   const { data: leads, error: leadsError } = await admin
     .from('crm_leads')
-    .select('id, contact_name, company_name, email, qualification_status, contacted_at')
+    .select('id, contact_name, company_name, email, qualification_status, contacted_at, source, marketing_consent')
     .in('id', batchIds)
 
   if (leadsError) {

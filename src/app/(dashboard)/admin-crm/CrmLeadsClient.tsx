@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { CRM_NICHE_SOURCES } from '@/lib/crm-niches'
+import { fetchNodes, type GeoNode } from '@/components/influencers/StructuredAddressFields'
 import { CrmLocationFields } from '@/components/locations/CrmLocationFields'
 import CommuneMultiSelect from './CommuneMultiSelect'
 import AttachmentPicker, { type CrmAttachment } from './AttachmentPicker'
@@ -82,7 +83,7 @@ function statusOptions(current: LeadStatus): LeadStatus[] {
   return PIPELINE_STATUSES.includes(current) ? PIPELINE_STATUSES : [...PIPELINE_STATUSES, current]
 }
 
-type ColumnKey = 'contact' | 'instagram' | 'location' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
+type ColumnKey = 'contact' | 'instagram' | 'country' | 'region' | 'commune' | 'industry' | 'source' | 'qualification' | 'last_email' | 'email_opened' | 'connected' | 'action'
 
 type EmailStats = {
   sent: number
@@ -97,7 +98,9 @@ type EmailStats = {
 const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
   { key: 'contact', label: 'Contacto' },
   { key: 'instagram', label: 'Instagram' },
-  { key: 'location', label: 'Ubicación' },
+  { key: 'country', label: 'País' },
+  { key: 'region', label: 'Región / Estado' },
+  { key: 'commune', label: 'Comuna / Ciudad' },
   { key: 'industry', label: 'Rubro' },
   { key: 'source', label: 'Origen' },
   { key: 'qualification', label: 'Calificación' },
@@ -122,11 +125,14 @@ export function CrmLeadsClient() {
   const [emailStatus, setEmailStatus] = useState('')
   const [contactData, setContactData] = useState('')
   const [extra, setExtra] = useState<Record<string, string>>({})
-  const [regions, setRegions] = useState<string[]>([])
-  const [countries, setCountries] = useState<string[]>([])
+  // País → Región → Comuna salen del catálogo oficial `locations` (mismas listas que influencers, marcas y campañas).
+  const [geoCountries, setGeoCountries] = useState<GeoNode[]>([])
+  const [geoRegions, setGeoRegions] = useState<GeoNode[]>([])
+  const [geoCommunes, setGeoCommunes] = useState<GeoNode[]>([])
+  const [showMore, setShowMore] = useState(false)
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
   const [visibleColumns, setVisibleColumns] = useLocalStorageState<ColumnKey[]>(
-    'scence:admin:crm:visibleColumns', DEFAULT_COLUMNS
+    'scence:admin:crm:visibleColumns:v2', DEFAULT_COLUMNS
   )
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [communes, setCommunes] = useState<string[]>([])
@@ -182,8 +188,6 @@ export function CrmLeadsClient() {
         if (valid.length !== selectedCommunes.length) setSelectedCommunes(valid)
       }
       if (Array.isArray(j.sources)) setSources(j.sources)
-      if (Array.isArray(j.regions)) setRegions(j.regions)
-      if (Array.isArray(j.countries)) setCountries(j.countries)
       if (Array.isArray(j.campaigns)) setCampaigns(j.campaigns)
     } catch {
       toast.error('Error cargando leads')
@@ -192,6 +196,27 @@ export function CrmLeadsClient() {
   }, [page, search, qualification, selectedCommunes, source, emailStatus, contactData, extra])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => { fetchNodes('parent=root').then(setGeoCountries) }, [])
+  const countryId = geoCountries.find(c => c.name === extra.country)?.id
+  const regionId = geoRegions.find(r => r.name === extra.region)?.id
+  useEffect(() => {
+    setGeoRegions([])
+    if (countryId) fetchNodes(`parent=${encodeURIComponent(countryId)}`).then(setGeoRegions)
+  }, [countryId])
+  useEffect(() => {
+    setGeoCommunes([])
+    if (regionId) fetchNodes(`parent=${encodeURIComponent(regionId)}`).then(setGeoCommunes)
+  }, [regionId])
+
+  function chooseCountry(name: string) {
+    setPage(1); setSelectedCommunes([])
+    setExtra(prev => ({ ...prev, country: name, region: '' }))
+  }
+  function chooseRegion(name: string) {
+    setPage(1); setSelectedCommunes([])
+    setExtra(prev => ({ ...prev, region: name }))
+  }
 
   // Cambiar de página conserva una selección global. Cambiar los filtros la
   // reinicia para que nunca se envíe a destinatarios de una búsqueda anterior.
@@ -416,14 +441,13 @@ export function CrmLeadsClient() {
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const extraFilters: Array<{ key: string; label: string; options: Array<[string, string]> }> = [
     { key: 'type', label: 'Tipo', options: [['influencer', 'Influencer'], ['brand', 'Marca'], ['customer', 'Cliente'], ['other', 'Otro']] },
-    { key: 'country', label: 'País', options: countries.map(c => [c, c] as [string, string]) },
-    { key: 'region', label: 'Región', options: regions.map(r => [r, r] as [string, string]) },
     { key: 'subscription', label: 'Suscripción', options: [['subscribed', 'Suscrito'], ['unsubscribed', 'Desuscrito'], ['unconfirmed', 'Consentimiento no confirmado'], ['blocked', 'Rebotado / spam']] },
     { key: 'registration', label: 'Registro', options: [['none', 'Sin cuenta'], ['registered', 'Registrado']] },
     { key: 'activity', label: 'Última interacción', options: [['30', 'Últimos 30 días'], ['90', 'Últimos 90 días']] },
     { key: 'campaign', label: 'Campaña', options: campaigns.map(c => [c.id, c.name] as [string, string]) },
   ]
   const activeFilterCount = [qualification, source, emailStatus, contactData].filter(Boolean).length + (selectedCommunes.length ? 1 : 0) + Object.values(extra).filter(Boolean).length
+  const moreCount = [qualification, source, emailStatus, contactData].filter(Boolean).length + Object.entries(extra).filter(([k, v]) => v && k !== 'country' && k !== 'region').length
   const hasActiveFilters = Boolean(search || activeFilterCount)
 
   function clearFilters() {
@@ -566,135 +590,52 @@ export function CrmLeadsClient() {
             />
           </div>
 
-          <CommuneMultiSelect
-            options={communes}
-            selected={selectedCommunes}
-            onChange={next => { setPage(1); setSelectedCommunes(next) }}
-          />
-
           <select
-            value={source}
-            aria-label="Filtrar por base de datos"
-            onChange={e => { setPage(1); setSource(e.target.value) }}
-            className={cn(
-              'h-9 min-w-[170px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
-              source ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
-            )}
-          >
-            <option value="">Todas las bases</option>
-            {sources.map(value => <option key={value} value={value}>{value}</option>)}
-          </select>
-
-          {extraFilters.map(f => (
-            <select
-              key={f.key}
-              value={extra[f.key] ?? ''}
-              aria-label={`Filtrar por ${f.label}`}
-              onChange={e => { setPage(1); setExtra(prev => ({ ...prev, [f.key]: e.target.value })) }}
-              className={cn(
-                'h-9 min-w-[130px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
-                extra[f.key] ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
-              )}
-            >
-              <option value="">{f.label}</option>
-              {f.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          ))}
-
-          <select
-            value={emailStatus}
-            aria-label="Filtrar por estado del email"
-            onChange={e => { setPage(1); setEmailStatus(e.target.value) }}
+            value={extra.country ?? ''}
+            aria-label="Filtrar por país"
+            onChange={e => chooseCountry(e.target.value)}
             className={cn(
               'h-9 min-w-[130px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
-              emailStatus ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+              extra.country ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
             )}
           >
-            <option value="">Email</option>
-            {[['not_sent', 'No enviado'], ['sent', 'Enviado'], ['delivered', 'Entregado'], ['opened', 'Abierto'], ['not_opened', 'No abierto'], ['clicked', 'Clic'], ['bounced', 'Rebotado']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <option value="">País</option>
+            {geoCountries.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
           </select>
 
-          <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">
-            <button
-              type="button"
-              aria-pressed={!emailStatus}
-              onClick={() => { setPage(1); setEmailStatus('') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                !emailStatus ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Email: todos
-            </button>
-            <button
-              type="button"
-              aria-pressed={emailStatus === 'opened'}
-              onClick={() => { setPage(1); setEmailStatus('opened') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                emailStatus === 'opened' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Abrió
-            </button>
-            <button
-              type="button"
-              aria-pressed={emailStatus === 'clicked'}
-              onClick={() => { setPage(1); setEmailStatus('clicked') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                emailStatus === 'clicked' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Hizo clic
-            </button>
-            <button
-              type="button"
-              aria-pressed={emailStatus === 'not_sent'}
-              onClick={() => { setPage(1); setEmailStatus('not_sent') }}
-              className={cn(
-                'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                emailStatus === 'not_sent' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              )}
-            >
-              Sin enviar
-            </button>
+          <select
+            value={extra.region ?? ''}
+            disabled={!extra.country}
+            aria-label="Filtrar por región"
+            onChange={e => chooseRegion(e.target.value)}
+            className={cn(
+              'h-9 min-w-[130px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400 disabled:opacity-50',
+              extra.region ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+            )}
+          >
+            <option value="">Región / Estado</option>
+            {geoRegions.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+          </select>
+
+          <div className={cn(!extra.region && 'pointer-events-none opacity-50')}>
+            <CommuneMultiSelect
+              options={geoCommunes.map(c => c.name)}
+              selected={selectedCommunes}
+              onChange={next => { setPage(1); setSelectedCommunes(next) }}
+            />
           </div>
 
           <button
             type="button"
-            aria-pressed={qualification === 'interested'}
-            onClick={() => { setPage(1); setQualification(qualification === 'interested' ? '' : 'interested') }}
+            aria-expanded={showMore}
+            onClick={() => setShowMore(v => !v)}
             className={cn(
               'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
-              qualification === 'interested'
-                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+              moreCount ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
             )}
           >
-            Interesadas
+            Más filtros{moreCount ? ` (${moreCount})` : ''}
           </button>
-
-          <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por disponibilidad de email">
-            {[
-              { value: '', label: 'Todos' },
-              { value: 'has_email', label: 'Con email' },
-              { value: 'missing_email', label: 'Sin email' },
-            ].map(option => (
-              <button
-                key={option.value || 'all'}
-                type="button"
-                aria-pressed={contactData === option.value}
-                onClick={() => { setPage(1); setContactData(option.value) }}
-                className={cn(
-                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
-                  contactData === option.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
 
           {hasActiveFilters && (
             <button
@@ -721,6 +662,135 @@ export function CrmLeadsClient() {
             </button>
           )}
         </div>
+        {showMore && (
+              <div className="flex w-full flex-wrap items-center gap-2 border-t border-gray-50 pt-2">
+            <select
+              value={source}
+              aria-label="Filtrar por base de datos"
+              onChange={e => { setPage(1); setSource(e.target.value) }}
+              className={cn(
+                'h-9 min-w-[170px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
+                source ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+              )}
+            >
+              <option value="">Todas las bases</option>
+              {sources.map(value => <option key={value} value={value}>{value}</option>)}
+            </select>
+
+            {extraFilters.map(f => (
+              <select
+                key={f.key}
+                value={extra[f.key] ?? ''}
+                aria-label={`Filtrar por ${f.label}`}
+                onChange={e => { setPage(1); setExtra(prev => ({ ...prev, [f.key]: e.target.value })) }}
+                className={cn(
+                  'h-9 min-w-[130px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
+                  extra[f.key] ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+                )}
+              >
+                <option value="">{f.label}</option>
+                {f.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            ))}
+
+            <select
+              value={emailStatus}
+              aria-label="Filtrar por estado del email"
+              onChange={e => { setPage(1); setEmailStatus(e.target.value) }}
+              className={cn(
+                'h-9 min-w-[130px] rounded-lg border bg-white px-3 text-xs outline-none focus:border-violet-400',
+                emailStatus ? 'border-violet-300 text-violet-700 font-semibold' : 'border-gray-200 text-gray-700'
+              )}
+            >
+              <option value="">Email</option>
+              {[['not_sent', 'No enviado'], ['sent', 'Enviado'], ['delivered', 'Entregado'], ['opened', 'Abierto'], ['not_opened', 'No abierto'], ['clicked', 'Clic'], ['bounced', 'Rebotado']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+
+            <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">
+              <button
+                type="button"
+                aria-pressed={!emailStatus}
+                onClick={() => { setPage(1); setEmailStatus('') }}
+                className={cn(
+                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                  !emailStatus ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                )}
+              >
+                Email: todos
+              </button>
+              <button
+                type="button"
+                aria-pressed={emailStatus === 'opened'}
+                onClick={() => { setPage(1); setEmailStatus('opened') }}
+                className={cn(
+                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                  emailStatus === 'opened' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                )}
+              >
+                Abrió
+              </button>
+              <button
+                type="button"
+                aria-pressed={emailStatus === 'clicked'}
+                onClick={() => { setPage(1); setEmailStatus('clicked') }}
+                className={cn(
+                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                  emailStatus === 'clicked' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                )}
+              >
+                Hizo clic
+              </button>
+              <button
+                type="button"
+                aria-pressed={emailStatus === 'not_sent'}
+                onClick={() => { setPage(1); setEmailStatus('not_sent') }}
+                className={cn(
+                  'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                  emailStatus === 'not_sent' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                )}
+              >
+                Sin enviar
+              </button>
+            </div>
+
+            <button
+              type="button"
+              aria-pressed={qualification === 'interested'}
+              onClick={() => { setPage(1); setQualification(qualification === 'interested' ? '' : 'interested') }}
+              className={cn(
+                'h-9 rounded-lg border px-3 text-xs font-semibold transition-colors',
+                qualification === 'interested'
+                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+              )}
+            >
+              Interesadas
+            </button>
+
+            <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por disponibilidad de email">
+              {[
+                { value: '', label: 'Todos' },
+                { value: 'has_email', label: 'Con email' },
+                { value: 'missing_email', label: 'Sin email' },
+              ].map(option => (
+                <button
+                  key={option.value || 'all'}
+                  type="button"
+                  aria-pressed={contactData === option.value}
+                  onClick={() => { setPage(1); setContactData(option.value) }}
+                  className={cn(
+                    'h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition-colors',
+                    contactData === option.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+              </div>
+            )}
+
       </div>
 
       {selectedCount > 0 && (
@@ -780,7 +850,9 @@ export function CrmLeadsClient() {
               <th className="px-4 py-3 font-semibold">Empresa</th>
               {isColumnVisible('contact') && <th className="px-4 py-3 font-semibold">Contacto</th>}
               {isColumnVisible('instagram') && <th className="px-4 py-3 font-semibold">Instagram</th>}
-              {isColumnVisible('location') && <th className="px-4 py-3 font-semibold">Ubicación</th>}
+              {isColumnVisible('country') && <th className="px-4 py-3 font-semibold">País</th>}
+              {isColumnVisible('region') && <th className="px-4 py-3 font-semibold">Región / Estado</th>}
+              {isColumnVisible('commune') && <th className="px-4 py-3 font-semibold">Comuna / Ciudad</th>}
               {isColumnVisible('industry') && <th className="px-4 py-3 font-semibold">Rubro</th>}
               {isColumnVisible('source') && <th className="px-4 py-3 font-semibold">Origen</th>}
               {isColumnVisible('qualification') && <th className="px-4 py-3 font-semibold">Calificación</th>}
@@ -792,9 +864,9 @@ export function CrmLeadsClient() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
+              <tr><td colSpan={visibleColumns.length + 2} className="px-4 py-10 text-center text-gray-400">Cargando…</td></tr>
             ) : leads.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
+              <tr><td colSpan={visibleColumns.length + 2} className="px-4 py-10 text-center text-gray-400">Sin resultados</td></tr>
             ) : leads.map(lead => {
               const cfg = STATUS_CONFIG[lead.qualification_status] ?? STATUS_CONFIG.unqualified
               return (
@@ -834,7 +906,9 @@ export function CrmLeadsClient() {
                     ) : '—'}
                   </td>
                   )}
-{isColumnVisible('location') && <td className="px-4 py-3 text-gray-500 text-xs">{[lead.commune, lead.country].filter(Boolean).join(', ') || '—'}</td>}
+{isColumnVisible('country') && <td className="px-4 py-3 text-gray-500 text-xs">{lead.country || '—'}</td>}
+{isColumnVisible('region') && <td className="px-4 py-3 text-gray-500 text-xs">{lead.region || '—'}</td>}
+{isColumnVisible('commune') && <td className="px-4 py-3 text-gray-500 text-xs">{lead.commune || '—'}</td>}
 {isColumnVisible('industry') && <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[160px]">{lead.industry || '—'}</td>}
 {isColumnVisible('source') && (
                   <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[140px]" title={lead.source ?? undefined}>

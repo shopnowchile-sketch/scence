@@ -8,6 +8,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import AttachmentPicker, { type CrmAttachment } from '../AttachmentPicker'
 import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { CrmLocationFields } from '@/components/locations/CrmLocationFields'
 import { PhoneLink } from '@/components/ui/PhoneLink'
 
 type Activity = {
@@ -37,6 +38,7 @@ type Lead = {
   phone_2: string | null
   instagram: string | null
   address: string | null
+  country: string | null
   commune: string | null
   region: string | null
   industry: string | null
@@ -164,7 +166,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
   const CONTACT_FIELDS: Array<[string, string]> = [
     ['contact_name', 'Contacto'], ['company_name', 'Empresa'], ['email', 'Email'], ['phone_1', 'Teléfono'],
     ['phone_2', 'Teléfono 2'], ['instagram', 'Instagram'], ['website', 'Sitio web'], ['address', 'Dirección'],
-    ['commune', 'Comuna'], ['region', 'Región'], ['industry', 'Rubro'],
+    ['country', 'País'], ['commune', 'Comuna'], ['region', 'Región'], ['industry', 'Rubro'],
   ]
 
   function startEditingContact() {
@@ -401,7 +403,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
             {editingContact && (
               <div className="mt-2 rounded-xl border border-violet-100 bg-violet-50/40 p-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {CONTACT_FIELDS.map(([key, label]) => (
+                  {CONTACT_FIELDS.filter(([key]) => !['country', 'region', 'commune'].includes(key)).map(([key, label]) => (
                     <label key={key} className="block text-xs font-semibold text-gray-500">
                       {label}
                       <input
@@ -412,6 +414,13 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
                       />
                     </label>
                   ))}
+                  <div className="sm:col-span-2">
+                    <CrmLocationFields
+                      value={{ country: contactForm.country ?? '', region: contactForm.region ?? '', commune: contactForm.commune ?? '' }}
+                      onChange={next => setContactForm(previous => ({ ...previous, ...next }))}
+                      disabled={savingContact}
+                    />
+                  </div>
                 </div>
                 <div className="mt-4 flex justify-end gap-2">
                   <button type="button" disabled={savingContact} onClick={() => setEditingContact(false)} className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
@@ -436,7 +445,7 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
                   </a>
                 ) : '—'}
               </div>
-              <div className="flex items-center gap-2 text-gray-600"><MapPin className="h-3.5 w-3.5 text-gray-300" /> {[lead.commune, lead.region].filter(Boolean).join(' · ') || '—'}</div>
+              <div className="flex items-center gap-2 text-gray-600"><MapPin className="h-3.5 w-3.5 text-gray-300" /> {[lead.commune, lead.region, lead.country].filter(Boolean).join(' · ') || '—'}</div>
               <div className="flex items-center gap-2 text-gray-600"><Briefcase className="h-3.5 w-3.5 text-gray-300" /> {lead.industry || '—'}</div>
             </div>}
 

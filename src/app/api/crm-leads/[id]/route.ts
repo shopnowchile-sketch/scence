@@ -3,6 +3,7 @@ import { registerBrandAtomic } from '@/lib/supabase/registerBrand'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { canonicalCommune } from '@/lib/crm-commune'
+import { normalizeLeadLocation } from '@/lib/crm-location'
 import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 
 type Params = { params: { id: string } }
@@ -15,10 +16,10 @@ type Params = { params: { id: string } }
 const BRAND_CREATING_STATUSES = ['interested', 'building', 'converted']
 
 // Campos de contacto editables desde la ficha (texto libre, vacío = sin dato).
-const EDITABLE_FIELDS = ['contact_name', 'company_name', 'email', 'phone_1', 'phone_2', 'instagram', 'website', 'address', 'commune', 'region', 'industry'] as const
+const EDITABLE_FIELDS = ['contact_name', 'company_name', 'email', 'phone_1', 'phone_2', 'instagram', 'website', 'address', 'country', 'commune', 'region', 'industry'] as const
 const FIELD_LABELS: Record<string, string> = {
   contact_name: 'contacto', company_name: 'empresa', email: 'email', phone_1: 'teléfono', phone_2: 'teléfono 2',
-  instagram: 'instagram', website: 'sitio web', address: 'dirección', commune: 'comuna', region: 'región', industry: 'rubro',
+  instagram: 'instagram', website: 'sitio web', address: 'dirección', country: 'país', commune: 'comuna', region: 'región', industry: 'rubro',
 }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
@@ -152,6 +153,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (!EMAIL_RE.test(value)) return NextResponse.json({ error: 'El email no es válido' }, { status: 422 })
     }
     if (field === 'commune' && value) value = await canonicalCommune(admin, value)
+    // País y región solo del catálogo oficial `locations`: un valor que no existe allí no se acepta (el dato
+    // anterior se conserva; no se crean ubicaciones paralelas).
+    if ((field === 'country' || field === 'region') && value) {
+      const mapped = (await normalizeLeadLocation(admin, { [field]: value }))[field]
+      if (!mapped) return NextResponse.json({ error: `${FIELD_LABELS[field]} no está en el catálogo de ubicaciones` }, { status: 422 })
+      value = mapped
+    }
     update[field] = value
     editedFields.push(field)
   }

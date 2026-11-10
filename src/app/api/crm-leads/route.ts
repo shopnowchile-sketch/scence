@@ -5,6 +5,7 @@ import { isCrmAdmin } from '@/lib/crm-auth'
 import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
 import { crmCacheVersion, bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 import { canonicalCommune } from '@/lib/crm-commune'
+import { normalizeLeadLocation } from '@/lib/crm-location'
 
 // Módulo CRM — aislado, no toca brands/influencers/campaigns.
 // Solo super_admin / brand_manager (mismo criterio que useIsAdmin / Sidebar admin).
@@ -329,7 +330,7 @@ export async function GET(request: NextRequest) {
   const authMapPromise = getAuthEmailMap(admin)
   const catalogPromise = getLeadCatalog(admin)
 
-  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at'
+  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, country, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at'
   const buildLeadsQuery = (eventLeadIds?: string[], withCount = false) => {
     let q: any = withCount
       ? admin.from('crm_leads').select(leadFields, { count: 'exact' })
@@ -451,6 +452,7 @@ export async function POST(request: NextRequest) {
   const instagram = typeof body.instagram === 'string' ? body.instagram.trim() : ''
   const commune = typeof body.commune === 'string' ? body.commune.trim() : ''
   const region = typeof body.region === 'string' ? body.region.trim() : ''
+  const country = typeof body.country === 'string' ? body.country.trim() : ''
   const industry = typeof body.industry === 'string' ? body.industry.trim() : ''
   const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'manual'
 
@@ -474,6 +476,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // País y región solo del catálogo `locations` (lo que no exista allí no se guarda).
+  const loc = await normalizeLeadLocation(admin, { country, region })
   const { data: lead, error } = await admin
     .from('crm_leads')
     .insert({
@@ -483,13 +487,14 @@ export async function POST(request: NextRequest) {
       phone_1: phone1 || null,
       instagram: instagram || null,
       commune: await canonicalCommune(admin, commune),
-      region: region || null,
+      region: loc.region,
+      country: loc.country,
       industry: industry || null,
       source,
       qualification_status: 'unqualified',
       imported_at: new Date().toISOString(),
     })
-    .select('id, contact_name, company_name, email, phone_1, instagram, commune, region, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at')
+    .select('id, contact_name, company_name, email, phone_1, instagram, commune, region, country, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at')
     .single()
 
   if (error) {

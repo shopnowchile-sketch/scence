@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
 import { CRM_NICHE_SOURCES } from '@/lib/crm-niches'
+import { CrmLocationFields } from '@/components/locations/CrmLocationFields'
 import CommuneMultiSelect from './CommuneMultiSelect'
 import AttachmentPicker, { type CrmAttachment } from './AttachmentPicker'
 
@@ -20,6 +21,7 @@ type Lead = {
   instagram: string | null
   commune: string | null
   region: string | null
+  country?: string | null
   industry: string | null
   company_size: string | null
   employee_count: string | null
@@ -40,6 +42,7 @@ type LeadForm = {
   email: string
   phone_1: string
   instagram: string
+  country: string
   commune: string
   region: string
   industry: string
@@ -52,6 +55,7 @@ const EMPTY_FORM: LeadForm = {
   email: '',
   phone_1: '',
   instagram: '',
+  country: '',
   commune: '',
   region: '',
   industry: '',
@@ -830,7 +834,7 @@ export function CrmLeadsClient() {
                     ) : '—'}
                   </td>
                   )}
-{isColumnVisible('location') && <td className="px-4 py-3 text-gray-500 text-xs">{lead.commune || '—'}</td>}
+{isColumnVisible('location') && <td className="px-4 py-3 text-gray-500 text-xs">{[lead.commune, lead.country].filter(Boolean).join(', ') || '—'}</td>}
 {isColumnVisible('industry') && <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[160px]">{lead.industry || '—'}</td>}
 {isColumnVisible('source') && (
                   <td className="px-4 py-3 text-gray-500 text-xs truncate max-w-[140px]" title={lead.source ?? undefined}>
@@ -1132,13 +1136,17 @@ export function CrmLeadsClient() {
               <input value={form.email} onChange={e => updateForm('email', e.target.value)} placeholder="Email" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.phone_1} onChange={e => updateForm('phone_1', e.target.value)} placeholder="Teléfono" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.instagram} onChange={e => updateForm('instagram', e.target.value)} placeholder="@instagram" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
-              <input value={form.commune} onChange={e => updateForm('commune', e.target.value)} placeholder="Comuna / ciudad" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
-              <input value={form.region} onChange={e => updateForm('region', e.target.value)} placeholder="Región" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.industry} onChange={e => updateForm('industry', e.target.value)} placeholder="Rubro / categoría" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <input value={form.source} onChange={e => updateForm('source', e.target.value)} list="crm-niche-sources" placeholder="Origen / nicho" className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               <datalist id="crm-niche-sources">
                 {CRM_NICHE_SOURCES.map(niche => <option key={niche} value={niche} />)}
               </datalist>
+              <div className="md:col-span-2">
+                <CrmLocationFields
+                  value={{ country: form.country, region: form.region, commune: form.commune }}
+                  onChange={next => setForm(previous => ({ ...previous, ...next }))}
+                />
+              </div>
             </div>
 
             <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">

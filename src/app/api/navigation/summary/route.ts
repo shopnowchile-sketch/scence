@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole } from '@/lib/supabase/ensureOrg'
+import { countTicketsAwaitingTeam } from '@/lib/support-tickets'
 
 export async function GET() {
   const supabase = createServerClient()
@@ -27,7 +28,7 @@ export async function GET() {
 
   let ticketsQuery = admin
     .from('tickets')
-    .select('id', { count: 'exact', head: true })
+    .select('id, category')
     .in('status', ['open', 'in_progress'])
 
   // Soporte (tabla de /api/tickets) siempre filtra por la organización del usuario;
@@ -45,12 +46,21 @@ export async function GET() {
       .eq('status', 'proposed'),
   ])
 
+  // Soporte: solo tickets nuevos o con respuesta de la persona que esperan al equipo (no el total de pendientes).
+  const activeTickets = (ticketsResult.data ?? []) as Array<{ id: string; category: string | null }>
+  const replyRows: Array<{ ticket_id: string; is_admin: boolean | null; created_at: string }> = []
+  for (let i = 0; i < activeTickets.length; i += 100) {
+    const { data } = await admin.from('ticket_replies').select('ticket_id, is_admin, created_at')
+      .in('ticket_id', activeTickets.slice(i, i + 100).map(t => t.id))
+    replyRows.push(...((data ?? []) as typeof replyRows))
+  }
+
   return NextResponse.json({
     role: access.role,
     isAdmin: access.isAdmin,
     pendingCampaigns: pendingResult.count ?? 0,
     pendingBrands: brandsResult.count ?? 0,
-    openTickets: ticketsResult.count ?? 0,
+    openTickets: countTicketsAwaitingTeam(activeTickets, replyRows),
     bookings: bookingsResult.count ?? 0,
   })
 }

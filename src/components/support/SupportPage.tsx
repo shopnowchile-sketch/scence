@@ -33,7 +33,7 @@ interface Reply {
 interface Submitter {
   name: string
   email: string
-  type: 'influencer' | 'brand' | 'admin'
+  type: 'influencer' | 'brand' | 'admin' | 'unknown'
   profile_href?: string
 }
 
@@ -60,6 +60,7 @@ const SUBMITTER_TYPE_CONFIG = {
   influencer: { label: 'Influencer', color: 'bg-pink-100 text-pink-700',   icon: User },
   brand:      { label: 'Marca',      color: 'bg-blue-100 text-blue-700',   icon: Building2 },
   admin:      { label: 'Admin',      color: 'bg-gray-100 text-gray-600',   icon: ShieldCheck },
+  unknown:    { label: 'Usuario sin perfil', color: 'bg-amber-100 text-amber-700', icon: User },
 } as const
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -263,7 +264,7 @@ function AdminTicketTable({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {tickets.map(ticket => {
-              const submitter = ticket.submitter ?? { name: 'Usuario sin identificar', email: 'Sin email', type: 'admin' as const }
+              const submitter = ticket.submitter ?? { name: 'Usuario sin identificar', email: 'Sin email', type: 'unknown' as const }
               const submitterCfg = SUBMITTER_TYPE_CONFIG[submitter.type]
               const SubmitterIcon = submitterCfg.icon
               const statusCfg = STATUS_CONFIG[ticket.status] ?? STATUS_CONFIG.open
@@ -706,7 +707,7 @@ export function SupportPage({ adminMode = false }: { adminMode?: boolean }) {
                         const submitter = t.submitter ?? {
                           name: 'Usuario sin identificar',
                           email: 'Sin email',
-                          type: 'admin' as const,
+                          type: 'unknown' as const,
                         }
                         const cfg = SUBMITTER_TYPE_CONFIG[submitter.type]
                         const Icon = cfg.icon

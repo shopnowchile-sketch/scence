@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { getOrgId, isPlatformAdmin } from '@/lib/supabase/ensureOrg'
+import { getOrgId, isPlatformAdmin, ADMIN_ROLES } from '@/lib/supabase/ensureOrg'
 import { ACTIVE_STATUSES, proFollowupTicketIds } from '@/lib/support-tickets'
+import { buildSubmitterMap, type TicketSubmitter } from '@/lib/ticket-submitters'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface AIReview {
@@ -130,72 +131,42 @@ export async function GET(request: NextRequest) {
   // ── Enriquecer con info del remitente ──────────────────────────────────────
   const userIds = Array.from(new Set(tickets.map(t => t.created_by).filter(Boolean))) as string[]
 
-  const submitterMap: Record<string, { name: string; email: string; type: 'influencer' | 'brand' | 'admin'; profile_href?: string }> = {}
+  // Rol real del autor (src/lib/ticket-submitters.ts): «Admin» solo si es
+  // super_admin activo; un autor sin ficha se muestra «Usuario sin perfil».
+  let submitterMap: Record<string, TicketSubmitter> = {}
 
   if (userIds.length > 0) {
-    // Influencers
-    const { data: infs } = await admin
-      .from('influencers')
-      .select('id, user_id, display_name, email')
-      .in('user_id', userIds)
-    for (const inf of infs ?? []) {
-      if (inf.user_id) submitterMap[inf.user_id] = {
-        name:  inf.display_name ?? inf.email ?? 'Influencer',
-        email: inf.email ?? '',
-        type:  'influencer',
-        profile_href: `/admin-influencers/${inf.id}`,
-      }
-    }
+    const [{ data: infs }, { data: brnds }, { data: members }, { data: admins }, { data: profs }] = await Promise.all([
+      admin.from('influencers').select('id, user_id, display_name, email').in('user_id', userIds),
+      admin.from('brands').select('id, user_id, contact_name, contact_email, name').in('user_id', userIds),
+      admin.from('brand_members').select('user_id, email, brand_id').in('user_id', userIds).eq('is_active', true),
+      admin.from('organization_members').select('user_id').in('user_id', userIds).eq('is_active', true).in('role', ADMIN_ROLES),
+      admin.from('profiles').select('id, full_name').in('id', userIds),
+    ])
 
-    // Brands
-    const { data: brnds } = await admin
-      .from('brands')
-      .select('id, user_id, contact_name, contact_email, name')
-      .in('user_id', userIds)
-    for (const b of brnds ?? []) {
-      if (b.user_id && !submitterMap[b.user_id]) submitterMap[b.user_id] = {
-        name:  b.contact_name ?? b.name ?? 'Marca',
-        email: b.contact_email ?? '',
-        type:  'brand',
-        profile_href: `/admin-brands/${b.id}`,
-      }
-    }
-
-    // Usuarios invitados de marca: enlazar al tab de usuarios de su marca.
-    const unresolved = userIds.filter(id => !submitterMap[id])
-    if (unresolved.length > 0) {
-      const { data: members } = await admin
-        .from('brand_members')
-        .select('user_id, email, brand_id, brands(name)')
-        .in('user_id', unresolved)
-        .eq('is_active', true)
-
-      for (const member of members ?? []) {
-        if (!member.user_id || submitterMap[member.user_id]) continue
-        const { data: memberAuth } = await admin.auth.admin.getUserById(member.user_id)
-        const brandRelation = member.brands as unknown as { name?: string } | null
-        submitterMap[member.user_id] = {
-          name: memberAuth?.user?.user_metadata?.full_name ?? member.email ?? 'Usuario de marca',
-          email: member.email ?? memberAuth?.user?.email ?? '',
-          type: 'brand',
-          profile_href: `/admin-brands/${member.brand_id}?tab=members&user=${member.user_id}`,
-        }
-        if (!submitterMap[member.user_id].name && brandRelation?.name) submitterMap[member.user_id].name = brandRelation.name
-      }
-    }
-
-    // Admins — fallback via profiles + auth
-    const remaining = userIds.filter(id => !submitterMap[id])
-    for (const uid of remaining) {
+    const profileNames = new Map((profs ?? []).map(p => [p.id as string, (p.full_name as string | null) ?? null]))
+    const accounts: Record<string, { name?: string | null; email?: string | null }> = {}
+    // Email desde Auth solo para quienes no son influencer ni marca (pocos).
+    const needsAuth = userIds.filter(id =>
+      !(infs ?? []).some(i => i.user_id === id) && !(brnds ?? []).some(b => b.user_id === id))
+    for (const uid of needsAuth) {
       const { data: u } = await admin.auth.admin.getUserById(uid)
-      if (u?.user) {
-        submitterMap[uid] = {
-          name:  u.user.user_metadata?.full_name ?? u.user.email ?? 'Admin',
-          email: u.user.email ?? '',
-          type:  'admin',
-        }
-      }
+      accounts[uid] = { name: profileNames.get(uid) ?? u?.user?.user_metadata?.full_name ?? null, email: u?.user?.email ?? null }
     }
+
+    submitterMap = buildSubmitterMap({
+      userIds,
+      platformAdminIds: new Set((admins ?? []).map(a => a.user_id as string)),
+      influencers: infs ?? [],
+      brands: brnds ?? [],
+      brandMembers: (members ?? []).map(m => ({
+        user_id: m.user_id as string | null,
+        brand_id: m.brand_id as string,
+        email: (m.email as string | null) ?? null,
+        name: accounts[m.user_id as string]?.name ?? null,
+      })),
+      accounts,
+    })
   }
 
   const enriched = tickets.map(t => ({

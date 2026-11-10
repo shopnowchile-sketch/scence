@@ -52,6 +52,8 @@ test('por defecto solo Chile; sin país ni columna elegida, Chile primero y Esta
   const api = readFileSync(new URL('../src/app/api/crm-leads/route.ts', import.meta.url), 'utf8')
   assert.match(api, /searchParams\.get\('sort'\) === 'priority' && !\(searchParams\.get\('country'\)/)
   assert.match(api, /eq\('country', 'Chile'\)/)
+  assert.match(api, /export const maxDuration = 60/)
+  assert.match(api, /CACHE_TTL_MS = 10 \* 60_000/)
   assert.match(api, /eq\('country', 'Estados Unidos'\)/)
   assert.match(api, /countryRank\(a\.country\)/)
 })

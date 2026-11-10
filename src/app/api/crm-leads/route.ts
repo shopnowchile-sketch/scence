@@ -145,7 +145,12 @@ function searchFilter(search: string) {
 // usuarios de auth y TODA la tabla de leads solo para sacar comunas/fuentes)
 // antes de devolver 50 filas. Ahora las páginas se piden en paralelo y el
 // resultado se reutiliza 60 s (los filtros/paginación no deberían recalcularlo).
-const CACHE_TTL_MS = 60_000
+// 10 min: recalcular eventos (≈100 mil filas), usuarios y catálogo en cada minuto saturaba la base (timeout de 8 s) y el listado fallaba.
+// Las escrituras del CRM invalidan la caché (bumpCrmCacheVersion), así que los cambios propios se ven al instante.
+const CACHE_TTL_MS = 10 * 60_000
+
+// La primera carga en frío recorre varias tablas: se le da margen para no cortarse con el error HTML de Vercel.
+export const maxDuration = 60
 type Admin = ReturnType<typeof createAdminClient>
 
 function cachedLoader<T>(load: (admin: Admin) => Promise<T>) {
@@ -168,7 +173,7 @@ async function fetchAllPages<T>(
   fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ) {
   const PAGE = 1000
-  const CONCURRENCY = 6
+  const CONCURRENCY = 2
   const starts = Array.from({ length: Math.ceil(total / PAGE) }, (_, i) => i * PAGE)
   const out: T[] = []
   for (let i = 0; i < starts.length; i += CONCURRENCY) {
@@ -374,10 +379,11 @@ export async function GET(request: NextRequest) {
   // Tramos de la prioridad por país: 0 = Chile, 1 = otros (y sin país), 2 = Estados Unidos.
   const SEGMENTS: Array<(q: any) => any> = [
     q => q.eq('country', 'Chile'),
-    q => q.or('country.is.null,and(country.neq.Chile,country.neq."Estados Unidos")'),
+    q => q.is('country', null),
+    q => q.not('country', 'in', '("Chile","Estados Unidos")'),
     q => q.eq('country', 'Estados Unidos'),
   ]
-  const countryRank = (c: string | null | undefined) => (c === 'Chile' ? 0 : c === 'Estados Unidos' ? 2 : 1)
+  const countryRank = (c: string | null | undefined) => (c === 'Chile' ? 0 : c === 'Estados Unidos' ? 3 : c ? 2 : 1)
   const buildLeadsQuery = (eventLeadIds?: string[], withCount = false, segment?: number, head = false) => {
     let q: any = withCount
       ? admin.from('crm_leads').select(leadFields, { count: 'exact', head })

@@ -91,8 +91,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Segmentación geográfica: sin relación previa con la campaña, solo la ve quien está en las zonas elegidas.
   if (!existing) {
     try {
-      const audience = await audienceMatcherFor(admin, [campaign.id])
-      if (!audience.allows(campaign.id, influencer.location_id)) {
+      const audience = await audienceMatcherFor(admin, [campaign.id], [influencer.id])
+      if (!audience.allows(campaign.id, influencer.location_id, influencer.id)) {
         return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
       }
     } catch {

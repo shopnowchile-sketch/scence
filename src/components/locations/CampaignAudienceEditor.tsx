@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Globe2, Loader2, Plus, X } from 'lucide-react'
 import { latamCountryIds } from '@/lib/campaign-audience-latam'
+import { sanitizeCriteria, type AudienceCriteria } from '@/lib/influencer-performance'
 import { SearchSelect, fetchNodes, type GeoNode } from '@/components/influencers/StructuredAddressFields'
 
 export type AudienceZone = { id: string; name: string; level: string; parent?: string | null }
@@ -17,19 +18,62 @@ type Props = {
   /** Solo creación (campaignId = null). */
   pending?: AudienceZone[]
   onPendingChange?: (next: AudienceZone[]) => void
+  /** Solo creación: criterios pendientes que el formulario guarda al crear. */
+  pendingCriteria?: AudienceCriteria
+  onPendingCriteriaChange?: (next: AudienceCriteria) => void
 }
 
 const LEVEL_LABEL: Record<string, string> = { country: 'País', region: 'Región', city: 'Ciudad', commune: 'Comuna' }
 const fold = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 
 /** Guarda las zonas elegidas antes de que existiera la campaña. Devuelve true si se guardaron. */
-export async function savePendingCampaignAudience(campaignId: string, zones: AudienceZone[]): Promise<boolean> {
-  if (!zones.length) return true
+export async function savePendingCampaignAudience(campaignId: string, zones: AudienceZone[], criteria: AudienceCriteria = {}): Promise<boolean> {
+  const hasCriteria = Object.keys(sanitizeCriteria(criteria)).length > 0
+  if (!zones.length && !hasCriteria) return true
   const res = await fetch(`/api/campaigns/${campaignId}/audience`, {
     method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location_ids: zones.map(z => z.id) }),
+    body: JSON.stringify({ ...(zones.length ? { location_ids: zones.map(z => z.id) } : {}), ...(hasCriteria ? { criteria } : {}) }),
   })
   return res.ok
+}
+
+// Rangos mínimo/máximo sobre datos reales del perfil y del desempeño interno. Vacío = sin límite.
+const RANGE_FIELDS: { label: string; min?: keyof AudienceCriteria; max?: keyof AudienceCriteria; hint?: string; step?: string }[] = [
+  { label: 'Seguidores Instagram', min: 'followers_min', max: 'followers_max' },
+  { label: 'Engagement Instagram (%)', min: 'engagement_min', max: 'engagement_max', step: '0.1' },
+  { label: 'Rating SCENCE (0–5)', min: 'rating_min', max: 'rating_max', step: '0.1' },
+  { label: 'Campañas realizadas (mín.)', min: 'campaigns_min' },
+  { label: 'Cumplimiento % (mín.)', min: 'compliance_min', hint: 'Asistencia y entregables a tiempo' },
+  { label: 'Inasistencias sin aviso (máx.)', max: 'no_shows_max' },
+  { label: 'Entregables atrasados (máx.)', max: 'late_max' },
+]
+
+function CriteriaFields({ value, onChange, disabled }: { value: AudienceCriteria; onChange: (next: AudienceCriteria) => void; disabled?: boolean }) {
+  const set = (key: keyof AudienceCriteria, raw: string) => {
+    const next = { ...value }
+    if (raw === '') delete next[key]; else next[key] = Number(raw)
+    onChange(next)
+  }
+  const input = (key: keyof AudienceCriteria, placeholder: string, step?: string) => (
+    <input type="number" min={0} step={step ?? '1'} inputMode="decimal" disabled={disabled} placeholder={placeholder}
+      value={value[key] ?? ''} onChange={e => set(key, e.target.value)} aria-label={`${placeholder}`}
+      className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-violet-400 disabled:opacity-60" />
+  )
+  return (
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" data-testid="campaign-audience-criteria">
+      {RANGE_FIELDS.map(f => (
+        <div key={f.label}>
+          <label className="mb-1 block text-xs font-semibold text-gray-500">{f.label}</label>
+          <div className="flex gap-1.5">
+            {f.min && input(f.min, 'Mínimo', f.step)}
+            {f.max && input(f.max, 'Máximo', f.step)}
+          </div>
+          {f.hint && <p className="mt-0.5 text-[10px] text-gray-400">{f.hint}</p>}
+        </div>
+      ))}
+      <p className="text-[11px] text-gray-400 sm:col-span-2">Solo se evalúan datos reales: una influencer sin ese dato no cumple un criterio activo.</p>
+    </div>
+  )
 }
 
 // Lista con casillas y búsqueda: se pueden marcar varias comunas.
@@ -85,11 +129,13 @@ function MultiSelect({ label, options, selected, onToggle, onAll, onClear }: {
   )
 }
 
-export function CampaignAudienceEditor({ campaignId, canEdit = true, pending = [], onPendingChange }: Props) {
+export function CampaignAudienceEditor({ campaignId, canEdit = true, pending = [], onPendingChange, pendingCriteria = {}, onPendingCriteriaChange }: Props) {
   const isServer = Boolean(campaignId)
   const [serverZones, setServerZones] = useState<AudienceZone[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [criteria, setCriteria] = useState<AudienceCriteria>({})
+  const [criteriaSaved, setCriteriaSaved] = useState(true)
 
   const [countries, setCountries] = useState<GeoNode[]>([])
   const [regions, setRegions] = useState<GeoNode[]>([])
@@ -112,7 +158,7 @@ export function CampaignAudienceEditor({ campaignId, canEdit = true, pending = [
     setBusy(true)
     fetch(`/api/campaigns/${campaignId}/audience`, { credentials: 'same-origin' })
       .then(r => r.json().then(j => ({ ok: r.ok, j })))
-      .then(({ ok, j }) => { if (alive) { if (ok) setServerZones(j.data ?? []); else setError(j.error ?? 'No se pudo cargar') } })
+      .then(({ ok, j }) => { if (alive) { if (ok) { setServerZones(j.data ?? []); setCriteria(sanitizeCriteria(j.criteria)) } else setError(j.error ?? 'No se pudo cargar') } })
       .catch(() => { if (alive) setError('No se pudo cargar') })
       .finally(() => { if (alive) setBusy(false) })
     return () => { alive = false }
@@ -162,6 +208,20 @@ export function CampaignAudienceEditor({ campaignId, canEdit = true, pending = [
     const merged = [...zones]
     for (const c of countries) if (ids.has(c.id) && !merged.some(z => z.id === c.id)) merged.push({ id: c.id, name: c.name, level: 'country' })
     await commit(merged)
+  }
+
+  async function saveCriteria() {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/audience`, {
+        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ criteria }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo guardar')
+      setCriteria(sanitizeCriteria(json.criteria)); setCriteriaSaved(true)
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar') }
+    finally { setBusy(false) }
   }
 
   const remove = (ids: string[]) => void commit(zones.filter(z => !ids.includes(z.id)))
@@ -216,6 +276,20 @@ export function CampaignAudienceEditor({ campaignId, canEdit = true, pending = [
           </div>
         </div>
       )}
+      <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 space-y-2.5">
+        <p className="text-xs font-semibold text-gray-500">Perfil de influencer (opcional)</p>
+        <CriteriaFields
+          disabled={!canEdit || busy}
+          value={isServer ? criteria : pendingCriteria}
+          onChange={next => { if (isServer) { setCriteria(next); setCriteriaSaved(false) } else onPendingCriteriaChange?.(next) }}
+        />
+        {isServer && canEdit && (
+          <button type="button" onClick={() => void saveCriteria()} disabled={busy || criteriaSaved}
+            className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40">
+            {criteriaSaved ? 'Criterios guardados' : 'Guardar criterios'}
+          </button>
+        )}
+      </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
   )

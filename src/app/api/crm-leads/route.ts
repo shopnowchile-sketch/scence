@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listOptOuts } from '@/lib/email-optouts'
+import { listOptOuts, normalizeEmail } from '@/lib/email-optouts'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
@@ -219,19 +219,53 @@ const getLeadCatalog = cachedLoader(async admin => {
   const sources = new Set<string>()
   const regions = new Set<string>()
   const countries = new Set<string>()
+  // País → Región → Comunas solo con valores que existen en los leads (clave '' = sin país/región).
+  const geoMap = new Map<string, Map<string, Set<string>>>()
   for (const r of rows) {
+    const c = r.country ?? '', g = r.region ?? ''
+    if (c || g || r.commune) {
+      const regionsOf = geoMap.get(c) ?? new Map<string, Set<string>>()
+      const communesOf = regionsOf.get(g) ?? new Set<string>()
+      if (r.commune) communesOf.add(r.commune)
+      regionsOf.set(g, communesOf); geoMap.set(c, regionsOf)
+    }
     if (r.commune) communes.add(r.commune)
     if (r.source) sources.add(r.source)
     if (r.region) regions.add(r.region)
     if (r.country) countries.add(r.country)
   }
   const { data: campaignRows } = await admin.from('campaigns').select('id, name').order('created_at', { ascending: false }).limit(100)
+  const geo: Record<string, Record<string, string[]>> = {}
+  Array.from(geoMap.entries()).forEach(([c, regionsOf]) => {
+    geo[c] = {}
+    Array.from(regionsOf.entries()).forEach(([g, communesOf]) => { geo[c][g] = Array.from(communesOf).sort((a, b) => a.localeCompare(b, 'es')) })
+  })
   return {
+    geo,
     communes: Array.from(communes).sort(), sources: Array.from(sources).sort(),
     regions: Array.from(regions).sort(), countries: Array.from(countries).sort(),
     campaigns: (campaignRows ?? []) as Array<{ id: string; name: string }>,
   }
 })
+
+// Suscripción: baja/rebote/queja (email_optouts, misma fuente que el envío masivo) manda sobre el consentimiento.
+function subscriptionOf(lead: { email?: string | null; marketing_consent?: boolean | null }, optouts: Map<string, string | null>) {
+  const reason = lead.email ? optouts.get(normalizeEmail(lead.email)) : undefined
+  if (reason !== undefined) return reason === 'bounce' || reason === 'complaint' ? 'blocked' : 'unsubscribed'
+  if (!lead.email) return 'no_email'
+  return lead.marketing_consent === true ? 'subscribed' : 'unconfirmed'
+}
+
+// Tipo: mismo criterio que el filtro «Tipo» (sufijo del origen o marca vinculada).
+function leadTypeOf(lead: { source?: string | null; converted_brand_id?: string | null }) {
+  if (lead.source?.endsWith('_influencer')) return 'influencer'
+  if (lead.source?.endsWith('_cliente')) return 'customer'
+  if (lead.converted_brand_id) return 'brand'
+  return 'other'
+}
+
+// Columnas ordenables (lista cerrada: nunca se interpola texto del cliente en el orden).
+const SORTABLE = ['company_name', 'email', 'instagram', 'country', 'region', 'commune', 'industry', 'source', 'qualification_status', 'contacted_at', 'created_at']
 
 // ── GET /api/crm-leads — lista paginada con filtros ───────────────────────────
 export async function GET(request: NextRequest) {
@@ -260,6 +294,8 @@ export async function GET(request: NextRequest) {
   const activityDays = parseInt(searchParams.get('activity') ?? '', 10)
   const campaignFilter = searchParams.get('campaign') ?? ''
   const idsOnly = searchParams.get('ids_only') === '1'
+  const sortCol = SORTABLE.includes(searchParams.get('sort') ?? '') ? (searchParams.get('sort') as string) : 'created_at'
+  const ascending = searchParams.get('order') === 'asc'
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
@@ -291,6 +327,7 @@ export async function GET(request: NextRequest) {
   if (idsOnly) {
     const buildIdsQuery = (eventLeadIds?: string[]) => {
       let q: any = admin.from('crm_leads').select('id').order('created_at', { ascending: false })
+      q = q.neq('qualification_status', 'converted') // registrados en SCENCE salen del CRM (su historial se conserva)
       if (qualification) q = q.eq('qualification_status', qualification)
       if (source) q = q.eq('source', source)
       if (industry) q = q.eq('industry', industry)
@@ -330,12 +367,13 @@ export async function GET(request: NextRequest) {
   const authMapPromise = getAuthEmailMap(admin)
   const catalogPromise = getLeadCatalog(admin)
 
-  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, country, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at'
+  const leadFields = 'id, contact_name, company_name, email, phone_1, instagram, commune, region, country, industry, company_size, employee_count, qualification_status, contacted_at, created_at, source, imported_at, marketing_consent, converted_brand_id'
   const buildLeadsQuery = (eventLeadIds?: string[], withCount = false) => {
     let q: any = withCount
       ? admin.from('crm_leads').select(leadFields, { count: 'exact' })
       : admin.from('crm_leads').select(leadFields)
-    q = q.order('created_at', { ascending: false })
+    q = q.order(sortCol, { ascending, nullsFirst: false }).order('id', { ascending: true })
+    q = q.neq('qualification_status', 'converted') // registrados en SCENCE salen del CRM (su historial se conserva)
     if (qualification) q = q.eq('qualification_status', qualification)
     if (source) q = q.eq('source', source)
     if (industry) q = q.eq('industry', industry)
@@ -361,7 +399,11 @@ export async function GET(request: NextRequest) {
       }
       for (const row of rows ?? []) matchingById.set(row.id, row)
     }
-    const matching = Array.from(matchingById.values()).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    const matching = Array.from(matchingById.values()).sort((a, b) => {
+      const av = String(a[sortCol] ?? ''), bv = String(b[sortCol] ?? '')
+      if (!a[sortCol] !== !b[sortCol]) return a[sortCol] ? -1 : 1 // vacíos al final
+      return (ascending ? 1 : -1) * av.localeCompare(bv, 'es') || a.id.localeCompare(b.id)
+    })
     count = matching.length
     data = matching.slice((page - 1) * limit, page * limit)
   } else {
@@ -400,6 +442,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const allOptOuts = await getOptOuts(admin).catch(() => [] as Array<{ email: string; reason: string | null }>)
+  const optoutByEmail = new Map(allOptOuts.map(o => [normalizeEmail(o.email), o.reason]))
   const enriched = (data ?? []).map((row: any) => {
     const l = row
     const lastSignIn = l.email ? authMap.get(l.email.toLowerCase()) ?? null : null
@@ -411,12 +455,14 @@ export async function GET(request: NextRequest) {
       app_last_sign_in_at: lastSignIn,
       email_opened: Boolean(openedAt),
       email_opened_at: openedAt,
+      subscription: subscriptionOf(l, optoutByEmail),
+      lead_type: leadTypeOf(l),
     }
   })
 
-  const { communes, sources, regions, countries, campaigns } = await catalogPromise.catch(error => {
+  const { geo, communes, sources, regions, countries, campaigns } = await catalogPromise.catch(error => {
     console.error('[GET /api/crm-leads catalog]', error)
-    return { communes: [] as string[], sources: [] as string[], regions: [] as string[], countries: [] as string[], campaigns: [] as Array<{ id: string; name: string }> }
+    return { geo: {} as Record<string, Record<string, string[]>>, communes: [] as string[], sources: [] as string[], regions: [] as string[], countries: [] as string[], campaigns: [] as Array<{ id: string; name: string }> }
   })
 
   const stats = {
@@ -429,7 +475,7 @@ export async function GET(request: NextRequest) {
     openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
   }
 
-  return NextResponse.json({ data: enriched, total: count, page, limit, communes, sources, regions, countries, campaigns, stats })
+  return NextResponse.json({ data: enriched, total: count, page, limit, geo, communes, sources, regions, countries, campaigns, stats })
 }
 
 // ── POST /api/crm-leads — crear lead manual ──────────────────────────────────

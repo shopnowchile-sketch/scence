@@ -177,8 +177,8 @@ export async function POST(request: NextRequest) {
     r.commune = await canonicalCommune(admin, r.commune)
     // Ubicación solo contra `locations`; lo no reconocido pasa a `address`, no a campos libres.
     Object.assign(r, await normalizeLeadLocation(admin, r))
-    // Web desde correo corporativo, solo si viene vacía (nunca pisa un dato informado).
-    if (!r.website) r.website = websiteFromEmail(r.email)
+    // Web desde correo, solo si coincide con la empresa y viene vacía (nunca pisa un dato informado).
+    if (!r.website) r.website = websiteFromEmail(r.email, r.company_name)
   }
 
   const emails = Array.from(new Set(valid.map(r => r.email).filter(Boolean))) as string[]

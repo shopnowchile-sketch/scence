@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { applyEmailVariables, CRM_EMAIL_CATALOG, CRM_REGISTER_LINKS } from '@/lib/email-catalog'
-import { getResend, FROM_EMAIL, crmCatalogEmail } from '@/lib/resend'
+import { applyCrmPresentationVariables, applyEmailVariables, CRM_EMAIL_CATALOG, CRM_PRESENTATION_KEY, CRM_REGISTER_LINKS } from '@/lib/email-catalog'
+import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { crmCatalogEmail } from '@/lib/crm-email-html'
 import { buildUnsubscribeUrl, commercialEmailHeaders, getBlockedEmails, normalizeEmail } from '@/lib/email-optouts'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 import type { LoadedAttachment } from '@/lib/crm-attachments'
@@ -52,15 +53,22 @@ export async function sendLeadBatch(
         return null
       }
 
+      const presentation = template?.key === CRM_PRESENTATION_KEY
       const companyName = lead.company_name?.trim() || 'tu marca'
       const variables = {
         contact_name: lead.contact_name?.trim() || `equipo de ${companyName}`,
         company_name: companyName,
       }
-      const message = applyEmailVariables(customMessage || template?.defaultMessage || '', variables)
-      const resolvedSubject = applyEmailVariables(subject || template?.defaultSubject || 'Hola, ¿cómo estás?', variables)
+      const rawMessage = customMessage || template?.defaultMessage || ''
+      const rawSubject = subject || template?.defaultSubject || 'Hola, ¿cómo estás?'
+      const message = presentation ? applyCrmPresentationVariables(rawMessage, lead) : applyEmailVariables(rawMessage, variables)
+      const resolvedSubject = presentation
+        ? applyCrmPresentationVariables(rawSubject, lead).replace(/[\r\n]+/g, ' ').slice(0, 180)
+        : applyEmailVariables(rawSubject, variables)
+      if (presentation && (!message.trim() || !resolvedSubject.trim())) return null
       const html = crmCatalogEmail({
         message,
+        presentation,
         buttonLabel: template?.defaultButtonLabel,
         buttonUrl: template?.defaultButtonUrl,
         unsubscribeUrl,
@@ -78,7 +86,7 @@ export async function sendLeadBatch(
             to: lead.email as string, tags: [emailAudience('crm')],
             subject: resolvedSubject,
             html,
-            text: message,
+            text: presentation ? message.replace(/\*\*([^*\n]+)\*\*/g, '$1') : message,
             headers: commercialEmailHeaders(unsubscribeUrl),
             ...(attachment ? { attachments: [attachment] } : {}),
           })

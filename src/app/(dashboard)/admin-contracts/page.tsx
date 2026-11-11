@@ -8,7 +8,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { NDA_TEMPLATE_ES, templateVariables } from '@/lib/document-templates'
-import { applyEmailVariables, EMAIL_CATALOG, type EmailTemplateDefinition } from '@/lib/email-catalog'
+import PresentationPreview from '../admin-crm/PresentationPreview'
+import { applyEmailVariables, CRM_PRESENTATION_KEY, EMAIL_CATALOG, type EmailTemplateDefinition } from '@/lib/email-catalog'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type CampaignType =
@@ -128,15 +129,21 @@ function EmailPreviewModal({ template, onClose }: { template: EmailTemplateDefin
           <button onClick={onClose} aria-label="Cerrar"><X className="h-5 w-5 text-gray-400" /></button>
         </div>
         <div className="space-y-4 p-6">
-          <div className="rounded-xl border bg-gray-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Asunto</p><p className="mt-1 text-sm font-semibold text-gray-900">{subject}</p></div>
-          <div className="overflow-hidden rounded-xl border bg-white">
-            <div className="bg-gradient-to-r from-violet-600 to-indigo-600 p-6 text-center text-lg font-black text-white">SCENCE</div>
-            <div className="space-y-4 p-6 text-sm leading-6 text-gray-600">
-              <p>Hola Valentina,</p>
-              <p className="whitespace-pre-line">{message}</p>
-              {template.defaultButtonLabel && <div className="rounded-lg bg-violet-600 px-4 py-3 text-center font-semibold text-white">{template.defaultButtonLabel}</div>}
-            </div>
-          </div>
+          {template.key === CRM_PRESENTATION_KEY ? (
+            <PresentationPreview lead={sampleVariables} subject={template.defaultSubject} message={template.defaultMessage ?? ''} />
+          ) : (
+            <>
+              <div className="rounded-xl border bg-gray-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Asunto</p><p className="mt-1 text-sm font-semibold text-gray-900">{subject}</p></div>
+              <div className="overflow-hidden rounded-xl border bg-white">
+                <div className="bg-gradient-to-r from-violet-600 to-indigo-600 p-6 text-center text-lg font-black text-white">SCENCE</div>
+                <div className="space-y-4 p-6 text-sm leading-6 text-gray-600">
+                  <p>Hola Valentina,</p>
+                  <p className="whitespace-pre-line">{message}</p>
+                  {template.defaultButtonLabel && <div className="rounded-lg bg-violet-600 px-4 py-3 text-center font-semibold text-white">{template.defaultButtonLabel}</div>}
+                </div>
+              </div>
+            </>
+          )}
           <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Variables resueltas al enviar</p><div className="flex flex-wrap gap-2">{template.requiredVariables.map(variable => <code key={variable} className="rounded bg-violet-50 px-2 py-1 text-xs text-violet-700">{`{{${variable}}}`}</code>)}</div></div>
         </div>
       </div>

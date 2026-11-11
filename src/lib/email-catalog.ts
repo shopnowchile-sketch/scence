@@ -20,6 +20,7 @@ export type EmailTemplateDefinition = {
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
+export const CRM_PRESENTATION_KEY = 'crm_brand_presentation'
 export const CRM_REGISTER_LINKS = { brandUrl: `${APP_URL}/register/brand`, creatorUrl: `${APP_URL}/register` }
 
 // Registro único de los emails existentes. La persistencia continúa en código:
@@ -166,6 +167,48 @@ Priscilla
 SCENCE`,
     registrationSection: true,
   },
+  {
+    key: CRM_PRESENTATION_KEY,
+    name: 'Presentación SCENCE — Marcas y negocios',
+    description: 'Presentación comercial de SCENCE escrita por su fundadora.',
+    category: 'crm',
+    audience: 'brand',
+    usage: 'manual',
+    contexts: ['crm'],
+    requiredVariables: ['contact_name', 'company_name'],
+    defaultSubject: 'Me encantaría que conozcas SCENCE 💙',
+    defaultMessage: `Hola {{contact_name}}, ¿cómo estás?
+
+Soy Pri, fundadora de **SCENCE**, un software que conecta empresas, marcas y pymes con creadores de contenido.
+
+Hemos tenido un súper buen año trabajando con marcas que confiaron en nuestra plataforma durante su etapa piloto. Hoy podemos decir que **SCENCE funciona y está haciendo que trabajar con creadores de contenido sea mucho más fácil.**
+
+Nuestra plataforma permite gestionar campañas de principio a fin, sin tener que estar haciendo seguimiento por WhatsApp o contactando a cada creadora por separado.
+
+Me encantaría que conocieras SCENCE y que podamos crear una campaña para **{{company_name}}**.
+
+Creo muchísimo en el poder de conectar marcas con creadores. Hoy es una de las formas más cercanas y auténticas de dar a conocer un negocio, generar confianza y llegar a nuevos clientes.
+
+**¿Te gustaría conocer cómo funciona?**
+
+Puedo enviarte un video cortito de bienvenida donde te mostramos la plataforma y, si te interesa, después coordinamos una pequeña reunión para conversar sobre tu negocio y lo que podríamos hacer juntos.
+
+**¡También me encantaría saber de qué se trata tu negocio!**
+
+Y si eres creador de contenido, también puedes sumarte a nuestra comunidad directamente en **www.scence.cl**. Tenemos un plan gratuito y un plan Pro, con distintos beneficios y oportunidades. Solo necesitas crear tu cuenta para conocer todos los detalles.
+
+Estamos muy felices de seguir creciendo y de poder ayudar a más negocios a conectar con personas reales.
+
+¡Espero que podamos trabajar juntos!
+
+Un abrazo,
+
+**Pri**
+Fundadora de SCENCE
+WhatsApp: +56 9 7526 5196
+Comunidad: @influencers.snc
+Software: www.scence.cl`,
+  },
   { key: 'booking_confirmed', name: 'Booking confirmado', description: 'Confirma fecha, lugar y participación en un booking.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['recipient_name', 'campaign_name', 'event_date', 'event_location'], defaultSubject: 'Booking confirmado: {{campaign_name}}' },
   { key: 'application_approved', name: 'Postulación aprobada', description: 'Informa a la influencer que fue seleccionada.', category: 'campaigns', audience: 'influencer', usage: 'automatic', contexts: ['system'], requiredVariables: ['influencer_name', 'campaign_name', 'brand_name', 'portal_url'], defaultSubject: '¡Tu postulación a {{campaign_name}} fue aprobada!' },
   { key: 'new_application', name: 'Nueva postulación recibida', description: 'Alerta a la marca sobre una nueva postulante.', category: 'campaigns', audience: 'brand', usage: 'automatic', contexts: ['system'], requiredVariables: ['recipient_name', 'influencer_name', 'campaign_name', 'review_url'], defaultSubject: 'Nueva postulación: {{campaign_name}}' },
@@ -213,4 +256,20 @@ export function getEmailTemplate(key: string): EmailTemplateDefinition | undefin
 
 export function applyEmailVariables(value: string, variables: Record<string, string>): string {
   return Object.entries(variables).reduce((result, [key, replacement]) => result.replaceAll(`{{${key}}}`, replacement), value)
+}
+
+export function applyCrmPresentationVariables(
+  value: string,
+  lead: { contact_name?: string | null; company_name?: string | null },
+): string {
+  const contactName = lead.contact_name?.replace(/\{\{[^{}]*\}\}/g, '').trim()
+  const companyName = lead.company_name?.replace(/\{\{[^{}]*\}\}/g, '').trim()
+  const copy = value
+    .replaceAll('Hola {{contact_name}},', contactName ? 'Hola {{contact_name}},' : 'Hola,')
+    .replaceAll('**{{company_name}}**', companyName ? '**{{company_name}}**' : 'tu negocio')
+  return copy.replace(/\{\{([^{}]*)\}\}/g, (_, key) => {
+    if (key === 'contact_name') return contactName ?? ''
+    if (key === 'company_name') return companyName || 'tu negocio'
+    return ''
+  })
 }

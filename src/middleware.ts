@@ -110,7 +110,7 @@ export async function middleware(request: NextRequest) {
     '/admin-campaigns', '/admin-influencers', '/admin-analytics', '/admin-settings',
     '/admin-billing', '/admin-bookings', '/admin-brands', '/admin-payroll',
     '/admin-affiliates', '/admin-contracts', '/admin-events', '/admin-support',
-    '/admin-dash', '/admin-crm', '/admin-requirements',
+    '/admin-dash', '/admin-crm', '/admin-requirements', '/admin-review',
   ]
   const BRAND_ONLY = [
     '/brand-dash', '/brand-campaigns', '/brand-influencers', '/brand-opportunities',

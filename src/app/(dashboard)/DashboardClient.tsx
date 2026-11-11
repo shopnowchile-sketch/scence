@@ -694,7 +694,7 @@ export function DashboardClient() {
           <KpiGrid>
             <KpiCard icon={<Building2 className="h-5 w-5" />} value={String(computed.pendingBrandsCount)} title="Marcas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-brands?status=pending_approval" />
             <KpiCard icon={<CalendarDays className="h-5 w-5" />} value={String(computed.pendingCampaignsCount)} title="Campañas pendientes" subtitle="revisar y aprobar" tone="yellow" href="/admin-campaigns?status=pending_approval" />
-            <KpiCard icon={<UserCheck className="h-5 w-5" />} value={String(computed.pendingDeliverablesCount)} title="Contenido por revisar" subtitle="entregables enviados" tone="purple" href="/admin-campaigns" />
+            <KpiCard icon={<UserCheck className="h-5 w-5" />} value={String(computed.pendingDeliverablesCount)} title="Contenido por revisar" subtitle="aprobar o rechazar aquí" tone="purple" href="/admin-review" />
           </KpiGrid>
         </section>
 

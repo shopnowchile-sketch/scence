@@ -1,3 +1,4 @@
+import { recordBrandActivity } from '@/lib/brand-activity'
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveBrandPlanAccess } from '@/lib/plan-limits'
@@ -162,5 +163,6 @@ export async function PATCH(request: Request) {
       .update({ ...representativeUpdate, updated_at: new Date().toISOString() }).eq('id', userId)
     if (profileError) return NextResponse.json({ error: `Se guardó la empresa, pero no el representante legal: ${profileError.message}` }, { status: 500 })
   }
+  await recordBrandActivity(admin, access, userId, 'profileUpdated')
   return NextResponse.json({ data })
 }

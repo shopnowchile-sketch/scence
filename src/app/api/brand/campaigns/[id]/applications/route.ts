@@ -1,3 +1,4 @@
+import { recordBrandActivity } from '@/lib/brand-activity'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { acceptCampaignApplication, rejectCampaignApplications } from '@/lib/campaign-applications'
@@ -101,6 +102,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       applicationIds: application_ids ?? (application_id ? [application_id] : []),
     })
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    if (result.rejectedIds.length) await recordBrandActivity(admin, access, user.id, 'applicationsRejected', campaign.name)
     return NextResponse.json({ ok: true, status: 'rejected', rejected_ids: result.rejectedIds })
   }
 
@@ -137,5 +139,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     agreedFee: agreed_fee ?? null,
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  await recordBrandActivity(admin, access, user.id, 'applicationAccepted', campaign.name)
   return NextResponse.json({ ok: true, status: 'accepted' })
 }

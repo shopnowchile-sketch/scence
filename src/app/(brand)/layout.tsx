@@ -17,6 +17,18 @@ import { AgencyCheckoutGate } from '@/components/plan/AgencyCheckoutGate'
 // con el usuario de la sesión (auth.getUser()), válido para cualquier rol.
 import { PresenceHeartbeat } from '../(influencer)/_components/PresenceHeartbeat'
 
+function BrandSectionVisit({ pathname }: { pathname: string }) {
+  useEffect(() => {
+    void fetch('/api/brand/activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: pathname }),
+      keepalive: true,
+    }).catch(() => {})
+  }, [pathname])
+  return null
+}
+
 export default function BrandLayout({ children }: { children: React.ReactNode }) {
   const didRegister = useRef(false)
   // Instagram obligatorio en el portal marca (mismo criterio que el gate del
@@ -224,6 +236,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
               <div className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
             </div>
           ) : <>
+            <BrandSectionVisit pathname={pathname} />
             {children}
             <BrandOnboarding />
           </>}

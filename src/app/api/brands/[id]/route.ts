@@ -1,3 +1,4 @@
+import { BRAND_ACTIVITY_LABELS } from '@/lib/brand-activity'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
@@ -9,7 +10,7 @@ import { emailAudience } from '@/lib/inactive-influencer-email-guard'
 type Params = { params: { id: string } }
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -17,6 +18,36 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const admin = createAdminClient()
   if (!await isPlatformAdmin(user.id, admin)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  if (req.nextUrl.searchParams.get('view') === 'history') {
+    const { data, error } = await admin
+      .from('audit_logs')
+      .select('id, action, changes, created_at, actor:profiles!audit_logs_actor_id_fkey(full_name)')
+      .eq('entity_type', 'brand')
+      .eq('entity_id', params.id)
+      .in('action', Object.keys(BRAND_ACTIVITY_LABELS).map(key => `brand_portal.${key}`))
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(50)
+      .returns<Array<{
+        id: string
+        action: string
+        changes: { campaign_name?: string } | null
+        created_at: string
+        actor: { full_name: string | null } | null
+      }>>()
+
+    if (error) return NextResponse.json({ error: 'No se pudo cargar el historial' }, { status: 500 })
+    return NextResponse.json({
+      data: (data ?? []).map(event => ({
+        id: event.id,
+        label: BRAND_ACTIVITY_LABELS[event.action.slice('brand_portal.'.length) as keyof typeof BRAND_ACTIVITY_LABELS],
+        campaign: event.changes?.campaign_name ?? null,
+        actor: event.actor?.full_name ?? null,
+        at: event.created_at,
+      })),
+    }, { headers: { 'Cache-Control': 'private, no-store' } })
   }
 
   const { data: brand, error: brandError } = await admin

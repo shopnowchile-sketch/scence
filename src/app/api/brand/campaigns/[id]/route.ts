@@ -1,3 +1,4 @@
+import { recordBrandActivity } from '@/lib/brand-activity'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
@@ -423,6 +424,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
+  const submitted = data.status === 'pending_approval' && campaignBase.status !== data.status
+  await recordBrandActivity(admin, access, user.id, submitted ? 'campaignSubmitted' : 'campaignUpdated', data.name)
   return NextResponse.json({ data, deliverables_sync: deliverablesSync })
 }
 

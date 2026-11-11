@@ -330,12 +330,25 @@ export async function processLeadBatch(
       const released = await releaseLeadSend(admin, lead.id, claim)
       if (released.error) console.error('[crm-bulk-send] no se pudo liberar la reserva', released.error)
       result.failed++
-      await admin.from('crm_lead_activities').insert({
-        lead_id: lead.id,
-        action_type: 'email_sent',
-        description: `Envío masivo falló a ${lead.email}: ${providerError.message ?? 'error desconocido'}`,
-        created_by: userId,
-      })
+      const [event, activity] = await Promise.all([
+        admin.from('crm_email_events').insert({
+          lead_id: lead.id,
+          event_type: 'email.failed',
+          recipient_email: lead.email,
+          subject: outgoing.subject,
+          raw_payload: { source: 'bulk-send', job_id: jobId, template_key: outgoing.templateKey },
+        }),
+        admin.from('crm_lead_activities').insert({
+          lead_id: lead.id,
+          action_type: 'email_sent',
+          description: `Envío masivo falló a ${lead.email}: ${providerError.message ?? 'error desconocido'}`,
+          created_by: userId,
+        }),
+      ])
+      if (event.error || activity.error) {
+        result.recordErrors += Number(Boolean(event.error)) + Number(Boolean(activity.error))
+        console.error('[crm-bulk-send] no se pudo registrar un rechazo definitivo', { jobId, leadId: lead.id })
+      }
       continue
     }
 

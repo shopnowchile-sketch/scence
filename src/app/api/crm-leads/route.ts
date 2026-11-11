@@ -38,10 +38,12 @@ const EMAIL_STATUS_EVENT_TYPES: Record<string, string[]> = {
   engaged: ['email.opened', 'email.clicked'],
   failed: ['email.failed'],
   bounced: ['email.bounced'],
-  failed_bounced: ['email.failed', 'email.bounced'],
+  complained: ['email.complained'],
+  suppressed: ['email.suppressed'],
+  failed_bounced: ['email.failed', 'email.bounced', 'email.complained', 'email.suppressed'],
 }
 
-type EmailEventSets = Record<'sent' | 'delivered' | 'opened' | 'clicked' | 'failed' | 'bounced', Set<string>>
+type EmailEventSets = Record<'sent' | 'delivered' | 'opened' | 'clicked' | 'failed' | 'bounced' | 'complained' | 'suppressed', Set<string>>
 
 function getEmailEventLeadIds(emailStatus: string, emailEventSets: EmailEventSets) {
   // "No abierto": entregado y sin ninguna apertura registrada.
@@ -56,6 +58,8 @@ function getEmailEventLeadIds(emailStatus: string, emailEventSets: EmailEventSet
     'email.clicked': emailEventSets.clicked,
     'email.failed': emailEventSets.failed,
     'email.bounced': emailEventSets.bounced,
+    'email.complained': emailEventSets.complained,
+    'email.suppressed': emailEventSets.suppressed,
   }
   return Array.from(new Set(eventTypes.flatMap(eventType => Array.from(setByEventType[eventType] ?? []))))
 }
@@ -187,7 +191,7 @@ async function fetchAllPages<T>(
 }
 
 function emptyEmailEventSets(): EmailEventSets {
-  return { sent: new Set<string>(), delivered: new Set<string>(), opened: new Set<string>(), clicked: new Set<string>(), failed: new Set<string>(), bounced: new Set<string>() }
+  return { sent: new Set<string>(), delivered: new Set<string>(), opened: new Set<string>(), clicked: new Set<string>(), failed: new Set<string>(), bounced: new Set<string>(), complained: new Set<string>(), suppressed: new Set<string>() }
 }
 
 const getEmailEventSets = cachedLoader(async admin => {
@@ -204,6 +208,7 @@ const getEmailEventSets = cachedLoader(async admin => {
   const setByType: Record<string, Set<string>> = {
     'email.sent': sets.sent, 'email.delivered': sets.delivered, 'email.opened': sets.opened,
     'email.clicked': sets.clicked, 'email.failed': sets.failed, 'email.bounced': sets.bounced,
+    'email.complained': sets.complained, 'email.suppressed': sets.suppressed,
   }
   for (const row of rows) {
     if (row.lead_id && row.event_type) setByType[row.event_type]?.add(row.lead_id)
@@ -508,6 +513,7 @@ export async function GET(request: NextRequest) {
     clicked: emailEventSets.clicked.size,
     failed: emailEventSets.failed.size,
     bounced: emailEventSets.bounced.size,
+    failedOrBounced: getEmailEventLeadIds('failed_bounced', emailEventSets)?.length ?? 0,
     openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
   }
 

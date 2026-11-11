@@ -95,6 +95,7 @@ type EmailStats = {
   clicked: number
   failed: number
   bounced: number
+  failedOrBounced: number
   openRate: number
 }
 
@@ -143,7 +144,7 @@ export function CrmLeadsClient() {
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [communes, setCommunes] = useState<string[]>([])
   const [sources, setSources] = useState<string[]>([])
-  const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, clicked: 0, failed: 0, bounced: 0, openRate: 0 })
+  const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, clicked: 0, failed: 0, bounced: 0, failedOrBounced: 0, openRate: 0 })
   const [showAddModal, setShowAddModal] = useState(false)
   const [savingLead, setSavingLead] = useState(false)
   const [form, setForm] = useState<LeadForm>(EMPTY_FORM)
@@ -165,6 +166,15 @@ export function CrmLeadsClient() {
   const tableRef = useRef<HTMLDivElement>(null)
 
   function goToEmailStatus(value: string) {
+    if (value === 'failed_bounced') {
+      setSelectedIds([])
+      setSearch('')
+      setQualification('')
+      setSelectedCommunes([])
+      setSource('')
+      setContactData('')
+      setExtra({})
+    }
     setEmailStatus(value)
     setPage(1)
     requestAnimationFrame(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -528,10 +538,11 @@ export function CrmLeadsClient() {
           <button
             type="button"
             onClick={() => goToEmailStatus('failed_bounced')}
+            disabled={selectingAll || deleting}
             className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
           >
-            <p className="text-xs text-gray-500">Fallidos/Rebotados</p>
-            <p className="text-2xl font-bold text-gray-900">{(stats.failed + stats.bounced).toLocaleString('es-CL')}</p>
+            <p className="text-xs text-gray-500" title="Incluye correos fallidos, rebotes, quejas de spam y supresiones de Resend">Fallidos, rebotes y spam</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.failedOrBounced.toLocaleString('es-CL')}</p>
           </button>
         </div>
 
@@ -723,7 +734,7 @@ export function CrmLeadsClient() {
               )}
             >
               <option value="">Email</option>
-              {[['not_sent', 'No enviado'], ['sent', 'Enviado'], ['delivered', 'Entregado'], ['opened', 'Abierto'], ['not_opened', 'No abierto'], ['clicked', 'Clic'], ['bounced', 'Rebotado']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {[['not_sent', 'No enviado'], ['sent', 'Enviado'], ['delivered', 'Entregado'], ['opened', 'Abierto'], ['not_opened', 'No abierto'], ['clicked', 'Clic'], ['bounced', 'Rebotado'], ['failed_bounced', 'Fallidos, rebotes y spam'], ['complained', 'Marcado como spam'], ['suppressed', 'Suprimido por Resend']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
 
             <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">

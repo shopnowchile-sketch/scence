@@ -22,6 +22,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  const secret = process.env.INTERNAL_JOB_SECRET
+  if (!secret) {
+    console.error('[POST /api/crm-leads/bulk-send] falta env INTERNAL_JOB_SECRET')
+    return NextResponse.json({ error: 'Falta configuración del servidor (INTERNAL_JOB_SECRET)' }, { status: 500 })
+  }
+
   const body = await request.json().catch(() => ({}))
   const leadIds = Array.isArray(body.lead_ids)
     ? body.lead_ids.filter((id: unknown) => typeof id === 'string' && id.length > 0)
@@ -87,12 +93,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: jobError?.message ?? 'No se pudo crear el job' }, { status: 500 })
   }
 
-  const secret = process.env.INTERNAL_JOB_SECRET
-  if (!secret) {
-    console.error('[POST /api/crm-leads/bulk-send] falta env INTERNAL_JOB_SECRET')
-    return NextResponse.json({ error: 'Falta configuración del servidor (INTERNAL_JOB_SECRET)' }, { status: 500 })
-  }
-
   // Dispara la primera tanda en background — waitUntil mantiene viva la
   // función el tiempo necesario para que el fetch salga, aunque ya hayamos
   // respondido al cliente.
@@ -101,6 +101,8 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-internal-job-secret': secret },
       body: JSON.stringify({ job_id: job.id }),
+    }).then(response => {
+      if (!response.ok) console.error('[bulk-send] primera tanda rechazada', { jobId: job.id, status: response.status })
     }).catch(err => console.error('[bulk-send] error disparando tanda inicial', err))
   )
 

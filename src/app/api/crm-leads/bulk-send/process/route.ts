@@ -9,9 +9,10 @@ import { claimJobBatch, finishJobBatch, failJobBatch, type BatchLead } from '@/l
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-// Función de larga duración: 1 tanda de 50 emails (con 150ms de espera entre
-// cada uno) puede tomar hasta ~20s. Default de Vercel (10s) no alcanza.
-export const maxDuration = 60
+// Una tanda puede rozar el minuto con latencia del proveedor. El margen extra
+// deja tiempo para guardar el avance y disparar la siguiente tanda. Sigue por
+// debajo del lease de tres minutos.
+export const maxDuration = 120
 
 // POST /api/crm-leads/bulk-send/process — interno, NO expuesto a usuarios.
 // Se llama a sí mismo (vía waitUntil) hasta que el job completa. Protegido
@@ -178,6 +179,8 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-job-secret': chainSecret },
         body: JSON.stringify({ job_id: jobId }),
+      }).then(response => {
+        if (!response.ok) console.error('[bulk-send/process] siguiente tanda rechazada', { jobId, status: response.status })
       }).catch(err => console.error('[bulk-send/process] error encadenando siguiente tanda', err))
     )
   }

@@ -95,7 +95,8 @@ type EmailStats = {
   clicked: number
   failed: number
   bounced: number
-  openRate: number
+  failedOrBounced: number
+  openRate: number | null
 }
 
 const COLUMN_CONFIG: { key: ColumnKey; label: string }[] = [
@@ -143,7 +144,7 @@ export function CrmLeadsClient() {
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const [communes, setCommunes] = useState<string[]>([])
   const [sources, setSources] = useState<string[]>([])
-  const [stats, setStats] = useState<EmailStats>({ sent: 0, delivered: 0, opened: 0, clicked: 0, failed: 0, bounced: 0, openRate: 0 })
+  const [stats, setStats] = useState<EmailStats | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [savingLead, setSavingLead] = useState(false)
   const [form, setForm] = useState<LeadForm>(EMPTY_FORM)
@@ -162,15 +163,26 @@ export function CrmLeadsClient() {
   const [bulkAttachment, setBulkAttachment] = useState<CrmAttachment | null>(null)
   const [sendingBulk, setSendingBulk] = useState(false)
   const limit = 50
+  const loadRequest = useRef(0)
   const tableRef = useRef<HTMLDivElement>(null)
 
   function goToEmailStatus(value: string) {
+    if (!selectingAll && !deleting) {
+      setSelectedIds([])
+      setSearch('')
+      setQualification('')
+      setSelectedCommunes([])
+      setSource('')
+      setContactData('')
+      setExtra({})
+    } else return
     setEmailStatus(value)
     setPage(1)
     requestAnimationFrame(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequest.current
     setLoading(true)
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
     if (search) params.set('search', search)
@@ -184,10 +196,12 @@ export function CrmLeadsClient() {
     try {
       const r = await fetch(`/api/crm-leads?${params}`)
       const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? 'Error cargando contactos')
+      if (requestId !== loadRequest.current) return
       const nextLeads = j.data ?? []
       setLeads(nextLeads)
       setTotal(j.total ?? 0)
-      if (j.stats) setStats(j.stats)
+      setStats(j.stats ?? null)
       if (j.geo) setGeo(j.geo)
       if (Array.isArray(j.communes)) setCommunes(j.communes)
       // Si la comuna elegida ya no tiene leads (desapareció de la lista), se quita el filtro.
@@ -197,10 +211,11 @@ export function CrmLeadsClient() {
       }
       if (Array.isArray(j.sources)) setSources(j.sources)
       if (Array.isArray(j.campaigns)) setCampaigns(j.campaigns)
-    } catch {
-      toast.error('Error cargando leads')
+    } catch (error) {
+      if (requestId === loadRequest.current) toast.error(error instanceof Error ? error.message : 'Error cargando contactos')
+    } finally {
+      if (requestId === loadRequest.current) setLoading(false)
     }
-    setLoading(false)
   }, [page, search, qualification, selectedCommunes, source, emailStatus, contactData, extra, sort])
 
   useEffect(() => { load() }, [load])
@@ -329,11 +344,12 @@ export function CrmLeadsClient() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudieron enviar los emails')
 
-      toast.success(`Envío en marcha: ${j.total} leads. Te llega un email cuando termine.`)
+      toast.success(`Envío en cola para ${j.total} contactos.`, {
+        action: { label: 'Ver avance', onClick: () => window.location.assign(`/admin-crm/envios/${j.job_id}`) },
+      })
       setShowBulkSendModal(false)
       resetBulkTemplate()
       setSelectedIds([])
-      await load()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudieron enviar los emails')
     } finally {
@@ -492,47 +508,51 @@ export function CrmLeadsClient() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 w-full">
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('sent')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Enviados</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.sent.toLocaleString('es-CL')}</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('delivered')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Entregados</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.delivered.toLocaleString('es-CL')}</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('opened')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Abiertos</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.opened.toLocaleString('es-CL')}</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('opened')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Tasa apertura</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.openRate}%</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => goToEmailStatus('failed_bounced')}
-            className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
-          >
-            <p className="text-xs text-gray-500">Fallidos/Rebotados</p>
-            <p className="text-2xl font-bold text-gray-900">{(stats.failed + stats.bounced).toLocaleString('es-CL')}</p>
-          </button>
+        <div className="w-full space-y-2">
+          <p className="text-xs text-gray-500">Historial de correo de los contactos del CRM · todos los países{!stats && !loading ? ' · métricas no disponibles' : ''}</p>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <button
+              type="button"
+              onClick={() => goToEmailStatus('sent')}
+              className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+            >
+              <p className="text-xs text-gray-500">Enviados</p>
+              <p className="text-2xl font-bold text-gray-900">{stats?.sent.toLocaleString('es-CL') ?? '—'}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => goToEmailStatus('delivered')}
+              className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+            >
+              <p className="text-xs text-gray-500">Entregados</p>
+              <p className="text-2xl font-bold text-gray-900">{stats?.delivered.toLocaleString('es-CL') ?? '—'}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => goToEmailStatus('opened')}
+              className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+            >
+              <p className="text-xs text-gray-500">Abiertos</p>
+              <p className="text-2xl font-bold text-gray-900">{stats?.opened.toLocaleString('es-CL') ?? '—'}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => goToEmailStatus('opened')}
+              className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+            >
+              <p className="text-xs text-gray-500" title="Porcentaje de contactos con apertura entre quienes tienen entrega registrada">Tasa de apertura</p>
+              <p className="text-2xl font-bold text-gray-900">{stats?.openRate != null ? `${stats.openRate}%` : '—'}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => goToEmailStatus('failed_bounced')}
+              disabled={selectingAll || deleting}
+              className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-violet-300 hover:bg-violet-50/40 transition-colors"
+            >
+              <p className="text-xs text-gray-500" title="Incluye correos fallidos, rebotes, quejas de spam y supresiones de Resend">Fallidos, rebotes y spam</p>
+              <p className="text-2xl font-bold text-gray-900">{stats?.failedOrBounced.toLocaleString('es-CL') ?? '—'}</p>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -723,7 +743,7 @@ export function CrmLeadsClient() {
               )}
             >
               <option value="">Email</option>
-              {[['not_sent', 'No enviado'], ['sent', 'Enviado'], ['delivered', 'Entregado'], ['opened', 'Abierto'], ['not_opened', 'No abierto'], ['clicked', 'Clic'], ['bounced', 'Rebotado']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {[['not_sent', 'No enviado'], ['sent', 'Enviado'], ['delivered', 'Entregado'], ['opened', 'Abierto'], ['not_opened', 'No abierto'], ['clicked', 'Clic'], ['bounced', 'Rebotado'], ['failed_bounced', 'Fallidos, rebotes y spam'], ['complained', 'Marcado como spam'], ['suppressed', 'Suprimido por Resend']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
 
             <div className="inline-flex rounded-lg bg-gray-100 p-1" aria-label="Filtrar por interacción de email">

@@ -96,13 +96,15 @@ describe('processLeadBatch — envío por lead', () => {
     assert.equal(handled.size, 0)
   })
 
-  test('rechazo definitivo de Resend: libera la reserva y no deja evento', async () => {
+  test('rechazo definitivo de Resend: libera la reserva y registra el fallo', async () => {
     const leads = [lead('a', { contacted_at: '2026-09-01T00:00:00.000Z' })]
     const db = freshDb(leads)
     const r = await processLeadBatch(makeAdmin(db), { jobId: 'J', userId: 'u', leads }, deps(async () => ({ id: null, error: { name: 'validation_error', message: 'bad' } })))
     assert.deepEqual([r.sent, r.failed, r.unconfirmed], [0, 1, 0])
     assert.equal(db.crm_leads[0].contacted_at, '2026-09-01T00:00:00.000Z')
-    assert.equal(db.crm_email_events.length, 0)
+    assert.equal(db.crm_email_events.length, 1)
+    assert.equal(db.crm_email_events[0].event_type, 'email.failed')
+    assert.equal(db.crm_email_events[0].raw_payload.job_id, 'J')
   })
 
   for (const [label, sender] of [

@@ -46,7 +46,7 @@ const fresh = (): Record<string, Row[]> => ({
 
 const req = (url: string) => ({ url, headers: new Headers(), nextUrl: new URL(url) }) as any
 const call = async (user: string | null, camp: string, inf: string) => {
-  ;(globalThis as any).__routeHarness = { user: user ? { id: user } : null, admin: makeAdmin(fresh()) }
+  ;(globalThis as any).__routeHarness = { user: user ? { id: user } : null, admin: makeAdmin(fresh(), { signedBrandFixtures: true }) }
   const route = await import('../src/app/api/campaigns/[id]/influencer-report/route.ts')
   try { return (await (route as any).GET(req(`http://localhost/x?influencer_id=${inf}`), { params: { id: camp } })).status as number } catch { return -1 }
 }
@@ -71,7 +71,7 @@ test('la colaboradora aplica las mismas reglas: member de la marca colaboradora 
   const data = fresh()
   data.organization_members.push(m('uMemB', 'org-B', 'member', 'brand-B'), m('uFinB', 'org-B', 'finance', 'brand-B'))
   const res = async (u: string, camp: string) => {
-    ;(globalThis as any).__routeHarness = { user: { id: u }, admin: makeAdmin(data) }
+    ;(globalThis as any).__routeHarness = { user: { id: u }, admin: makeAdmin(data, { signedBrandFixtures: true }) }
     const route = await import('../src/app/api/campaigns/[id]/influencer-report/route.ts')
     return (await (route as any).GET(req('http://localhost/x?influencer_id=inf-in'), { params: { id: camp } })).status as number
   }

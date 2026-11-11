@@ -77,3 +77,8 @@ const PENDING_BRAND_PORTAL_PATHS = [
 export function pendingBrandPathAllowed(pathname: string): boolean {
   return PENDING_BRAND_PORTAL_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
 }
+
+export function isBrandCampaignPath(pathname: string): boolean {
+  return pathname === '/brand-campaigns' || pathname.startsWith('/brand-campaigns/')
+    || pathname === '/brand/campaigns' || pathname.startsWith('/brand/campaigns/')
+}

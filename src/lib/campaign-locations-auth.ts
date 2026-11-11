@@ -21,7 +21,7 @@ export async function authorizeCampaignLocations(
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
 
-  const auth = await authorizeCampaignBrandAction(user.id, campaignId, permission)
+  const auth = await authorizeCampaignBrandAction(user.id, campaignId, permission, { allowOnboardingDraft: true })
   if (!auth) return { ok: false, response: NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 }) }
   return { ok: true, auth, userId: user.id }
 }

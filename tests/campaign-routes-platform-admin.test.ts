@@ -32,7 +32,7 @@ const fresh = (): Record<string, Row[]> => ({
   campaigns: [{ id: 'camp-A', name: 'C', organization_id: 'org-A', brand_id: 'brand-A', created_by_brand_id: null, type: 'ugc', status: 'active', metadata: {} }],
   campaign_brands: [], campaign_influencers: [], campaign_deliverables: [], influencers: [], influencer_social_profiles: [],
 })
-const as = (user: string | null) => { const db = fresh(); ;(globalThis as any).__routeHarness = { user: user ? { id: user, user_metadata: {} } : null, admin: makeAdmin(db, { projectColumns: true }) }; return db }
+const as = (user: string | null) => { const db = fresh(); ;(globalThis as any).__routeHarness = { user: user ? { id: user, user_metadata: {} } : null, admin: makeAdmin(db, { signedBrandFixtures: true, projectColumns: true }) }; return db }
 const mk = (url: string, body: unknown = {}) => ({ url, json: async () => body, headers: new Headers(), nextUrl: new URL(url) }) as any
 const ctx = { params: { id: 'camp-A' } }
 const st = async (fn: () => Promise<Response>) => { try { return (await fn()).status } catch { return 'OK_Y_FALLO_DESPUES' as const } }

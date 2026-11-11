@@ -46,7 +46,7 @@ const fresh = (): Record<string, Row[]> => ({
   payroll_runs: [{ id: 'pr-A', organization_id: 'org-A', status: 'draft' }, { id: 'pr-adm', organization_id: 'org-adm', status: 'draft' }], payroll_items: [],
 })
 const req = (url: string, body: unknown = {}) => ({ url, json: async () => body, headers: new Headers(), nextUrl: new URL(url) }) as any
-const as = (user: string | null, db = fresh()) => { ;(globalThis as any).__routeHarness = { user: user ? { id: user } : null, admin: makeAdmin(db, { projectColumns: true }) }; return db }
+const as = (user: string | null, db = fresh()) => { ;(globalThis as any).__routeHarness = { user: user ? { id: user } : null, admin: makeAdmin(db, { signedBrandFixtures: true, projectColumns: true }) }; return db }
 const status = async (fn: () => Promise<Response>) => { try { return (await fn()).status } catch { return 'AUTORIZADO_Y_FALLO_DESPUES' as const } }
 
 const bookings = await import('../src/app/api/bookings/route.ts')

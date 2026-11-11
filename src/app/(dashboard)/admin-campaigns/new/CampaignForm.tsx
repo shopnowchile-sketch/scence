@@ -678,6 +678,11 @@ export function CampaignForm({
         }
         if (!reviewRes.ok) {
           const reviewError = await reviewRes.json().catch(() => ({}))
+          if (reviewError.code === 'BRAND_NDA_REQUIRED') {
+            toast.info('Borrador guardado. Firma el NDA antes de enviarlo a revisión.')
+            router.push(`/brand-documents?campaign=${encodeURIComponent(savedCampaignId)}`)
+            return
+          }
           throw new Error(reviewError.error ?? 'La campaña se creó, pero no se pudo enviar a revisión')
         }
       }

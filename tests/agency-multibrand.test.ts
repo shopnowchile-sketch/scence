@@ -44,7 +44,7 @@ const fresh = (): Record<string, Row[]> => ({
   ],
   campaign_brands: [],
 })
-const adminWith = (db = fresh()) => ({ db, admin: makeAdmin(db, {}) as any })
+const adminWith = (db = fresh()) => ({ db, admin: makeAdmin(db, { signedBrandFixtures: true }) as any })
 
 // ── Reglas puras de la mensualidad ───────────────────────────────────────────
 test('agencyMonthIsCurrent: activa vigente, gracia, vencida, cancelada, otro plan y override', () => {
@@ -111,7 +111,7 @@ test('isAgencyScopedBrand: IC y sus marcas sí; una marca normal no (su flujo no
 // ── Compuerta en «Enviar a aprobación» (handler real) ────────────────────────
 const req = (body: unknown) => ({ url: 'http://localhost/api/brand/campaigns/x', json: async () => body, headers: new Headers() }) as any
 const as = (user: string, db: Record<string, Row[]>, cookies: Record<string, string> = {}) => {
-  ;(globalThis as any).__routeHarness = { user: { id: user }, admin: makeAdmin(db, {}), cookies }
+  ;(globalThis as any).__routeHarness = { user: { id: user }, admin: makeAdmin(db, { signedBrandFixtures: true }), cookies }
 }
 const submit = async (campaignId: string) => {
   const route = await import('../src/app/api/brand/campaigns/[id]/route.ts')
@@ -215,4 +215,47 @@ test('la marca no puede activar la campaña por su cuenta aunque haya pagado', a
   const res = await (route as any).PATCH(req({ action: 'activate' }), { params: { id: 'camp-A' } })
   assert.equal(res.status, 403)
   assert.equal(db.campaigns.find(c => c.id === 'camp-A')!.status, 'draft')
+})
+
+test('marca nueva: borrador gratis, primero pago, luego NDA y recién entonces revisión', async () => {
+  const db = fresh()
+  db.brands.find(brand => brand.id === 'brand-X')!.status = 'pending_approval'
+  db.brand_documents = []
+  as('ownerX', db)
+  const list = await import('../src/app/api/brand/campaigns/route.ts')
+  const created = await list.POST(req({ name: 'Nuevo borrador', type: 'ugc', visibility: 'open' }))
+  assert.equal(created.status, 201)
+  assert.equal(db.campaigns.at(-1)?.status, 'draft')
+
+  const campaign = db.campaigns.find(row => row.id === 'camp-X')!
+  assert.equal((await submit(campaign.id)).status, 402)
+  assert.equal(campaign.status, 'draft')
+  db.subscriptions.push(sub('org-X', 'brand-X'))
+  const unsigned = await submit(campaign.id)
+  assert.equal(unsigned.status, 403)
+  assert.equal((await unsigned.json()).code, 'BRAND_NDA_REQUIRED')
+  assert.equal(campaign.status, 'draft')
+  db.brand_documents.push({ id: 'nda', brand_id: 'brand-X', document_type: 'nda', status: 'signed' })
+  assert.equal((await submit(campaign.id)).status, 200)
+  assert.equal(campaign.status, 'pending_approval')
+})
+
+test('marca existente sin NDA: listado y enlace directo bloqueados; conserva perfil y firma', async () => {
+  const db = fresh()
+  db.brand_documents = [{ id: 'other-nda', brand_id: 'brand-A', document_type: 'nda', status: 'signed' }]
+  as('ownerX', db)
+  const list = await import('../src/app/api/brand/campaigns/route.ts')
+  const response = await list.GET({ ...req({}), nextUrl: new URL('http://localhost/api/brand/campaigns') })
+  assert.equal(response.status, 403)
+  assert.equal((await response.json()).code, 'BRAND_NDA_REQUIRED')
+  const detail = await import('../src/app/api/brand/campaigns/[id]/route.ts')
+  assert.equal((await detail.GET(req({}), { params: { id: 'camp-X' } })).status, 403)
+
+  const { hasBrandPermission, resolveBrandAccess } = await import('../src/lib/supabase/ensureOrg.ts')
+  const access = await resolveBrandAccess('ownerX')
+  assert.equal(hasBrandPermission(access, 'brand.manage'), true)
+  assert.equal(hasBrandPermission(access, 'legal_document.manage'), true)
+  for (const permission of ['campaign.read', 'influencer.read', 'billing.read', 'team.read'] as const) {
+    assert.equal(hasBrandPermission(access, permission), false, permission)
+  }
 })

@@ -55,7 +55,7 @@ const installPayPal = (state: PayPalState) => {
 const pp = (): PayPalState => ({ plans: { 'P-AGENCY': { id: 'P-AGENCY', billing_cycles: [{ pricing_scheme: { fixed_price: { value: '74.50', currency_code: 'USD' } } }] } }, subscriptions: {}, created: [], cancelled: [] })
 const req = (url: string, body?: unknown) => ({ url, json: async () => body, headers: new Headers(), nextUrl: new URL(url) }) as any
 const as = (user: string | null, db: Record<string, Row[]>, cookies: Record<string, string> = {}) => {
-  ;(globalThis as any).__routeHarness = { user: user ? { id: user, email: `${user}@scence-test.invalid` } : null, admin: makeAdmin(db, { autoId: true }), cookies }
+  ;(globalThis as any).__routeHarness = { user: user ? { id: user, email: `${user}@scence-test.invalid` } : null, admin: makeAdmin(db, { signedBrandFixtures: true, autoId: true }), cookies }
 }
 const checkout = () => import('../src/app/api/paypal/checkout/route.ts') as Promise<any>
 const complete = () => import('../src/app/api/paypal/complete/route.ts') as Promise<any>
@@ -119,6 +119,11 @@ test('complete: volver de PayPal sin ACTIVE no activa; con ACTIVE verificado en 
   assert.equal(pending.status, 409)
   assert.equal(db.subscriptions[0].status, 'incomplete', 'regresar de PayPal no cuenta como pago')
   state.subscriptions[id].status = 'ACTIVE'
+  const unpaid = await route.POST(req(`http://localhost/api/paypal/complete?subscription_id=${id}`))
+  assert.equal(unpaid.status, 409)
+  assert.equal((await unpaid.json()).code, 'FIRST_PAYMENT_PENDING')
+  assert.equal(db.subscriptions[0].status, 'incomplete')
+  state.subscriptions[id].billing_info.last_payment = { amount: { value: '74.50' } }
   const ok = await route.POST(req(`http://localhost/api/paypal/complete?subscription_id=${id}`))
   assert.equal(ok.status, 200)
   assert.equal(db.subscriptions[0].status, 'active'); assert.equal(db.subscriptions[0].metadata.brand_id, UUID_A)

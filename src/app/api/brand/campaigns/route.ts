@@ -1,3 +1,4 @@
+import { BRAND_NDA_MESSAGE, BRAND_NDA_REQUIRED } from '@/lib/brand-campaign-gates'
 import { recordBrandActivity } from '@/lib/brand-activity'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
@@ -31,7 +32,12 @@ export async function GET(req: NextRequest) {
   // brands.user_id).
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!hasBrandPermission(access, 'campaign.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const onboarding = access.status === 'pending_approval'
+  const ndaSigned = access.ndaSigned === true
+  if (!onboarding && access.status === 'approved' && !ndaSigned) {
+    return NextResponse.json({ error: BRAND_NDA_MESSAGE, code: BRAND_NDA_REQUIRED }, { status: 403 })
+  }
+  if (!hasBrandPermission(access, 'campaign.read', onboarding ? 'onboarding' : 'operate')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand } = await admin
     .from('brands')
@@ -83,6 +89,10 @@ export async function GET(req: NextRequest) {
   // Mismos filtros que /api/campaigns — antes esta ruta los ignoraba por
   // completo (CampaignsClient mandaba status/type/platform/search y acá no
   // se aplicaban, quedaban muertos del lado marca).
+  if (onboarding) {
+    query = query.eq('created_by_brand_id', brand.id)
+    if (!ndaSigned) query = query.eq('status', 'draft')
+  }
   if (status)     query = query.eq('status', status)
   if (type)       query = query.eq('type', type)
   if (platform)   query = query.contains('platforms', [platform])
@@ -134,7 +144,7 @@ export async function POST(req: NextRequest) {
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!hasBrandPermission(access, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!hasBrandPermission(access, 'campaign.manage', access.status === 'pending_approval' ? 'onboarding' : 'operate')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data: brand } = await admin
     .from('brands')
@@ -143,12 +153,13 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (brand.status !== 'approved') {
+  if (brand.status !== 'approved' && brand.status !== 'pending_approval') {
     return NextResponse.json(
       { error: 'Tu marca está pendiente de aprobación. Aún no puedes crear campañas.' },
       { status: 403 }
     )
   }
+
 
   let body: {
     name: string

@@ -33,7 +33,7 @@ function fixture() {
 }
 
 async function call(user: string | null, db = fixture(), query = '', failSelectOn?: string) {
-  const admin = makeAdmin(db, { failSelectOn })
+  const admin = makeAdmin(db, { signedBrandFixtures: true, failSelectOn })
   const from = admin.from
   // El simulador compartido solo soporta OR temporal. Aquí añadimos OR de igualdad
   // para ejecutar el filtro real de campañas, sin cambiar otras pruebas.

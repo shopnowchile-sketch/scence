@@ -110,6 +110,10 @@ export function usePatchCampaign(id: string, apiBase = '/api/campaigns') {
           notifyAgencyPaymentRequired({ brandId: err.brand_id, campaignId: id })
           throw new AgencyPaymentRequired(err.error)
         }
+        if (apiBase === '/api/brand/campaigns' && err.code === 'BRAND_NDA_REQUIRED') {
+          window.location.assign(`/brand-documents?campaign=${encodeURIComponent(id)}`)
+          throw new AgencyPaymentRequired(err.error)
+        }
         throw new Error(err.error ?? 'Error al actualizar campaña')
       }
       return res.json()

@@ -15,7 +15,7 @@ const PLACE_COLUMNS = 'id, parent_id, level, type, name, address, is_active, is_
 //   ?parent_id=<id> → hijos GEOGRÁFICOS de ese nodo (país/región/ciudad/comuna); nunca lugares
 //   (sin params)    → países
 export async function GET(req: NextRequest) {
-  const auth = await authorizeBrandLocations('location.read')
+  const auth = await authorizeBrandLocations('location.read', true)
   if ('res' in auth) return auth.res
   const { admin, access } = auth
 
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 // Body: { name, address, parent_id (comuna), type?, notes? }.
 // brand_id y organization_id los fija el servidor con la sesión; el body no los controla.
 export async function POST(req: NextRequest) {
-  const auth = await authorizeBrandLocations('location.manage')
+  const auth = await authorizeBrandLocations('location.manage', true)
   if ('res' in auth) return auth.res
   const { admin, access, userId } = auth
 

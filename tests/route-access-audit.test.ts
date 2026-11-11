@@ -35,7 +35,7 @@ const fresh = (): Record<string, Row[]> => ({
   campaign_deliverables: [], campaign_brands: [], tickets: [{ id: 't1', organization_id: 'org-A' }, { id: 't2', organization_id: 'org-adm' }],
 })
 const req = (url = 'http://localhost/api/x', body: unknown = {}) => ({ url, json: async () => body, headers: new Headers(), nextUrl: new URL(url) }) as any
-const as = (user: string | null) => { ;(globalThis as any).__routeHarness = { user: user ? { id: user } : null, admin: makeAdmin(fresh(), { projectColumns: true }) } }
+const as = (user: string | null) => { ;(globalThis as any).__routeHarness = { user: user ? { id: user } : null, admin: makeAdmin(fresh(), { signedBrandFixtures: true, projectColumns: true }) } }
 
 // ── tickets: panel de admin (marcas e influencers usan /api/support) ─────────────────────────
 test('tickets y tickets/[id]: solo admin de plataforma; miembros de marca 403; sin sesión 401', async () => {
@@ -69,7 +69,7 @@ test('brand/brands GET: owner/manager/member de marca aprobada pasan; finance, p
 test('brand/brands GET: una marca solo ve las campañas/colaboradoras de SU organización', async () => {
   const route = await import('../src/app/api/brand/brands/route.ts')
   const db = fresh(); db.campaign_brands = [{ brand_id: 'brand-B', campaign_id: 'camp-B', role: 'collab', brand: { id: 'brand-B', name: 'B' } }, { brand_id: 'brand-A', campaign_id: 'camp-A', role: 'collab', brand: { id: 'brand-A', name: 'A' } }]
-  ;(globalThis as any).__routeHarness = { user: { id: 'uOwnerB' }, admin: makeAdmin(db, { projectColumns: true }) }
+  ;(globalThis as any).__routeHarness = { user: { id: 'uOwnerB' }, admin: makeAdmin(db, { signedBrandFixtures: true, projectColumns: true }) }
   const r = await (route as any).GET(req('http://localhost/api/brand/brands')); assert.equal(r.status, 200)
   const body = await r.json(); const campNames = JSON.stringify(body)
   assert.ok(!campNames.includes('Camp A'), 'no debe aparecer la campaña de otra marca')
@@ -130,7 +130,7 @@ test('influencer-report: marca pendiente/rechazada/suspendida → 404 aunque sea
     return d
   }
   const call = async (u: string, camp: string) => {
-    ;(globalThis as any).__routeHarness = { user: { id: u }, admin: makeAdmin(db(), { projectColumns: true }) }
+    ;(globalThis as any).__routeHarness = { user: { id: u }, admin: makeAdmin(db(), { signedBrandFixtures: true, projectColumns: true }) }
     try { return (await (route as any).GET(req(`http://localhost/x?influencer_id=inf-in`), { params: { id: camp } })).status } catch { return -1 }
   }
   // Estado de la marca: el dueño con rol suficiente queda bloqueado si la marca no está aprobada.

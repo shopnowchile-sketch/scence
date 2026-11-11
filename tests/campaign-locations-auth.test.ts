@@ -49,7 +49,7 @@ test('una marca solo asocia lugares propios; uno ajeno responde como inexistente
 
 test('autorización de campaña: reutiliza authorizeCampaignBrandAction y nunca profiles.role', () => {
   const lib = read('src/lib/campaign-locations-auth.ts')
-  assert.match(lib, /authorizeCampaignBrandAction\(user\.id, campaignId, permission\)/)
+  assert.match(lib, /authorizeCampaignBrandAction\(user\.id, campaignId, permission, \{ allowOnboardingDraft: true \}\)/)
   assert.match(lib, /status: 401/)
   assert.match(lib, /status: 404/)
   assert.doesNotMatch(lib, /profiles[^\n]*role/)

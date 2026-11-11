@@ -12,6 +12,8 @@ export function getPath(row: Row, col: string): unknown {
 }
 
 export type MemoryOptions = {
+  /** Simula marcas aprobadas con NDA firmado si el caso no proporciona documentos explícitos. */
+  signedBrandFixtures?: boolean
   /** Las inserciones en esta tabla fallan. */
   failInsertOn?: string
   /** Las lecturas (select) de esta tabla fallan. */
@@ -84,7 +86,12 @@ export function makeAdmin(db: Db, opts: MemoryOptions = {}) {
     }
     // Todo el cuerpo es síncrono: equivale a una sentencia atómica.
     function exec(): { data: unknown; error: { message: string } | null; count?: number } {
-      const rows = db[table] ?? (db[table] = [])
+      const signedFixtures = table === 'brand_documents' && opts.signedBrandFixtures
+        ? (db.brands ?? []).filter(brand => brand.status === 'approved').map(brand => ({
+          id: `nda-${brand.id}`, brand_id: brand.id, document_type: 'nda', status: 'signed',
+        }))
+        : []
+      const rows = db[table] ?? (op === 'select' ? signedFixtures : (db[table] = []))
       if (op === 'insert') {
         if (opts.failInsertOn === table) return { data: null, error: { message: `insert fallido en ${table}` } }
         const inserted = ([] as Row[]).concat(payload).map((p: Row) => ({ ...p }))

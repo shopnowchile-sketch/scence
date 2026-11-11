@@ -1,3 +1,5 @@
+import { brandHasSignedNda, BRAND_NDA_MESSAGE, BRAND_NDA_REQUIRED } from '@/lib/brand-campaign-gates'
+import { brandHasCurrentSubscription, AGENCY_SUBSCRIPTION_REQUIRED } from '@/lib/agency-brands'
 import { NextRequest, NextResponse } from 'next/server'
 import { brandStatusAllows } from '@/lib/brand-status-access'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
@@ -40,7 +42,7 @@ async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient
   const brandAccess = await resolveBrandAccess(userId)
   if (!brandAccess) return { isBrand: false, canView: false, canEdit: false, brandId: null }
   // Marca pendiente, rechazada o suspendida: sin acceso a campañas.
-  if (!brandStatusAllows(brandAccess.status, 'operate')) return { isBrand: true, canView: false, canEdit: false, brandId: brandAccess.brandId }
+  if (!brandStatusAllows(brandAccess.status, 'operate') || !(await brandHasSignedNda(admin, brandAccess.brandId))) return { isBrand: true, canView: false, canEdit: false, brandId: brandAccess.brandId }
 
   const { data: campaign } = await admin
     .from('campaigns')
@@ -61,6 +63,24 @@ async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient
   }
 }
 
+
+async function checkBrandCampaignPublication(admin: ReturnType<typeof createAdminClient>, campaignId: string) {
+  const { data, error } = await admin.from('campaigns')
+    .select('created_by_brand_id, brand_id, status').eq('id', campaignId).maybeSingle()
+  if (error) return NextResponse.json({ error: 'No se pudo verificar la campaña' }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  if (!data.created_by_brand_id || data.status === 'active') return null
+  if (!['pending_approval', 'paused'].includes(data.status)) {
+    return NextResponse.json({ error: 'La marca debe enviar esta campaña a revisión antes de publicarla.' }, { status: 409 })
+  }
+  if (!(await brandHasCurrentSubscription(admin, data.brand_id ?? data.created_by_brand_id))) {
+    return NextResponse.json({ error: 'La marca necesita una suscripción vigente.', code: AGENCY_SUBSCRIPTION_REQUIRED }, { status: 402 })
+  }
+  if (!(await brandHasSignedNda(admin, data.created_by_brand_id))) {
+    return NextResponse.json({ error: BRAND_NDA_MESSAGE, code: BRAND_NDA_REQUIRED }, { status: 403 })
+  }
+  return null
+}
 
 // ── GET /api/campaigns/[id] ───────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -226,18 +246,18 @@ export async function PUT(request: NextRequest, { params }: Params) {
     ...rest
   } = body
 
-  // Refuerzo backend: una marca nunca puede reasignar la marca dueña de su
-  // propia campaña, aunque el formulario ya no muestre ese campo.
   if (access?.isBrand) {
-    delete rest.brand_id
-    // La activación siempre requiere aprobación administrativa. Este endpoint
-    // genérico también puede ser llamado directamente, por lo que no basta con
-    // proteger la UI ni la ruta /api/brand/campaigns.
+    if ('status' in rest) {
+      return NextResponse.json({ error: 'Usa el portal de marca para cambiar el estado de la campaña' }, { status: 403 })
+    }
+    for (const key of Object.keys(rest)) {
+      if (!BRAND_PATCH_FIELDS.has(key)) delete rest[key]
+    }
+  } else {
+    delete rest.created_by_brand_id
     if (rest.status === 'active') {
-      return NextResponse.json(
-        { error: 'La campaña debe ser aprobada por Scence antes de activarse' },
-        { status: 403 },
-      )
+      const blocked = await checkBrandCampaignPublication(admin, params.id)
+      if (blocked) return blocked
     }
   }
 
@@ -446,6 +466,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     fields.applications_closed_at = new Date().toISOString()
   } else if (action === 'reopen_applications') {
     fields.applications_closed_at = null
+  }
+
+  if (isAdmin && fields.status === 'active') {
+    const blocked = await checkBrandCampaignPublication(admin, params.id)
+    if (blocked) return blocked
   }
 
   if (fields.metadata && typeof fields.metadata === 'object' && !Array.isArray(fields.metadata)) {

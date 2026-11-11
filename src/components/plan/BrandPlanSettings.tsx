@@ -108,20 +108,22 @@ export function BrandPlanSettings() {
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('checkout') !== 'processing') return
-    setPaymentProcessing(true)
     const subscriptionId = new URLSearchParams(window.location.search).get('subscription_id')
     if (!subscriptionId) return
+    setPaymentProcessing(true)
     fetch(`/api/paypal/complete?subscription_id=${encodeURIComponent(subscriptionId)}`, { method: 'POST' })
       .then(async (res) => {
         const json = await res.json()
         if (!res.ok) throw new Error(json.error)
         const params = new URLSearchParams(window.location.search)
         const campaign = params.get('campaign')
-        toast.success(json.tier === 'agency' ? 'Mensualidad activa. Ahora envía tu campaña a aprobación.' : 'Tu pago fue confirmado. Ahora crea tu primera campaña.')
+        toast.success(json.tier === 'agency' ? 'Mensualidad activa. Ya puedes continuar con tu campaña.' : 'Tu pago fue confirmado. Ahora crea tu primera campaña.')
         window.history.replaceState({}, '', window.location.pathname)
         await load()
         // El pago solo habilita el envío: la campaña sigue en borrador hasta que la envíes y SCENCE la apruebe.
-        router.replace(json.tier === 'agency' ? (campaign ? `/brand-campaigns/${campaign}` : '/brand-campaigns') : '/brand-campaigns/new')
+        router.replace(json.nda_signed === false
+          ? (campaign ? `/brand-documents?campaign=${encodeURIComponent(campaign)}` : '/brand-documents')
+          : json.tier === 'agency' ? (campaign ? `/brand-campaigns/${campaign}` : '/brand-campaigns') : '/brand-campaigns/new')
       })
       .catch((error) => toast.error(error.message ?? 'Estamos confirmando tu pago.'))
       .finally(() => setPaymentProcessing(false))

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { payPalBaseUrl } from '@/lib/paypal-env'
+import { hasPayPalSubscriptionPayment, payPalBaseUrl } from '@/lib/paypal-env'
 import { createAdminClient } from '@/lib/supabase/server'
 import { buildInfluencerSubscriptionRow, parseInfluencerReference, payPalPaidThrough, PAYPAL_SUBSCRIPTION_STATUS_MAP, type PayPalSubscriptionSnapshot } from '@/lib/influencer-paypal'
 import { isInfluencerSubscription } from '@/lib/plan-limits'
@@ -143,7 +143,7 @@ async function recordSaleCompleted(resource: PayPalSale, accessToken: string) {
     const detailsResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(paypalSubscriptionId)}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' })
     const details = await detailsResponse.json().catch(() => null)
     if (!detailsResponse.ok || !details) return NextResponse.json({ error: 'Unable to read PayPal subscription' }, { status: 502 })
-    return syncBrandSubscription(paypalSubscriptionId, details)
+    return syncBrandSubscription(paypalSubscriptionId, details, true)
   }
   return NextResponse.json({ received: true })
 }
@@ -252,10 +252,10 @@ async function syncInfluencerSubscription(
 
 function reference(value?: string) { const [organizationId, planId, tier, brandId] = (value ?? '').split(':'); return organizationId && planId && tier ? { organizationId, planId, tier, brandId: tier === 'agency' ? brandId : undefined } : null }
 // Suscripción de MARCA (planes Basic/Growth/Pro y mensualidad de agencia): sincroniza con el estado ACTUAL de PayPal.
-async function syncBrandSubscription(id: string, subscription: Record<string, any>): Promise<NextResponse> {
+async function syncBrandSubscription(id: string, subscription: Record<string, any>, saleConfirmed = false): Promise<NextResponse> {
   const ref = reference(subscription?.custom_id)
   if (!ref) return NextResponse.json({ received: true })
-  const status = STATUS_MAP[subscription.status] ?? 'incomplete', start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString()
+  const paypalStatus = STATUS_MAP[subscription.status] ?? 'incomplete', start = subscription.start_time ?? subscription.create_time ?? new Date().toISOString()
   const admin = createAdminClient()
   const { data: existing, error: existingError } = await admin.from('subscriptions').select('id, organization_id, metadata, current_period_end, canceled_at').eq('paypal_subscription_id', id).maybeSingle()
   if (existingError) return NextResponse.json({ error: 'Unable to read subscription' }, { status: 500 })
@@ -264,6 +264,10 @@ async function syncBrandSubscription(id: string, subscription: Record<string, an
     console.error('[paypal/webhook] suscripción de marca no coincide con la fila existente; no se modifica', { id })
     return NextResponse.json({ received: true })
   }
+  const existingMeta = (existing?.metadata as Record<string, unknown> | null) ?? {}
+  const firstPaymentRequired = ref.tier === 'agency' && (!existing || existingMeta.first_payment_required === true)
+  const firstPaymentConfirmed = existingMeta.first_payment_confirmed === true || saleConfirmed || hasPayPalSubscriptionPayment(subscription)
+  const status = paypalStatus === 'active' && firstPaymentRequired && !firstPaymentConfirmed ? 'incomplete' : paypalStatus
   // El plan pagado vive en la suscripción (resolveBrandPlanAccess): cancelar =
   // no renovar; el acceso sigue hasta current_period_end. Una cancelación NUNCA
   // retrocede el fin del período (PayPal no informa next_billing_time al
@@ -273,7 +277,10 @@ async function syncBrandSubscription(id: string, subscription: Record<string, an
   const end = status === 'canceled' && Number.isFinite(storedEnd) && storedEnd > Date.parse(reportedEnd)
     ? new Date(storedEnd).toISOString()
     : reportedEnd
-  const metadata = { ...((existing?.metadata as Record<string, unknown> | null) ?? {}), account_type: 'brand', ...(ref.brandId ? { brand_id: ref.brandId, agency_plan: true } : {}) }
+  const metadata = { ...existingMeta, account_type: 'brand',
+    ...(ref.brandId ? { brand_id: ref.brandId, agency_plan: true } : {}),
+    ...(firstPaymentRequired ? { first_payment_required: true, first_payment_confirmed: firstPaymentConfirmed } : {}),
+  }
   const canceledAt = status === 'canceled' ? (existing?.canceled_at ?? new Date().toISOString()) : null
   const row = { organization_id: ref.organizationId, plan_id: ref.planId, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: canceledAt, updated_at: new Date().toISOString() }
   const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)

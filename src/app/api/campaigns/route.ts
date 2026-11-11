@@ -1,3 +1,4 @@
+import { BRAND_NDA_MESSAGE, BRAND_NDA_REQUIRED } from '@/lib/brand-campaign-gates'
 import { NextRequest, NextResponse } from 'next/server'
 import { brandStatusAllows } from '@/lib/brand-status-access'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
@@ -104,6 +105,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (brandAccess) {
+      if (!brandAccess.ndaSigned) {
+        return NextResponse.json({ error: BRAND_NDA_MESSAGE, code: BRAND_NDA_REQUIRED }, { status: 403 })
+      }
       const { data: collaboratorRows, error: collaboratorError } = await admin
         .from('campaign_brands')
         .select('campaign_id')

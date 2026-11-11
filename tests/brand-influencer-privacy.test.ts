@@ -62,7 +62,7 @@ const fresh = (): Record<string, Row[]> => ({
 // projectColumns: la base respeta la lista de columnas del `.select(...)` (la ruta de ranking pide columnas explícitas).
 const as = (user: string | null) => {
   const db = fresh()
-  ;(globalThis as any).__routeHarness = { user: user ? { id: user, user_metadata: {} } : null, admin: makeAdmin(db, { projectColumns: true }) }
+  ;(globalThis as any).__routeHarness = { user: user ? { id: user, user_metadata: {} } : null, admin: makeAdmin(db, { signedBrandFixtures: true, projectColumns: true }) }
   return db
 }
 const req = (url: string) => ({ url, json: async () => ({}), headers: new Headers(), nextUrl: new URL(url) }) as any
@@ -142,7 +142,7 @@ test('ranking de marca: solo influencers vinculadas a la marca, sin user_id; has
 
   // Sin cuenta (user_id nulo): has_account=false, igual sin identificadores.
   db.influencers.find(i => i.id === 'inf-1')!.user_id = null
-  ;(globalThis as any).__routeHarness = { user: { id: 'uOwnerA', user_metadata: {} }, admin: makeAdmin(db, { projectColumns: true }) }
+  ;(globalThis as any).__routeHarness = { user: { id: 'uOwnerA', user_metadata: {} }, admin: makeAdmin(db, { signedBrandFixtures: true, projectColumns: true }) }
   const sinCuenta = await (await (ranking as any).GET(req('http://x/api/brand/influencers/ranking'))).json()
   assert.equal(byName(sinCuenta.data, 'Ana Aceptada').has_account, false)
 

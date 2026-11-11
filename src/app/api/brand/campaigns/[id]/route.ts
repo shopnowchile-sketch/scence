@@ -1,3 +1,4 @@
+import { BRAND_NDA_MESSAGE, BRAND_NDA_REQUIRED } from '@/lib/brand-campaign-gates'
 import { recordBrandActivity } from '@/lib/brand-activity'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
@@ -34,12 +35,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!hasBrandPermission(access, 'campaign.read')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const onboarding = access.status === 'pending_approval'
+  if (!hasBrandPermission(access, 'campaign.read', onboarding ? 'onboarding' : 'operate')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const brand = { id: access.brandId }
 
   const { data: campaignBase, error: baseError } = await admin
     .from('campaigns')
-    .select('id, brand_id, created_by_brand_id')
+    .select('id, brand_id, created_by_brand_id, status')
     .eq('id', params.id)
     .single()
 
@@ -55,6 +57,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     isCollaborator
 
   if (!canEdit) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  if (onboarding && campaignBase.created_by_brand_id !== brand.id) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 })
+  if ((!onboarding || campaignBase.status !== 'draft') && !access.ndaSigned) {
+    return NextResponse.json({ error: BRAND_NDA_MESSAGE, code: BRAND_NDA_REQUIRED }, { status: 403 })
+  }
 
   const { data, error } = await admin
     .from('campaigns')
@@ -122,7 +128,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       _brand_permissions: {
         isBrand: true,
         canView: true,
-        canEdit: canEdit && hasBrandPermission(access, 'campaign.manage'),
+        canEdit: canEdit && (!onboarding || campaignBase.status === 'draft') && hasBrandPermission(access, 'campaign.manage', onboarding ? 'onboarding' : 'operate'),
         brandId: brand.id,
       },
     },
@@ -140,7 +146,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const access = await resolveBrandAccess(user.id)
   if (!access) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
-  if (!hasBrandPermission(access, 'campaign.manage')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const onboarding = access.status === 'pending_approval'
+  if (!hasBrandPermission(access, 'campaign.manage', onboarding ? 'onboarding' : 'operate')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const brand = { id: access.brandId }
 
   let body: Record<string, unknown>
@@ -260,6 +267,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // ESA marca (la dueña de la campaña), nunca la de otra. El pago no activa nada: la campaña queda en
   // pending_approval hasta que el super_admin la apruebe.
   const submitting = updates.status === 'pending_approval' && campaignBase.status !== 'pending_approval'
+  if (onboarding && (campaignBase.created_by_brand_id !== brand.id || campaignBase.status !== 'draft' || (updates.status && !submitting && updates.status !== 'draft'))) {
+    return NextResponse.json({ error: 'Solo puedes editar o enviar tus propios borradores.' }, { status: 403 })
+  }
   if (submitting) {
     const gateBrandId = (campaignBase.brand_id as string | null) ?? brand.id
     if (!(await brandHasCurrentSubscription(admin, gateBrandId))) {
@@ -269,6 +279,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         brand_id: gateBrandId,
       }, { status: 402 })
     }
+  }
+
+  if ((!onboarding || submitting) && !access.ndaSigned) {
+    return NextResponse.json({ error: BRAND_NDA_MESSAGE, code: BRAND_NDA_REQUIRED }, { status: 403 })
   }
 
   if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {

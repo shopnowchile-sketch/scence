@@ -63,6 +63,7 @@ export async function GET() {
       has_active_subscription: planAccess.hasActiveAccess,
       member_role: access.role,
       is_owner: access.isOwner,
+      nda_signed: access.ndaSigned === true,
     },
   })
 }

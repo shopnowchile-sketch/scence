@@ -1,3 +1,4 @@
+import { brandHasSignedNda } from '@/lib/brand-campaign-gates'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { roleHasBrandPermission, normalizeBrandRole, type BrandPermission, type BrandRole } from '@/lib/brand-permissions'
 import { brandStatusAllows, capabilityForPermission, type BrandCapability } from '@/lib/brand-status-access'
@@ -361,6 +362,7 @@ export type BrandAccess = {
   isOwner: boolean
   /** Estado de aprobación de la marca (brands.status). Gobierna qué puede hacer. */
   status: string | null
+  ndaSigned?: boolean
 }
 
 /**
@@ -376,6 +378,9 @@ export function hasBrandPermission(
   capability: BrandCapability = capabilityForPermission(permission),
 ): boolean {
   if (!access) return false
+  if (access.status === 'approved' && access.ndaSigned === false
+    && (!['brand.read', 'brand.manage', 'legal_document.read', 'legal_document.manage'].includes(permission)
+      || capability !== capabilityForPermission(permission))) return false
   return roleHasBrandPermission(access.role, permission) && brandStatusAllows(access.status, capability)
 }
 
@@ -386,6 +391,7 @@ export function hasBrandPermission(
  */
 export function canPayBrandPlan(access: BrandAccess | null): boolean {
   if (!access || !roleHasBrandPermission(access.role, 'brand.manage')) return false
+  if (access.status === 'approved' && access.ndaSigned === false) return false
   return brandStatusAllows(access.status, 'billing_manage') || brandStatusAllows(access.status, 'onboarding')
 }
 
@@ -404,7 +410,9 @@ async function readActiveBrandCookie(): Promise<string | null> {
  * Consulting). Solo el owner de una org `agency_portal`; null para cualquier otro.
  */
 export async function resolveAgencyManagedBrandAccess(userId: string, brandId: string): Promise<BrandAccess | null> {
-  return resolveAgencyBrandAccess(createAdminClient(), userId, brandId)
+  const admin = createAdminClient()
+  const access = await resolveAgencyBrandAccess(admin, userId, brandId)
+  return access ? { ...access, ndaSigned: await brandHasSignedNda(admin, access.brandId) } : null
 }
 
 export async function resolveBrandAccess(userId: string): Promise<BrandAccess | null> {
@@ -415,7 +423,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
   const activeBrandId = await readActiveBrandCookie()
   if (activeBrandId) {
     const agencyAccess = await activeAgencyBrandAccess(admin, userId, activeBrandId)
-    if (agencyAccess) return agencyAccess
+    if (agencyAccess) return { ...agencyAccess, ndaSigned: await brandHasSignedNda(admin, agencyAccess.brandId) }
   }
 
   const { data: orgMemberships } = await admin
@@ -446,6 +454,7 @@ export async function resolveBrandAccess(userId: string): Promise<BrandAccess | 
         role: normalizeBrandRole(membership.role, membership.is_owner === true),
         isOwner: membership.is_owner === true,
         status: (brand.status as string | null) ?? null,
+        ndaSigned: await brandHasSignedNda(admin, brand.id),
       }
     }
   }

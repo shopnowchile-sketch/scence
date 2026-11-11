@@ -72,7 +72,7 @@ async function call(
 ) {
   ;(globalThis as any).__routeHarness = {
     user: opts.user ? { id: opts.user } : null,
-    admin: makeAdmin(opts.db, { autoId: true, ...(opts.fail ?? {}) }),
+    admin: makeAdmin(opts.db, { signedBrandFixtures: true, autoId: true, ...(opts.fail ?? {}) }),
   }
   const path = opts.id ? `/api/invoices/${opts.id}` : '/api/invoices'
   const req = { url: `http://localhost${path}${opts.query ?? ''}`, json: async () => opts.body } as any

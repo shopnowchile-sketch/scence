@@ -125,6 +125,8 @@ export function agencyMonthIsCurrent(rows: SubscriptionRow[], override: unknown,
     if (planTier(row) !== AGENCY_PLAN_TIER) {
       return brandSubscriptionGrantsAccess({ status: row.status, current_period_end: row.current_period_end, metadata: row.metadata }, now)
     }
+    const metadata = row.metadata as { first_payment_required?: boolean; first_payment_confirmed?: boolean } | null
+    if (metadata?.first_payment_required && metadata.first_payment_confirmed !== true) return false
     if (!brandSubscriptionGrantsAccess({ status: row.status, current_period_end: row.current_period_end, metadata: row.metadata }, now)) return false
     const end = row.current_period_end ? Date.parse(row.current_period_end) : NaN
     if (!Number.isFinite(end)) return false

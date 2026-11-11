@@ -42,3 +42,9 @@ export function resolvePayPalMode(env?: RuntimeEnv): PayPalMode {
 export function payPalBaseUrl(env?: RuntimeEnv): string {
   return resolvePayPalMode(env) === 'live' ? PAYPAL_LIVE_BASE_URL : PAYPAL_SANDBOX_BASE_URL
 }
+
+/** PayPal informa ACTIVE antes de que necesariamente se complete el primer cobro. */
+export function hasPayPalSubscriptionPayment(subscription: { billing_info?: { last_payment?: { amount?: { value?: string } } } }): boolean {
+  const amount = Number(subscription.billing_info?.last_payment?.amount?.value)
+  return Number.isFinite(amount) && amount > 0
+}

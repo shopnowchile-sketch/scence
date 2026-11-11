@@ -93,8 +93,16 @@ export default function BrandDocumentsPage() {
     } catch (e) { toast.error((e as Error).message) } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+  const [resumeCampaignId, setResumeCampaignId] = useState<string | null>(null)
+  useEffect(() => {
+    const campaignId = new URLSearchParams(window.location.search).get('campaign')
+    if (campaignId && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(campaignId)) setResumeCampaignId(campaignId)
+  }, [])
+  const hasSignedNda = documents.some(document => document.document_type === 'nda' && document.status === 'signed')
   const pending = documents.filter(d => d.status === 'pending')
   return <div className="max-w-4xl mx-auto space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Documentos</h1><p className="text-sm text-gray-500 mt-1">Acuerdos enviados por SCENCE para tu Marca.</p></div>
+    {hasSignedNda && resumeCampaignId && <Link href={`/brand-campaigns/${resumeCampaignId}`} className="inline-flex rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white">Volver a mi campaña</Link>}
+    {!loading && !hasSignedNda && !pending.some(document => document.document_type === 'nda') && <p className="text-sm text-gray-600">SCENCE debe asignar el NDA a tu marca para que puedas firmarlo aquí.</p>}
     {!legal.complete && pending.length > 0 && <LegalMissingNotice legal={legal} />}
     {pending.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><b>Acción requerida:</b> tienes {pending.length} documento{pending.length > 1 ? 's' : ''} pendiente{pending.length > 1 ? 's' : ''} de firma. El plazo vence el {new Date(pending[0].due_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}.</div>}
     {loading ? <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-violet-600" /></div> : documents.length === 0 ? <div className="card p-10 text-center text-gray-500"><FileText className="h-8 w-8 mx-auto mb-3 text-gray-300" />No tienes documentos pendientes.</div> : <div className="space-y-3">{documents.map(d => <button key={d.id} onClick={() => setSelected(d)} className="card w-full p-4 flex text-left items-center justify-between hover:border-violet-200"><div><p className="font-semibold text-gray-900">{d.title}</p><p className="text-sm text-gray-400">{d.status === 'signed' ? 'Firmado' : `Firma antes del ${new Date(d.due_at).toLocaleDateString('es-CL')}`}</p></div>{d.status === 'signed' ? <span className="inline-flex items-center gap-1 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" />Firmado</span> : <span className="inline-flex items-center gap-1 text-sm text-amber-700"><PenLine className="h-4 w-4" />Pendiente de firma</span>}</button>)}</div>}

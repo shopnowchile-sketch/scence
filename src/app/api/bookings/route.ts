@@ -31,9 +31,10 @@ async function resolveBookingWriteOrg(
   campaignId: string | null,
   actorOrgId: string,
   existingOrgId?: string | null,
+  allowOnboardingDraft = false,
 ) {
   if (campaignId) {
-    const auth = await authorizeCampaignBrandAction(userId, campaignId, 'campaign.manage')
+    const auth = await authorizeCampaignBrandAction(userId, campaignId, 'campaign.manage', { allowOnboardingDraft })
     return auth?.campaign.organization_id ?? null
   }
   if (!(await isPlatformAdmin(userId, admin))) return null
@@ -119,7 +120,9 @@ export async function POST(req: NextRequest) {
     influencer_ids = [],  // multi-influencer support
   } = body
 
-  const campaignOrgId = await resolveBookingWriteOrg(admin, user.id, campaign_id ? String(campaign_id) : null, orgId)
+  const isDraftEvent = event_type === 'event' && !influencer_id && Array.isArray(influencer_ids) && influencer_ids.length === 0
+    && Array.isArray(attendee_emails) && attendee_emails.length === 0
+  const campaignOrgId = await resolveBookingWriteOrg(admin, user.id, campaign_id ? String(campaign_id) : null, orgId, undefined, isDraftEvent)
   if (!campaignOrgId) return NextResponse.json({ error: 'No tienes permiso para editar el evento de esta campaña' }, { status: 403 })
 
   // Merge influencer_id + influencer_ids into a unified list
@@ -271,7 +274,8 @@ export async function PUT(req: NextRequest) {
     .maybeSingle()
 
   if (!existing) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
-  const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id)
+  const isDraftEvent = existing.event_type === 'event' && !existing.influencer_id && Object.keys(rest).length === 0
+  const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id, isDraftEvent)
   if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para editar este evento' }, { status: 403 })
 
   // Igual que en POST: con direcciones canónicas, la ubicación del evento sale de la principal.
@@ -333,12 +337,13 @@ export async function DELETE(req: NextRequest) {
 
   const { data: existing } = await admin
     .from('bookings')
-    .select('calendar_event_id, campaign_id, organization_id')
+    .select('calendar_event_id, campaign_id, organization_id, event_type, influencer_id')
     .eq('id', id)
     .maybeSingle()
 
   if (!existing) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
-  const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id)
+  const isDraftEvent = existing.event_type === 'event' && !existing.influencer_id
+  const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id, isDraftEvent)
   if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para quitar este evento' }, { status: 403 })
 
   if (existing?.calendar_event_id && isGoogleCalendarEnabled()) {

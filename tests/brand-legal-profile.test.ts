@@ -256,6 +256,7 @@ test('Organización: PATCH sin bloque representante no toca el perfil (compatibi
 // ── collaboration-opportunities: RUT legal desde brands.rut ─────────────────────────────────
 
 async function postCollab(db: Db) {
+  db.brand_documents.push({ id: 'signed-nda', brand_id: db.brands[0].id, document_type: 'nda', status: 'signed' })
   as('uA-owner', db)
   const res = await (collab as any).POST(req({ campaign_id: 'camp-1' }, 'http://localhost/api/brand/collaboration-opportunities'))
   return { status: res.status as number, json: await res.json().catch(() => null) as any }

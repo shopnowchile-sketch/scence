@@ -34,11 +34,12 @@ export async function authorizeCampaignBrandAction(
   userId: string,
   campaignId: string,
   permission: BrandPermission,
+  options: { allowOnboardingDraft?: boolean } = {},
 ): Promise<CampaignBrandAuthorization | null> {
   const admin = createAdminClient()
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, organization_id, brand_id, created_by_brand_id')
+    .select('id, organization_id, brand_id, created_by_brand_id, status')
     .eq('id', campaignId)
     .maybeSingle()
   if (!campaign) return null
@@ -56,6 +57,13 @@ export async function authorizeCampaignBrandAction(
   // principal solo en esa campaña. El rol y el estado de la marca (hasBrandPermission) siguen limitando.
   const isPrimaryOrCreator = campaign.brand_id === brandAccess.brandId || campaign.created_by_brand_id === brandAccess.brandId
   const isCollaborator = isPrimaryOrCreator ? false : await isCampaignBrandCollaborator(admin, campaignId, brandAccess.brandId)
-  if ((!isPrimaryOrCreator && !isCollaborator) || !hasBrandPermission(brandAccess, permission)) return null
+  if (!isPrimaryOrCreator && !isCollaborator) return null
+  const onboardingDraft = options.allowOnboardingDraft && brandAccess.status === 'pending_approval'
+    && campaign.status === 'draft' && campaign.created_by_brand_id === brandAccess.brandId
+  if (onboardingDraft) {
+    if (!hasBrandPermission(brandAccess, permission, 'onboarding')) return null
+  } else if (!hasBrandPermission(brandAccess, permission) || !brandAccess.ndaSigned) {
+    return null
+  }
   return { admin, brandAccess, isPlatformAdmin: false, campaign }
 }

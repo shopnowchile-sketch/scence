@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { payPalBaseUrl } from '@/lib/paypal-env'
+import { hasPayPalSubscriptionPayment, payPalBaseUrl } from '@/lib/paypal-env'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { canPayBrandPlan, resolveAgencyManagedBrandAccess, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
@@ -58,6 +58,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'La suscripción no corresponde a esta marca.' }, { status: 409 })
   }
 
+  const existingMeta = (existingRow?.metadata as Record<string, unknown> | null) ?? {}
+  const firstPaymentRequired = tier === 'agency' && (!existingRow || existingMeta.first_payment_required === true)
+  if (firstPaymentRequired && existingMeta.first_payment_confirmed !== true && !hasPayPalSubscriptionPayment(subscription)) {
+    return NextResponse.json({ error: 'PayPal aún no confirma el primer cobro.', code: 'FIRST_PAYMENT_PENDING' }, { status: 409 })
+  }
+
   const subscriptionRow = {
     organization_id: access.organizationId,
     plan_id: planId,
@@ -66,7 +72,10 @@ export async function POST(request: NextRequest) {
     current_period_end: subscription.billing_info?.next_billing_time ?? subscription.start_time ?? subscription.create_time,
     paypal_subscription_id: subscriptionId,
     paypal_payer_id: subscription.subscriber?.payer_id ?? null,
-    metadata: { ...((existingRow?.metadata as Record<string, unknown> | null) ?? {}), account_type: 'brand', brand_id: access.brandId, ...(tier === 'agency' ? { agency_plan: true } : {}) },
+    metadata: { ...existingMeta, account_type: 'brand', brand_id: access.brandId,
+      ...(tier === 'agency' ? { agency_plan: true } : {}),
+      ...(firstPaymentRequired ? { first_payment_required: true, first_payment_confirmed: true } : {}),
+    },
     updated_at: new Date().toISOString(),
   }
   const saved = existingRow
@@ -90,7 +99,8 @@ export async function POST(request: NextRequest) {
     .in('status', ['active', 'trialing'])
   if (activeError) return NextResponse.json({ error: 'El nuevo plan está activo, pero no se pudo revisar el anterior.' }, { status: 500 })
   const previousRows = (activeRows ?? []).filter(row =>
-    !isInfluencerSubscription(row.metadata) && row.paypal_subscription_id && row.paypal_subscription_id !== subscriptionId)
+    !isInfluencerSubscription(row.metadata) && row.paypal_subscription_id && row.paypal_subscription_id !== subscriptionId
+    && (tier !== 'agency' || (row.metadata as { brand_id?: string } | null)?.brand_id === access.brandId))
   for (const previous of previousRows) {
     const cancelResponse = await fetch(`${baseUrl()}/v1/billing/subscriptions/${encodeURIComponent(previous.paypal_subscription_id as string)}/cancel`, {
       method: 'POST',
@@ -105,7 +115,7 @@ export async function POST(request: NextRequest) {
     const html = `<h2>Mensualidad activa</h2><p>La mensualidad de la marca <strong>${access.brandId}</strong> está activa. Ya puedes enviar campañas a aprobación; SCENCE las revisa antes de publicarlas.</p>`
     if (user.email) await getResend().emails.send({ from: FROM_EMAIL, to: user.email, tags: [emailAudience('brand')], subject: 'Confirmación de mensualidad SCENCE', html }).catch(() => null)
     await getResend().emails.send({ from: FROM_EMAIL, to: ADMIN_PAYMENT_EMAIL, tags: [emailAudience('admin')], subject: 'Nuevo pago PayPal · mensualidad de agencia', html: `${html}<p>Suscripción PayPal: <strong>${subscriptionId}</strong></p>` }).catch(() => null)
-    return NextResponse.json({ tier, brand_id: access.brandId })
+    return NextResponse.json({ tier, brand_id: access.brandId, nda_signed: access.ndaSigned === true })
   }
   const planTier = tier as PlanTier
   const name = PLAN_LIMITS[planTier].label
@@ -125,5 +135,5 @@ export async function POST(request: NextRequest) {
     subject: `Nuevo pago PayPal · ${name}`,
     html: `<h2>Nuevo pago confirmado</h2><p>Plan: <strong>${name}</strong></p><p>Cliente: <strong>${user.email ?? 'Sin email'}</strong></p><p>Organización: <strong>${access.organizationId}</strong></p><p>Suscripción PayPal: <strong>${subscriptionId}</strong></p><p>Precio de lanzamiento: <strong>US$${launch}/mes</strong> durante 3 meses. Luego US$${regular}/mes.</p>`,
   }).catch(() => null)
-  return NextResponse.json({ tier })
+  return NextResponse.json({ tier, nda_signed: access.ndaSigned === true })
 }

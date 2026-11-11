@@ -10,12 +10,14 @@ import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/
  */
 export async function authorizeBrandLocations(
   permission: 'location.read' | 'location.manage',
+  allowDraftSetup = false,
 ): Promise<{ res: NextResponse } | { userId: string; admin: SupabaseClient; access: BrandAccess }> {
   const supabase = createServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return { res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   const access = await resolveBrandAccess(user.id)
   if (!access) return { res: NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 }) }
-  if (!hasBrandPermission(access, permission)) return { res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  const capability = allowDraftSetup && access.status === 'pending_approval' ? 'onboarding' : 'operate'
+  if (!hasBrandPermission(access, permission, capability)) return { res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   return { userId: user.id, admin: createAdminClient(), access }
 }

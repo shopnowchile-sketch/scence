@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       if (!known) {
         const { error: insertError } = await admin.from('subscriptions').insert({
           organization_id: access.organizationId, plan_id: planRow.id, status: 'incomplete', paypal_subscription_id: result.id,
-          metadata: { account_type: 'brand', brand_id: access.brandId, agency_plan: true, commitment_months: AGENCY_COMMITMENT_MONTHS },
+          metadata: { account_type: 'brand', brand_id: access.brandId, agency_plan: true, first_payment_required: true, commitment_months: AGENCY_COMMITMENT_MONTHS },
           updated_at: new Date().toISOString(),
         })
         if (insertError) return NextResponse.json({ error: 'No se pudo registrar la suscripción de la marca.' }, { status: 500 })

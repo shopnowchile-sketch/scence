@@ -42,7 +42,7 @@ export async function GET() {
     data: {
       organization_complete: organizationComplete,
       nda_signed: ndaSigned,
-      first_campaign_id: campaigns?.[0]?.id ?? null,
+      first_campaign_id: ndaSigned ? campaigns?.[0]?.id ?? null : null,
       state: readState(profile?.metadata),
     },
   })

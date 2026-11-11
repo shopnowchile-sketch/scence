@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Clock } from 'lucide-react'
-import { pendingBrandPathAllowed } from '@/lib/brand-status-access'
+import Link from 'next/link'
+import { isBrandCampaignPath, pendingBrandPathAllowed } from '@/lib/brand-status-access'
 import { BrandSidebar } from './_components/BrandSidebar'
 import { BrandOnboarding } from '@/components/brand/BrandOnboarding'
 import { AgencyBrandSwitcher } from '@/components/plan/AgencyBrandSwitcher'
@@ -37,6 +38,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   const [instagramComplete, setInstagramComplete] = useState<boolean | null>(null)
   // Estado de aprobación admin de la marca. null = aún cargando/desconocido
   // (no bloquear mientras carga, igual que instagramComplete).
+  const [ndaSigned, setNdaSigned] = useState(false)
   const [brandStatus, setBrandStatus] = useState<string | null>(null)
   const [brandPlan, setBrandPlan] = useState<string | null>(null)
   const pathname = usePathname()
@@ -64,7 +66,9 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // pago confirme la activación de su cuenta.
   const isPlanPage = pathname.startsWith('/brand-settings/plan')
   // Marca pendiente: puede completar perfil, consultar facturación y completar documentos (brand-status-access.ts).
-  const pendingPageAllowed = brandStatus === 'pending_approval' && pendingBrandPathAllowed(pathname)
+  const pendingPageAllowed = brandStatus === 'pending_approval' && (pendingBrandPathAllowed(pathname) || isBrandCampaignPath(pathname))
+  const ndaLocked = brandStatus === 'approved' && !ndaSigned
+  const ndaPageAllowed = ['/brand-documents', '/brand-settings/organization', '/brand-settings/profile'].includes(pathname)
 
   useEffect(() => {
     let cancelled = false
@@ -90,6 +94,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
         if (cancelled) return
 
+        setNdaSigned(json?.data?.nda_signed === true)
         setBrandStatus(json?.data?.status ?? 'error')
         setBrandPlan(typeof json?.data?.org_plan === 'string' ? json.data.org_plan : null)
         setInstagramComplete(
@@ -173,8 +178,8 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   }, [pathname])
 
   useEffect(() => {
-    if (instagramComplete === false && !isProfilePage) router.replace('/brand-settings/organization?complete=1')
-  }, [instagramComplete, isProfilePage, router])
+    if (instagramComplete === false && !isProfilePage && !ndaLocked && pathname !== '/brand-documents') router.replace('/brand-settings/organization?complete=1')
+  }, [instagramComplete, isProfilePage, ndaLocked, pathname, router])
 
   // Sin barrera de pago al entrar (decisión 2026-11-03): una marca aprobada navega el portal, crea y edita
   // campañas y guarda borradores sin suscripción. La mensualidad se pide únicamente al «Enviar a aprobación»
@@ -195,17 +200,26 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   const loadingStatus = instagramComplete === null || brandStatus === null
   const pendingApproval = !loadingStatus && !approved
   const blocked = loadingStatus
-    || (approved && instagramComplete === false && !isProfilePage)
+    || (approved && instagramComplete === false && !isProfilePage && pathname !== '/brand-documents' && !ndaLocked)
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <PresenceHeartbeat />
-      <BrandSidebar plan={brandPlan} />
+      <BrandSidebar plan={brandPlan} ndaLocked={ndaLocked} />
       <AgencyBrandSwitcher />
-      <AgencyCheckoutGate />
+      {!ndaLocked && <AgencyCheckoutGate />}
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
         <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
-          {pendingApproval && !isPlanPage && !pendingPageAllowed ? (
+          {ndaLocked && !ndaPageAllowed ? (
+            <div className="card mx-auto max-w-md p-6">
+              <h2 className="font-bold text-gray-900">Firma el NDA para continuar</h2>
+              <p className="mt-2 text-sm text-gray-600">Completa los datos de la empresa y del representante legal. Luego el representante debe firmar en Documentos.</p>
+              <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-violet-700">
+                <Link href="/brand-settings/organization">Completar datos</Link>
+                <Link href="/brand-documents">Ir a Documentos</Link>
+              </div>
+            </div>
+          ) : pendingApproval && !isPlanPage && !pendingPageAllowed ? (
             <div className="flex items-center justify-center min-h-[60vh]">
               <div className="max-w-sm text-center">
                 <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
@@ -222,7 +236,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
                 </h2>
                 <p className="text-sm text-gray-500">
                   {brandStatus === 'pending_approval'
-                    ? 'Un administrador de SCENCE debe aprobar tu cuenta antes de que puedas acceder al portal. Te avisaremos por email apenas esté lista.'
+                    ? 'Ya puedes preparar un borrador de campaña. Antes de enviarlo a revisión, completa el pago si corresponde y firma el NDA.'
                     : brandStatus === 'rejected'
                       ? 'Tu solicitud de marca no fue aprobada. Si crees que es un error, contáctanos.'
                       : brandStatus === 'suspended'
@@ -238,7 +252,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
           ) : <>
             <BrandSectionVisit pathname={pathname} />
             {children}
-            <BrandOnboarding />
+            {!ndaLocked && <BrandOnboarding />}
           </>}
         </div>
       </main>

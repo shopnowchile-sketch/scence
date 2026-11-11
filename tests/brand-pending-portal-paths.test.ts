@@ -26,5 +26,5 @@ test('el servidor respalda la misma regla: pendiente consulta facturación y doc
 
 test('el layout del portal usa el helper y solo para pending_approval', () => {
   const layout = readFileSync(new URL('../src/app/(brand)/layout.tsx', import.meta.url), 'utf8')
-  assert.match(layout, /brandStatus === 'pending_approval' && pendingBrandPathAllowed\(pathname\)/)
+  assert.match(layout, /brandStatus === 'pending_approval' && \(pendingBrandPathAllowed\(pathname\) \|\| isBrandCampaignPath\(pathname\)\)/)
 })

@@ -70,7 +70,7 @@ const without = (db: Db, table: string) => { const s = snapshot(db); delete s[ta
 /** Emula el contrato de la migración: UNIQUE(brand_id, collaborator_brand_id) y CHECK(brand_id <> collaborator_brand_id).
  *  El INSERT se ejecuta de forma síncrona (atómico), como una sentencia de Postgres. NO es PostgreSQL. */
 function withPgConstraints(db: Db, opts: { insertError?: PgError; fail?: Record<string, string>; failCollaboratorBrandsRead?: boolean } = {}) {
-  const base = makeAdmin(db, { autoId: true, projectColumns: true, ...(opts.fail ?? {}) })
+  const base = makeAdmin(db, { signedBrandFixtures: true, autoId: true, projectColumns: true, ...(opts.fail ?? {}) })
   return {
     from(table: string) {
       const b = base.from(table)

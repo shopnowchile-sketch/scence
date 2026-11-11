@@ -1,3 +1,4 @@
+import { recordBrandActivity } from '@/lib/brand-activity'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isDeliverableComplete } from '@/lib/deliverable-status'
@@ -234,5 +235,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  await recordBrandActivity(admin, access, user.id, 'campaignCreated', data.name)
   return NextResponse.json({ data }, { status: 201 })
 }

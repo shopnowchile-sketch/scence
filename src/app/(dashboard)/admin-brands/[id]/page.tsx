@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, Target, Users,
-  FileText, Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2, Instagram,
+  Send, CheckCircle2, Ban, ExternalLink, Pencil, MapPin, Trash2, Instagram,
   Search, X, Loader2, UserPlus, ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -15,6 +15,7 @@ import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
 import { BrandsTable } from '@/components/brands/BrandsTable'
 import { BrandDocumentsAdmin } from '@/components/brands/BrandDocumentsAdmin'
+import BrandHistory from './BrandHistory'
 import { PhoneLink } from '@/components/ui/PhoneLink'
 
 type Campaign = {
@@ -1311,13 +1312,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         </div>
       )}
 
-      {tab === 'history' && (
-        <div className="card p-8 text-center">
-          <FileText className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-          <p className="font-bold text-gray-900">Historial</p>
-          <p className="text-sm text-gray-400 mt-1">Aquí después podemos conectar historial comercial, facturación y actividad.</p>
-        </div>
-      )}
+      {tab === 'history' && <BrandHistory key={brand.id} brandId={brand.id} lastSeen={brand.last_sign_in_at} />}
     </div>
   )
 }

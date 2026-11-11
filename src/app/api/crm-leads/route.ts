@@ -43,27 +43,6 @@ const EMAIL_STATUS_EVENT_TYPES: Record<string, string[]> = {
   failed_bounced: ['email.failed', 'email.bounced', 'email.complained', 'email.suppressed'],
 }
 
-type EmailEventSets = Record<'sent' | 'delivered' | 'opened' | 'clicked' | 'failed' | 'bounced' | 'complained' | 'suppressed', Set<string>>
-
-function getEmailEventLeadIds(emailStatus: string, emailEventSets: EmailEventSets) {
-  // "No abierto": entregado y sin ninguna apertura registrada.
-  if (emailStatus === 'not_opened') return Array.from(emailEventSets.delivered).filter(id => !emailEventSets.opened.has(id))
-  const eventTypes = EMAIL_STATUS_EVENT_TYPES[emailStatus]
-  if (!eventTypes) return null
-
-  const setByEventType: Record<string, Set<string>> = {
-    'email.sent': emailEventSets.sent,
-    'email.delivered': emailEventSets.delivered,
-    'email.opened': emailEventSets.opened,
-    'email.clicked': emailEventSets.clicked,
-    'email.failed': emailEventSets.failed,
-    'email.bounced': emailEventSets.bounced,
-    'email.complained': emailEventSets.complained,
-    'email.suppressed': emailEventSets.suppressed,
-  }
-  return Array.from(new Set(eventTypes.flatMap(eventType => Array.from(setByEventType[eventType] ?? []))))
-}
-
 // Bajas, rebotes y quejas: fuente única `email_optouts` (misma que usa el envío masivo).
 const getOptOuts = cachedLoader(listOptOuts)
 
@@ -157,13 +136,13 @@ const CACHE_TTL_MS = 10 * 60_000
 export const maxDuration = 60
 type Admin = ReturnType<typeof createAdminClient>
 
-function cachedLoader<T>(load: (admin: Admin) => Promise<T>) {
+function cachedLoader<T>(load: (admin: Admin) => Promise<T>, ttlMs = CACHE_TTL_MS) {
   let value: T | null = null
   let at = 0
   let ver = -1
   let inflight: Promise<T> | null = null
   return (admin: Admin): Promise<T> => {
-    if (value !== null && ver === crmCacheVersion() && Date.now() - at < CACHE_TTL_MS) return Promise.resolve(value)
+    if (value !== null && ver === crmCacheVersion() && Date.now() - at < ttlMs) return Promise.resolve(value)
     const loadingVer = crmCacheVersion()
     inflight ??= load(admin)
       .then(result => { value = result; at = Date.now(); ver = loadingVer; return result })
@@ -190,31 +169,35 @@ async function fetchAllPages<T>(
   return out
 }
 
-function emptyEmailEventSets(): EmailEventSets {
-  return { sent: new Set<string>(), delivered: new Set<string>(), opened: new Set<string>(), clicked: new Set<string>(), failed: new Set<string>(), bounced: new Set<string>(), complained: new Set<string>(), suppressed: new Set<string>() }
-}
+const getEmailKpis = cachedLoader(async admin => {
+  const { data, error } = await admin.rpc('crm_email_kpis')
+  if (error) throw new Error(error.message)
+  return data
+}, 30_000)
 
-const getEmailEventSets = cachedLoader(async admin => {
-  const { count, error } = await admin
-    .from('crm_email_events')
-    .select('id', { count: 'exact', head: true })
-    .not('lead_id', 'is', null)
+async function getEmailEventLeadIds(admin: Admin, status: string): Promise<string[] | null> {
+  const notOpened = status === 'not_opened'
+  const types = notOpened ? ['email.delivered', 'email.opened']
+    : Object.hasOwn(EMAIL_STATUS_EVENT_TYPES, status) ? EMAIL_STATUS_EVENT_TYPES[status] : null
+  if (!types) return null
+
+  const query = () => admin.from('crm_email_events').select('lead_id, event_type')
+    .not('lead_id', 'is', null).in('event_type', types)
+  const { count, error } = await admin.from('crm_email_events').select('id', { count: 'exact', head: true })
+    .not('lead_id', 'is', null).in('event_type', types)
   if (error) throw new Error(error.message)
 
   const rows = await fetchAllPages<{ lead_id: string | null; event_type: string | null }>(count ?? 0, (from, to) =>
-    admin.from('crm_email_events').select('lead_id, event_type').not('lead_id', 'is', null).range(from, to))
-
-  const sets = emptyEmailEventSets()
-  const setByType: Record<string, Set<string>> = {
-    'email.sent': sets.sent, 'email.delivered': sets.delivered, 'email.opened': sets.opened,
-    'email.clicked': sets.clicked, 'email.failed': sets.failed, 'email.bounced': sets.bounced,
-    'email.complained': sets.complained, 'email.suppressed': sets.suppressed,
-  }
+    query().order('id').range(from, to))
+  const matches = new Set<string>()
+  const opened = new Set<string>()
   for (const row of rows) {
-    if (row.lead_id && row.event_type) setByType[row.event_type]?.add(row.lead_id)
+    if (!row.lead_id) continue
+    if (notOpened && row.event_type === 'email.opened') opened.add(row.lead_id)
+    else matches.add(row.lead_id)
   }
-  return sets
-})
+  return Array.from(matches).filter(id => !opened.has(id))
+}
 
 const getAuthEmailMap = cachedLoader(buildAuthEmailMap)
 
@@ -312,14 +295,15 @@ export async function GET(request: NextRequest) {
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
 
-  const emailEventSets = await getEmailEventSets(admin).catch(error => {
-    console.error('[GET /api/crm-leads email events]', error)
-    return emptyEmailEventSets()
+  const statsPromise = idsOnly ? null : getEmailKpis(admin).catch(error => {
+    console.error('[GET /api/crm-leads indicadores de correo]', error)
+    return null
   })
 
-  // Filtros por conjunto de ids (estado de email, actividad reciente, campaña): se intersectan.
-  let eventLeadIds = getEmailEventLeadIds(emailStatus, emailEventSets)
+  // Filtros por historial: la selección y el listado usan los mismos IDs.
+  let eventLeadIds: string[] | null
   try {
+    eventLeadIds = await getEmailEventLeadIds(admin, emailStatus)
     const sets: string[][] = []
     if (activityDays > 0) sets.push(await recentActivityLeadIds(admin, activityDays))
     if (campaignFilter) sets.push(await campaignLeadIds(admin, campaignFilter))
@@ -506,16 +490,7 @@ export async function GET(request: NextRequest) {
     return { geo: {} as Record<string, Record<string, string[]>>, communes: [] as string[], sources: [] as string[], regions: [] as string[], countries: [] as string[], campaigns: [] as Array<{ id: string; name: string }> }
   })
 
-  const stats = {
-    sent: emailEventSets.sent.size,
-    delivered: emailEventSets.delivered.size,
-    opened: emailEventSets.opened.size,
-    clicked: emailEventSets.clicked.size,
-    failed: emailEventSets.failed.size,
-    bounced: emailEventSets.bounced.size,
-    failedOrBounced: getEmailEventLeadIds('failed_bounced', emailEventSets)?.length ?? 0,
-    openRate: emailEventSets.sent.size > 0 ? Math.round((emailEventSets.opened.size / emailEventSets.sent.size) * 100) : 0,
-  }
+  const stats = await statsPromise
 
   return NextResponse.json({ data: enriched, total: count, page, limit, geo, communes, sources, regions, countries, campaigns, stats })
 }

@@ -10,7 +10,7 @@ export type BulkJobRow = {
   id: string; status: string; subject: string; template_key: string
   total: number; cursor: number; sent: number; skipped: number; failed: number
   created_at: string; updated_at: string; completed_at: string | null
-  busy: boolean; note: string | null; reviewable: boolean
+  busy: boolean; stalled: boolean; note: string | null; reviewable: boolean
 }
 
 export const JOB_STATUS: Record<string, { label: string; cls: string }> = {
@@ -24,21 +24,29 @@ export function EnviosClient() {
   const [jobs, setJobs] = useState<BulkJobRow[] | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true)
     try {
       const r = await fetch('/api/crm-leads/bulk-send/jobs')
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudieron cargar los envíos')
       setJobs(j.data as BulkJobRow[])
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudieron cargar los envíos')
+      if (!background) toast.error(e instanceof Error ? e.message : 'No se pudieron cargar los envíos')
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }, [])
 
   useEffect(() => { void load() }, [load])
+  const hasLiveJobs = jobs?.some(job => !job.stalled && ['pending', 'processing'].includes(job.status))
+  useEffect(() => {
+    if (!hasLiveJobs || loading) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true)
+    }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [hasLiveJobs, load, loading])
 
   return (
     <div className="space-y-4">
@@ -77,7 +85,9 @@ export function EnviosClient() {
             </thead>
             <tbody>
               {jobs.map(job => {
-                const st = JOB_STATUS[job.status] ?? { label: job.status, cls: 'bg-gray-100 text-gray-600' }
+                const st = job.stalled
+                  ? { label: 'Sin avance', cls: 'bg-amber-50 text-amber-700' }
+                  : JOB_STATUS[job.status] ?? { label: job.status, cls: 'bg-gray-100 text-gray-600' }
                 return (
                   <tr key={job.id} className="border-b border-gray-50 last:border-0 align-top">
                     <td className="px-4 py-3 whitespace-nowrap text-gray-500">{formatDatetime(job.created_at)}</td>

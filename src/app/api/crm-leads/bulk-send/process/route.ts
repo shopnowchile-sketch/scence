@@ -178,6 +178,8 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-job-secret': chainSecret },
         body: JSON.stringify({ job_id: jobId }),
+      }).then(response => {
+        if (!response.ok) console.error('[bulk-send/process] siguiente tanda rechazada', { jobId, status: response.status })
       }).catch(err => console.error('[bulk-send/process] error encadenando siguiente tanda', err))
     )
   }

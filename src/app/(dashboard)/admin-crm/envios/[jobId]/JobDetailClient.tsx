@@ -23,23 +23,33 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
   const [confirmText, setConfirmText] = useState('')
   const [resuming, setResuming] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setLoadError(null)
+  const load = useCallback(async (background = false) => {
+    if (!background) { setLoading(true); setLoadError(null) }
     try {
       const r = await fetch(`/api/crm-leads/bulk-send/jobs/${jobId}`)
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'No se pudo cargar el envío')
       setReport(j.data as JobReport)
     } catch (e) {
-      setReport(null)
-      setLoadError(e instanceof Error ? e.message : 'No se pudo cargar el envío')
+      if (!background) {
+        setReport(null)
+        setLoadError(e instanceof Error ? e.message : 'No se pudo cargar el envío')
+      }
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }, [jobId])
 
   useEffect(() => { void load() }, [load])
+  const live = report != null && ['pending', 'processing'].includes(report.job.status)
+    && (report.lease.active || Date.now() - Date.parse(report.job.updated_at) < 3 * 60_000)
+  useEffect(() => {
+    if (!live || loading || showModal || resuming) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true)
+    }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [live, load, loading, resuming, showModal])
 
   async function resume() {
     if (!report) return

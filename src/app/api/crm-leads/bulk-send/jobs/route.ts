@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
-import { JOB_MAX_AGE_MS, parseLease } from '@/lib/crm-send-guard'
+import { JOB_LEASE_MS, JOB_MAX_AGE_MS, parseLease } from '@/lib/crm-send-guard'
 
 // GET /api/crm-leads/bulk-send/jobs — SOLO LECTURA, solo admin del CRM.
 // Lista los últimos envíos masivos (sin la lista de leads) para la pantalla "Envíos masivos".
@@ -25,6 +25,8 @@ export async function GET() {
     const lease = parseLease(job.error)
     const open = job.status === 'pending' || job.status === 'processing'
     const ageMs = now - new Date(job.created_at).getTime()
+    const busy = Boolean(lease && lease.expiresAt.getTime() > now)
+    const stalled = open && !busy && now - Date.parse(job.updated_at) > JOB_LEASE_MS
     return {
       id: job.id,
       status: job.status as string,
@@ -39,10 +41,11 @@ export async function GET() {
       updated_at: job.updated_at as string,
       completed_at: (job.completed_at ?? null) as string | null,
       // El marcador interno de bloqueo NO se expone; solo si hay alguien procesando ahora.
-      busy: Boolean(lease && lease.expiresAt.getTime() > now),
+      busy,
+      stalled,
       // Una nota humana (p. ej. el cierre de auditoría) sí se muestra; el marcador técnico no.
       note: job.error && !lease ? String(job.error).slice(0, 240) : null,
-      reviewable: open && ageMs <= JOB_MAX_AGE_MS,
+      reviewable: stalled && ageMs <= JOB_MAX_AGE_MS,
     }
   })
   return NextResponse.json({ data: jobs })

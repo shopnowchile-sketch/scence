@@ -259,3 +259,25 @@ test('marca existente sin NDA: listado y enlace directo bloqueados; conserva per
     assert.equal(hasBrandPermission(access, permission), false, permission)
   }
 })
+
+test('una marca nueva no puede firmar el NDA antes del pago; una existente conserva la firma', async () => {
+  const db = fresh()
+  const brand = db.brands.find(row => row.id === 'brand-X')!
+  brand.status = 'pending_approval'
+  db.brand_documents = [{ id: 'nda-pending', brand_id: brand.id, document_type: 'nda', status: 'pending' }]
+  as('ownerX', db)
+  const route = await import('../src/app/api/brand/documents/[id]/route.ts')
+  const sign = () => route.PATCH(req({ accepted: true }), { params: { id: 'nda-pending' } })
+  assert.equal((await sign()).status, 402)
+  assert.equal(db.brand_documents[0].status, 'pending')
+  brand.status = 'approved'
+  assert.equal((await sign()).status, 422, 'puede llegar a la validación de datos legales sin contratar un plan')
+})
+
+test('la edición genérica no puede cambiar el estado de una campaña de marca', async () => {
+  const db = fresh()
+  as('ownerX', db)
+  const route = await import('../src/app/api/campaigns/[id]/route.ts')
+  assert.equal((await route.PUT(req({ status: 'pending_approval' }), { params: { id: 'camp-X' } })).status, 403)
+  assert.equal(db.campaigns.find(row => row.id === 'camp-X')?.status, 'draft')
+})

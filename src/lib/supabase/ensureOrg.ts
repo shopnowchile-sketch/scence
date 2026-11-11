@@ -379,7 +379,8 @@ export function hasBrandPermission(
 ): boolean {
   if (!access) return false
   if (access.status === 'approved' && access.ndaSigned === false
-    && !['brand.read', 'brand.manage', 'legal_document.read', 'legal_document.manage'].includes(permission)) return false
+    && (!['brand.read', 'brand.manage', 'legal_document.read', 'legal_document.manage'].includes(permission)
+      || capability !== capabilityForPermission(permission))) return false
   return roleHasBrandPermission(access.role, permission) && brandStatusAllows(access.status, capability)
 }
 

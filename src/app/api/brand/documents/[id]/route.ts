@@ -1,3 +1,4 @@
+import { brandHasCurrentSubscription, AGENCY_SUBSCRIPTION_REQUIRED } from '@/lib/agency-brands'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
@@ -27,6 +28,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   ])
   if (documentError || !document) return NextResponse.json({ error: 'Documento pendiente no encontrado' }, { status: 404 })
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+  if (document.document_type === 'nda' && access.status === 'pending_approval'
+    && !(await brandHasCurrentSubscription(admin, access.brandId))) {
+    return NextResponse.json({
+      error: 'Completa el pago desde tu borrador de campaña antes de firmar el NDA.',
+      code: AGENCY_SUBSCRIPTION_REQUIRED,
+    }, { status: 402 })
+  }
   const legal = buildBrandLegalProfile(brand, representative)
   if (!legal.complete) return NextResponse.json(legalIncompleteBody(legal.missing), { status: 422 })
   const { data: template } = document.template_id ? await admin.from('contract_templates').select('content').eq('id', document.template_id).single() : { data: null }

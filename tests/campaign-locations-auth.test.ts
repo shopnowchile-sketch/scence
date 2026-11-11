@@ -62,8 +62,10 @@ for (const [file, perms] of [
   for (const handler of handlers(read(file))) {
     const name = handler.slice(0, handler.indexOf('(')) as keyof typeof perms
     test(`${file} ${name}: exige ${perms[name]} antes de acceder a datos`, () => {
-      const authAt = handler.indexOf(`authorizeBrandLocations('${perms[name]}')`)
-      assert.ok(authAt >= 0, `debe llamar authorizeBrandLocations('${perms[name]}')`)
+      const draftOption = name === 'GET' || name === 'POST' ? ', true' : ''
+      const call = `authorizeBrandLocations('${perms[name]}'${draftOption})`
+      const authAt = handler.indexOf(call)
+      assert.ok(authAt >= 0, `debe llamar ${call}`)
       const dataAt = handler.search(/admin\s*\.from\(|ownPlaceId\(/)
       assert.ok(dataAt < 0 || authAt < dataAt)
       assert.match(handler, /if \('res' in auth\) return auth\.res/)
@@ -92,7 +94,7 @@ test('lugares de marca: toda lectura/edición está acotada a la marca de la ses
 test('autorización de marca: solo resolveBrandAccess + hasBrandPermission', () => {
   const lib = read('src/lib/brand-locations-auth.ts')
   assert.match(lib, /resolveBrandAccess\(user\.id\)/)
-  assert.match(lib, /hasBrandPermission\(access, permission\)/)
+  assert.match(lib, /hasBrandPermission\(access, permission, capability\)/)
   assert.doesNotMatch(lib, /profiles[^\n]*role/)
 })
 

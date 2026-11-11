@@ -6,7 +6,8 @@ import { Search, Loader2, Building2, CheckCircle2, Circle, Mail, Plus, X, Upload
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
-import { CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import PresentationPreview from './PresentationPreview'
+import { CRM_EMAIL_CATALOG, CRM_PRESENTATION_KEY } from '@/lib/email-catalog'
 import { CRM_NICHE_SOURCES } from '@/lib/crm-niches'
 import { CrmLocationFields } from '@/components/locations/CrmLocationFields'
 import CommuneMultiSelect from './CommuneMultiSelect'
@@ -285,6 +286,10 @@ export function CrmLeadsClient() {
   }
 
   const bulkTemplate = CRM_EMAIL_CATALOG.find(template => template.key === bulkTemplateKey) ?? DEFAULT_CRM_TEMPLATE
+
+  const previewLead = bulkTemplateKey === CRM_PRESENTATION_KEY
+    ? leads.find(lead => selectedIds.includes(lead.id))
+    : undefined
 
   function chooseBulkTemplate(templateKey: string) {
     const template = CRM_EMAIL_CATALOG.find(item => item.key === templateKey)
@@ -1021,7 +1026,7 @@ export function CrmLeadsClient() {
 
       {showBulkSendModal && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-gray-100">
+          <div className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto bg-white rounded-2xl shadow-xl border border-gray-100">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>
                 <h2 className="text-base font-bold text-gray-900">Enviar email masivo</h2>
@@ -1059,6 +1064,7 @@ export function CrmLeadsClient() {
                 <label className="block text-xs font-semibold text-gray-500 mb-1">Asunto</label>
                 <input
                   value={bulkSubject}
+                  maxLength={bulkTemplateKey === CRM_PRESENTATION_KEY ? 180 : undefined}
                   onChange={e => setBulkSubject(e.target.value)}
                   placeholder="Hola, ¿cómo estás?"
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400"
@@ -1071,6 +1077,7 @@ export function CrmLeadsClient() {
                 </label>
                 <textarea
                   value={bulkMessage}
+                  maxLength={bulkTemplateKey === CRM_PRESENTATION_KEY ? 10000 : undefined}
                   onChange={e => setBulkMessage(e.target.value)}
                   placeholder="Edita el mensaje antes de enviar si quieres personalizarlo."
                   rows={8}
@@ -1080,6 +1087,8 @@ export function CrmLeadsClient() {
                   Puedes editarlo. Las variables {'{{contact_name}}'} y {'{{company_name}}'} se personalizan para cada lead.
                 </p>
               </div>
+
+              {previewLead && <PresentationPreview lead={previewLead} subject={bulkSubject} message={bulkMessage} />}
 
               <AttachmentPicker value={bulkAttachment} onChange={setBulkAttachment} disabled={sendingBulk} />
             </div>

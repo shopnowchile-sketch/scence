@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, Mail, Phone, MapPin, Briefcase, Building2, Clock, Tag, CalendarDays, CheckCircle2, Circle, AtSign, Trash2, Pencil } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
+import PresentationPreview from '../PresentationPreview'
 import AttachmentPicker, { type CrmAttachment } from '../AttachmentPicker'
-import { applyEmailVariables, CRM_EMAIL_CATALOG } from '@/lib/email-catalog'
+import { applyEmailVariables, CRM_EMAIL_CATALOG, CRM_PRESENTATION_KEY } from '@/lib/email-catalog'
 import { CrmLocationFields } from '@/components/locations/CrmLocationFields'
 import { PhoneLink } from '@/components/ui/PhoneLink'
 
@@ -221,6 +222,11 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
     if (!template) return
     const variables = leadVariables(target)
     setEmailTemplateKey(template.key)
+    if (template.key === CRM_PRESENTATION_KEY) {
+      setEmailSubject(template.defaultSubject)
+      setEmailMessage(template.defaultMessage ?? '')
+      return
+    }
     setEmailSubject(applyEmailVariables(template.defaultSubject, variables))
     setEmailMessage(applyEmailVariables(template.defaultMessage ?? '', variables))
   }
@@ -545,6 +551,10 @@ export function CrmLeadDetailClient({ id }: { id: string }) {
                     className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none focus:border-violet-400 min-h-[260px]"
                   />
                 </div>
+
+                {emailTemplateKey === CRM_PRESENTATION_KEY && (
+                  <PresentationPreview lead={lead} subject={emailSubject} message={emailMessage} />
+                )}
 
                 <AttachmentPicker value={emailAttachment} onChange={setEmailAttachment} disabled={sending} />
 

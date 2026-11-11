@@ -1,3 +1,4 @@
+import { crmCatalogEmail } from '../src/lib/crm-email-html.ts'
 // Pruebas del bloqueo comercial. Sin dependencias nuevas: `node --test` de
 // Node 22 ejecuta TypeScript directamente.
 //
@@ -22,7 +23,7 @@ import {
   signUnsubscribeToken,
   verifyUnsubscribeToken,
 } from '../src/lib/email-optouts.ts'
-import { CRM_EMAIL_CATALOG, getEmailTemplate, applyEmailVariables } from '../src/lib/email-catalog.ts'
+import { applyCrmPresentationVariables, CRM_PRESENTATION_KEY, CRM_EMAIL_CATALOG, getEmailTemplate, applyEmailVariables } from '../src/lib/email-catalog.ts'
 
 const src = (rel: string) => readFileSync(fileURLToPath(new URL(`../src/${rel}`, import.meta.url)), 'utf8')
 
@@ -186,10 +187,10 @@ describe('8 · Headers de baja', () => {
   })
 
   test('el pie de baja solo existe en el layout comercial', () => {
-    const resend = src('lib/resend.ts')
-    assert.equal(resend.split('date de baja aquí').length - 1, 1, 'el pie de baja debe existir una sola vez en todo resend.ts')
-    const fn = resend.slice(resend.indexOf('export function crmCatalogEmail'))
-    assert.ok(fn.slice(0, fn.indexOf('\nexport function')).includes('date de baja aquí'), 'y debe estar dentro de crmCatalogEmail')
+    const layout = src('lib/crm-email-html.ts')
+    assert.equal(layout.split('date de baja aquí').length - 1, 1)
+    assert.ok(layout.slice(layout.indexOf('export function crmCatalogEmail')).includes('date de baja aquí'))
+    assert.ok(!src('lib/resend.ts').includes('date de baja aquí'))
   })
 })
 
@@ -292,9 +293,55 @@ describe('10 · Los emails transaccionales no se ven afectados', () => {
   })
 })
 
+describe('Presentación comercial CRM', () => {
+  const template = getEmailTemplate(CRM_PRESENTATION_KEY)!
+
+  test('aparece en el catálogo con asunto, nombre y contexto CRM', () => {
+    assert.ok(CRM_EMAIL_CATALOG.includes(template))
+    assert.equal(template.name, 'Presentación SCENCE — Marcas y negocios')
+    assert.equal(template.category, 'crm')
+    assert.equal(template.defaultSubject, 'Me encantaría que conozcas SCENCE 💙')
+  })
+
+  test('personaliza con los campos del CRM y usa alternativas independientes', () => {
+    const message = template.defaultMessage!
+    assert.match(applyCrmPresentationVariables(message, { contact_name: ' Camila ' }), /^Hola Camila, ¿cómo estás\?/)
+    assert.match(applyCrmPresentationVariables(message, { contact_name: 'Camila' }), /campaña para tu negocio\./)
+    const withoutName = applyCrmPresentationVariables(message, { contact_name: '  ', company_name: ' Café Volcán ' })
+    assert.match(withoutName, /^Hola, ¿cómo estás\?/)
+    assert.ok(withoutName.includes('campaña para **Café Volcán**.'))
+    const withoutData = applyCrmPresentationVariables(message + ' {{variable_desconocida}}', { contact_name: null })
+    assert.match(withoutData, /^Hola, ¿cómo estás\?/)
+    assert.ok(withoutData.includes('campaña para tu negocio.'))
+    assert.doesNotMatch(withoutData, /{{|undefined|null/)
+  })
+
+  test('el HTML del correo incluye los enlaces y escapa los datos del contacto', () => {
+    const message = applyCrmPresentationVariables(template.defaultMessage!, { contact_name: '<b>Camila</b>' })
+    const html = crmCatalogEmail({ message, presentation: true, unsubscribeUrl: 'https://example.com/baja' })
+    for (const href of ['https://www.scence.cl', 'https://www.instagram.com/influencers.snc/', 'https://wa.me/56975265196']) {
+      assert.ok(html.includes(`href="${href}"`))
+    }
+    assert.ok(html.includes('Hola &lt;b&gt;Camila&lt;/b&gt;,'))
+    assert.ok(html.includes('<strong>Pri</strong>'))
+    assert.ok(html.includes('href="https://example.com/baja"'))
+    assert.doesNotMatch(html, /linear-gradient|<img|Registrar mi marca/)
+  })
+
+  test('las plantillas anteriores conservan formato y botones', () => {
+    const html = crmCatalogEmail({
+      message: '**Texto** y www.scence.cl',
+      registerLinks: { brandUrl: 'https://example.com/marca', creatorUrl: 'https://example.com/creadora' },
+    })
+    assert.ok(html.includes('**Texto** y www.scence.cl'))
+    assert.ok(html.includes('linear-gradient'))
+    assert.ok(html.includes('Registrar mi marca'))
+  })
+})
+
 describe('11 · Templates del CRM sin regresión', () => {
-  test('5 originales + invitación a influencers y a marcas, con el copy aprobado', () => {
-    assert.equal(CRM_EMAIL_CATALOG.length, 7)
+  test('plantillas anteriores y presentación comercial, con el copy aprobado', () => {
+    assert.equal(CRM_EMAIL_CATALOG.length, 8)
     const intro = getEmailTemplate('crm_intro')!
     const render = applyEmailVariables(intro.defaultMessage!, { contact_name: 'Camila', company_name: 'Café Volcán' })
     assert.ok(render.includes('Soy Priscilla de SCENCE. Trabajamos con una comunidad de creadoras de contenido'))
@@ -309,7 +356,9 @@ describe('11 · Templates del CRM sin regresión', () => {
 
   test('no reaparece copy legado', () => {
     for (const t of CRM_EMAIL_CATALOG) {
-      for (const legado of ['primera campaña gratis', 'primera campaña gratuita', 'Soy Pri, fundadora']) {
+      const legacyCopy = ['primera campaña gratis', 'primera campaña gratuita']
+      if (t.key !== CRM_PRESENTATION_KEY) legacyCopy.push('Soy Pri, fundadora')
+      for (const legado of legacyCopy) {
         assert.ok(!(t.defaultMessage ?? '').includes(legado), `${t.key} trae copy legado`)
       }
     }
@@ -453,7 +502,7 @@ describe('14 · La baja no se dispara sola (escáneres de links)', () => {
 
 describe('12 · Invitaciones CRM: sección de registro y RUT enlazado', () => {
   test('el correo trae «Si eres marca…» y «Si eres creador de contenido…» con sus enlaces', () => {
-    const resend = readFileSync(new URL('../src/lib/resend.ts', import.meta.url), 'utf8')
+    const resend = src('lib/crm-email-html.ts')
     assert.ok(resend.includes('Si eres marca</strong>, regístrate para crear una campaña'))
     assert.ok(resend.includes('Si eres creador de contenido</strong>, regístrate para crear contenido para marcas'))
     assert.match(resend, /\$\{registerSection\}/)

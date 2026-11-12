@@ -285,10 +285,8 @@ async function syncBrandSubscription(id: string, subscription: Record<string, an
   const row = { organization_id: ref.organizationId, plan_id: ref.planId, status, current_period_start: start, current_period_end: end, paypal_subscription_id: id, paypal_payer_id: subscription.subscriber?.payer_id ?? null, metadata, canceled_at: canceledAt, updated_at: new Date().toISOString() }
   const { error } = existing ? await admin.from('subscriptions').update(row).eq('id', existing.id) : await admin.from('subscriptions').insert(row)
   if (error) return NextResponse.json({ error: 'Unable to sync subscription' }, { status: 500 })
-  if (status === 'active') {
-    const { error: brandError } = await admin.from('brands').update({ status: 'approved' }).eq('organization_id', ref.organizationId).eq('status', 'suspended')
-    if (brandError) return NextResponse.json({ error: 'Unable to reactivate brand' }, { status: 500 })
-  }
+  // Un pago o una suscripción activa NUNCA cambia el estado de la marca: una marca suspendida solo se reactiva
+  // por una acción administrativa (PATCH /api/brands/[id]). El plan y el cobro siguen su curso sin tocarla.
   return NextResponse.json({ received: true })
 }
 

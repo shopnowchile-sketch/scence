@@ -298,6 +298,12 @@ export function BrandsTable({ managedByBrandId }: { managedByBrandId?: string } 
     load(search)
   }
 
+  function askSuspensionReason(): string | null {
+    const reason = window.prompt('Motivo de la suspensión (obligatorio). No cambia el plan ni los pagos de la marca.')?.trim() ?? ''
+    if (reason.length < 5) { toast.error('Indica el motivo de la suspensión (mínimo 5 caracteres).'); return null }
+    return reason
+  }
+
   async function patchBrand(brand: Brand, body: Record<string, unknown>) {
     const res = await fetch(`/api/brands/${brand.id}`, {
       method: 'PATCH',
@@ -467,7 +473,12 @@ export function BrandsTable({ managedByBrandId }: { managedByBrandId?: string } 
                     <option value="suspended">Suspendida</option>
                   </select>
                   <button type="button" disabled={!bulkStatus || bulkRunning}
-                    onClick={() => runBulk(`Cambiar estado a ${statusLabel(bulkStatus)}${bulkStatus === 'suspended' ? ' (quita el plan manual)' : ''}`, brand => patchBrand(brand, { status: bulkStatus }))}
+                    onClick={() => {
+                      // Suspender exige motivo (queda en el historial de cada marca). No cambia su plan ni sus pagos.
+                      const reason = bulkStatus === 'suspended' ? askSuspensionReason() : undefined
+                      if (bulkStatus === 'suspended' && !reason) return
+                      runBulk(`Cambiar estado a ${statusLabel(bulkStatus)}`, brand => patchBrand(brand, { status: bulkStatus, ...(reason ? { suspension_reason: reason } : {}) }))
+                    }}
                     className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">Aplicar</button>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -827,13 +838,15 @@ export function BrandsTable({ managedByBrandId }: { managedByBrandId?: string } 
                 </button>
                 <button
                   onClick={async () => {
+                    const reason = askSuspensionReason()
+                    if (!reason) return
                     const res = await fetch(`/api/brands/${selected.id}`, {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ status: 'suspended' }),
+                      body: JSON.stringify({ status: 'suspended', suspension_reason: reason }),
                     })
-                    if (!res.ok) return toast.error('No se pudo actualizar el acceso de la marca')
-                    toast.success('Acceso actualizado. La marca verá las opciones de plan para continuar en SCENCE.')
+                    if (!res.ok) return toast.error((await res.json().catch(() => ({}))).error ?? 'No se pudo actualizar el acceso de la marca')
+                    toast.success('Marca suspendida. Su acceso operativo queda bloqueado; su plan y su historial no cambian.')
                     load(search)
                     setSelected({ ...selected, status: 'suspended' })
                   }}

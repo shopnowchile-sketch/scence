@@ -5,6 +5,7 @@ import { resolveBrandPlanAccess } from '@/lib/plan-limits'
 import { hasBrandPermission, resolveBrandAccess, type BrandAccess } from '@/lib/supabase/ensureOrg'
 import { isAgencyScopedBrand } from '@/lib/agency-brands'
 import { PROFILE_LEGAL_SELECT, missingCompanyLegalFields } from '@/lib/brand-legal-profile'
+import { buildBrandProfileUpdate, mergeLegalState } from '@/lib/brand-profile-update'
 
 const BRAND_FIELDS = `
   id, name, logo_url, logo_path, website, instagram, industry, rut,
@@ -80,14 +81,7 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json()
-  const {
-    name, website, instagram, industry, rut,
-    contact_name, contact_email, contact_phone,
-    address_street, address_number, address_city, address_region, address_country,
-    address_place_id, address_lat, address_lng,
-    address2_street, address2_number, address2_city, address2_region, address2_country,
-    representative,
-  } = body
+  const { representative } = body
 
   const admin = createAdminClient()
 
@@ -97,18 +91,19 @@ export async function PATCH(request: Request) {
   // (brand)/layout.tsx, que redirige a /brand-settings/organization si falta.
   const { data: existingBrand } = await admin
     .from('brands')
-    .select('instagram')
+    .select('instagram, rut, address_street, address_city, address_region, address_country')
     .eq('id', access.brandId)
     .single()
-  const finalInstagram = 'instagram' in body
-    ? String(instagram ?? '').trim()
-    : String(existingBrand?.instagram ?? '').trim()
+  // Actualización parcial: solo se escribe lo que llega; la validación usa el estado final (guardado + enviado).
+  const brandUpdate = buildBrandProfileUpdate(body)
+  const finalState = mergeLegalState(existingBrand, brandUpdate) as Record<string, string | null | undefined>
+  const finalInstagram = String(finalState.instagram ?? '').trim()
   if (!finalInstagram) {
     return NextResponse.json({ error: 'Instagram es obligatorio para usar el portal de marca' }, { status: 400 })
   }
 
   // Reglas legales de la empresa: fuente única en lib/brand-legal-profile.ts.
-  const missingLegalField = missingCompanyLegalFields({ rut, address_street, address_city, address_region, address_country })[0]
+  const missingLegalField = missingCompanyLegalFields(finalState)[0]
   if (missingLegalField) {
     return NextResponse.json({ error: `${missingLegalField.label} es obligatorio para la organización` }, { status: 400 })
   }
@@ -130,29 +125,7 @@ export async function PATCH(request: Request) {
 
   const { data, error } = await admin
     .from('brands')
-    .update({
-      name,
-      website:          website          || null,
-      instagram:        instagram        || null,
-      industry:         industry         || null,
-      rut:              rut              || null,
-      contact_name:     contact_name     || null,
-      contact_email:    contact_email    || null,
-      contact_phone:    contact_phone    || null,
-      address_street:   address_street   || null,
-      address_number:   address_number   || null,
-      address_city:     address_city     || null,
-      address_region:   address_region   || null,
-      address_country:  address_country  || null,
-      address_place_id: address_place_id || null,
-      address_lat:      address_lat      ?? null,
-      address_lng:      address_lng      ?? null,
-      address2_street:  address2_street  || null,
-      address2_number:  address2_number  || null,
-      address2_city:    address2_city    || null,
-      address2_region:  address2_region  || null,
-      address2_country: address2_country || null,
-    })
+    .update(brandUpdate)
     .eq('id', access.brandId)
     .select(BRAND_FIELDS)
     .single()

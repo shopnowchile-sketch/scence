@@ -10,10 +10,10 @@ import { PhoneLink } from '@/components/ui/PhoneLink'
 type OwnedBrand = {
   id: string; organization_id: string; name: string; industry: string | null; status: 'pending_approval' | 'approved' | 'rejected'; contact_name: string | null
   contact_email: string | null; contact_phone: string | null; website: string | null; instagram: string | null
-  notes: string | null; logo_url: string | null; created_at: string
+  logo_url: string | null; created_at: string
 }
 
-const EMPTY = { name: '', category: '', contact_name: '', contact_email: '', contact_phone: '', website: '', instagram: '', notes: '' }
+const EMPTY = { name: '', category: '', contact_name: '', contact_email: '', contact_phone: '', website: '', instagram: '' }
 const STATUS = {
   pending_approval: { label: 'Pendiente de aprobación', color: 'bg-amber-50 text-amber-700' },
   approved: { label: 'Aprobada', color: 'bg-emerald-50 text-emerald-700' },
@@ -43,7 +43,7 @@ export default function InfluencerBrandsPage() {
   function openCreate() { setEditing(null); setForm(EMPTY); setLogo(null) }
   function openEdit(brand: OwnedBrand) {
     setEditing(brand); setLogo(null)
-    setForm({ name: brand.name, category: brand.industry ?? '', contact_name: brand.contact_name ?? '', contact_email: brand.contact_email ?? '', contact_phone: brand.contact_phone ?? '', website: brand.website ?? '', instagram: brand.instagram ?? '', notes: brand.notes ?? '' })
+    setForm({ name: brand.name, category: brand.industry ?? '', contact_name: brand.contact_name ?? '', contact_email: brand.contact_email ?? '', contact_phone: brand.contact_phone ?? '', website: brand.website ?? '', instagram: brand.instagram ?? '' })
   }
   function close() { setEditing(undefined); setLogo(null) }
 
@@ -98,7 +98,6 @@ export default function InfluencerBrandsPage() {
               {brand.website && <a className="flex items-center gap-2 hover:text-violet-600" href={brand.website.startsWith('http') ? brand.website : `https://${brand.website}`} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" />Sitio web</a>}
               {!brand.contact_name && !brand.contact_email && !brand.contact_phone && !brand.instagram && !brand.website && <p className="text-xs italic text-gray-400">Sin datos de contacto</p>}
             </div>
-            {brand.notes && <p className="mt-4 line-clamp-3 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">{brand.notes}</p>}
           </article>
         ))}</div>
       )}
@@ -115,7 +114,6 @@ export default function InfluencerBrandsPage() {
             <Field label="Teléfono" value={form.contact_phone} onChange={value => setForm({ ...form, contact_phone: value })} />
             <Field label="Instagram" value={form.instagram} onChange={value => setForm({ ...form, instagram: value })} placeholder="@marca" />
             <div className="sm:col-span-2"><Field label="Sitio web" value={form.website} onChange={value => setForm({ ...form, website: value })} placeholder="https://..." /></div>
-            <label className="space-y-1.5 text-sm font-medium text-gray-700 sm:col-span-2">Notas<textarea value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} rows={4} className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-violet-400" /></label>
           </div>
           <div className="sticky bottom-0 flex justify-end gap-3 border-t border-gray-100 bg-white px-6 py-4"><button onClick={close} className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-500">Cancelar</button><button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Guardar</button></div>
         </div>

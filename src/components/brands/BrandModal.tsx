@@ -75,12 +75,13 @@ export function BrandModal({
     try {
       const url    = editing ? `/api/brands/${editing.id}` : createEndpoint
       const method = editing ? 'PATCH' : 'POST'
+      // El logo no se envía desde este formulario: se sube en la ficha y no debe pisarse al editar.
+      const { logo_url: _logo, ...fields } = form
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
-          logo_url:      form.logo_url || null,
+          ...fields,
           website:       form.website || null,
           instagram:     form.instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') || null,
           industry:      form.industry || null,
@@ -119,12 +120,12 @@ export function BrandModal({
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Nombre *</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Razón social / nombre de la marca *</label>
             <input
               className="input-base w-full"
               value={form.name}
               onChange={e => set('name', e.target.value)}
-              placeholder="Nike, Coca-Cola..."
+              placeholder="Empresa SpA o nombre de la marca"
               required
               autoFocus
             />
@@ -142,25 +143,22 @@ export function BrandModal({
               <input className="input-base w-full" value={form.website} onChange={e => set('website', e.target.value)} placeholder="https://..." />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Logo URL</label>
-            <input className="input-base w-full" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} placeholder="https://..." />
-          </div>
+          <p className="text-[11px] text-gray-400 -mt-1">El logo se sube desde la ficha de la marca (JPG, PNG o WebP, máx. 5 MB).</p>
           <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-3">
             <label className="block text-xs font-semibold text-violet-900 mb-1">Instagram para etiquetar</label>
             <input className="input-base w-full bg-white" value={form.instagram} onChange={e => set('instagram', e.target.value)} placeholder="@marca o https://instagram.com/marca" />
             <p className="mt-1.5 text-[11px] leading-relaxed text-violet-700">Las influencers verán este usuario en las campañas donde participe esta marca, para saber a quién etiquetar.</p>
           </div>
           <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Contacto</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Persona de contacto</p>
             <div className="space-y-3">
-              <input className="input-base w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} placeholder="Nombre del contacto" />
+              <input className="input-base w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} placeholder="Nombre de la persona de contacto" />
               <input type="email" className="input-base w-full" value={form.contact_email} onChange={e => set('contact_email', e.target.value)} placeholder="email@marca.com" />
               <input className="input-base w-full" value={form.contact_phone} onChange={e => set('contact_phone', e.target.value)} placeholder="+52 55 1234 5678" />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Notas internas</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Notas internas (solo Admin)</label>
             <textarea
               className="input-base w-full resize-none"
               rows={2}

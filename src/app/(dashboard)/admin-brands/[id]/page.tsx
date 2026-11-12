@@ -44,6 +44,7 @@ type Brand = {
   org_plan?: string | null
   subscription_plan_override?: 'basic' | 'growth' | 'pro' | null
   direct_influencers?: Array<{ id: string; display_name: string; avatar_url: string | null }>
+  status_history?: Array<{ id: string; from: string | null; to: string | null; reason: string | null; evidence: string | null; actor: string | null; at: string }>
 }
 
 
@@ -98,6 +99,10 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [brand, setBrand] = useState<Brand | null>(null)
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [suspendOpen, setSuspendOpen] = useState(false)
+  const [suspendReason, setSuspendReason] = useState('')
+  const [suspendEvidence, setSuspendEvidence] = useState('')
+  const [suspending, setSuspending] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [logoSaving, setLogoSaving] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
@@ -493,26 +498,41 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     }
   }
 
-  async function updateStatus(status: 'approved' | 'pending_approval' | 'suspended') {
+  async function updateStatus(status: 'approved' | 'pending_approval' | 'suspended', suspension?: { reason: string; evidence: string }) {
     if (!brand) return
+    // Suspender exige motivo: se pide en un diálogo antes de enviar.
+    if (status === 'suspended' && !suspension) {
+      if (brand.status !== 'suspended') setSuspendOpen(true)
+      return
+    }
 
     const res = await fetch(`/api/brands/${brand.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, suspension_reason: suspension?.reason, suspension_evidence: suspension?.evidence || undefined }),
     })
 
     const json = await res.json().catch(() => ({}))
-    if (!res.ok) return toast.error(json.error ?? 'No se pudo actualizar')
+    if (!res.ok) { toast.error(json.error ?? 'No se pudo actualizar'); return false }
 
-    setBrand({ ...brand, status, subscription_plan_override: status === 'suspended' ? null : brand.subscription_plan_override })
+    // Suspender no cambia el plan ni las suscripciones de la marca.
+    setBrand({ ...brand, status })
     toast.success(
       status === 'approved'
         ? 'Acceso de la marca habilitado'
         : status === 'suspended'
-          ? 'Acceso actualizado. La marca verá las opciones de plan para continuar en SCENCE.'
+          ? 'Marca suspendida. Su acceso operativo queda bloqueado; su plan y su historial no cambian.'
           : 'Marca pendiente de revisión'
     )
+    load()
+    return true
+  }
+
+  async function confirmSuspend() {
+    setSuspending(true)
+    const ok = await updateStatus('suspended', { reason: suspendReason.trim(), evidence: suspendEvidence.trim() })
+    setSuspending(false)
+    if (ok) { setSuspendOpen(false); setSuspendReason(''); setSuspendEvidence('') }
   }
 
   async function deleteBrand() {
@@ -826,7 +846,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Contacto</p>
+                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Persona de contacto</p>
                 <p className="font-medium text-gray-900">{brand.contact_name ?? '—'}</p>
               </div>
               <div>
@@ -863,8 +883,27 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
               </div>
             </div>
 
+            {(brand.status_history?.length ?? 0) > 0 && (
+              <div className="rounded-xl border border-gray-100 p-4 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Historial de estado (solo Admin)</p>
+                <ul className="divide-y divide-gray-100">
+                  {brand.status_history!.map(event => (
+                    <li key={event.id} className="py-2">
+                      <p className="font-medium text-gray-900">
+                        {event.to === 'suspended' ? 'Suspendida' : event.to === 'approved' ? 'Aprobada' : event.to === 'rejected' ? 'Rechazada' : 'Pendiente'}
+                        <span className="ml-2 text-xs font-normal text-gray-400">{new Date(event.at).toLocaleString('es-CL')}{event.actor ? ` · ${event.actor}` : ''}</span>
+                      </p>
+                      {event.reason && <p className="text-gray-600">Motivo: {event.reason}</p>}
+                      {event.evidence && <p className="text-gray-500">Respaldo: {event.evidence}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {brand.notes && (
               <div className="bg-amber-50 rounded-xl p-4 text-sm text-amber-800">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600 mb-1">Notas internas (solo Admin)</p>
                 {brand.notes}
               </div>
             )}
@@ -1309,6 +1348,31 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {suspendOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !suspending && setSuspendOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-label="Suspender marca" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-4" onClick={event => event.stopPropagation()}>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Suspender «{brand.name}»</h2>
+              <p className="mt-1 text-xs text-gray-500">Bloquea su acceso operativo. No cancela su suscripción, no cambia su plan y no borra su historial.</p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Motivo *</label>
+              <textarea className="input-base w-full resize-none" rows={3} value={suspendReason} onChange={event => setSuspendReason(event.target.value)} placeholder="Ej.: incumplimiento de términos, pedido de la marca…" maxLength={1000} autoFocus />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Respaldo (opcional)</label>
+              <input className="input-base w-full" value={suspendEvidence} onChange={event => setSuspendEvidence(event.target.value)} placeholder="Correo, enlace o referencia" maxLength={1000} />
+            </div>
+            <div className="flex gap-2">
+              <button type="button" disabled={suspending} onClick={() => setSuspendOpen(false)} className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button type="button" disabled={suspending || suspendReason.trim().length < 5} onClick={() => void confirmSuspend()} className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {suspending ? 'Suspendiendo…' : 'Suspender marca'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

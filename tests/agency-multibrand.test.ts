@@ -194,10 +194,9 @@ test('el portal de marca ya no redirige a Planes ni bloquea por falta de suscrip
   const { readFileSync } = await import('node:fs')
   const layout = readFileSync(new URL('../src/app/(brand)/layout.tsx', import.meta.url), 'utf8')
   assert.doesNotMatch(layout, /hasActiveSubscription/)
-  // La única redirección a Planes que queda es la de marca suspendida.
+  // Decisión 2026-11-12: ni siquiera la marca suspendida se redirige a Planes; ve el aviso de suspensión.
   const redirects = layout.match(/router\.replace\('\/brand-settings\/plan'\)/g) ?? []
-  assert.equal(redirects.length, 1)
-  assert.match(layout, /brandStatus === 'suspended'[^\n]*router\.replace\('\/brand-settings\/plan'\)/)
+  assert.equal(redirects.length, 0)
 })
 
 test('cookie de marca activa ajena a la agencia se ignora (sin escalada de permisos)', async () => {

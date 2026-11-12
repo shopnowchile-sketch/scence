@@ -119,7 +119,23 @@ export async function GET(req: NextRequest, { params }: Params) {
     .map(r => r.influencer)
     .filter(Boolean)) as unknown as Array<{ id: string; display_name: string; avatar_url: string | null }>
 
-  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at, org_plan, direct_influencers } })
+  // Historial de cambios de estado (motivo y respaldo de cada suspensión). Solo Admin lo recibe.
+  const { data: statusRows } = await admin
+    .from('audit_logs')
+    .select('id, changes, created_at, actor:profiles!audit_logs_actor_id_fkey(full_name)')
+    .eq('entity_type', 'brand')
+    .eq('entity_id', params.id)
+    .eq('action', 'brand.status_changed')
+    .order('created_at', { ascending: false })
+    .limit(10)
+    .returns<Array<{ id: string; changes: { from?: string | null; to?: string; reason?: string | null; evidence?: string | null } | null; created_at: string; actor: { full_name: string | null } | null }>>()
+  const status_history = (statusRows ?? []).map(r => ({
+    id: r.id, from: r.changes?.from ?? null, to: r.changes?.to ?? null,
+    reason: r.changes?.reason ?? null, evidence: r.changes?.evidence ?? null,
+    actor: r.actor?.full_name ?? null, at: r.created_at,
+  }))
+
+  return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at, org_plan, direct_influencers, status_history } })
 }
 
 const BRAND_TEXT_FIELDS = ['name', 'contact_email', 'logo_url', 'website', 'industry', 'contact_name', 'contact_phone', 'notes'] as const
@@ -355,11 +371,30 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     rest.subscription_plan_override = normalized
   }
 
-  // Suspender una marca que tenía acceso comercial manual revoca ese permiso
-  // gratuito. Al volver a entrar, el portal la redirige a Planes para que
-  // contrate una suscripción. No toca una suscripción pagada existente.
-  if (rest.status === 'suspended') {
-    rest.subscription_plan_override = null
+  // Suspender bloquea el acceso OPERATIVO (brand-status-access.ts) pero NO toca el plan ni las suscripciones
+  // ni el historial: son procesos distintos (decisión de la fundadora, 2026-11-12). Exige un motivo y deja el
+  // cambio de estado registrado en audit_logs.
+  let statusChange: { from: string | null; to: string; reason: string | null; evidence: string | null } | null = null
+  if ('status' in rest) {
+    const { data: before, error: beforeError } = await admin.from('brands').select('status').eq('id', params.id).maybeSingle()
+    if (beforeError) return NextResponse.json({ error: 'No se pudo verificar la marca' }, { status: 500 })
+    if (!before) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+    const reason = typeof body.suspension_reason === 'string' ? body.suspension_reason.trim() : ''
+    const evidence = typeof body.suspension_evidence === 'string' ? body.suspension_evidence.trim() : ''
+    if (before.status !== rest.status) {
+      if (rest.status === 'suspended' && reason.length < 5) {
+        return NextResponse.json({ error: 'Indica el motivo de la suspensión (mínimo 5 caracteres).' }, { status: 422 })
+      }
+      if (reason.length > 1000 || evidence.length > 1000) {
+        return NextResponse.json({ error: 'El motivo o el respaldo es demasiado largo (máximo 1000 caracteres).' }, { status: 422 })
+      }
+      statusChange = {
+        from: (before.status as string | null) ?? null,
+        to: String(rest.status),
+        reason: reason || null,
+        evidence: evidence || null,
+      }
+    }
   }
 
   // Lista blanca: solo se escriben columnas explícitamente editables. user_id
@@ -411,6 +446,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
     console.error('[PATCH /api/brands/[id]] update de brands falló:', error?.message)
     return NextResponse.json({ error: 'No se pudo guardar los cambios de la marca' }, { status: 500 })
+  }
+
+  if (statusChange) {
+    const { error: historyError } = await admin.from('audit_logs').insert({
+      actor_id: user.id,
+      organization_id: data.organization_id,
+      action: 'brand.status_changed',
+      entity_type: 'brand',
+      entity_id: params.id,
+      changes: statusChange,
+    })
+    if (historyError) {
+      console.error('[PATCH /api/brands/[id]] estado cambiado pero no se guardó el historial:', historyError.message)
+      return NextResponse.json({ error: 'El estado se cambió, pero no se pudo guardar el historial. Revisa e inténtalo de nuevo.' }, { status: 500 })
+    }
   }
 
   // Completa la relación de acceso recién después de guardar la marca. Así un

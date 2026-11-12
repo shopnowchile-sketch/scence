@@ -23,8 +23,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!contactEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) return NextResponse.json({ error: 'Email de contacto inválido' }, { status: 422 })
   let logo: { path: string; url: string } | null = null; const file = form.get('logo')
   try { if (file instanceof File && file.size) logo = await uploadOwnedBrandLogo(ctx.admin, ctx.user.id, file) } catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 422 }) }
-  const { data, error } = await ctx.admin.from('brands').update({ name, industry: formText(form, 'category'), contact_name: contactName, contact_email: contactEmail, contact_phone: formText(form, 'contact_phone'), website: formText(form, 'website'), instagram: formText(form, 'instagram'), notes: formText(form, 'notes'), ...(logo ? { logo_url: logo.url, logo_path: logo.path } : {}), updated_at: new Date().toISOString() }).eq('id', params.id).eq('referred_by_influencer_id', ctx.brand.referred_by_influencer_id).select().single()
-  if (error) { if (logo) await ctx.admin.storage.from(OWNED_BRAND_BUCKET).remove([logo.path]); return NextResponse.json({ error: error.message }, { status: 500 }) }
+  const { data: row, error } = await ctx.admin.from('brands').update({ name, industry: formText(form, 'category'), contact_name: contactName, contact_email: contactEmail, contact_phone: formText(form, 'contact_phone'), website: formText(form, 'website'), instagram: formText(form, 'instagram'), ...(logo ? { logo_url: logo.url, logo_path: logo.path } : {}), updated_at: new Date().toISOString() }).eq('id', params.id).eq('referred_by_influencer_id', ctx.brand.referred_by_influencer_id).select().single()
+  if (error || !row) { if (logo) await ctx.admin.storage.from(OWNED_BRAND_BUCKET).remove([logo.path]); return NextResponse.json({ error: error?.message ?? 'No se pudo guardar' }, { status: 500 }) }
+  // brands.notes es exclusivo de Admin: ni se escribe ni se devuelve a la influencer.
+  const { notes: _adminNotes, ...data } = row
   await ctx.admin.from('organizations').update({ name, ...(logo ? { logo_url: logo.url } : {}) }).eq('id', ctx.brand.organization_id)
   if (logo && ctx.brand.logo_path) await ctx.admin.storage.from(OWNED_BRAND_BUCKET).remove([ctx.brand.logo_path])
   return NextResponse.json({ data })

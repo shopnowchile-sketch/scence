@@ -86,8 +86,9 @@ export async function POST(request: NextRequest) {
   // El pago confirmado aprueba a una marca autorregistrada. El ACCESO pagado
   // se deriva de la suscripción activa (resolveBrandPlanAccess); el override
   // queda reservado a planes otorgados manualmente por un admin.
+  // Solo una marca pendiente se aprueba al pagar: una suspendida o rechazada NUNCA cambia por un pago (solo Admin).
   // Plan de agencia: el pago NO cambia el estado de la marca ni aprueba nada; las campañas siguen su revisión.
-  const { error: brandError } = tier === 'agency' ? { error: null } : await admin.from('brands').update({ status: 'approved' }).eq('id', access.brandId)
+  const { error: brandError } = tier === 'agency' ? { error: null } : await admin.from('brands').update({ status: 'approved' }).eq('id', access.brandId).eq('status', 'pending_approval')
   if (brandError) return NextResponse.json({ error: 'El pago está registrado, pero no se pudo activar la marca.' }, { status: 500 })
 
   // Cambio de plan: otra suscripción de MARCA activa en la misma organización

@@ -12,7 +12,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = createAdminClient(); const influencer = await getInfluencer(user, admin)
   if (!influencer) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { data, error } = await admin.from('brands').select('id, organization_id, name, industry, status, contact_name, contact_email, contact_phone, website, instagram, notes, logo_url, logo_path, created_at').eq('referred_by_influencer_id', influencer.id).order('created_at', { ascending: false })
+  const { data, error } = await admin.from('brands').select('id, organization_id, name, industry, status, contact_name, contact_email, contact_phone, website, instagram, logo_url, logo_path, created_at').eq('referred_by_influencer_id', influencer.id).order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ data: data ?? [] })
 }
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   let logo: { path: string; url: string } | null = null; const file = form.get('logo')
   try { if (file instanceof File && file.size) logo = await uploadOwnedBrandLogo(admin, user.id, file) } catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 422 }) }
-  const brandFields = { referred_by_influencer_id: influencer.id, name, industry: formText(form, 'category'), contact_name: contactName, contact_email: contactEmail, contact_phone: formText(form, 'contact_phone'), website: formText(form, 'website'), instagram, instagram_handle_normalized: instagram, notes: formText(form, 'notes'), logo_url: logo?.url ?? null, logo_path: logo?.path ?? null, metadata: { source: 'influencer_referral', referrer_user_id: user.id } }
+  const brandFields = { referred_by_influencer_id: influencer.id, name, industry: formText(form, 'category'), contact_name: contactName, contact_email: contactEmail, contact_phone: formText(form, 'contact_phone'), website: formText(form, 'website'), instagram, instagram_handle_normalized: instagram, logo_url: logo?.url ?? null, logo_path: logo?.path ?? null, metadata: { source: 'influencer_referral', referrer_user_id: user.id } }
   // Organización + marca en una sola transacción e idempotente: un reintento o dos envíos simultáneos no duplican ni dejan organizaciones huérfanas.
   const registered = await registerBrandAtomic(admin, { brand: brandFields, org: { logo_url: logo?.url ?? null, country: 'CL' }, registeredBy: user.id, key: registrationKey(user.id, brandFields) })
   if (!registered.ok || registered.outcome === 'conflict') {
@@ -47,8 +47,10 @@ export async function POST(request: NextRequest) {
     console.error('[POST /api/influencer/owned-brands]', registered.error)
     return NextResponse.json({ error: 'No se pudo registrar la marca' }, { status: 500 })
   }
-  const { data, error } = await admin.from('brands').select().eq('id', registered.brandId).single()
-  if (error || !data) return NextResponse.json({ error: 'No se pudo leer la marca registrada' }, { status: 500 })
+  // brands.notes es exclusivo de Admin: nunca se devuelve a la influencer.
+  const { data: row, error } = await admin.from('brands').select().eq('id', registered.brandId).single()
+  if (error || !row) return NextResponse.json({ error: 'No se pudo leer la marca registrada' }, { status: 500 })
+  const { notes: _adminNotes, ...data } = row
   if (registered.outcome === 'replayed') {
     // Reintento de la misma solicitud: el logo recién subido sobra y no se vuelve a avisar.
     if (logo && data.logo_path !== logo.path) await admin.storage.from(OWNED_BRAND_BUCKET).remove([logo.path])

@@ -185,13 +185,8 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // campañas y guarda borradores sin suscripción. La mensualidad se pide únicamente al «Enviar a aprobación»
   // (PATCH /api/brand/campaigns/[id] → 402 → checkout PayPal). Solo la suspensión comercial limita el acceso.
 
-  // La suspensión comercial representa el fin del acceso gratuito. Aunque el
-  // usuario sea owner, finance o member, solo puede entrar a Planes para
-  // contratar/reactivar; el checkout ya resuelve el acceso de cualquier
-  // miembro activo de la marca.
-  useEffect(() => {
-    if (brandStatus === 'suspended' && !isPlanPage) router.replace('/brand-settings/plan')
-  }, [brandStatus, isPlanPage, router])
+  // Marca suspendida: no se redirige a Planes ni se habla de «período gratuito». Se muestra el aviso de suspensión
+  // (abajo); su plan y suscripción no cambian. Planes sigue accesible solo para resolver obligaciones de pago.
 
   // Marca autorregistrada sin aprobar todavía por un admin → sin acceso al
   // portal operativo (regla de producto explícita). Prioridad sobre el gate
@@ -231,7 +226,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
                     : brandStatus === 'rejected'
                       ? 'Cuenta no aprobada'
                       : brandStatus === 'suspended'
-                        ? 'Sigamos creando juntos en SCENCE'
+                        ? 'Marca suspendida'
                         : 'No pudimos cargar tu cuenta'}
                 </h2>
                 <p className="text-sm text-gray-500">
@@ -240,7 +235,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
                     : brandStatus === 'rejected'
                       ? 'Tu solicitud de marca no fue aprobada. Si crees que es un error, contáctanos.'
                       : brandStatus === 'suspended'
-                        ? 'Tu período de acceso gratuito ha finalizado. Elige el plan que mejor se adapte a tu marca para continuar creando campañas en SCENCE.'
+                        ? 'Esta marca se encuentra suspendida. Contacta a soporte para solicitar una revisión.'
                         : 'No pudimos preparar tu cuenta. Usa el botón de reintento o contáctanos.'}
                 </p>
               </div>

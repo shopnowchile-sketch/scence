@@ -194,7 +194,6 @@ export async function POST(req: NextRequest) {
     contact_name: body.contact_name || null,
     contact_email: email,
     contact_phone: body.contact_phone || null,
-    notes: body.notes || null,
     metadata: {
       created_from_brand_portal: true,
       // Org de la persona que registra (referencia informativa; no es un vínculo marca→marca).
@@ -231,8 +230,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data, error } = await admin.from('brands').select('*').eq('id', registered.brandId).single()
-  if (error || !data) return NextResponse.json({ error: 'No se pudo leer la marca registrada' }, { status: 500 })
+  const { data: row, error } = await admin.from('brands').select('*').eq('id', registered.brandId).single()
+  // brands.notes es exclusivo de Admin: no se devuelve a la marca.
+  const { notes: _adminNotes, ...data } = row ?? {}
+  if (error || !row) return NextResponse.json({ error: 'No se pudo leer la marca registrada' }, { status: 500 })
 
   return NextResponse.json({ data }, { status: registered.outcome === 'replayed' ? 200 : 201 })
 }

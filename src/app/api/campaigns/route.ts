@@ -165,8 +165,12 @@ export async function GET(request: NextRequest) {
     const [deliverablesResult, pendingApprovalResult] = await Promise.all([
       campaignIds.length
         // Paginado: PostgREST corta a 1000 filas y ya hay más de 1.100 entregables.
-        ? fetchAllRows<{ campaign_id: string; status: string; content_url: string | null; published_url: string | null }>((from, to) => admin.from('campaign_deliverables')
-          .select('campaign_id, status, content_url, published_url')
+        // type + attendance_response: lo exige isDeliverableComplete (CLAUDE.md §16.14); sin ellos una asistencia declinada
+        // contaba como pendiente en este KPI pero como completa en la tabla (misma fuente única).
+        ? fetchAllRows<{ campaign_id: string; type: string | null; status: string; attendance_response: string | null; content_url: string | null; published_url: string | null }>((from, to) => admin.from('campaign_deliverables')
+          .select('campaign_id, type, status, attendance_response, content_url, published_url, campaign_influencers!inner(application_status)')
+          // Solo entregables de participantes ACEPTADAS: los de postulaciones rechazadas o pendientes no son trabajo operativo.
+          .eq('campaign_influencers.application_status', 'accepted')
           .in('campaign_id', campaignIds)
           .order('id')
           .range(from, to))
@@ -202,7 +206,7 @@ export async function GET(request: NextRequest) {
       ? fetchAllRows<{ campaign_id: string }>((from, to) => admin.from('campaign_influencers').select('campaign_id').in('campaign_id', campaignIds).eq('application_status', 'accepted').order('id').range(from, to))
       : { data: [] },
     campaignIds.length
-      ? fetchAllRows<{ campaign_id: string; influencer_id: string | null; type: string; status: string; attendance_response: string | null; attendance_outcome: string | null; content_url: string | null; published_url: string | null; performance: unknown; engagement_rate: number | null }>((from, to) => admin.from('campaign_deliverables').select('campaign_id, influencer_id, type, status, attendance_response, attendance_outcome, content_url, published_url, performance, engagement_rate').in('campaign_id', campaignIds).order('id').range(from, to))
+      ? fetchAllRows<{ campaign_id: string; influencer_id: string | null; type: string; status: string; attendance_response: string | null; attendance_outcome: string | null; content_url: string | null; published_url: string | null; performance: unknown; engagement_rate: number | null }>((from, to) => admin.from('campaign_deliverables').select('campaign_id, influencer_id, type, status, attendance_response, attendance_outcome, content_url, published_url, performance, engagement_rate, campaign_influencers!inner(application_status)').eq('campaign_influencers.application_status', 'accepted').in('campaign_id', campaignIds).order('id').range(from, to))
       : { data: [] },
   ])
 

@@ -1,5 +1,6 @@
 import { BRAND_NDA_MESSAGE, BRAND_NDA_REQUIRED } from '@/lib/brand-campaign-gates'
 import { recordBrandActivity } from '@/lib/brand-activity'
+import { brandCampaignView } from '@/lib/brand-influencer-privacy'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOfficialLocationDisplayMap, withOfficialInfluencerLocation } from '@/lib/influencer-location'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
@@ -115,10 +116,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
       : null,
   }))
 
+  // La marca no recibe notas internas, metadata privada ni contactos de otras marcas (ver brandCampaignView).
+  const brandView = brandCampaignView({ ...data, campaign_influencers: campaignInfluencersWithPlan }, brand.id)
   return NextResponse.json({
     data: {
-      ...data,
-      campaign_influencers: campaignInfluencersWithPlan,
+      ...brandView,
       address: typeof metadata.address === 'string' ? metadata.address : null,
       locations: await loadCampaignLocations(admin, params.id).catch(() => []),
       // Misma agenda que el detalle admin: una campaña de varios días tiene

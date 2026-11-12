@@ -3331,7 +3331,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             </td>,
                               platform: <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{primarySP ? `${PLATFORM_ICONS[primarySP.platform] ?? ''} ${primarySP.platform}` : '—'}</td>,
                               categories: <td className="px-4 py-3 text-sm text-gray-600">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>,
-                              followers: <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>,
+                              followers: <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : <span className="text-xs font-normal text-gray-400">Sin redes registradas</span>}</td>,
                               engagement: <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>,
                               rating: <td className="px-4 py-3 text-sm font-semibold text-gray-700 whitespace-nowrap">{inf.rating != null ? <span className="inline-flex items-center gap-1"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{inf.rating.toFixed(1)}</span> : 'Sin rating'}</td>,
                               commune: <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{inf.commune || inf.city || '—'}</td>,
@@ -3696,7 +3696,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         <td className="px-4 py-3 text-xs text-gray-500">{inf.categories?.length ? inf.categories.join(', ') : '—'}</td>
                       ),
                       followers: (
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : '—'}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{primarySP ? formatFollowers(primarySP.followers ?? 0) : <span className="text-xs font-normal text-gray-400">Sin redes registradas</span>}</td>
                       ),
                       engagement: (
                         <td className="px-4 py-3 text-sm text-gray-500">{primarySP?.engagement_rate != null ? `${primarySP.engagement_rate.toFixed(2)}%` : '—'}</td>

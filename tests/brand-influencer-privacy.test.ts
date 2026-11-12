@@ -99,10 +99,10 @@ test('detalle de campaña (vista de marca): postulantes y participantes siguen v
 test('detalle de campaña: solo la rama de marca se limpia; el admin conserva el email', () => {
   const src = read('src/app/api/campaigns/[id]/route.ts')
   const brandBranch = src.slice(src.indexOf('if (access?.isBrand) {'), src.indexOf('Mismo criterio que la lista'))
-  assert.match(brandBranch, /scrubCampaignInfluencers\(campaignWithEvent\)/)
+  assert.match(brandBranch, /brandCampaignView\(campaignWithEvent/)
   assert.match(brandBranch, /_brand_permissions/)
   const adminPart = src.slice(src.indexOf('Mismo criterio que la lista'))
-  assert.doesNotMatch(adminPart.slice(0, 600), /scrubCampaignInfluencers/)
+  assert.doesNotMatch(adminPart.slice(0, 600), /brandCampaignView/)
 })
 
 // ── Canjes ─────────────────────────────────────────────────────────────────────
@@ -169,6 +169,6 @@ test('guardias: el ranking de marca pide columnas explícitas sin email, teléfo
 })
 
 test('guardias: las respuestas a marcas pasan por el helper de privacidad', () => {
-  assert.match(read('src/app/api/campaigns/[id]/route.ts'), /scrubCampaignInfluencers/)
+  assert.match(read('src/app/api/campaigns/[id]/route.ts'), /brandCampaignView/)
   assert.match(read('src/app/api/campaigns/[id]/barters/route.ts'), /scrubInfluencerRelation/)
 })

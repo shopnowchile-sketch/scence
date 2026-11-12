@@ -1,4 +1,5 @@
 import type { createAdminClient } from '@/lib/supabase/server'
+import { mapInBatches } from '@/lib/supabase/fetchAllRows'
 
 // Resuelve "última conexión efectiva" para un batch de user_ids.
 // profiles.last_seen_at es la fuente PRINCIPAL (heartbeat real del portal —
@@ -18,12 +19,16 @@ export async function resolveLastSeen(
 
   // En lotes: un `.in()` con miles de UUID excede el largo de URL de PostgREST,
   // la consulta falla en silencio y se perdía el heartbeat real (last_seen_at).
-  for (let i = 0; i < userIds.length; i += 200) {
+  // Las tandas son independientes: se consultan en paralelo (hasta 4 a la vez) en vez de una tras otra.
+  const profileBatches = await mapInBatches(userIds, 200, async batch => {
     const { data: profiles } = await admin
       .from('profiles')
       .select('id, last_seen_at')
-      .in('id', userIds.slice(i, i + 200))
-    for (const p of profiles ?? []) {
+      .in('id', batch)
+    return profiles ?? []
+  })
+  for (const profiles of profileBatches) {
+    for (const p of profiles) {
       result[p.id as string] = (p.last_seen_at as string | null) ?? null
     }
   }

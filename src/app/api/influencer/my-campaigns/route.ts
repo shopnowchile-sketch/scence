@@ -429,6 +429,7 @@ export async function POST(req: NextRequest) {
     // entregables (403 si no está accepted) la habría bloqueado en su propia
     // campaña. Las 2 campañas propias que ya existen ya están en 'accepted'.
     application_status: 'accepted',
+    accepted_at: new Date().toISOString(),
   })
 
   if (linkErr) {

@@ -106,9 +106,9 @@ export async function hasNonInfluencerRole(email: string, audience: EmailAudienc
     count(admin.from('brand_documents').select('id', { count: 'exact', head: true }).ilike('signer_email', pattern))
     count(admin.from('organizations').select('id', { count: 'exact', head: true }).ilike('billing_email', pattern))
   }
-  if (audience === 'crm') {
-    count(admin.from('crm_leads').select('id', { count: 'exact', head: true }).ilike('email', pattern))
-  }
+  // Audiencia 'crm': el destinatario SIEMPRE es un lead del CRM, así que estar en crm_leads no demuestra ningún
+  // otro rol (antes esa comprobación daba siempre verdadero y dejaba pasar a las influencers inactivas).
+  // Solo cuentan las membresías de arriba: una cuenta real de marca o equipo con ese mismo usuario.
 
   const results = await Promise.all(checks)
   for (const result of results) {

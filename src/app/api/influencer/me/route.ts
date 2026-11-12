@@ -57,6 +57,13 @@ export async function GET() {
   return NextResponse.json({ data: { ...ownProfile, ...officialLocation, address_parts, referred_brands_count } })
 }
 
+// Un error al guardar redes sociales no se silencia: antes la respuesta era 200 aunque el @ nuevo no se hubiera
+// guardado (CLAUDE.md §16.1). Nunca se muestra el error técnico de la base a la persona.
+function socialsSaveError(err: unknown) {
+  console.error('[influencer/me PATCH] social_profiles', err)
+  return NextResponse.json({ error: 'No se pudieron guardar tus redes sociales. Inténtalo de nuevo.' }, { status: 500 })
+}
+
 // PATCH /api/influencer/me
 export async function PATCH(req: Request) {
   const supabase = createServerClient()
@@ -184,7 +191,8 @@ export async function PATCH(req: Request) {
     for (const sp of body.social_profiles) {
       if (!sp.platform) continue
       if (sp._delete && sp.id) {
-        await admin.from('influencer_social_profiles').delete().eq('id', sp.id).eq('influencer_id', influencer.id)
+        const { error: delSpErr } = await admin.from('influencer_social_profiles').delete().eq('id', sp.id).eq('influencer_id', influencer.id)
+        if (delSpErr) return socialsSaveError(delSpErr)
         continue
       }
       if (sp.id) {
@@ -196,7 +204,7 @@ export async function PATCH(req: Request) {
           .single()
         const nextUsername = String(sp.username ?? '').trim().replace(/^@/, '').toLowerCase()
         const previousUsername = String(existing?.username ?? '').trim().replace(/^@/, '').toLowerCase()
-        await admin.from('influencer_social_profiles').update({
+        const { error: updSpErr } = await admin.from('influencer_social_profiles').update({
           username: nextUsername || null,
           profile_url: socialProfileUrl(sp.platform, nextUsername),
           // Seguidores y engagement son datos verificados: la influencer no
@@ -210,9 +218,10 @@ export async function PATCH(req: Request) {
             sync_attempted_at: null,
           } : {}),
         }).eq('id', sp.id).eq('influencer_id', influencer.id)
+        if (updSpErr) return socialsSaveError(updSpErr)
         if (nextUsername !== previousUsername && sp.platform === 'instagram') resyncIds.push(sp.id as string)
       } else {
-        const { data: insertedSp } = await admin.from('influencer_social_profiles').insert({
+        const { data: insertedSp, error: insSpErr } = await admin.from('influencer_social_profiles').insert({
           influencer_id: influencer.id,
           platform: sp.platform,
           username: sp.username ?? null,
@@ -220,6 +229,7 @@ export async function PATCH(req: Request) {
           followers: 0,
           engagement_rate: null,
         }).select('id').single()
+        if (insSpErr) return socialsSaveError(insSpErr)
         if (insertedSp?.id && sp.platform === 'instagram') resyncIds.push(insertedSp.id as string)
       }
     }
@@ -232,7 +242,7 @@ export async function PATCH(req: Request) {
     .from('influencers')
     .select(`
       id, display_name, avatar_url, bio, email, phone,
-      address, location_id, birth_date, categories, tags, is_verified,
+      address, location_id, birth_date, categories,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
     .eq('id', influencer.id)

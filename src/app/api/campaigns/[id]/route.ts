@@ -17,7 +17,7 @@ import {
 } from '@/lib/campaign-deliverables-sync'
 import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
-import { scrubCampaignInfluencers } from '@/lib/brand-influencer-privacy'
+import { brandCampaignView } from '@/lib/brand-influencer-privacy'
 
 type Params = { params: { id: string } }
 
@@ -195,7 +195,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (access?.isBrand) {
     // La marca ve quién postuló/participa, pero no su email ni otros datos de contacto (privacidad de influencers).
-    const brandView = scrubCampaignInfluencers(campaignWithEvent)
+    const brandView = brandCampaignView(campaignWithEvent, access.brandId ?? null)
     return NextResponse.json({ data: { ...brandView, _brand_permissions: access } })
   }
 

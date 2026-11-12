@@ -96,8 +96,8 @@ test('bookings POST y PUT: el evento toma la principal; location y location_id s
   assert.equal((src.match(/canonicalBookingLocationForCampaign\(/g) ?? []).length, 2, 'POST y PUT')
   assert.match(src, /location_id: canonicalLocation\?\.location_id \?\? picked\?\.locationId \?\? null/, 'POST escribe location_id (canónica primero, luego el lugar elegido)')
   assert.equal((src.match(/mergeBookingLocationDetails\(/g) ?? []).length, 2, 'POST y PUT fusionan en vez de reemplazar location_details')
-  assert.match(src, /select\('calendar_event_id, campaign_id, organization_id, event_type, influencer_id, location_details'\)/, 'PUT lee lo guardado')
-  assert.match(src, /\.\.\.rest, \.\.\.canonicalFields/, 'PUT aplica la dirección canónica DESPUÉS de lo que envía el cliente')
+  assert.match(src, /select\('calendar_event_id, campaign_id, organization_id, event_type, influencer_id, location_details, starts_at, ends_at'\)/, 'PUT lee lo guardado')
+  assert.match(src, /validated\.extras[\s\S]*Object\.assign\(patch, canonicalFields/, 'PUT aplica la dirección canónica DESPUÉS de lo que envía el cliente')
   assert.match(src, /event_type === 'event' && !primaryInfluencerId/, 'solo el booking general del evento')
   assert.match(src, /existing\.event_type === 'event' && !existing\.influencer_id/)
   // Calendar usa la misma dirección que la base

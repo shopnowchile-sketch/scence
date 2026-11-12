@@ -42,7 +42,7 @@ export async function sendLeadBatch(
     if (lead.source?.startsWith('best_people_2026_01') && lead.marketing_consent !== true) blocked.add(normalizeEmail(lead.email))
   }
 
-  return processLeadBatch(admin, { jobId, userId, leads, jobCreatedAt }, {
+  return processLeadBatch(admin, { jobId, userId, leads, jobCreatedAt, templateKey: template?.key ?? templateKey }, {
     isBlocked: email => blocked.has(normalizeEmail(email)),
     pause: () => new Promise(resolve => setTimeout(resolve, 150)),
     prepare: lead => {

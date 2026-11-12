@@ -18,7 +18,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .eq('id', params.id).single()
   if (error || !application) return NextResponse.json({ error: 'Solicitud no encontrada' }, { status: 404 })
   if (body.action === 'reject') {
-    await admin.from('campaign_brand_applications').update({ status: 'rejected', reviewed_by: user.id, reviewed_at: new Date().toISOString() }).eq('id', application.id)
+    const { error: rejectError } = await admin.from('campaign_brand_applications').update({ status: 'rejected', reviewed_by: user.id, reviewed_at: new Date().toISOString() }).eq('id', application.id)
+    if (rejectError) return NextResponse.json({ error: rejectError.message }, { status: 500 })
     return NextResponse.json({ success: true })
   }
   if (body.action !== 'approve_for_payment') return NextResponse.json({ error: 'Acción inválida' }, { status: 422 })
@@ -37,6 +38,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     metadata: { client_name: brandMeta.legal_name ?? application.brand.name, client_email: application.brand.contact_email, kind: 'campaign_brand_collaboration', application_id: application.id },
   }).select().single()
   if (invoiceError) return NextResponse.json({ error: invoiceError.message }, { status: 500 })
-  await admin.from('campaign_brand_applications').update({ status: 'approved_for_payment', invoice_id: invoice.id, reviewed_by: user.id, reviewed_at: new Date().toISOString() }).eq('id', application.id)
+  const { error: approveError } = await admin.from('campaign_brand_applications').update({ status: 'approved_for_payment', invoice_id: invoice.id, reviewed_by: user.id, reviewed_at: new Date().toISOString() }).eq('id', application.id)
+  if (approveError) {
+    // La factura borrador ya existe: se informa su id para no duplicarla al reintentar.
+    return NextResponse.json({ error: `Se creó la factura ${invoice.id} pero no se pudo actualizar la solicitud: ${approveError.message}`, invoice_id: invoice.id }, { status: 500 })
+  }
   return NextResponse.json({ data: invoice })
 }

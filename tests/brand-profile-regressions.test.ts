@@ -42,3 +42,32 @@ test('el formulario de Direcciones reutiliza el buscador de Google Maps y invali
   assert.match(form, /address_place_id: address\.placeId, address_lat: address\.lat, address_lng: address\.lng/)
   assert.match(form, /address_place_id: '', address_lat: null, address_lng: null/)
 })
+
+test('rechazar una invitación guarda rejected_at (antes quedaba sin fecha)', () => {
+  const code = src('src/app/api/influencer/campaigns/[id]/apply/route.ts')
+  assert.match(code, /application_status: 'rejected', rejected_at: rejectedAt, updated_at: rejectedAt/)
+})
+
+test('toda aceptación o rechazo nuevo guarda su fecha (accepted_at / rejected_at)', () => {
+  assert.match(src('src/app/api/influencer/my-campaigns/route.ts'), /application_status: 'accepted',\s*accepted_at:/)
+  assert.match(src('src/lib/campaign-applications.ts'), /application_status: 'accepted',[\s\S]{0,120}accepted_at: acceptedAt/)
+  assert.match(src('src/lib/campaign-applications.ts'), /application_status: 'rejected', rejected_at: rejectedAt/)
+  assert.match(src('src/app/api/cron/close-expired-campaign-applications/route.ts'), /application_status: 'rejected',[\s\S]{0,200}rejected_at: now/)
+})
+
+test('KPI de entregables: solo participantes aceptadas (Admin y portal de marca)', () => {
+  const admin = src('src/app/api/campaigns/route.ts')
+  assert.equal((admin.match(/eq\('campaign_influencers\.application_status', 'accepted'\)/g) ?? []).length, 2)
+  assert.match(src('src/app/api/brand/campaigns/route.ts'), /acceptedInfluencerIds/)
+})
+
+test('«Total gastado» no se muestra mientras budget_spent no tenga un cálculo confiable', () => {
+  const ui = src('src/app/(dashboard)/admin-campaigns/CampaignsClient.tsx')
+  assert.doesNotMatch(ui, /label: 'Total gastado'/)
+  assert.doesNotMatch(ui, /\} gastado\{/)
+})
+
+test('influencers sin redes muestran «Sin redes registradas»', () => {
+  assert.match(src('src/components/influencers/InfluencerRanking.tsx'), /Sin redes registradas/)
+  assert.match(src('src/app/(dashboard)/admin-campaigns/[id]/CampaignDetail.tsx'), /Sin redes registradas/)
+})

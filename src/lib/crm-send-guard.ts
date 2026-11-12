@@ -696,3 +696,129 @@ export async function resumeJob(admin: SupabaseClient, req: ResumeRequest): Prom
     ...(completed.error ? { auditWarning: `La decisión se aplicó pero no se pudo registrar el resultado en la auditoría (${completed.error.message})` } : {}),
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Recuperación de un job que ya no se puede reanudar (más de 12 h, contadores que no cuadran, etc.).
+//
+// No toca el job original ni salta sus protecciones: calcula, con evidencia del ledger, qué contactos
+// pendientes NO recibieron la plantilla y crea un job NUEVO (pending, sin enviar nada) solo con ellos.
+// El envío real sigue exigiendo el mismo botón «Reanudar» con confirmación.
+// ════════════════════════════════════════════════════════════════════════════
+export type RecoveryPlan = {
+  jobId: string
+  templateKey: string
+  /** Contactos del job original que aún no se procesaron (desde el cursor). */
+  pending: number
+  /** Verificados: existen, tienen correo y ningún registro indica que ya recibieron la plantilla. */
+  eligible: string[]
+  excluded: {
+    /** Ya no existen en el CRM (borrados después de crear el job). */
+    deleted: number
+    noEmail: number
+    /** Ya tienen `email.sent` de esta plantilla (cualquier job). */
+    alreadyReceived: number
+    /** Tienen un `email.send_unconfirmed` o un `email.sent` sin plantilla identificable: se revisan a mano, no se reenvían. */
+    uncertain: number
+    /** Reservados (contacted_at) desde que arrancó el job original sin resultado registrado. */
+    reservedWithoutResult: number
+  }
+}
+
+const RECOVERY_CHUNK = 200
+
+export async function planJobRecovery(admin: SupabaseClient, jobId: string): Promise<{ ok: true; plan: RecoveryPlan; job: Record<string, any> } | { ok: false; status: number; message: string }> {
+  const { data: job, error } = await admin
+    .from('crm_bulk_send_jobs')
+    .select('id, status, cursor, total, created_at, lead_ids, template_key, subject, message, attachment_path, attachment_name')
+    .eq('id', jobId)
+    .maybeSingle()
+  if (error) return { ok: false, status: 500, message: `No se pudo leer el job: ${error.message}` }
+  if (!job) return { ok: false, status: 404, message: 'Job no encontrado' }
+  if (job.status === 'completed') return { ok: false, status: 422, message: 'El envío ya está completado: no hay nada que recuperar' }
+
+  const templateKey: string = job.template_key ?? 'crm_intro'
+  const pendingIds = ((job.lead_ids ?? []) as string[]).slice(job.cursor)
+  const plan: RecoveryPlan = { jobId, templateKey, pending: pendingIds.length, eligible: [], excluded: { deleted: 0, noEmail: 0, alreadyReceived: 0, uncertain: 0, reservedWithoutResult: 0 } }
+  const since = new Date(job.created_at).getTime()
+
+  try {
+    for (let i = 0; i < pendingIds.length; i += RECOVERY_CHUNK) {
+      const chunk = pendingIds.slice(i, i + RECOVERY_CHUNK)
+      const [leads, events] = await Promise.all([
+        admin.from('crm_leads').select('id, email, contacted_at').in('id', chunk),
+        admin.from('crm_email_events').select('lead_id, event_type, raw_payload').in('lead_id', chunk).in('event_type', LEDGER_EVENT_TYPES),
+      ])
+      if (leads.error) throw new Error(leads.error.message)
+      if (events.error) throw new Error(events.error.message)
+      const byLead = new Map((leads.data ?? []).map(l => [l.id as string, l]))
+      const received = new Set<string>()
+      const uncertain = new Set<string>()
+      for (const e of events.data ?? []) {
+        const key = (e.raw_payload as Record<string, unknown> | null)?.template_key
+        if (e.event_type === 'email.send_unconfirmed') uncertain.add(e.lead_id as string)
+        else if (key === templateKey) received.add(e.lead_id as string)
+        else if (!key) uncertain.add(e.lead_id as string)
+      }
+      for (const id of chunk) {
+        const lead = byLead.get(id)
+        if (!lead) { plan.excluded.deleted++; continue }
+        if (!lead.email || !String(lead.email).trim()) { plan.excluded.noEmail++; continue }
+        if (received.has(id)) { plan.excluded.alreadyReceived++; continue }
+        if (uncertain.has(id)) { plan.excluded.uncertain++; continue }
+        if (lead.contacted_at && new Date(lead.contacted_at as string).getTime() >= since) { plan.excluded.reservedWithoutResult++; continue }
+        plan.eligible.push(id)
+      }
+    }
+  } catch (e) {
+    return { ok: false, status: 500, message: `No se pudo verificar con seguridad a los pendientes (${e instanceof Error ? e.message : 'error'}). No se hizo nada` }
+  }
+  return { ok: true, plan, job }
+}
+
+/** Crea el job nuevo (pending, no dispara el envío) con los pendientes verificados y deja constancia en la auditoría. */
+export async function createRecoveryJob(
+  admin: SupabaseClient,
+  req: { jobId: string; userId: string; userEmail?: string | null; confirm: boolean; expectedEligible: number; meta?: { ip?: string | null; userAgent?: string | null } },
+): Promise<{ ok: true; newJobId: string; plan: RecoveryPlan } | { ok: false; status: number; message: string; newJobId?: string }> {
+  if (req.confirm !== true) return { ok: false, status: 422, message: 'Falta la confirmación explícita (confirm: true)' }
+
+  const prior = await admin.from('audit_logs').select('changes').eq('action', 'crm.bulk_job.recovered').eq('entity_id', req.jobId).maybeSingle()
+  if (prior.error) return { ok: false, status: 500, message: `No se pudo comprobar recuperaciones previas: ${prior.error.message}` }
+  if (prior.data) {
+    const existing = (prior.data.changes as Record<string, unknown> | null)?.new_job_id
+    return { ok: false, status: 409, message: 'Este envío ya tiene un job de recuperación. Revísalo en Envíos masivos', ...(typeof existing === 'string' ? { newJobId: existing } : {}) }
+  }
+
+  const planned = await planJobRecovery(admin, req.jobId)
+  if (!planned.ok) return planned
+  const { plan, job } = planned
+  if (plan.eligible.length === 0) return { ok: false, status: 422, message: 'No hay contactos pendientes verificados para recuperar' }
+  if (plan.eligible.length !== req.expectedEligible) {
+    return { ok: false, status: 409, message: `La lista cambió desde que la revisaste (${req.expectedEligible} → ${plan.eligible.length}). Vuelve a revisarla` }
+  }
+
+  const { data: created, error } = await admin
+    .from('crm_bulk_send_jobs')
+    .insert({
+      created_by: req.userId,
+      notify_email: req.userEmail ?? null,
+      lead_ids: plan.eligible,
+      template_key: plan.templateKey,
+      subject: job.subject,
+      message: job.message,
+      total: plan.eligible.length,
+      status: 'pending',
+      ...(job.attachment_path ? { attachment_path: job.attachment_path, attachment_name: job.attachment_name } : {}),
+    })
+    .select('id')
+    .single()
+  if (error || !created) return { ok: false, status: 500, message: `No se pudo crear el job de recuperación: ${error?.message ?? 'sin respuesta'}` }
+
+  const audit = await admin.from('audit_logs').insert({
+    actor_id: req.userId, entity_type: 'crm_bulk_send_job', entity_id: req.jobId, action: 'crm.bulk_job.recovered',
+    ip_address: req.meta?.ip ?? null, user_agent: req.meta?.userAgent ?? null,
+    changes: { new_job_id: created.id, original: { cursor: job.cursor, total: job.total, pending: plan.pending }, eligible: plan.eligible.length, excluded: plan.excluded },
+  })
+  if (audit.error) console.error('[crm-bulk-send] job de recuperación creado pero sin registro de auditoría', { jobId: req.jobId, newJobId: created.id, message: audit.error.message })
+  return { ok: true, newJobId: created.id as string, plan }
+}

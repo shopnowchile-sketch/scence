@@ -435,7 +435,7 @@ export function InfluencerRanking({
                   {visible.followers && (
                     <td className="px-4 py-3 text-right">
                       <span className={cn('text-sm font-semibold', sortBy === 'followers' ? 'text-violet-600' : 'text-gray-700')}>
-                        {followers > 0 ? formatFollowers(followers) : '—'}
+                        {!primary ? <span className="text-xs font-normal text-gray-400">Sin redes registradas</span> : followers > 0 ? formatFollowers(followers) : '—'}
                       </span>
                     </td>
                   )}

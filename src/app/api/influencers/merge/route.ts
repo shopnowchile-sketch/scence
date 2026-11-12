@@ -70,7 +70,12 @@ export async function POST(req: NextRequest) {
     if (cats.size > 0) patch.categories = Array.from(cats)
   }
   if (Object.keys(patch).length > 0) {
-    await admin.from('influencers').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', keepId)
+    const { error: patchErr } = await admin.from('influencers').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', keepId)
+    // Los donantes se borran al final: si no se copió su dato, se aborta antes de borrar (no perder email/teléfono/etc.).
+    if (patchErr) {
+      console.error('[POST merge] patch keep', patchErr)
+      return NextResponse.json({ error: 'No se pudieron copiar los datos al registro principal. No se eliminó nada.' }, { status: 500 })
+    }
   }
 
   // 3. Reasignar social profiles de plataformas que el keep no tiene
@@ -88,7 +93,11 @@ export async function POST(req: NextRequest) {
       .from('influencer_social_profiles')
       .update({ influencer_id: keepId, is_primary: false })
       .eq('id', sp.id)
-    if (!error) claimed.add(sp.platform)
+    if (error) {
+      console.error('[POST merge] mover red social', error)
+      return NextResponse.json({ error: 'No se pudieron mover las redes sociales al registro principal. No se eliminó nada.' }, { status: 500 })
+    }
+    claimed.add(sp.platform)
   }
 
   // 4. Reasignar referencias de campañas (best-effort; conflictos se ignoran)

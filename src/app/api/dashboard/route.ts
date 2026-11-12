@@ -46,7 +46,7 @@ export async function GET() {
     campaignsRes,
     influencersCountRes,
     activeInfluencersCountRes,
-    influencersWithAccountRes,
+    rosterRes,
     brandsCountRes,
     brandsEnteredCountRes,
     invoicesMonthRes,
@@ -56,6 +56,8 @@ export async function GET() {
     pendingApplicationsRes,
     pendingCampaignsRes,
     pendingBrandsRes,
+    proSubscriptionsRes,
+    completedProPaymentsRes,
   ] = await Promise.all([
     // "Campañas en curso · este mes": solo campañas ACTIVAS (nunca borradores,
     // en revisión ni pausadas) cuyo rango de fechas toca el mes actual. Una
@@ -92,10 +94,11 @@ export async function GET() {
     // tienen una conexión real vía resolveLastSeen (profiles.last_seen_at
     // primero, auth.users.last_sign_in_at como respaldo) más abajo.
     // Paginado: PostgREST corta a 1000 filas y el roster ya pasa de 2.700.
-    fetchAllRows<{ user_id: string | null }>((from, to) => db.from('influencers')
-      .select('user_id')
+    // Una sola lectura (id, user_id) alimenta "han ingresado" (los con user_id) y el estado Pro (todos los id):
+    // antes eran dos recorridos completos del roster.
+    fetchAllRows<{ id: string; user_id: string | null }>((from, to) => db.from('influencers')
+      .select('id, user_id')
       .eq('organization_id', orgId)
-      .not('user_id', 'is', null)
       .order('id')
       .range(from, to)),
 
@@ -149,6 +152,33 @@ export async function GET() {
       .eq('campaign.organization_id', orgId),
     db.from('campaigns').select('id,name,status,updated_at', { count: 'exact' }).eq('status', 'pending_approval').order('updated_at', { ascending: false }).limit(5),
     db.from('brands').select('id,name,instagram,created_at,status', { count: 'exact' }).eq('status', 'pending_approval').order('created_at', { ascending: false }).limit(5),
+
+    // Suscripciones y cobros Pro: solo dependen de orgId, se lanzan junto con el resto (antes iban en serie al final).
+    // Paginado: PostgREST corta a 1000 filas y los intentos incompletos crecen
+    // con cada influencer que abandona el checkout. Orden estable (created_at
+    // desc, id) porque el primer intento de cada influencer debe ser el último.
+    fetchAllRows<{
+      id: string
+      status: string
+      paypal_subscription_id: string | null
+      created_at: string
+      updated_at: string
+      current_period_end: string | null
+      metadata: unknown
+    }>((from, to) => db
+      .from('subscriptions')
+      .select('id, status, paypal_subscription_id, created_at, updated_at, current_period_end, metadata')
+      .eq('organization_id', orgId)
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(from, to)),
+    // Ledger: cuenta solo cobros realmente completados, nunca "suscripciones
+    // creadas". Esto permite separar conversión de caja.
+    db.from('subscription_payments')
+      .select('subscription_id, influencer_id')
+      .eq('organization_id', orgId)
+      .eq('payer_type', 'influencer')
+      .eq('status', 'completed'),
   ])
 
   // Revenue chart — las mismas dos consultas cubren los seis meses. Antes se
@@ -192,7 +222,7 @@ export async function GET() {
   // de las dos señales cuentan como "aún no ingresan", junto con los que
   // directamente no tienen cuenta — el widget de arriba es binario
   // (entered/pending) así que ambos casos van al mismo bucket "pending".
-  const influencerUserIds = (influencersWithAccountRes.data ?? [])
+  const influencerUserIds = (rosterRes.data ?? [])
     .map(row => row.user_id as string | null)
     .filter((id): id is string => Boolean(id))
   // Consultar solamente perfiles vistos durante los últimos 10 minutos.
@@ -200,13 +230,15 @@ export async function GET() {
 
   // Ambas operaciones son independientes; ejecutarlas juntas evita sumar sus
   // latencias en organizaciones con muchos usuarios.
-  const [influencerLastSeenMap, liveProfilesRes] = await Promise.all([
+  // Pro reales: exactamente el mismo resolver que usa el resto del producto (también independiente de las dos anteriores).
+  const [influencerLastSeenMap, liveProfilesRes, proStatuses] = await Promise.all([
     resolveLastSeen(db, influencerUserIds),
     db.from('profiles')
       .select('id, last_seen_at')
       .gte('last_seen_at', tenMinAgoIso)
       .order('last_seen_at', { ascending: false })
       .limit(500),
+    getInfluencerProStatuses(db, (rosterRes.data ?? []).map(row => row.id)),
   ])
   const influencersEntered = influencerUserIds.filter(uid => Boolean(influencerLastSeenMap[uid])).length
 
@@ -268,24 +300,7 @@ export async function GET() {
   // Importante: todo queda limitado a la organización del admin. Antes esta
   // consulta leía TODAS las suscripciones de la plataforma y además contaba
   // filas de suscripción, no influencers únicas.
-  // Paginado: PostgREST corta a 1000 filas y los intentos incompletos crecen
-  // con cada influencer que abandona el checkout. Orden estable (created_at
-  // desc, id) porque el primer intento de cada influencer debe ser el último.
-  const { data: proSubscriptions, error: proSubscriptionsError } = await fetchAllRows<{
-    id: string
-    status: string
-    paypal_subscription_id: string | null
-    created_at: string
-    updated_at: string
-    current_period_end: string | null
-    metadata: unknown
-  }>((from, to) => db
-    .from('subscriptions')
-    .select('id, status, paypal_subscription_id, created_at, updated_at, current_period_end, metadata')
-    .eq('organization_id', orgId)
-    .order('created_at', { ascending: false })
-    .order('id')
-    .range(from, to))
+  const { data: proSubscriptions, error: proSubscriptionsError } = proSubscriptionsRes
   if (proSubscriptionsError) {
     console.error('[GET /api/dashboard] suscripciones Pro:', proSubscriptionsError)
   }
@@ -299,14 +314,6 @@ export async function GET() {
     (row.metadata as Record<string, unknown>).influencer_id as string
   ))))
 
-  // Pro reales: exactamente el mismo resolver que usa el resto del producto.
-  const { data: allInfluencerIds } = await fetchAllRows<{ id: string }>((from, to) => db
-    .from('influencers')
-    .select('id')
-    .eq('organization_id', orgId)
-    .order('id')
-    .range(from, to))
-  const proStatuses = await getInfluencerProStatuses(db, (allInfluencerIds ?? []).map(row => row.id))
 
   const proActiveCount = Array.from(proStatuses.values()).filter(status => status !== 'free').length
   const proPaidCount = Array.from(proStatuses.values()).filter(status => status === 'paid').length
@@ -342,14 +349,7 @@ export async function GET() {
     : { data: [] }
   const attemptInfluencerById = new Map((attemptInfluencers ?? []).map(inf => [inf.id, inf]))
 
-  // Ledger: cuenta solo cobros realmente completados, nunca "suscripciones
-  // creadas". Esto permite separar conversión de caja.
-  const { data: completedProPayments } = await db
-    .from('subscription_payments')
-    .select('subscription_id, influencer_id')
-    .eq('organization_id', orgId)
-    .eq('payer_type', 'influencer')
-    .eq('status', 'completed')
+  const completedProPayments = completedProPaymentsRes.data
 
   const paidInfluencerIds = new Set(
     (completedProPayments ?? [])

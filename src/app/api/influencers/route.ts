@@ -382,7 +382,30 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
   // Enriquecer última conexión en batch — profiles.last_seen_at primero,
   // auth.users.last_sign_in_at como respaldo (ver resolveLastSeen arriba).
   const userIds = filtered.map(inf => inf.user_id as string | null).filter(Boolean) as string[]
-  const lastSeenMap = await resolveLastSeen(admin, userIds)
+  // Las cinco lecturas de enriquecimiento (última conexión, marcas asignadas, marcas de la organización, plan Pro
+  // y detalle de suscripción) solo dependen de la página ya cargada: se lanzan juntas en vez de una tras otra.
+  const pageInfluencerIds = filtered.map(inf => inf.id as string)
+  const orgIdsOnPage = Array.from(new Set(filtered.map(inf => inf.organization_id as string | null).filter((id): id is string => !!id)))
+  const [lastSeenMap, biRes, orgBrandRes, proStatuses, proSubscriptions] = await Promise.all([
+    resolveLastSeen(admin, userIds),
+    pageInfluencerIds.length > 0
+      ? admin
+        .from('brand_influencers')
+        .select('influencer_id, brand_id, created_at, brands(name)')
+        .in('influencer_id', pageInfluencerIds)
+      : Promise.resolve({ data: null }),
+    orgIdsOnPage.length > 0
+      ? admin
+        .from('brands')
+        .select('organization_id, name, created_at')
+        .in('organization_id', orgIdsOnPage)
+      : Promise.resolve({ data: null }),
+    // Reutiliza el mapa ya calculado sobre el dataset completo (filtro/sort de plan) en vez de repetir la
+    // consulta — si no se calculó (caso normal), se resuelve acá solo para la página actual.
+    fullProStatuses ?? getInfluencerProStatuses(admin, pageInfluencerIds),
+    // Solo lectura para mostrar "Cancelada · hasta …" en Admin; no cambia quién es Pro.
+    getInfluencerProSubscriptionDetails(admin, pageInfluencerIds),
+  ])
 
   const withLastSeen: Array<Record<string, unknown>> = filtered.map(inf => {
     const uid = inf.user_id as string | null | undefined
@@ -417,14 +440,10 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
   //   Esta inferencia depende de que brand_influencers SOLO se escriba desde
   //   flujos controlados de la app (hoy: este POST). Como la tabla está vacía
   //   hasta ahora, queda correcta desde este cambio en adelante.
-  const influencerIds = withOfficialLocation.map(inf => inf.id as string)
   const brandsByInfluencer = new Map<string, Array<{ id: string; name: string; created_at: string }>>()
 
-  if (influencerIds.length > 0) {
-    const { data: biRows } = await admin
-      .from('brand_influencers')
-      .select('influencer_id, brand_id, created_at, brands(name)')
-      .in('influencer_id', influencerIds)
+  if (pageInfluencerIds.length > 0) {
+    const biRows = biRes.data
 
     for (const row of (biRows ?? []) as unknown as Array<{ influencer_id: string; brand_id: string; created_at: string; brands: { name: string } | null }>) {
       const list = brandsByInfluencer.get(row.influencer_id) ?? []
@@ -438,27 +457,15 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', '
 
   // «Registrada por»: se deduce de la relación organización → marcas (ver influencer-registrant.ts),
   // no de la antigüedad de una organización. Solo presentación.
-  const orgIdsOnPage = Array.from(new Set(withOfficialLocation.map(inf => inf.organization_id as string | null).filter((id): id is string => !!id)))
   const brandsByOrg = new Map<string, Array<{ name: string; created_at: string }>>()
   if (orgIdsOnPage.length > 0) {
-    const { data: orgBrandRows } = await admin
-      .from('brands')
-      .select('organization_id, name, created_at')
-      .in('organization_id', orgIdsOnPage)
-    for (const row of (orgBrandRows ?? []) as Array<{ organization_id: string; name: string; created_at: string }>) {
+    for (const row of (orgBrandRes.data ?? []) as Array<{ organization_id: string; name: string; created_at: string }>) {
       const list = brandsByOrg.get(row.organization_id) ?? []
       list.push({ name: row.name, created_at: row.created_at })
       brandsByOrg.set(row.organization_id, list)
     }
   }
 
-  // Reutiliza el mapa ya calculado sobre el dataset completo (filtro/sort de
-  // plan) en vez de repetir la consulta — si no se calculó (caso normal, sin
-  // filtro/sort de plan), se resuelve acá solo para la página actual, igual
-  // que antes.
-  const proStatuses = fullProStatuses ?? await getInfluencerProStatuses(admin, withOfficialLocation.map(inf => inf.id as string))
-  // Solo lectura para mostrar "Cancelada · hasta …" en Admin; no cambia quién es Pro.
-  const proSubscriptions = await getInfluencerProSubscriptionDetails(admin, withOfficialLocation.map(inf => inf.id as string))
   const enriched = withOfficialLocation.map(inf => {
     const orgId = inf.organization_id as string | null
     const brandsForInf = brandsByInfluencer.get(inf.id as string) ?? []

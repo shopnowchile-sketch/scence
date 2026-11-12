@@ -232,13 +232,18 @@ export async function POST(req: NextRequest) {
   // ── Insert all influencers into booking_influencers (multi-influencer) ──────
   if (data?.id && allInfluencerIds.length > 0) {
     try {
-      await admin.from('booking_influencers').insert(
+      const { error: biError } = await admin.from('booking_influencers').insert(
         allInfluencerIds.map(infId => ({
           booking_id:    data.id,
           influencer_id: infId,
           status:        'invited',
         }))
       )
+      // supabase-js no lanza: antes un fallo aquí pasaba en silencio y la reserva quedaba sin sus influencers.
+      if (biError) {
+        console.error('[booking_influencers insert] non-fatal:', biError)
+        return NextResponse.json({ ...data, warning: 'La reserva se creó, pero no se pudieron vincular las influencers. Revisa la reserva.' }, { status: 201 })
+      }
     } catch (e) {
       console.error('[booking_influencers insert] non-fatal:', e)
     }

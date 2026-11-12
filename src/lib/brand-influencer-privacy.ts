@@ -25,3 +25,39 @@ export function scrubCampaignInfluencers<T extends { campaign_influencers?: unkn
   const rows = campaign.campaign_influencers
   return Array.isArray(rows) ? { ...campaign, campaign_influencers: rows.map(scrubInfluencerRelation) } : campaign
 }
+
+// ── Vista de marca del detalle de campaña (2026-11-12) ─────────────────────────────────────────────────────────
+// Una marca no recibe: notas internas (campaña ni participantes), metadata privada de los participantes ni datos de
+// contacto de OTRAS marcas (solo id, nombre y logo). Se conservan las claves de metadata que la pantalla compartida
+// con Admin necesita para mostrar el estado de la participación.
+const PARTICIPANT_METADATA_ALLOWED = ['removal_reason', 'last_reminder_sent_at'] as const
+
+function withoutBrandContact(brand: unknown, ownBrandId: string | null): unknown {
+  if (!brand || typeof brand !== 'object' || Array.isArray(brand)) return brand
+  const b = brand as Obj
+  if (ownBrandId && b.id === ownBrandId) return brand
+  return { id: b.id, name: b.name, logo_url: b.logo_url, ...('instagram' in b ? { instagram: b.instagram } : {}) }
+}
+
+function participantForBrand(row: unknown): unknown {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return row
+  const { notes: _notes, message: _message, metadata, ...rest } = row as Obj
+  const source = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata as Obj : {}
+  const allowed: Obj = {}
+  for (const key of PARTICIPANT_METADATA_ALLOWED) if (key in source) allowed[key] = source[key]
+  return scrubInfluencerRelation({ ...rest, metadata: allowed } as { influencer?: unknown })
+}
+
+export function brandCampaignView<T extends Obj>(campaign: T, ownBrandId: string | null): T {
+  const { internal_notes: _internal, ...rest } = campaign
+  const view: Obj = { ...rest }
+  if ('brand' in view) view.brand = withoutBrandContact(view.brand, ownBrandId)
+  if (Array.isArray(view.campaign_brands)) {
+    view.campaign_brands = view.campaign_brands.map(row =>
+      row && typeof row === 'object' && 'brand' in row
+        ? { ...(row as Obj), brand: withoutBrandContact((row as Obj).brand, ownBrandId) }
+        : row)
+  }
+  if (Array.isArray(view.campaign_influencers)) view.campaign_influencers = view.campaign_influencers.map(participantForBrand)
+  return view as T
+}

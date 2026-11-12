@@ -114,11 +114,14 @@ export async function GET(req: NextRequest) {
   // pinte igual en ambos portales. Se agregan sin quitar los arrays
   // anidados, porque brand-dash/page.tsx y brand/dashboard/page.tsx ya
   // dependen de ellos completos.
-  type Row = { campaign_influencers?: Array<{ application_status?: string }>; campaign_deliverables?: Array<{ status: string }> }
+  type Row = { campaign_influencers?: Array<{ application_status?: string; influencer?: { id?: string } | null }>; campaign_deliverables?: Array<{ status: string; influencer?: { id?: string } | null }> }
   const coverUrls = await getCampaignCoverUrls(admin, (data ?? []).map(c => c.id))
   const enriched = (data ?? []).map(c => {
     const row = c as Row
-    const deliverables = row.campaign_deliverables ?? []
+    // Solo entregables de participantes ACEPTADAS (los de postulaciones rechazadas no son trabajo operativo).
+    const acceptedInfluencerIds = new Set((row.campaign_influencers ?? [])
+      .filter(ci => ci.application_status === 'accepted').map(ci => ci.influencer?.id).filter(Boolean))
+    const deliverables = (row.campaign_deliverables ?? []).filter(d => d.influencer?.id && acceptedInfluencerIds.has(d.influencer.id))
     // Participantes = solo filas ACEPTADas (no pending/rejected). No se toca el
     // array anidado (brand-dash lo usa completo); solo el conteo.
     const acceptedCount = (row.campaign_influencers ?? []).filter(ci => ci.application_status === 'accepted').length

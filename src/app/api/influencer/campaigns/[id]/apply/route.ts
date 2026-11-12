@@ -383,9 +383,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true, status: 'accepted' })
   }
 
+  // Se registra cuándo se rechazó (antes quedaba sin fecha, como en 557 filas históricas).
+  const rejectedAt = new Date().toISOString()
   const { error: updateError } = await admin
     .from('campaign_influencers')
-    .update({ application_status: 'rejected', updated_at: new Date().toISOString() })
+    .update({ application_status: 'rejected', rejected_at: rejectedAt, updated_at: rejectedAt })
     .eq('id', row.id)
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })

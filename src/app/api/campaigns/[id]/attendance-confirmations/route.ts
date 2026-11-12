@@ -109,7 +109,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (acceptedError) return NextResponse.json({ error: acceptedError.message }, { status: 500 })
   if (!accepted?.length) return NextResponse.json({ error: 'Aún no hay influencers aceptadas.' }, { status: 422 })
   const influencerIds = accepted.map(row => row.influencer_id)
-  const { data: existing } = await admin.from('campaign_deliverables').select('id, influencer_id, status, attendance_response').eq('campaign_id', params.id).eq('type', 'event_attendance').in('influencer_id', influencerIds)
+  const { data: existing, error: existingError } = await admin.from('campaign_deliverables').select('id, influencer_id, status, attendance_response').eq('campaign_id', params.id).eq('type', 'event_attendance').in('influencer_id', influencerIds)
+  // Sin esta lectura todas las influencers parecerían "sin fila" y se insertarían confirmaciones duplicadas.
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 })
   const existingIds = new Set((existing ?? []).map(row => row.influencer_id))
   const newRows = accepted.filter(row => !existingIds.has(row.influencer_id)).map(row => ({
     campaign_id: params.id, campaign_influencer_id: row.id, influencer_id: row.influencer_id,
@@ -134,7 +136,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const mergedTemplates = templates.some(template => template.type === 'event_attendance')
     ? templates.map(template => template.type === 'event_attendance' ? nextTemplate : template)
     : [...templates, nextTemplate]
-  await admin.from('campaigns').update({ deliverable_templates: mergedTemplates }).eq('id', params.id)
+  const { error: templateError } = await admin.from('campaigns').update({ deliverable_templates: mergedTemplates }).eq('id', params.id)
+  if (templateError) return NextResponse.json({ error: templateError.message }, { status: 500 })
 
   let emailed = 0
   if (body.send_email !== false && (newRows.length || pendingExistingIds.length)) {

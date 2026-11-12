@@ -1,3 +1,4 @@
+import { mapInBatches } from '@/lib/supabase/fetchAllRows'
 import { influencerSubscriptionGrantsPro, isInfluencerProCancellationScheduled, selectOrphanSubscriptionsToRelink } from '@/lib/influencer-paypal'
 
 type SupabaseAdmin = ReturnType<typeof import('@/lib/supabase/server').createAdminClient>
@@ -29,8 +30,8 @@ export async function getInfluencerProStatuses(admin: SupabaseAdmin, influencerI
 
   const result = new Map<string, InfluencerProSource>(ids.map(id => [id, 'free']))
 
-  for (let offset = 0; offset < ids.length; offset += PRO_STATUS_BATCH_SIZE) {
-    const batch = ids.slice(offset, offset + PRO_STATUS_BATCH_SIZE)
+  // Tandas disjuntas e independientes: se consultan en paralelo (hasta 4 a la vez); el resultado es el mismo.
+  const batchResults = await mapInBatches(ids, PRO_STATUS_BATCH_SIZE, async batch => {
     const [{ data, error }, { data: influencers, error: influencerError }] = await Promise.all([
       admin.from('subscriptions').select('status, current_period_end, metadata').in('metadata->>influencer_id', batch),
       admin.from('influencers').select('id, metadata').in('id', batch),
@@ -38,7 +39,10 @@ export async function getInfluencerProStatuses(admin: SupabaseAdmin, influencerI
 
     if (error) throw error
     if (influencerError) throw influencerError
+    return { data, influencers }
+  })
 
+  for (const { data, influencers } of batchResults) {
     for (const influencer of influencers ?? []) {
       const metadata = influencer.metadata as { manual_pro?: { active?: boolean } } | null
       if (metadata?.manual_pro?.active === true) result.set(influencer.id, 'manual')
@@ -70,11 +74,13 @@ export async function getInfluencerProSubscriptionDetails(admin: SupabaseAdmin, 
   const ids = Array.from(new Set(influencerIds.filter(Boolean)))
   const result = new Map<string, InfluencerProSubscriptionDetails>()
 
-  for (let offset = 0; offset < ids.length; offset += PRO_STATUS_BATCH_SIZE) {
-    const batch = ids.slice(offset, offset + PRO_STATUS_BATCH_SIZE)
+  const batchRows = await mapInBatches(ids, PRO_STATUS_BATCH_SIZE, async batch => {
     const { data, error } = await admin.from('subscriptions').select('status, current_period_end, metadata').in('metadata->>influencer_id', batch)
     if (error) throw error
+    return data
+  })
 
+  for (const data of batchRows) {
     for (const row of ((data ?? []) as SubscriptionState[]).filter(grantsPro)) {
       const id = row.metadata?.influencer_id
       if (!id) continue

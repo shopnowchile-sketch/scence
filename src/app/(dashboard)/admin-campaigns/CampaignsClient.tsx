@@ -18,11 +18,11 @@ import { useColumnWidths } from '@/hooks/useColumnWidths'
 // ── KPI summary ───────────────────────────────────────
 function KPIs({ summary }: { summary: CampaignSummary }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
       {[
         { icon: Target,     color: 'violet',  label: 'Campañas activas',   value: summary.active },
         { icon: DollarSign, color: 'emerald', label: 'Budget total',       value: formatCurrency(summary.totalBudget, 'CLP') },
-        { icon: DollarSign, color: 'blue',    label: 'Total gastado',      value: formatCurrency(summary.totalSpent, 'CLP') },
+        // «Total gastado» oculto: budget_spent no se actualiza en ningún flujo (vale 0 en todas las campañas).
         { icon: Clock,      color: 'amber',   label: 'Deliverables pend.', value: summary.pendingDeliverables },
       ].map(({ icon: Icon, color, label, value }) => (
         <div key={label} className="card p-4">
@@ -376,7 +376,7 @@ export function CampaignsClient({ portal = 'admin' }: CampaignsClientProps) {
       case 'views': return <td className="px-4 py-3 text-sm font-semibold text-gray-700 tabular-nums">{c.status === 'completed' && c.total_views !== null && c.total_views !== undefined ? c.total_views.toLocaleString('es-CL') : <span className="text-gray-300">—</span>}</td>
       case 'engagement': return <td className="px-4 py-3 text-sm font-semibold text-violet-600 tabular-nums">{c.status === 'completed' && c.engagement_average !== null && c.engagement_average !== undefined ? `${c.engagement_average.toFixed(2)}%` : <span className="text-gray-300">—</span>}</td>
       case 'progress': return <td className="px-4 py-3 overflow-hidden">{(c.deliverable_count ?? 0) > 0 ? <ProgressBar done={c.deliverable_done ?? 0} total={c.deliverable_count ?? 0} pct={pct} /> : <span className="text-xs text-gray-300">Sin deliverables</span>}</td>
-      case 'budget': return <td className="px-4 py-3">{c.budget_total ? <div><div className="text-sm font-semibold text-gray-900">{formatCurrency(c.budget_total, c.currency)}</div><div className="text-xs text-gray-400 mt-0.5">{formatCurrency(c.budget_spent, c.currency)} gastado{c.budget_total > 0 && <span className={budgetPct > 90 ? ' text-red-500 font-medium' : ''}> ({budgetPct}%)</span>}</div></div> : <span className="text-xs text-gray-300">Sin budget</span>}</td>
+      case 'budget': return <td className="px-4 py-3">{c.budget_total ? <div><div className="text-sm font-semibold text-gray-900">{formatCurrency(c.budget_total, c.currency)}</div></div> : <span className="text-xs text-gray-300">Sin budget</span>}</td>
       case 'dates': return <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{c.start_date ? <div><div>{formatDate(c.start_date, 'd MMM yy')}</div><div className="text-gray-300">→ {c.end_date ? formatDate(c.end_date, 'd MMM yy') : '—'}</div></div> : <span className="text-gray-300">Sin fechas</span>}</td>
       case 'createdAt': return <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{c.created_at ? formatDatetime(c.created_at) : <span className="text-gray-300">—</span>}</td>
       case 'status': return <td className="px-4 py-3"><CampaignStatusBadge status={c.status} /></td>

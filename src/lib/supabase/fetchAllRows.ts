@@ -29,3 +29,21 @@ export async function fetchAllRows<T>(
 
   return { data: all, error: null }
 }
+
+// Ejecuta `worker` sobre `items` partidos en tandas de `size`, con hasta `concurrency` (4 por defecto) tandas a la vez.
+// Los lotes `.in(...)` son independientes: hacerlos de a uno sumaba una ida y vuelta por lote
+// (≈15 para el roster completo). Devuelve los resultados en el orden de las tandas.
+export async function mapInBatches<I, R>(
+  items: I[],
+  size: number,
+  worker: (batch: I[]) => Promise<R>,
+  concurrency = 4,
+): Promise<R[]> {
+  const batches: I[][] = []
+  for (let offset = 0; offset < items.length; offset += size) batches.push(items.slice(offset, offset + size))
+  const results: R[] = []
+  for (let i = 0; i < batches.length; i += concurrency) {
+    results.push(...await Promise.all(batches.slice(i, i + concurrency).map(worker)))
+  }
+  return results
+}

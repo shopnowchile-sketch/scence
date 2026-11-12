@@ -52,6 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('influencers')
     .select(`
       *,
+      user_name,
       social_profiles:influencer_social_profiles (*),
       rate_cards:influencer_rate_cards (*)
     `)
@@ -429,7 +430,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', params.id)
-    .select()
+    .select('*, user_name')
     .single()
 
   if (error) {

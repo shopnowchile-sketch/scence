@@ -31,7 +31,7 @@ interface Invoice {
 }
 interface PayrollItem {
   id: string
-  influencer: { id: string; display_name: string; avatar_url: string | null }
+  influencer: { id: string; user_name: string; avatar_url: string | null }
   campaign: { name: string } | null
   amount: number; currency: string; description: string | null; status: 'pending' | 'paid'
 }
@@ -484,7 +484,7 @@ function NewPayrollModal({ onClose }: { onClose: () => void }) {
                     <select className="input appearance-none pr-6 text-sm" value={it.influencer_id}
                       onChange={e => updateItem(i, 'influencer_id', e.target.value)}>
                       <option value="">Influencer…</option>
-                      {influencers.map(inf => <option key={inf.id} value={inf.id}>{inf.display_name}</option>)}
+                      {influencers.map(inf => <option key={inf.id} value={inf.id}>{inf.user_name}</option>)}
                     </select>
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
                   </div>
@@ -825,9 +825,9 @@ export function BillingClient({ invoicesOnly = false }: { invoicesOnly?: boolean
                 <div className="divide-y divide-gray-50">
                   {run.items?.map(item => (
                     <div key={item.id} className="px-6 py-3 flex items-center gap-4">
-                      <Avatar name={item.influencer.display_name} url={item.influencer.avatar_url} size={8} />
+                      <Avatar name={item.influencer.user_name} url={item.influencer.avatar_url} size={8} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">{item.influencer.display_name}</p>
+                        <p className="text-sm font-semibold text-gray-900">{item.influencer.user_name}</p>
                         <p className="text-xs text-gray-400 truncate">
                           {item.campaign?.name ?? 'Sin campaña'}{item.description && ` — ${item.description}`}
                         </p>

@@ -75,7 +75,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       campaign_influencers (
         id, application_status, status, origin, message, fee, currency, notes,
         influencer:influencers (
-          id, display_name, email, avatar_url, location_id, categories, rating,
+          id, user_name, email, avatar_url, location_id, categories, rating,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),
@@ -83,7 +83,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id, title, type, status, due_date, platform,
         content_url, submitted_at, published_url, published_at, review_notes, progress,
         attendance_response, attendance_responded_at, attendance_note,
-        influencer:influencers (id, display_name, avatar_url)
+        influencer:influencers (id, user_name, avatar_url)
       )
     `)
     .eq('id', params.id)

@@ -6,7 +6,7 @@ import { fetchJsonCached } from '@/lib/client/requestCache'
 
 export type InfluencerView = 'list'
 
-type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at' | 'plan'
+type SortBy = 'created_at' | 'followers' | 'engagement_rate' | 'rating' | 'user_name' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at' | 'plan'
 
 type Filters = {
   search?: string
@@ -82,7 +82,7 @@ export function InfluencerFilters({
             className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none focus:border-violet-400"
           >
             <option value="created_at:desc">Más recientes</option>
-            <option value="display_name:asc">Nombre A-Z</option>
+            <option value="user_name:asc">Nombre A-Z</option>
             <option value="followers:desc">Más seguidores</option>
             <option value="engagement_rate:desc">Mayor engagement</option>
             <option value="rating:desc">Mejor rating</option>

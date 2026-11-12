@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const admin = createAdminClient()
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, email, user_id')
+    .select('id, user_name, email, user_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     .maybeSingle()
 
   const pdf = generateSubscriptionReceiptPdf({
-    influencerName: influencer.display_name,
+    influencerName: influencer.user_name,
     influencerEmail: influencer.email,
     paymentDate: payment.paid_at,
     periodStart: payment.period_start,

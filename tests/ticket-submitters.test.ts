@@ -11,7 +11,7 @@ const base = (over: Partial<SubmitterSources>): SubmitterSources => ({
 
 describe('buildSubmitterMap', () => {
   test('influencer con ficha → Influencer, con enlace a su ficha', () => {
-    const m = buildSubmitterMap(base({ userIds: ['u1'], influencers: [{ id: 'i1', user_id: 'u1', display_name: 'Ana', email: 'a@x.cl' }] }))
+    const m = buildSubmitterMap(base({ userIds: ['u1'], influencers: [{ id: 'i1', user_id: 'u1', user_name: 'Ana', email: 'a@x.cl' }] }))
     assert.equal(m.u1.type, 'influencer')
     assert.equal(m.u1.profile_href, '/admin-influencers/i1')
   })
@@ -48,8 +48,8 @@ describe('buildSubmitterMap', () => {
     const m = buildSubmitterMap(base({
       userIds: ['u7', 'u8'], platformAdminIds: new Set(['u7']),
       influencers: [
-        { id: 'i7', user_id: 'u7', display_name: 'X', email: null },
-        { id: 'i8', user_id: 'u8', display_name: 'Y', email: null },
+        { id: 'i7', user_id: 'u7', user_name: 'X', email: null },
+        { id: 'i8', user_id: 'u8', user_name: 'Y', email: null },
       ],
     }))
     assert.equal(m.u7.type, 'admin')

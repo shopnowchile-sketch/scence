@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('campaign_deliverables')
     .select(`
       *,
-      influencer:influencers (id, display_name, avatar_url)
+      influencer:influencers (id, user_name, avatar_url)
     `)
     .eq('campaign_id', params.id)
     .order('due_date', { ascending: true })
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data, error } = await admin
     .from('campaign_deliverables')
     .insert(rows)
-    .select(`*, influencer:influencers (id, display_name, avatar_url)`)
+    .select(`*, influencer:influencers (id, user_name, avatar_url)`)
 
   if (error) {
     console.error('[POST /api/campaigns/[id]/deliverables]', error)
@@ -201,7 +201,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       id, campaign_id, influencer_id, type, title, due_date,
       attendance_response,
       campaign:campaigns (id, name),
-      influencer:influencers (display_name, email)
+      influencer:influencers (user_name, email)
     `)
     .eq('id', deliverable_id)
     .eq('campaign_id', params.id)
@@ -225,7 +225,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .from('campaign_deliverables')
     .update(updatePayload)
     .eq('id', deliverable_id)
-    .select(`*, influencer:influencers (id, display_name, avatar_url)`)
+    .select(`*, influencer:influencers (id, user_name, avatar_url)`)
     .single()
 
   if (error) {
@@ -270,7 +270,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // link de inmediato. El email es no fatal: el estado rechazado se conserva
   // aunque Resend tenga una interrupción temporal.
   if (action === 'reject') {
-    const influencer = existing.influencer as unknown as { display_name: string | null; email: string | null } | null
+    const influencer = existing.influencer as unknown as { user_name: string | null; email: string | null } | null
     const campaign = existing.campaign as unknown as { id: string; name: string | null } | null
     if (influencer?.email) {
       try {
@@ -281,7 +281,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           to: influencer.email,
           subject: `❌ Tu contenido necesita ajustes — ${campaign?.name ?? 'SCENCE'}`,
           html: deliverableStatusEmail({
-            influencerName: influencer.display_name ?? 'hola',
+            influencerName: influencer.user_name ?? 'hola',
             deliverableTitle: existing.title,
             campaignName: campaign?.name ?? 'Campaña SCENCE',
             status: 'rejected',

@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     fetchAllRows<{ influencer_id: string; fee: number | null; influencer: unknown }>((from, to) => admin.from('campaign_influencers')
       .select(`
         influencer_id, fee,
-        influencer:influencers (id, display_name, avatar_url,
+        influencer:influencers (id, user_name, avatar_url,
           influencer_social_profiles (platform, followers, engagement_rate, is_primary)),
         campaign:campaigns!inner (organization_id)
       `)
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
   }, {})
 
   // Top influencers aggregated fees
-  type InfRow = { id: string; display_name: string; avatar_url: string | null; influencer_social_profiles: Array<{ platform: string; followers: number | null; engagement_rate: number | null; is_primary: boolean }> }
+  type InfRow = { id: string; user_name: string; avatar_url: string | null; influencer_social_profiles: Array<{ platform: string; followers: number | null; engagement_rate: number | null; is_primary: boolean }> }
   const influencerFees = (topInfluencers.data ?? []).reduce<Record<string, { name: string; avatar: string | null; total: number; engagement: number; followers: number }>>((acc, ci) => {
     const inf = (ci.influencer as unknown as InfRow | InfRow[])
     const infObj = Array.isArray(inf) ? inf[0] : inf
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
     const primary = infObj.influencer_social_profiles?.find(sp => sp.is_primary) ?? infObj.influencer_social_profiles?.[0]
     if (!acc[infObj.id]) {
       acc[infObj.id] = {
-        name:       infObj.display_name,
+        name:       infObj.user_name,
         avatar:     infObj.avatar_url,
         total:      0,
         engagement: primary?.engagement_rate ?? 0,

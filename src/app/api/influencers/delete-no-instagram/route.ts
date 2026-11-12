@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         dryRun: true,
         count: ids.length,
-        preview: noInstagram.slice(0, 20).map(i => ({ id: i.id, display_name: i.display_name, email: i.email })),
+        preview: noInstagram.slice(0, 20).map(i => ({ id: i.id, user_name: i.user_name, email: i.email })),
       })
     }
 

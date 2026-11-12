@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   // Fetch influencer emails
   const { data: influencers } = await admin
     .from('influencers')
-    .select('id, display_name, email, is_active')
+    .select('id, user_name, email, is_active')
     .in('id', influencer_ids)
 
   if (!influencers?.length) {
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
       to: inf.email,
       subject: `⚠️ Confirma tu participación: ${title}`,
       html: bookingConfirmationEmail({
-        influencerName: inf.display_name,
+        influencerName: inf.user_name,
         title,
         dateStr,
         location: location || null,

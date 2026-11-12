@@ -33,7 +33,7 @@ type RateCard = {
 
 type Influencer = {
   id: string
-  display_name: string
+  user_name: string
   bio: string | null
   avatar_url: string | null
   categories: string[] | null
@@ -122,16 +122,16 @@ export default function BrandInfluencerProfilePage({
           {data.avatar_url ? (
             <Image
               src={data.avatar_url}
-              alt={data.display_name} width={96} height={96} className="h-24 w-24 rounded-2xl object-cover"
+              alt={data.user_name} width={96} height={96} className="h-24 w-24 rounded-2xl object-cover"
             />
           ) : (
             <div className="h-24 w-24 rounded-2xl bg-violet-100 flex items-center justify-center text-3xl font-bold text-violet-600">
-              {data.display_name.charAt(0).toUpperCase()}
+              {data.user_name.charAt(0).toUpperCase()}
             </div>
           )}
 
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">{data.display_name}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{data.user_name}</h1>
 
             {(data.city || data.country) && (
               <p className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">

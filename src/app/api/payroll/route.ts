@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       *,
       items:payroll_items (
         *,
-        influencer:influencers (id, display_name, avatar_url)
+        influencer:influencers (id, user_name, avatar_url)
       )
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
 
   const { data: runData } = await admin
     .from('payroll_runs')
-    .select(`*, items:payroll_items(*, influencer:influencers(id, display_name, avatar_url))`)
+    .select(`*, items:payroll_items(*, influencer:influencers(id, user_name, avatar_url))`)
     .eq('id', run.id)
     .single()
 
@@ -235,7 +235,7 @@ export async function PATCH(request: NextRequest) {
     .update(update)
     .eq('id', run_id)
     .eq('organization_id', orgIdPatch)
-    .select(`*, items:payroll_items(*, influencer:influencers(id, display_name, avatar_url))`)
+    .select(`*, items:payroll_items(*, influencer:influencers(id, user_name, avatar_url))`)
     .single()
 
   if (error) {

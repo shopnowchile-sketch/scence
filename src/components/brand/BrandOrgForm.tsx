@@ -35,9 +35,9 @@ interface BrandProfile {
   address_lng: number | null
 }
 
-// Representante legal = owner. Fuente de verdad: profiles.full_name / signer_rut / signer_role.
-interface Representative { full_name: string; signer_rut: string; signer_role: string }
-const EMPTY_REPRESENTATIVE: Representative = { full_name: '', signer_rut: '', signer_role: '' }
+// Representante legal = owner. Fuente de verdad: profiles.user_name / signer_rut / signer_role.
+interface Representative { user_name: string; signer_rut: string; signer_role: string }
+const EMPTY_REPRESENTATIVE: Representative = { user_name: '', signer_rut: '', signer_role: '' }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -82,7 +82,7 @@ export function BrandOrgForm() {
       setOrganizationId(json.data.organization_id ?? '')
       setIsOwner(json.data.is_owner === true)
       setRepresentative(json.data.representative ? {
-        full_name: json.data.representative.full_name ?? '', signer_rut: json.data.representative.signer_rut ?? '', signer_role: json.data.representative.signer_role ?? '',
+        user_name: json.data.representative.user_name ?? '', signer_rut: json.data.representative.signer_rut ?? '', signer_role: json.data.representative.signer_role ?? '',
       } : EMPTY_REPRESENTATIVE)
       setForm({
         name:          json.data.name          ?? '',
@@ -296,7 +296,7 @@ export function BrandOrgForm() {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <Field label="Nombre completo *">
-                <input value={representative.full_name} onChange={e => setRepresentative(r => ({ ...r, full_name: e.target.value }))} placeholder="Ana García Pérez" className="input-base w-full" />
+                <input value={representative.user_name} onChange={e => setRepresentative(r => ({ ...r, user_name: e.target.value }))} placeholder="Ana García Pérez" className="input-base w-full" />
               </Field>
             </div>
             <Field label="RUT personal *">

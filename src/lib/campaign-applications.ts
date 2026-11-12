@@ -31,7 +31,7 @@ export async function acceptCampaignApplication(
     .from('campaign_influencers')
     .select(`
       id, influencer_id, application_status, origin, fee, deliverables_spec,
-      influencer:influencers ( display_name, email, is_active )
+      influencer:influencers ( user_name, email, is_active )
     `)
     .eq('id', applicationId)
     .eq('campaign_id', campaignId)
@@ -40,7 +40,7 @@ export async function acceptCampaignApplication(
   const app = application as unknown as {
     id: string; influencer_id: string; application_status: string | null; origin: string | null; fee: number | null
     deliverables_spec: unknown
-    influencer: { display_name: string; email: string | null; is_active?: boolean } | null
+    influencer: { user_name: string; email: string | null; is_active?: boolean } | null
   } | null
 
   if (!app) return { ok: false, error: 'Postulación no encontrada', status: 404 }
@@ -125,7 +125,7 @@ export async function acceptCampaignApplication(
         to: app.influencer.email,
         subject: `¡Tu postulación a "${campaign.name}" fue aprobada!`,
         html: campaignApplicationApprovedEmail({
-          influencerName: app.influencer.display_name,
+          influencerName: app.influencer.user_name,
           campaignName:   campaign.name,
           brandName,
           appUrl:         `${APP_URL}/inf-campaigns`,

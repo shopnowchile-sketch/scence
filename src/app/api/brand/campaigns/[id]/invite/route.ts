@@ -108,7 +108,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Solo puede invitar perfiles ya relacionados con alguna campaña propia.
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, email, is_active')
+    .select('id, user_name, email, is_active')
     .eq('id', influencer_id)
     .single()
 
@@ -180,7 +180,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         to: influencer.email,
         subject: 'Fuiste seleccionada para una campaña privada ✨',
         html: influencerInviteEmail({
-          influencerName: influencer.display_name,
+          influencerName: influencer.user_name,
           campaignName:   campaign.name,
           brandName:      brand.name,
           inviteUrl:      `${APP_URL}/inf-campaigns`,

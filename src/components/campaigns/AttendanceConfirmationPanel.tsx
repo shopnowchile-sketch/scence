@@ -8,7 +8,7 @@ type Attendance = {
   type?: string | null
   attendance_response?: string | null
   due_date?: string | null
-  influencer?: { id?: string; display_name?: string | null; instagram_username?: string | null } | null
+  influencer?: { id?: string; user_name?: string | null; instagram_username?: string | null } | null
 }
 
 type Props = {

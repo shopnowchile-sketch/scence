@@ -131,7 +131,7 @@ export async function GET() {
     db.from('campaign_deliverables')
       .select(`
         id, title, type, status, due_date, platform,
-        influencer:influencers (id, display_name, avatar_url),
+        influencer:influencers (id, user_name, avatar_url),
         campaign:campaigns (id, name)
       `, { count: 'exact' })
       .in('status', ['in_review'])
@@ -234,7 +234,7 @@ export async function GET() {
   const [influencerLastSeenMap, liveProfilesRes, proStatuses] = await Promise.all([
     resolveLastSeen(db, influencerUserIds),
     db.from('profiles')
-      .select('id, last_seen_at')
+      .select('user_id, last_seen_at')
       .gte('last_seen_at', tenMinAgoIso)
       .order('last_seen_at', { ascending: false })
       .limit(500),
@@ -243,7 +243,7 @@ export async function GET() {
   const influencersEntered = influencerUserIds.filter(uid => Boolean(influencerLastSeenMap[uid])).length
 
   const liveProfileIds = (liveProfilesRes.data ?? [])
-    .map(profile => profile.id)
+    .map(profile => profile.user_id)
     .filter((id): id is string => Boolean(id))
 
   let liveInfluencers: Array<{
@@ -255,10 +255,10 @@ export async function GET() {
   if (liveProfileIds.length > 0) {
     // En lotes de 200: un `.in()` con cientos de UUID excede el largo de URL de
     // PostgREST y fallaba en silencio (mismo criterio que resolveLastSeen).
-    const liveInfluencerRows: Array<{ id: string; user_id: string | null; display_name: string | null }> = []
+    const liveInfluencerRows: Array<{ id: string; user_id: string | null; user_name: string | null }> = []
     for (let offset = 0; offset < liveProfileIds.length; offset += 200) {
       const { data, error } = await db.from('influencers')
-        .select('id, user_id, display_name')
+        .select('id, user_id, user_name')
         .eq('organization_id', orgId)
         .in('user_id', liveProfileIds.slice(offset, offset + 200))
       if (error) {
@@ -270,7 +270,7 @@ export async function GET() {
 
     const lastSeenMap = Object.fromEntries(
       (liveProfilesRes.data ?? []).map(profile => [
-        profile.id as string,
+        profile.user_id as string,
         profile.last_seen_at as string | null,
       ])
     )
@@ -278,7 +278,7 @@ export async function GET() {
     liveInfluencers = liveInfluencerRows
       .map(influencer => ({
         id: influencer.id,
-        name: influencer.display_name,
+        name: influencer.user_name,
         last_seen_at: influencer.user_id
           ? lastSeenMap[influencer.user_id] ?? null
           : null,
@@ -345,7 +345,7 @@ export async function GET() {
   ))))
 
   const { data: attemptInfluencers } = attemptInfluencerIds.length
-    ? await db.from('influencers').select('id, display_name, email').in('id', attemptInfluencerIds)
+    ? await db.from('influencers').select('id, user_name, email').in('id', attemptInfluencerIds)
     : { data: [] }
   const attemptInfluencerById = new Map((attemptInfluencers ?? []).map(inf => [inf.id, inf]))
 
@@ -372,7 +372,7 @@ export async function GET() {
       const influencer = attemptInfluencerById.get(influencerId)
       return {
         influencer_id: influencerId,
-        name: influencer?.display_name ?? 'Influencer sin nombre',
+        name: influencer?.user_name ?? 'Influencer sin nombre',
         email: influencer?.email ?? null,
         status: row.status,
         paypal_subscription_id: row.paypal_subscription_id,

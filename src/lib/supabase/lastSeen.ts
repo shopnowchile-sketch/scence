@@ -23,13 +23,13 @@ export async function resolveLastSeen(
   const profileBatches = await mapInBatches(userIds, 200, async batch => {
     const { data: profiles } = await admin
       .from('profiles')
-      .select('id, last_seen_at')
-      .in('id', batch)
+      .select('user_id, last_seen_at')
+      .in('user_id', batch)
     return profiles ?? []
   })
   for (const profiles of profileBatches) {
     for (const p of profiles) {
-      result[p.id as string] = (p.last_seen_at as string | null) ?? null
+      result[p.user_id as string] = (p.last_seen_at as string | null) ?? null
     }
   }
 

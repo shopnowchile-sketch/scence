@@ -12,8 +12,8 @@ const { makeAdmin } = await import('./support/memory-supabase.ts')
 type Row = Record<string, any>
 const fresh = (): Record<string, Row[]> => ({
   influencers: [
-    { id: 'inf-1', user_id: 'u1', display_name: '<img src=x onerror=alert(1)>Ana', organization_id: 'org-x', is_active: true },
-    { id: 'inf-2', user_id: 'u2', display_name: 'Bea', organization_id: 'org-x', is_active: true },
+    { id: 'inf-1', user_id: 'u1', user_name: '<img src=x onerror=alert(1)>Ana', organization_id: 'org-x', is_active: true },
+    { id: 'inf-2', user_id: 'u2', user_name: 'Bea', organization_id: 'org-x', is_active: true },
   ],
   campaigns: [
     { id: 'camp-1', name: 'Camp <b>1</b>', status: 'active', visibility: 'open', organization_id: 'org-x', created_by: null, metadata: {}, start_date: null, end_date: null,

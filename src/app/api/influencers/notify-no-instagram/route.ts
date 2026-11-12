@@ -48,12 +48,12 @@ export async function POST(req: NextRequest) {
         && (!i.address?.trim() || i.location_status !== 'ok')
     )
 
-    const targetsById = new Map<string, { id: string; display_name: string | null; email: string }>()
+    const targetsById = new Map<string, { id: string; user_name: string | null; email: string }>()
     for (const i of missingInstagram) {
-      targetsById.set(i.id, { id: i.id, display_name: i.display_name, email: i.email as string })
+      targetsById.set(i.id, { id: i.id, user_name: i.user_name, email: i.email as string })
     }
     for (const r of missingAddressOrCommune) {
-      targetsById.set(r.id, { id: r.id, display_name: r.display_name, email: r.email as string })
+      targetsById.set(r.id, { id: r.id, user_name: r.user_name, email: r.email as string })
     }
     const targets = Array.from(targetsById.values())
 
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         dryRun: true,
         count: targets.length,
-        preview: targets.slice(0, 20).map(i => ({ id: i.id, display_name: i.display_name, email: i.email })),
+        preview: targets.slice(0, 20).map(i => ({ id: i.id, user_name: i.user_name, email: i.email })),
       })
     }
 
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
           to: inf.email as string,
           subject: 'Acción requerida: completa tu perfil en Scence',
           html: requestProfileUpdateEmail({
-            influencerName: inf.display_name ?? 'Influencer',
+            influencerName: inf.user_name ?? 'Influencer',
             profileUrl: `${APP_URL}/inf-profile`,
           }),
         })

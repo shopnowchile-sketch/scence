@@ -58,7 +58,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data, error } = await admin
     .from('influencers')
     .select(`
-      id, display_name, bio, avatar_url, categories, location_id,
+      id, user_name, bio, avatar_url, categories, location_id,
       influencer_social_profiles (
         platform, username, followers, engagement_rate, is_primary, synced_at, sync_status
       ),

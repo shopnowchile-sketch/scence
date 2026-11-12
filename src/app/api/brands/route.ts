@@ -108,11 +108,11 @@ export async function GET(req: NextRequest) {
 
   const allUserIds = Array.from(new Set([...ownerUserIds, ...memberRows.map(m => m.user_id as string)]))
   const { data: profiles } = allUserIds.length > 0
-    ? await admin.from('profiles').select('id, last_seen_at').in('id', allUserIds)
+    ? await admin.from('profiles').select('user_id, last_seen_at').in('user_id', allUserIds)
     : { data: [] }
 
   const lastSeenMap: Record<string, string | null> = Object.fromEntries(
-    (profiles ?? []).map(profile => [profile.id as string, profile.last_seen_at as string | null])
+    (profiles ?? []).map(profile => [profile.user_id as string, profile.last_seen_at as string | null])
   )
   const accountCreatedMap: Record<string, string | null> = {}
   const unresolved = new Set(allUserIds.filter(id => !lastSeenMap[id] || ownerUserIds.includes(id)))

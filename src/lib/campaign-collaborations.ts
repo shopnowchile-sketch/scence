@@ -76,8 +76,8 @@ export async function hydrateCollaborations(admin: SupabaseClient, rows: RawColl
       ? admin.from('brands').select('id, name, logo_url, contact_name, contact_email, contact_phone, instagram, industry').in('id', brandIds)
       : Promise.resolve({ data: [] as BrandLite[], error: null }),
     ownerIds.length
-      ? admin.from('profiles').select('id, full_name, display_name').in('id', ownerIds)
-      : Promise.resolve({ data: [] as { id: string; full_name: string | null; display_name: string | null }[], error: null }),
+      ? admin.from('profiles').select('user_id, user_name').in('user_id', ownerIds)
+      : Promise.resolve({ data: [] as { user_id: string; user_name: string | null }[], error: null }),
     planIds.length
       ? admin.from('campaign_collaboration_plans').select('id, name, amount').in('id', planIds)
       : Promise.resolve({ data: [] as { id: string; name: string; amount: number | null }[], error: null }),
@@ -90,8 +90,8 @@ export async function hydrateCollaborations(admin: SupabaseClient, rows: RawColl
 
   const leads = new Map((leadsRes.data as LeadLite[]).map(l => [l.id, l]))
   const brands = new Map((brandsRes.data as BrandLite[]).map(b => [b.id, b]))
-  const owners = new Map((ownersRes.data as { id: string; full_name: string | null; display_name: string | null }[])
-    .map(o => [o.id, o.display_name || o.full_name || null]))
+  const owners = new Map((ownersRes.data as { user_id: string; user_name: string | null }[])
+    .map(o => [o.user_id, o.user_name || null]))
 
   return rows.map(row => {
     const lead = row.lead_id ? leads.get(row.lead_id) : undefined

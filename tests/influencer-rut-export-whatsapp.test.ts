@@ -31,9 +31,9 @@ const fresh = (): Record<string, Row[]> => ({
   ],
   campaigns: [{ id: 'camp-A', name: 'Campaña A', organization_id: 'org-A', brand_id: 'brand-A', created_by_brand_id: null, type: 'ugc', status: 'active', metadata: {} }],
   influencers: [
-    { id: 'inf-1', user_id: 'uInf1', display_name: 'Ana Confirmada', email: 'ana@test.invalid', phone: '+56 9 1111 1111', whatsapp: null, location_id: 'loc-com', categories: ['Moda'] },
-    { id: 'inf-2', user_id: 'uInf2', display_name: 'Beto Sin Confirmar', email: 'beto@test.invalid', phone: '+56 9 2222 2222', whatsapp: null, location_id: null, categories: [] },
-    { id: 'inf-3', user_id: 'uInf3', display_name: 'Cata Rechazada', email: 'cata@test.invalid', phone: null, whatsapp: null, location_id: null, categories: [] },
+    { id: 'inf-1', user_id: 'uInf1', user_name: 'Ana Confirmada', email: 'ana@test.invalid', phone: '+56 9 1111 1111', whatsapp: null, location_id: 'loc-com', categories: ['Moda'] },
+    { id: 'inf-2', user_id: 'uInf2', user_name: 'Beto Sin Confirmar', email: 'beto@test.invalid', phone: '+56 9 2222 2222', whatsapp: null, location_id: null, categories: [] },
+    { id: 'inf-3', user_id: 'uInf3', user_name: 'Cata Rechazada', email: 'cata@test.invalid', phone: null, whatsapp: null, location_id: null, categories: [] },
   ],
   influencer_social_profiles: [{ id: 's1', influencer_id: 'inf-1', platform: 'instagram', username: 'ana', followers: 1000, engagement_rate: 3.2 }],
   campaign_influencers: [

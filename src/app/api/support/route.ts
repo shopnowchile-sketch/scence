@@ -81,13 +81,13 @@ export async function POST(request: NextRequest) {
   waitUntil((async () => {
     const brandAccess = await resolveBrandAccess(user.id)
     const [{ data: influencer }, { data: brand }] = await Promise.all([
-      admin.from('influencers').select('display_name, email').eq('user_id', user.id).maybeSingle(),
+      admin.from('influencers').select('user_name, email').eq('user_id', user.id).maybeSingle(),
       brandAccess
         ? admin.from('brands').select('contact_name, contact_email, name').eq('id', brandAccess.brandId).maybeSingle()
         : Promise.resolve({ data: null }),
     ])
     const submitterType = influencer ? 'Influencer' : brand ? 'Marca' : 'Usuario'
-    const submitterName = influencer?.display_name ?? brand?.contact_name ?? brand?.name ?? user.user_metadata?.full_name ?? user.email ?? 'Usuario'
+    const submitterName = influencer?.user_name ?? brand?.contact_name ?? brand?.name ?? user.user_metadata?.full_name ?? user.email ?? 'Usuario'
     const submitterEmail = influencer?.email ?? brand?.contact_email ?? user.email ?? ''
 
     try {

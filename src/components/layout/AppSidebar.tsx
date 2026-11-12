@@ -213,10 +213,10 @@ export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarPro
       setUserEmail(user.email ?? '')
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, display_name')
-        .eq('id', user.id)
+        .select('user_name')
+        .eq('user_id', user.id)
         .single()
-      setUserName(profile?.display_name || profile?.full_name || user.email?.split('@')[0] || '')
+      setUserName(profile?.user_name || user.email?.split('@')[0] || '')
     })
   }, [])
 

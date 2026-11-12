@@ -4,7 +4,7 @@
 // su ficha por /api/influencer/me, que tiene su propia lista blanca.
 
 export const ADMIN_INFLUENCER_COLUMNS = [
-  'display_name', 'bio', 'avatar_url', 'cover_url', 'email', 'phone', 'whatsapp',
+  'user_name', 'bio', 'avatar_url', 'cover_url', 'email', 'phone', 'whatsapp',
   'address', 'location_id', 'birth_date', 'categories', 'tags', 'timezone',
   'language', 'gender', 'age_range', 'is_verified', 'is_active', 'rating', 'notes',
 ] as const
@@ -17,7 +17,14 @@ export const INFLUENCER_META_STATUSES = ['draft', 'active', 'inactive'] as const
 export function pickAdminInfluencerColumns(body: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const key of ADMIN_INFLUENCER_COLUMNS) {
-    if (Object.prototype.hasOwnProperty.call(body, key)) out[key] = body[key]
+    if (!Object.prototype.hasOwnProperty.call(body, key)) continue
+    // El nombre se escribe en pending_user_name: si la influencer ya tiene cuenta, la base lo pasa a profiles.user_name.
+    if (key === 'user_name') {
+      const name = typeof body[key] === 'string' ? (body[key] as string).trim() : ''
+      if (name) out.pending_user_name = name
+      continue
+    }
+    out[key] = body[key]
   }
   return out
 }

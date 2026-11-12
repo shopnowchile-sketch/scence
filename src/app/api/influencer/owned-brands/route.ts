@@ -56,6 +56,6 @@ export async function POST(request: NextRequest) {
     if (logo && data.logo_path !== logo.path) await admin.storage.from(OWNED_BRAND_BUCKET).remove([logo.path])
     return NextResponse.json({ data }, { status: 200 })
   }
-  waitUntil(notifyBrandReferral({ brandId: data.id, brandName: name, contactName, contactEmail, influencerName: influencer.display_name ?? influencer.email ?? 'Influencer', influencerEmail: influencer.email }).catch(error => console.error('[brand referral email]', error)))
+  waitUntil(notifyBrandReferral({ brandId: data.id, brandName: name, contactName, contactEmail, influencerName: influencer.user_name ?? influencer.email ?? 'Influencer', influencerEmail: influencer.email }).catch(error => console.error('[brand referral email]', error)))
   return NextResponse.json({ data }, { status: 201 })
 }

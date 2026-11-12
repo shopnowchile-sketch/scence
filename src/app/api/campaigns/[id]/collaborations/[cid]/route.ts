@@ -35,9 +35,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const authorIds = Array.from(new Set((activities ?? []).map(a => a.created_by).filter((v): v is string => !!v)))
   const { data: authors } = authorIds.length
-    ? await admin.from('profiles').select('id, full_name, display_name').in('id', authorIds)
+    ? await admin.from('profiles').select('user_id, user_name').in('user_id', authorIds)
     : { data: [] }
-  const names = new Map((authors ?? []).map(a => [a.id as string, (a.display_name || a.full_name || null) as string | null]))
+  const names = new Map((authors ?? []).map(a => [a.user_id as string, (a.user_name || null) as string | null]))
 
   return NextResponse.json({
     has_history: true,

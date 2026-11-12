@@ -35,7 +35,7 @@ type SocialProfile = {
 
 type InfluencerProfile = {
   id: string
-  display_name: string
+  user_name: string
   email: string | null
   bio: string | null
   avatar_url: string | null
@@ -68,14 +68,14 @@ type MissingProfileItem = { label: string; section: ProfileSection; blocking: bo
 // nacimiento se informa como pendiente pero NO bloquea nada: exigirla al
 // guardar dejaba a 805 cuentas sin poder actualizar su propio perfil.
 function missingProfileItems(p: {
-  display_name?: string | null
+  user_name?: string | null
   address?: string | null
   location_id?: string | null
   birth_date?: string | null
   hasInstagram: boolean
 }): MissingProfileItem[] {
   const missing: MissingProfileItem[] = []
-  if (!p.display_name?.trim()) missing.push({ label: 'Nombre',   section: 'personal',  blocking: true })
+  if (!p.user_name?.trim()) missing.push({ label: 'Nombre',   section: 'personal',  blocking: true })
   if (!p.hasInstagram)         missing.push({ label: 'Instagram', section: 'redes',     blocking: true })
   if (!p.address?.trim())      missing.push({ label: 'Dirección', section: 'ubicacion', blocking: true })
   if (!p.location_id?.trim())  missing.push({ label: 'Comuna',    section: 'ubicacion', blocking: true })
@@ -85,7 +85,7 @@ function missingProfileItems(p: {
 
 function missingFromProfile(p: InfluencerProfile): MissingProfileItem[] {
   return missingProfileItems({
-    display_name: p.display_name,
+    user_name: p.user_name,
     address: p.address,
     location_id: p.location_id,
     birth_date: p.birth_date,
@@ -173,7 +173,7 @@ export default function ProfilePage() {
   const [savedRut, setSavedRut] = useState<string | null>(null)
   const [rutInput, setRutInput] = useState('')
   const [addressParts, setAddressParts] = useState<AddressParts>(EMPTY_ADDRESS_PARTS)
-  const [editForm,  setEditForm]  = useState({ display_name: '', bio: '', phone: '', address: '', location_id: '', birth_date: '', categories: '' })
+  const [editForm,  setEditForm]  = useState({ user_name: '', bio: '', phone: '', address: '', location_id: '', birth_date: '', categories: '' })
   const [socials,   setSocials]   = useState<SocialProfile[]>([])
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
@@ -236,7 +236,7 @@ export default function ProfilePage() {
     if (!profile) return
     setRutInput(savedRut ? formatRut(savedRut) : '')
     setEditForm({
-      display_name: profile.display_name ?? '',
+      user_name: profile.user_name ?? '',
       bio: profile.bio ?? '',
       phone: profile.phone ?? '',
       address: profile.address ?? '',
@@ -258,7 +258,7 @@ export default function ProfilePage() {
   // La fecha de nacimiento sale como pendiente pero no bloquea el guardado.
   function currentMissing(): MissingProfileItem[] {
     return missingProfileItems({
-      display_name: editForm.display_name,
+      user_name: editForm.user_name,
       address: editForm.address,
       location_id: editForm.location_id,
       birth_date: editForm.birth_date,
@@ -398,16 +398,16 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3 sm:gap-5">
               <div className="flex-shrink-0">
                 {profile.avatar_url ? (
-                  <img src={profile.avatar_url} alt={profile.display_name} onError={() => setProfile(prev => prev ? { ...prev, avatar_url: null } : prev)} className="w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl object-cover" />
+                  <img src={profile.avatar_url} alt={profile.user_name} onError={() => setProfile(prev => prev ? { ...prev, avatar_url: null } : prev)} className="w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl object-cover" />
                 ) : (
                   <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl sm:text-3xl">
-                    {profile.display_name.charAt(0).toUpperCase()}
+                    {profile.user_name.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0 space-y-1 sm:space-y-2">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <h2 className="text-base sm:text-lg font-bold text-gray-900">{profile.display_name}</h2>
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900">{profile.user_name}</h2>
                   {isPro !== null && (
                     <button type="button" onClick={() => setActiveTab('plan')} className={cn('rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide transition hover:ring-2 hover:ring-violet-200', isPro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600')}>
                       {isPro ? 'PLAN PRO' : 'PLAN GRATIS'}
@@ -534,7 +534,7 @@ export default function ProfilePage() {
               <div className="h-14 w-14 sm:h-20 sm:w-20 shrink-0 overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 text-white flex items-center justify-center text-xl sm:text-2xl font-bold">
                 {(avatarPreview || profile.avatar_url) ? (
                   <img src={avatarPreview ?? profile.avatar_url ?? ''} alt="Vista previa" className="h-full w-full object-cover" onError={() => setAvatarPreview(null)} />
-                ) : profile.display_name.charAt(0).toUpperCase()}
+                ) : profile.user_name.charAt(0).toUpperCase()}
               </div>
               <div>
                 <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => {
@@ -552,7 +552,7 @@ export default function ProfilePage() {
           <div id={SECTION_IDS.personal} className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 space-y-3 sm:space-y-4 scroll-mt-24">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /> Información personal</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Nombre" value={editForm.display_name} onChange={v => setEditForm(f => ({ ...f, display_name: v }))} placeholder="Tu nombre" />
+              <Field label="Nombre" value={editForm.user_name} onChange={v => setEditForm(f => ({ ...f, user_name: v }))} placeholder="Tu nombre" />
               <PhoneField value={editForm.phone} onChange={(v, err) => { setEditForm(f => ({ ...f, phone: v })); setPhoneError(err) }} />
               <Field label="Fecha de nacimiento" value={editForm.birth_date} onChange={v => setEditForm(f => ({ ...f, birth_date: v }))} type="date" />
               <div>

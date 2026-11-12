@@ -43,14 +43,14 @@ type Brand = {
   campaigns?: Campaign[]
   org_plan?: string | null
   subscription_plan_override?: 'basic' | 'growth' | 'pro' | null
-  direct_influencers?: Array<{ id: string; display_name: string; avatar_url: string | null }>
+  direct_influencers?: Array<{ id: string; user_name: string; avatar_url: string | null }>
   status_history?: Array<{ id: string; from: string | null; to: string | null; reason: string | null; evidence: string | null; actor: string | null; at: string }>
 }
 
 
 type BrandInfluencer = {
   id: string
-  display_name: string
+  user_name: string
   avatar_url: string | null
   status: string
   campaign_name?: string
@@ -69,7 +69,7 @@ type BrandMember = {
 
 type PickerInfluencer = {
   id: string
-  display_name: string
+  user_name: string
   avatar_url: string | null
   city?: string | null
   country?: string | null
@@ -183,7 +183,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
     // de campañas. Solo muestra relaciones explícitas en brand_influencers.
     setInfluencers((brand.direct_influencers ?? []).map(inf => ({
       id: inf.id,
-      display_name: inf.display_name,
+      user_name: inf.user_name,
       avatar_url: inf.avatar_url,
       status: 'active',
       via: 'direct' as const,
@@ -326,7 +326,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         if (!cancelled) {
           setPickerResults((json.data ?? []).map((inf: Record<string, unknown>) => ({
             id: String(inf.id),
-            display_name: String(inf.display_name ?? 'Sin nombre'),
+            user_name: String(inf.user_name ?? 'Sin nombre'),
             avatar_url: typeof inf.avatar_url === 'string' ? inf.avatar_url : null,
             city: typeof inf.city === 'string' ? inf.city : null,
             country: typeof inf.country === 'string' ? inf.country : null,
@@ -389,7 +389,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
             .filter(inf => !seen.has(inf.id))
             .map(inf => ({
               id: inf.id,
-              display_name: inf.display_name,
+              user_name: inf.user_name,
               avatar_url: inf.avatar_url,
               status: 'active',
               via: 'direct' as const,
@@ -411,7 +411,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
               .filter(inf => !seen.has(inf.id))
               .map(inf => ({
                 id: inf.id,
-                display_name: inf.display_name,
+                user_name: inf.user_name,
                 avatar_url: inf.avatar_url,
               })),
           ],
@@ -553,7 +553,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
 
   async function removeDirectInfluencer(inf: BrandInfluencer) {
     if (!brand) return
-    if (!confirm(`¿Quitar a "${inf.display_name}" de esta marca?`)) return
+    if (!confirm(`¿Quitar a "${inf.user_name}" de esta marca?`)) return
 
     const res = await fetch(`/api/brands/${brand.id}/influencers?influencer_id=${inf.id}`, { method: 'DELETE' })
     const json = await res.json().catch(() => ({}))
@@ -728,15 +728,15 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                         )}
                       >
                         {inf.avatar_url ? (
-                          <img src={inf.avatar_url} alt={inf.display_name} className="h-10 w-10 rounded-full object-cover" />
+                          <img src={inf.avatar_url} alt={inf.user_name} className="h-10 w-10 rounded-full object-cover" />
                         ) : (
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-500 font-bold text-white">
-                            {inf.display_name.charAt(0).toUpperCase()}
+                            {inf.user_name.charAt(0).toUpperCase()}
                           </div>
                         )}
 
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-gray-900">{inf.display_name}</p>
+                          <p className="truncate text-sm font-semibold text-gray-900">{inf.user_name}</p>
                           <p className="truncate text-xs text-gray-400">
                             {[inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
                           </p>
@@ -992,14 +992,14 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                 <div key={inf.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-violet-50">
                   <Link href={`/admin-influencers/${inf.id}`} className="flex items-center gap-3 min-w-0 flex-1">
                     {inf.avatar_url ? (
-                      <img src={inf.avatar_url} alt={inf.display_name} className="w-10 h-10 rounded-full object-cover" />
+                      <img src={inf.avatar_url} alt={inf.user_name} className="w-10 h-10 rounded-full object-cover" />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-violet-500 text-white flex items-center justify-center font-bold">
-                        {inf.display_name.charAt(0)}
+                        {inf.user_name.charAt(0)}
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="font-semibold text-sm text-gray-900 truncate">{inf.display_name}</p>
+                      <p className="font-semibold text-sm text-gray-900 truncate">{inf.user_name}</p>
                       {inf.via === 'direct' ? (
                         <span className="badge badge-blue text-[10px]">Agregada por la marca</span>
                       ) : (

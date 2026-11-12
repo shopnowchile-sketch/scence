@@ -9,9 +9,9 @@ type Params = { params: { id: string } }
 
 const SELECT = `
   *,
-  influencer:influencers (id, display_name, avatar_url, email),
+  influencer:influencers (id, user_name, avatar_url, email),
   brand:brands (id, name, logo_url),
-  responsible:profiles!barters_responsible_id_fkey (id, full_name),
+  responsible:profiles!barters_responsible_id_fkey (user_id, user_name),
   benefits:barter_benefits (
     id, organization_id, barter_id, benefit_type, description, fixed_value,
     currency, commission_rate, affiliate_link_id, delivery_method, status, delivered_at,
@@ -19,7 +19,7 @@ const SELECT = `
   ),
   history:barter_status_history (
     id, barter_id, from_status, to_status, changed_by, note, created_at,
-    actor:profiles!barter_status_history_changed_by_fkey (id, full_name)
+    actor:profiles!barter_status_history_changed_by_fkey (user_id, user_name)
   )
 `
 
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     barterId:      data.id,
     campaignId:    params.id,
     title:         'Nuevo canje asignado',
-    body:          `${data.item} · ${data.influencer?.display_name ?? 'influencer'} (${camp.name})`,
+    body:          `${data.item} · ${data.influencer?.user_name ?? 'influencer'} (${camp.name})`,
   })
 
   const { data: created } = await admin

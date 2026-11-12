@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (req.nextUrl.searchParams.get('view') === 'history') {
     const { data, error } = await admin
       .from('audit_logs')
-      .select('id, action, changes, created_at, actor:profiles!audit_logs_actor_id_fkey(full_name)')
+      .select('id, action, changes, created_at, actor:profiles!audit_logs_actor_id_fkey(user_name)')
       .eq('entity_type', 'brand')
       .eq('entity_id', params.id)
       .in('action', Object.keys(BRAND_ACTIVITY_LABELS).map(key => `brand_portal.${key}`))
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         action: string
         changes: { campaign_name?: string } | null
         created_at: string
-        actor: { full_name: string | null } | null
+        actor: { user_name: string | null } | null
       }>>()
 
     if (error) return NextResponse.json({ error: 'No se pudo cargar el historial' }, { status: 500 })
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         id: event.id,
         label: BRAND_ACTIVITY_LABELS[event.action.slice('brand_portal.'.length) as keyof typeof BRAND_ACTIVITY_LABELS],
         campaign: event.changes?.campaign_name ?? null,
-        actor: event.actor?.full_name ?? null,
+        actor: event.actor?.user_name ?? null,
         at: event.created_at,
       })),
     }, { headers: { 'Cache-Control': 'private, no-store' } })
@@ -112,27 +112,27 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Usado por el tab "Influencers" del detalle de marca en admin.
   const { data: directRows } = await admin
     .from('brand_influencers')
-    .select('influencer:influencers(id, display_name, avatar_url)')
+    .select('influencer:influencers(id, user_name, avatar_url)')
     .eq('brand_id', params.id)
 
   const direct_influencers = ((directRows ?? [])
     .map(r => r.influencer)
-    .filter(Boolean)) as unknown as Array<{ id: string; display_name: string; avatar_url: string | null }>
+    .filter(Boolean)) as unknown as Array<{ id: string; user_name: string; avatar_url: string | null }>
 
   // Historial de cambios de estado (motivo y respaldo de cada suspensión). Solo Admin lo recibe.
   const { data: statusRows } = await admin
     .from('audit_logs')
-    .select('id, changes, created_at, actor:profiles!audit_logs_actor_id_fkey(full_name)')
+    .select('id, changes, created_at, actor:profiles!audit_logs_actor_id_fkey(user_name)')
     .eq('entity_type', 'brand')
     .eq('entity_id', params.id)
     .eq('action', 'brand.status_changed')
     .order('created_at', { ascending: false })
     .limit(10)
-    .returns<Array<{ id: string; changes: { from?: string | null; to?: string; reason?: string | null; evidence?: string | null } | null; created_at: string; actor: { full_name: string | null } | null }>>()
+    .returns<Array<{ id: string; changes: { from?: string | null; to?: string; reason?: string | null; evidence?: string | null } | null; created_at: string; actor: { user_name: string | null } | null }>>()
   const status_history = (statusRows ?? []).map(r => ({
     id: r.id, from: r.changes?.from ?? null, to: r.changes?.to ?? null,
     reason: r.changes?.reason ?? null, evidence: r.changes?.evidence ?? null,
-    actor: r.actor?.full_name ?? null, at: r.created_at,
+    actor: r.actor?.user_name ?? null, at: r.created_at,
   }))
 
   return NextResponse.json({ data: { ...brand, campaigns: uniqueCampaigns, last_sign_in_at, org_plan, direct_influencers, status_history } })

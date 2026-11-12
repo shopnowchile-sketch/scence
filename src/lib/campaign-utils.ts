@@ -26,12 +26,12 @@ export interface CampaignDeliverable {
   published_url?: string | null
   notes?: string | null
   influencer_id?: string | null
-  influencer?: { id: string; display_name: string; avatar_url: string | null } | null
+  influencer?: { id: string; user_name: string; avatar_url: string | null } | null
 }
 
 export interface CampaignInfluencerRow {
   id: string
-  display_name: string
+  user_name: string
   avatar_url: string | null
   email?: string | null
   fee?: number | null

@@ -339,24 +339,24 @@ function DeliverableContent({
 function InfluencerBadge({
   influencer, igUsername, profileHref,
 }: {
-  influencer: { id: string; display_name: string; avatar_url: string | null }
+  influencer: { id: string; user_name: string; avatar_url: string | null }
   igUsername: string | null
   profileHref: string
 }) {
   const cleanIg = igUsername ? igUsername.replace(/^@+/, '') : null
   const igUrl = buildProfileUrl('instagram', cleanIg)
-  const gradient = GRADIENTS[influencer.display_name.charCodeAt(0) % GRADIENTS.length]
+  const gradient = GRADIENTS[influencer.user_name.charCodeAt(0) % GRADIENTS.length]
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
       <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 bg-gradient-to-br overflow-hidden', gradient)}>
         {influencer.avatar_url
-          ? <img src={influencer.avatar_url} alt={influencer.display_name} className="w-full h-full object-cover" />
-          : influencer.display_name.charAt(0).toUpperCase()}
+          ? <img src={influencer.avatar_url} alt={influencer.user_name} className="w-full h-full object-cover" />
+          : influencer.user_name.charAt(0).toUpperCase()}
       </div>
       <div className="min-w-0 leading-tight">
         <Link href={profileHref} onClick={event => event.stopPropagation()} className="block truncate text-xs font-semibold text-gray-900 transition-colors hover:text-violet-700 hover:underline">
-          {influencer.display_name}
+          {influencer.user_name}
         </Link>
         <div className="flex items-center gap-1.5">
           {igUrl ? (
@@ -572,7 +572,7 @@ function ContentMetricsStats({ metrics }: {
 function DeliverableInfluencerGroup({
   influencer, igUsername, followers, items, campaignId, profileHref, reviewNotes, setReviewNotes, avgRating, ratedCount, metrics, inactiveNoShow, emailAction,
 }: {
-  influencer: { id: string; display_name: string; avatar_url: string | null }
+  influencer: { id: string; user_name: string; avatar_url: string | null }
   igUsername: string | null
   followers: number | null
   items: CampaignDeliverableDetail[]
@@ -633,7 +633,7 @@ function DeliverableInfluencerGroup({
         <div className="flex items-center gap-3 flex-wrap">
           {emailAction && !noShow && (
             <input
-              aria-label={`Seleccionar a ${influencer.display_name} para recordatorio de contenido`}
+              aria-label={`Seleccionar a ${influencer.user_name} para recordatorio de contenido`}
               type="checkbox"
               checked={emailAction.selected}
               onClick={event => event.stopPropagation()}
@@ -1663,7 +1663,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       const handles = (inf.influencer_social_profiles ?? [])
         .map(profile => (profile.username ?? '').replace(/^@+/, ''))
         .join(' ')
-      if (![inf.display_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(query)) return false
+      if (![inf.user_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(query)) return false
     }
     return true
   })
@@ -1800,7 +1800,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       const handles = (inf.influencer_social_profiles ?? [])
         .map(profile => (profile.username ?? '').replace(/^@+/, ''))
         .join(' ')
-      if (![inf.display_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(q)) return false
+      if (![inf.user_name, (inf as { email?: string | null }).email ?? '', handles].join(' ').toLowerCase().includes(q)) return false
     }
     return true
   })
@@ -3279,7 +3279,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         const primarySP = inf.influencer_social_profiles?.[0]
                         const profileUrl = primarySP?.username ? buildProfileUrl(primarySP.platform, primarySP.username) : null
                         const gradient = GRADIENTS[i % GRADIENTS.length]
-                        const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+                        const initials = inf.user_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
                         const pendingCells: Record<PendingColumnKey, React.ReactNode> = {
                               participations: <td className="px-4 py-3 whitespace-nowrap">
                                 {ci.history ? (
@@ -3299,17 +3299,17 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 {!isBrandPortal && ci.origin === 'application' && !ci.metadata?.removal_reason ? (
                                   <select
                                     value={ci.application_status === 'rejected' ? 'rejected' : 'pending'}
-                                    aria-label={`Estado de la postulación de ${inf.display_name}`}
+                                    aria-label={`Estado de la postulación de ${inf.user_name}`}
                                     onChange={async event => {
                                       const next = event.target.value
                                       const current = ci.application_status === 'rejected' ? 'rejected' : 'pending'
                                       if (next === current) return
                                       const action = next === 'pending' ? 'reopen' : 'reject'
-                                      if (action === 'reject' && !confirm(`¿Marcar como no seleccionada la postulación de ${inf.display_name}?`)) { event.target.value = current; return }
+                                      if (action === 'reject' && !confirm(`¿Marcar como no seleccionada la postulación de ${inf.user_name}?`)) { event.target.value = current; return }
                                       const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action }) })
                                       const json = await response.json().catch(() => ({}))
                                       if (response.ok) {
-                                        toast.success(action === 'reopen' ? `Postulación de ${inf.display_name} devuelta a pendiente` : `Postulación de ${inf.display_name} no seleccionada`)
+                                        toast.success(action === 'reopen' ? `Postulación de ${inf.user_name} devuelta a pendiente` : `Postulación de ${inf.user_name} no seleccionada`)
                                         setPendingSelection(previous => { const set = new Set(previous); set.delete(ci.id); return set })
                                       } else {
                                         event.target.value = current
@@ -3350,7 +3350,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                     else next.add(ci.id)
                                     return next
                                   })}
-                                  aria-label={`Seleccionar a ${inf.display_name}`}
+                                  aria-label={`Seleccionar a ${inf.user_name}`}
                                   className="h-4 w-4 flex-shrink-0 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
                                 />}
                                 <div className={cn('relative w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br flex-shrink-0', gradient)}>
@@ -3358,7 +3358,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   {inf.avatar_url && (
                                     <img
                                       src={inf.avatar_url}
-                                      alt={inf.display_name}
+                                      alt={inf.user_name}
                                       className="absolute inset-0 h-full w-full rounded-full object-cover"
                                       onError={event => { event.currentTarget.style.display = 'none' }}
                                     />
@@ -3366,7 +3366,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 </div>
                                 <div className="min-w-0">
                                   <span className="inline-flex items-center gap-1.5">
-                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{inf.display_name}</span>
+                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{inf.user_name}</span>
                                     {inf.is_pro && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">PRO</span>}
                                   </span>
                                   {primarySP?.username && (
@@ -3384,7 +3384,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'accept' }) })
                                     const json = await response.json().catch(() => ({}))
                                     if (response.ok) {
-                                      toast.success(`Postulación de ${inf.display_name} aceptada — se le notificó por email`)
+                                      toast.success(`Postulación de ${inf.user_name} aceptada — se le notificó por email`)
                                       setPendingSelection(previous => {
                                         const next = new Set(previous)
                                         next.delete(ci.id)
@@ -3397,12 +3397,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 >Aceptar</button>
                                 <button
                                   onClick={async () => {
-                                    if (!confirm(`¿Rechazar la solicitud de ${inf.display_name}?`)) return
+                                    if (!confirm(`¿Rechazar la solicitud de ${inf.user_name}?`)) return
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'reject' }) })
                                     const json = await response.json().catch(() => ({}))
                                     if (!response.ok) toast.error(json.error ?? 'Error al rechazar la postulación')
                                     else {
-                                      toast.success(`Postulación de ${inf.display_name} rechazada`)
+                                      toast.success(`Postulación de ${inf.user_name} rechazada`)
                                       setPendingSelection(previous => {
                                         const next = new Set(previous)
                                         next.delete(ci.id)
@@ -3453,7 +3453,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       {inf.avatar_url && !brokenInfluencerAvatars.has(inf.id) ? (
                         <img
                           src={inf.avatar_url}
-                          alt={inf.display_name}
+                          alt={inf.user_name}
                           className="w-8 h-8 rounded-full object-cover flex-shrink-0"
                           onError={() => setBrokenInfluencerAvatars(previous => {
                             if (previous.has(inf.id)) return previous
@@ -3464,12 +3464,12 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {inf.display_name.charAt(0)}
+                          {inf.user_name.charAt(0)}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-semibold text-gray-900">
-                          {inf.display_name}
+                          {inf.user_name}
                         </span>
                         <p className="text-xs text-gray-400 truncate">
                           {[inf.commune || inf.city, inf.country].filter(Boolean).join(', ') || 'Sin ubicación'}
@@ -3495,7 +3495,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm(`¿Quitar la invitación de ${inf.display_name}?`)) {
+                            if (confirm(`¿Quitar la invitación de ${inf.user_name}?`)) {
                               removeInfluencer.mutate(inf.id)
                             }
                           }}
@@ -3680,7 +3680,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     // `progress` ya no la escribe ninguna pantalla (siempre 0).
                     const p = delivsTotal > 0 ? Math.round((delivsDone / delivsTotal) * 100) : 0
                     const gradient = GRADIENTS[i % GRADIENTS.length]
-                    const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+                    const initials = inf.user_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
                     const approvedCells: Record<ApprovedColumnKey, React.ReactNode> = {
                       platform: (
                         <td className="px-4 py-3 text-sm text-gray-500">
@@ -3789,7 +3789,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   else if (action) void updateManualAttendance(inf.id, action)
                                 }}
                                 title="Actualizar asistencia"
-                                aria-label={`Actualizar asistencia de ${inf.display_name}`}
+                                aria-label={`Actualizar asistencia de ${inf.user_name}`}
                                 className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 outline-none transition-colors hover:bg-amber-100 disabled:opacity-50"
                               >
                                 <option value="">{attendanceUpdating === inf.id ? 'Guardando…' : 'No confirmó'}</option>
@@ -3810,7 +3810,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   else if (action) void updateManualAttendance(inf.id, action)
                                 }}
                                 title="Actualizar asistencia"
-                                aria-label={`Actualizar asistencia de ${inf.display_name}`}
+                                aria-label={`Actualizar asistencia de ${inf.user_name}`}
                                 className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 outline-none transition-colors hover:bg-amber-100 disabled:opacity-50"
                               >
                                 <option value="">{attendanceUpdating === inf.id ? 'Guardando…' : 'Sin confirmar'}</option>
@@ -3829,7 +3829,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             {inf.avatar_url && !brokenInfluencerAvatars.has(inf.id) ? (
                               <img
                                 src={inf.avatar_url}
-                                alt={inf.display_name}
+                                alt={inf.user_name}
                                 className="w-9 h-9 rounded-full object-cover flex-shrink-0"
                                 onError={() => setBrokenInfluencerAvatars(previous => {
                                   if (previous.has(inf.id)) return previous
@@ -3848,9 +3848,9 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                 <Link
                                   href={isBrandPortal ? `/brand-influencers/${inf.id}` : `/admin-influencers/${inf.id}?from=${encodeURIComponent(`/admin-campaigns/${id}?tab=influencers`)}`}
                                   className="text-left text-sm font-semibold text-gray-900 transition-colors hover:text-violet-700 hover:underline truncate"
-                                  title={`Ver ficha completa de ${inf.display_name}`}
+                                  title={`Ver ficha completa de ${inf.user_name}`}
                                 >
-                                  {inf.display_name}
+                                  {inf.user_name}
                                 </Link>
                                 {!isBrandPortal
                                   && ci.application_status === 'accepted'
@@ -3864,7 +3864,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                       }}
                                       disabled={attendanceReminderFor === inf.id}
                                       title="Enviar confirmación de asistencia"
-                                      aria-label={`Enviar confirmación de asistencia a ${inf.display_name}`}
+                                      aria-label={`Enviar confirmación de asistencia a ${inf.user_name}`}
                                       className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-600 transition-colors hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                       {attendanceReminderFor === inf.id
@@ -3906,7 +3906,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                             </a>
                             {!attendanceNoConfirmed && <button
                               onClick={() => {
-                                if (confirm(`¿Eliminar a ${inf.display_name} de esta campaña?`)) {
+                                if (confirm(`¿Eliminar a ${inf.user_name} de esta campaña?`)) {
                                   removeInfluencer.mutate(inf.id)
                                 }
                               }}
@@ -3931,14 +3931,14 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         {selectedInfluencer.avatar_url ? (
-                          <img src={selectedInfluencer.avatar_url} alt={selectedInfluencer.display_name} className="w-14 h-14 rounded-2xl object-cover flex-shrink-0" />
+                          <img src={selectedInfluencer.avatar_url} alt={selectedInfluencer.user_name} className="w-14 h-14 rounded-2xl object-cover flex-shrink-0" />
                         ) : (
                           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
-                            {selectedInfluencer.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+                            {selectedInfluencer.user_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
                           </div>
                         )}
                         <div className="min-w-0">
-                          <h3 className="text-base font-bold text-gray-900 truncate">{selectedInfluencer.display_name}</h3>
+                          <h3 className="text-base font-bold text-gray-900 truncate">{selectedInfluencer.user_name}</h3>
                           <p className="text-xs text-gray-400">
                             {[selectedInfluencer.commune || selectedInfluencer.city, selectedInfluencer.country].filter(Boolean).join(', ') || 'Sin ubicación'}
                           </p>
@@ -4161,7 +4161,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                 {addingDeliverable && (
                   <AddDeliverableForm
                     campaignId={id}
-                    influencers={confirmedInfluencers.map(ci => ({ id: ci.influencer?.id ?? '', name: ci.influencer?.display_name ?? 'Influencer' }))}
+                    influencers={confirmedInfluencers.map(ci => ({ id: ci.influencer?.id ?? '', name: ci.influencer?.user_name ?? 'Influencer' }))}
                     collaboratorBrands={campaignBrands.filter(brand => brand._role === 'Colaboradora' && brand.id).map(brand => ({ id: String(brand.id), name: String(brand.name ?? 'Marca'), instagram: brand.instagram as string | null }))}
                     onSuccess={() => { setAddingDeliverable(false); void refetch() }}
                     onCancel={() => setAddingDeliverable(false)}
@@ -4198,7 +4198,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                       }
                     }
 
-                    const groups = new Map<string, { influencer: { id: string; display_name: string; avatar_url: string | null }; items: CampaignDeliverableDetail[] }>()
+                    const groups = new Map<string, { influencer: { id: string; user_name: string; avatar_url: string | null }; items: CampaignDeliverableDetail[] }>()
                     for (const d of visibleSubmittedDeliverables) {
                       if (!d.influencer) continue
                       const key = d.influencer.id
@@ -4638,7 +4638,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                   color={d.status === 'published' ? 'emerald' : d.status === 'approved' ? 'blue' : d.status === 'rejected' ? 'red' : 'amber'}
                   title={`${d.status === 'published' ? 'Publicado' : d.status === 'approved' ? 'Aprobado' : d.status === 'rejected' ? 'Rechazado' : 'Enviado para revisión'}: ${d.title ?? d.type}`}
                   date={d.submitted_at || d.published_at || ''}
-                  desc={d.influencer?.display_name ?? ''}
+                  desc={d.influencer?.user_name ?? ''}
                 />
               ))
             }

@@ -1,3 +1,4 @@
+import { getUserEmails } from '@/lib/user-email'
 import { officialRoleFor } from '@/lib/brand-membership'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
@@ -18,12 +19,16 @@ export async function GET() {
 
   const { data, error } = await admin
     .from('organization_members')
-    .select('id, user_id, role, is_owner, profile:profiles(display_name, email)')
+    .select('id, user_id, role, is_owner, profile:profiles!organization_members_user_id_fkey(user_name)')
     .eq('organization_id', orgId)
     .order('is_owner', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data: data ?? [] })
+  const emails = await getUserEmails(admin, (data ?? []).map(member => member.user_id as string))
+  return NextResponse.json({ data: (data ?? []).map(member => ({
+    ...member,
+    profile: { ...((member.profile as unknown as { user_name?: string | null } | null) ?? {}), email: emails[member.user_id as string] ?? null },
+  })) })
 }
 
 // PATCH /api/settings/team — update member role (admin only)

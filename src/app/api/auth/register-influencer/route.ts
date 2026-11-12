@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
-  const displayName = str(body.display_name)
+  const displayName = str(body.user_name)
   const email = str(body.email).toLowerCase()
   const password = typeof body.password === 'string' ? body.password : ''
   const instagram = str(body.instagram_username)
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     email_confirm: false,
     user_metadata: {
       full_name: displayName,
-      display_name: displayName,
+      user_name: displayName,
       is_influencer: true,
       instagram_username: instagram,
       location_id: locationId,

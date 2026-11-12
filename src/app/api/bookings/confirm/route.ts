@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, confirmation_token, title, location, is_virtual, virtual_link, starts_at,
       campaign:campaigns ( name, brand:brands!campaigns_brand_id_fkey ( name ) ),
-      influencer:influencers ( display_name, email )
+      influencer:influencers ( user_name, email )
     `)
     .eq('influencer_id', influencer_id)
     .order('created_at', { ascending: false })
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       location: string | null; is_virtual: boolean; virtual_link: string | null
       starts_at: string
       campaign: { name: string; brand: { name: string } | null } | null
-      influencer: { display_name: string; email: string | null } | null
+      influencer: { user_name: string; email: string | null } | null
     }
 
     // El token es obligatorio y debe coincidir (antes era opcional y cualquiera
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
           to: booking.influencer.email,
           subject: `Booking confirmado: ${booking.title}`,
           html: bookingConfirmEmail({
-            recipientName: booking.influencer.display_name,
+            recipientName: booking.influencer.user_name,
             campaignName:  booking.campaign?.name ?? 'Scence',
             eventTitle:    booking.title,
             eventDate:     new Date(booking.starts_at).toLocaleString('es-CL', {

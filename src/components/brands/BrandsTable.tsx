@@ -85,7 +85,7 @@ function initials(name: string) {
 
 interface BrandInfluencer {
   id: string
-  display_name: string
+  user_name: string
   avatar_url: string | null
   application_status: 'pending' | 'accepted' | 'rejected'
   campaign_name: string
@@ -179,7 +179,7 @@ export function BrandsTable({ managedByBrandId }: { managedByBrandId?: string } 
           seen.add(ci.influencer.id)
           flat.push({
             id: ci.influencer.id,
-            display_name: ci.influencer.display_name,
+            user_name: ci.influencer.user_name,
             avatar_url: ci.influencer.avatar_url,
             application_status: ci.application_status,
             campaign_name: r.campaign_name,
@@ -798,14 +798,14 @@ export function BrandsTable({ managedByBrandId }: { managedByBrandId?: string } 
                     <a key={inf.id} href={`/influencers/${inf.id}`}
                       className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 hover:bg-violet-50 transition-colors">
                       {inf.avatar_url ? (
-                        <img src={inf.avatar_url} alt={inf.display_name} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                        <img src={inf.avatar_url} alt={inf.user_name} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                       ) : (
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                          {inf.display_name.charAt(0)}
+                          {inf.user_name.charAt(0)}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{inf.display_name}</p>
+                        <p className="text-sm font-medium text-gray-900 truncate">{inf.user_name}</p>
                         <p className="text-[10px] text-gray-400 truncate">{inf.campaign_name}</p>
                       </div>
                       <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0',

@@ -41,7 +41,7 @@ export async function loadProAttempts(admin: Admin, orgId: string): Promise<{ at
   }).filter((x): x is string => Boolean(x))))
   if (!ids.length) return { attempts: [], error: null }
 
-  const { data: infs, error: infError } = await admin.from('influencers').select('id, user_id, organization_id, display_name, is_active').in('id', ids)
+  const { data: infs, error: infError } = await admin.from('influencers').select('id, user_id, organization_id, user_name, is_active').in('id', ids)
   if (infError) return { attempts: [], error: 'No se pudieron leer las influencers.' }
   let statuses: Map<string, string>
   try { statuses = await getInfluencerProStatuses(admin, ids) } catch { return { attempts: [], error: 'No se pudo verificar el estado Pro.' } }
@@ -50,7 +50,7 @@ export async function loadProAttempts(admin: Admin, orgId: string): Promise<{ at
     error: null,
     attempts: (infs ?? [])
       .filter(i => i.organization_id === orgId && i.is_active !== false && (statuses.get(i.id) ?? 'free') === 'free')
-      .map(i => ({ influencerId: i.id, userId: i.user_id ?? null, organizationId: i.organization_id, name: i.display_name ?? null })),
+      .map(i => ({ influencerId: i.id, userId: i.user_id ?? null, organizationId: i.organization_id, name: i.user_name ?? null })),
   }
 }
 

@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Get influencer + membership
   const [{ data: influencer }, { data: membership }] = await Promise.all([
     admin.from('influencers').select(`
-      id, display_name, avatar_url,
+      id, user_name, avatar_url,
       influencer_social_profiles (platform, username, followers, engagement_rate)
     `).eq('id', influencer_id).single(),
     admin.from('campaign_influencers').select('fee, currency, notes')
@@ -114,7 +114,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Reporte — ${influencer.display_name} · ${campaign.name}</title>
+<title>Reporte — ${influencer.user_name} · ${campaign.name}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f3f4f6;color:#111827;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -159,9 +159,9 @@ export async function GET(req: NextRequest, { params }: Params) {
     </div>
     <div class="inf-card">
       ${influencer.avatar_url
-        ? `<img src="${influencer.avatar_url}" class="inf-avatar" alt="${influencer.display_name}" />`
-        : `<div class="inf-avatar" style="background:rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:white">${influencer.display_name.charAt(0)}</div>`}
-      <div class="inf-name">${influencer.display_name}</div>
+        ? `<img src="${influencer.avatar_url}" class="inf-avatar" alt="${influencer.user_name}" />`
+        : `<div class="inf-avatar" style="background:rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:white">${influencer.user_name.charAt(0)}</div>`}
+      <div class="inf-name">${influencer.user_name}</div>
       ${igProfile?.username ? `<div class="inf-handle">@${igProfile.username}</div>` : ''}
       ${igProfile?.followers ? `<div class="inf-stat"><span class="inf-stat-lbl">Seguidores</span><span class="inf-stat-val">${fmtNum(igProfile.followers)}</span></div>` : ''}
       ${membership?.fee ? `<div class="inf-stat" style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.2)"><span class="inf-stat-lbl">Fee</span><span class="inf-stat-val">${fmtMoney(membership.fee, membership.currency)}</span></div>` : ''}
@@ -197,7 +197,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   <div class="footer no-print">
     <span>Scence · Reporte de influencer</span>
-    <span>${influencer.display_name} · ${campaign.name}</span>
+    <span>${influencer.user_name} · ${campaign.name}</span>
     <span>${new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
   </div>
 </div>

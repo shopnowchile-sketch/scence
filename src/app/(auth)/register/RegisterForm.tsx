@@ -27,7 +27,7 @@ const brandSchema = z.object({
 })
 
 const influencerSchema = z.object({
-  display_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
+  user_name: z.string().min(2, 'Mínimo 2 caracteres').max(80),
   instagram_username: z.string().trim().min(2, 'Instagram es obligatorio').max(100)
     .refine(isValidInstagramHandle, 'Ingresa un usuario de Instagram válido (ej. @sofiacontreras)'),
   location_id:  z.string().uuid('Selecciona tu ubicación'),
@@ -297,7 +297,7 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
   })
   const pwd = watch('password') ?? ''
 
-  async function onSubmit({ display_name, instagram_username, location_id, address, birth_date, email, password }: InfluencerValues) {
+  async function onSubmit({ user_name, instagram_username, location_id, address, birth_date, email, password }: InfluencerValues) {
     const instagramHandle = normalizeInstagramHandle(instagram_username)
     setLoading(true); setError(null)
     let res: Response
@@ -306,7 +306,7 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          display_name, instagram_username: instagramHandle, location_id, address, birth_date, email, password,
+          user_name, instagram_username: instagramHandle, location_id, address, birth_date, email, password,
         }),
       })
     } catch {
@@ -346,8 +346,8 @@ function InfluencerForm({ onBack }: { onBack: () => void }) {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre y apellido <span className="text-red-500" aria-hidden="true">*</span></label>
-          <input {...register('display_name')} autoComplete="name" className="input-base w-full" placeholder="Sofía Contreras" />
-          {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
+          <input {...register('user_name')} autoComplete="name" className="input-base w-full" placeholder="Sofía Contreras" />
+          {errors.user_name && <p className="text-xs text-red-500 mt-1">{errors.user_name.message}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Instagram <span className="text-red-500" aria-hidden="true">*</span></label>

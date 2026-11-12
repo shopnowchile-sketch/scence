@@ -24,12 +24,12 @@ async function isInfluencerProfileComplete(userId: string) {
   const admin = createAdminClient()
   const { data } = await admin
     .from('influencers')
-    .select('display_name, address, location_id, metadata, is_active, influencer_social_profiles (platform, username)')
+    .select('user_name, address, location_id, metadata, is_active, influencer_social_profiles (platform, username)')
     .eq('user_id', userId)
     .single()
   if (!data) return { complete: true, required: false, active: true }
 
-  const hasName      = !!(data.display_name && String(data.display_name).trim())
+  const hasName      = !!(data.user_name && String(data.user_name).trim())
   const hasAddress   = !!(data.address && String(data.address).trim())
   const hasCommune   = !!(data.location_id && String(data.location_id).trim())
   const hasInstagram = (data.influencer_social_profiles ?? []).some(

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const meta = (user.user_metadata ?? {}) as Record<string, unknown>
     const isInfluencer = meta.is_influencer === true
-    const name = String(meta.display_name ?? meta.full_name ?? 'Hola')
+    const name = String(meta.user_name ?? meta.display_name ?? meta.full_name ?? 'Hola')
     // generateLink sobre un usuario ya existente: no crea cuentas nuevas.
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'magiclink', email })
     if (linkError || !linkData?.properties?.hashed_token) {

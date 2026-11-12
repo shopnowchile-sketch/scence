@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, organization_id, display_name, address, location_id, metadata, is_active, influencer_social_profiles (platform, username)')
+    .select('id, organization_id, user_name, address, location_id, metadata, is_active, influencer_social_profiles (platform, username)')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const hasInstagram = (influencer.influencer_social_profiles ?? []).some(
       (profile: { platform: string; username: string | null }) => profile.platform === 'instagram' && Boolean(profile.username?.trim())
     )
-    if (!influencer.display_name?.trim() || !influencer.address?.trim() || !influencer.location_id || !hasInstagram) {
+    if (!influencer.user_name?.trim() || !influencer.address?.trim() || !influencer.location_id || !hasInstagram) {
       return NextResponse.json(
         { error: 'Completa tu perfil (nombre, Instagram, ubicación y dirección) antes de postular.', code: 'PROFILE_INCOMPLETE' },
         { status: 422 }

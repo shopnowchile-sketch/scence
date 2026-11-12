@@ -17,7 +17,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { data: influencer } = await admin
     .from('influencers')
     .select(`
-      id, display_name, avatar_url, email, phone,
+      id, user_name, avatar_url, email, phone,
       influencer_social_profiles (platform, username, followers, engagement_rate)
     `)
     .eq('user_id', user.id)
@@ -122,7 +122,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Reporte — ${camp.name} · ${influencer.display_name}</title>
+<title>Reporte — ${camp.name} · ${influencer.user_name}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:#f3f4f6;color:#111827;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -223,9 +223,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     <!-- Influencer card -->
     <div class="inf-card">
       ${influencer.avatar_url
-        ? `<img src="${influencer.avatar_url}" class="inf-avatar" alt="${influencer.display_name}" />`
-        : `<div class="inf-avatar-placeholder">${influencer.display_name.charAt(0).toUpperCase()}</div>`}
-      <div class="inf-name">${influencer.display_name}</div>
+        ? `<img src="${influencer.avatar_url}" class="inf-avatar" alt="${influencer.user_name}" />`
+        : `<div class="inf-avatar-placeholder">${influencer.user_name.charAt(0).toUpperCase()}</div>`}
+      <div class="inf-name">${influencer.user_name}</div>
       ${igProfile?.username ? `<div class="inf-handle">@${igProfile.username}</div>` : ''}
       ${igProfile?.followers ? `
       <div class="inf-stat">
@@ -347,12 +347,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
   <!-- Footer -->
   <div class="footer no-print" style="display:flex">
     <span>Generado por Scence</span>
-    <span>${influencer.display_name} · ${camp.name}</span>
+    <span>${influencer.user_name} · ${camp.name}</span>
     <span>${new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
   </div>
   <div class="footer" style="display:none" id="print-footer">
     <span>Generado por Scence · ${new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-    <span>${influencer.display_name} · ${camp.name}</span>
+    <span>${influencer.user_name} · ${camp.name}</span>
   </div>
 
 </div><!-- /page -->

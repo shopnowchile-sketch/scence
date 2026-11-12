@@ -7,7 +7,7 @@ export type RankingSortBy =
   | 'campaigns'
   | 'deliverables_completed'
   | 'completion_rate'
-  | 'display_name'
+  | 'user_name'
   | 'city'
   | 'last_connection'
 
@@ -21,7 +21,7 @@ export type RankingSocialProfile = {
 
 export type RankingInfluencerRow = {
   id: string
-  display_name?: string | null
+  user_name?: string | null
   email?: string | null
   user_id?: string | null
   /** Solo en respuestas a marcas (sin user_id): la influencer tiene cuenta en SCENCE. */
@@ -150,9 +150,9 @@ export function sortRankingRows(
   sortDir: 'asc' | 'desc'
 ) {
   return [...rows].sort((a, b) => {
-    if (sortBy === 'display_name') {
-      const av = a.display_name ?? ''
-      const bv = b.display_name ?? ''
+    if (sortBy === 'user_name') {
+      const av = a.user_name ?? ''
+      const bv = b.user_name ?? ''
       return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
     }
 

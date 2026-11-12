@@ -75,13 +75,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { email, role, display_name } = body as { email?: string; role?: string; display_name?: string }
+  const { email, role, user_name } = body as { email?: string; role?: string; user_name?: string }
 
   if (!email || !role) return NextResponse.json({ error: 'email y role son requeridos' }, { status: 422 })
   if (!VALID_ROLES.includes(role)) return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
   if (brandAccess && role !== 'member') return NextResponse.json({ error: 'Rol inválido' }, { status: 422 })
 
-  const name = display_name?.trim() || email.split('@')[0]
+  const name = user_name?.trim() || email.split('@')[0]
 
   // Find or create auth user
   let existing: Awaited<ReturnType<typeof findAuthUserByEmail>>
@@ -112,16 +112,15 @@ export async function POST(req: NextRequest) {
   // Ensure profile exists
   const { data: existingProfile } = await admin
     .from('profiles')
-    .select('id')
-    .eq('id', authUserId)
+    .select('user_id')
+    .eq('user_id', authUserId)
     .single()
 
   if (!existingProfile) {
     await admin.from('profiles').insert({
-      id: authUserId,
-      display_name: name,
-      email,
-      organization_id: orgId,
+      user_id: authUserId,
+      user_name: name,
+      user_role: 'brand_member',
     })
   }
 

@@ -18,7 +18,7 @@ export function BrandNewInfluencerForm() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    display_name: '',
+    user_name: '',
     instagram: '',
     email: '',
     phone: '',
@@ -30,7 +30,7 @@ export function BrandNewInfluencerForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.display_name.trim()) return toast.error('El nombre es requerido')
+    if (!form.user_name.trim()) return toast.error('El nombre es requerido')
     if (!form.instagram.trim()) return toast.error('Instagram es requerido')
     if (!form.email.trim()) return toast.error('El email es requerido')
 
@@ -40,7 +40,7 @@ export function BrandNewInfluencerForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          display_name: form.display_name.trim(),
+          user_name: form.user_name.trim(),
           email: form.email.trim(),
           phone: form.phone.trim() || undefined,
           social_profiles: [{
@@ -85,8 +85,8 @@ export function BrandNewInfluencerForm() {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre *</label>
           <input
-            value={form.display_name}
-            onChange={e => set('display_name', e.target.value)}
+            value={form.user_name}
+            onChange={e => set('user_name', e.target.value)}
             required
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-violet-400"
             placeholder="Valentina Reyes"

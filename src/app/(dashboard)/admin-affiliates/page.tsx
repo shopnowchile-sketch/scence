@@ -23,13 +23,13 @@ interface AffiliateLink {
   conversions: number
   revenue: number
   created_at: string
-  influencer?: { id: string; display_name: string } | null
+  influencer?: { id: string; user_name: string } | null
   campaign?: { id: string; name: string } | null
 }
 
 interface Influencer {
   id: string
-  display_name: string
+  user_name: string
 }
 
 interface Campaign {
@@ -160,7 +160,7 @@ function NewLinkModal({ onClose, onCreated }: NewLinkModalProps) {
               >
                 <option value="">Seleccionar influencer...</option>
                 {influencers.map(inf => (
-                  <option key={inf.id} value={inf.id}>{inf.display_name}</option>
+                  <option key={inf.id} value={inf.id}>{inf.user_name}</option>
                 ))}
               </select>
             </div>
@@ -284,7 +284,7 @@ function StatsPanel({ link, onClose }: StatsPanelProps) {
         <div>
           <div className="text-xs text-gray-400 mb-0.5">Influencer</div>
           <div className="text-sm font-semibold text-gray-900">
-            {link.influencer?.display_name ?? '—'}
+            {link.influencer?.user_name ?? '—'}
           </div>
           {link.campaign && (
             <div className="flex items-center gap-1 mt-1">
@@ -505,7 +505,7 @@ export default function AffiliatesPage() {
                         <span className="text-sm font-semibold text-gray-900 truncate max-w-[160px]">{link.name}</span>
                       )}
                       <span className={`text-xs truncate max-w-[160px] ${link.name ? 'text-gray-400' : 'text-sm font-medium text-gray-900'}`}>
-                        {link.influencer?.display_name ?? '—'}
+                        {link.influencer?.user_name ?? '—'}
                       </span>
                     </div>
                   </td>

@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
           .select(`
             id,
             user_id,
-            display_name,
+            user_name,
             email,
             location_id,
             categories,
@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
     for (let i = 0; i < userIds.length; i += CHUNK) chunks.push(userIds.slice(i, i + CHUNK))
 
     const results = await Promise.all(
-      chunks.map(ids => admin.from('profiles').select('id, last_seen_at').in('id', ids))
+      chunks.map(ids => admin.from('profiles').select('user_id, last_seen_at').in('user_id', ids))
     )
 
     for (const { data: profiles, error: profErr } of results) {
@@ -146,7 +146,7 @@ export async function GET(req: NextRequest) {
         continue // no bloquear el ranking entero por un lote — last_sign_in_at queda null para esos
       }
       for (const profile of profiles ?? []) {
-        lastSeenMap[profile.id as string] = (profile.last_seen_at as string | null) ?? null
+        lastSeenMap[profile.user_id as string] = (profile.last_seen_at as string | null) ?? null
       }
     }
   }
@@ -166,7 +166,7 @@ export async function GET(req: NextRequest) {
 
   if (search) {
     rows = rows.filter(inf =>
-      String(inf.display_name ?? '').toLowerCase().includes(search) ||
+      String(inf.user_name ?? '').toLowerCase().includes(search) ||
       String(inf.email ?? '').toLowerCase().includes(search) ||
       String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search) ||
       (inf.social_profiles ?? []).some(profile => String(profile.username ?? '').toLowerCase().replace(/^@+/, '').includes(search))

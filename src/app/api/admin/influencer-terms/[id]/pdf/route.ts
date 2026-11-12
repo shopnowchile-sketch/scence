@@ -52,12 +52,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('display_name, organization_id')
+    .select('user_name, organization_id')
     .eq('id', acceptance.influencer_id)
     .maybeSingle()
   if (!influencer || influencer.organization_id !== orgId) return NextResponse.json({ error: 'Términos no encontrados.' }, { status: 404 })
 
-  const pdf = buildPdf(acceptance.document_title, acceptance.document_version, acceptance.accepted_at, acceptance.content_snapshot, influencer.display_name)
+  const pdf = buildPdf(acceptance.document_title, acceptance.document_version, acceptance.accepted_at, acceptance.content_snapshot, influencer.user_name)
   return new NextResponse(pdf, {
     status: 200,
     headers: {

@@ -11,7 +11,7 @@ type Item = {
   id: string; title: string | null; type: string | null; platform: string | null; due_date: string | null
   content_url: string | null; published_url: string | null; submitted_at: string | null; submitted_notes: string | null
   campaign_id: string
-  influencer: { id: string; display_name: string | null; avatar_url: string | null } | null
+  influencer: { id: string; user_name: string | null; avatar_url: string | null } | null
   campaign: { id: string; name: string | null; brand: { name: string | null } | null } | null
 }
 
@@ -105,7 +105,7 @@ export default function ContentReviewPage() {
                 <tr key={item.id} className="border-b border-gray-50 align-top last:border-0">
                   <td className="px-4 py-3"><input type="checkbox" aria-label="Seleccionar" className="h-4 w-4 rounded border-gray-300 text-violet-600" checked={selected.has(item.id)} onChange={() => toggle(item.id)} /></td>
                   <td className="px-4 py-3 font-medium text-gray-900">
-                    {item.influencer ? <Link href={`/admin-influencers/${item.influencer.id}`} className="hover:underline">{item.influencer.display_name ?? '—'}</Link> : '—'}
+                    {item.influencer ? <Link href={`/admin-influencers/${item.influencer.id}`} className="hover:underline">{item.influencer.user_name ?? '—'}</Link> : '—'}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     <Link href={`/admin-campaigns/${item.campaign_id}?tab=deliverables`} className="hover:underline">{item.campaign?.name ?? 'Campaña'}</Link>

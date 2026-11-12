@@ -65,7 +65,7 @@ test('getInfluencerProSubscriptionDetails: la que renueva gana y se resuelve en 
 test('resolveLastSeen: profiles.last_seen_at primero y auth.users como respaldo, en todas las tandas', async () => {
   const users = Array.from({ length: 450 }, (_, i) => `u-${i}`)
   const db: Record<string, Row[]> = {
-    profiles: users.map((id, i) => ({ id, last_seen_at: i % 3 === 0 ? null : '2026-11-01T00:00:00Z' })),
+    profiles: users.map((id, i) => ({ user_id: id, last_seen_at: i % 3 === 0 ? null : '2026-11-01T00:00:00Z' })),
   }
   const admin = makeAdmin(db) as any
   admin.auth = { admin: { listUsers: async ({ page }: { page: number }) => ({
@@ -107,7 +107,7 @@ test('dashboard (handler real, base en memoria): "han ingresado" y embudo Pro co
   const db: Record<string, Row[]> = {
     organization_members: [{ id: 'm', user_id: 'adm', organization_id: 'org', role: 'super_admin', is_active: true }],
     influencers,
-    profiles: users.map((id, i) => ({ id, last_seen_at: i % 2 ? '2026-11-01T00:00:00Z' : null })),
+    profiles: users.map((id, i) => ({ user_id: id, last_seen_at: i % 2 ? '2026-11-01T00:00:00Z' : null })),
     subscriptions: [
       { id: 's1', organization_id: 'org', status: 'active', created_at: '2026-10-01', metadata: { account_type: 'influencer', influencer_id: 'inf-9' } },
       { id: 's2', organization_id: 'org', status: 'incomplete', created_at: '2026-10-02', metadata: { account_type: 'influencer', influencer_id: 'inf-20' } },

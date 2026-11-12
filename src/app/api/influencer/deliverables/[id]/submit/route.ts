@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Verify the deliverable belongs to this user's influencer profile
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, display_name, organization_id')
+    .select('id, user_name, organization_id')
     .eq('user_id', user.id)
     .single()
 
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Non-fatal: notify the central SCENCE operations inbox.
   try {
     if (ADMIN_NOTIFICATION_EMAIL) {
-        const influencerName = influencer.display_name ?? 'Influencer'
+        const influencerName = influencer.user_name ?? 'Influencer'
         const deliverableTitle = (deliverable as { title?: string | null }).title ?? 'Entregable'
         const campaignData = (deliverable as { campaign?: { name?: string } | null }).campaign
         const campaignName = campaignData?.name ?? 'Campaña'

@@ -556,7 +556,7 @@ export function DashboardClient() {
 
     const liveInfluencers: LivePerson[] = liveSource.slice(0, 6).map((person, index) => ({
       id: readText(person, ['id'], String(index)),
-      name: readText(person, ['name', 'full_name', 'display_name'], 'Influencer'),
+      name: readText(person, ['name', 'full_name', 'user_name'], 'Influencer'),
       username: readText(person, ['instagram_username', 'username', 'handle'], ''),
       time: formatMinutesAgo(readText(person, ['last_seen_at', 'last_activity_at', 'last_sign_in_at'])),
     }))

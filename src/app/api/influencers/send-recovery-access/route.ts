@@ -9,7 +9,7 @@ type RecoveryInfluencer = {
   id: string
   user_id: string | null
   email: string | null
-  display_name: string | null
+  user_name: string | null
   metadata: Record<string, unknown> | null
 }
 
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await admin
     .from('influencers')
-    .select('id, user_id, email, display_name, metadata, is_active')
+    .select('id, user_id, email, user_name, metadata, is_active')
     .eq('organization_id', orgId)
     .eq('metadata->>recovery_reason', 'missing_influencer_profile')
     .is('metadata->>access_recovery_email_sent_at', null)
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       dryRun: true,
       count: targets.length,
       skipped: (data?.length ?? 0) - targets.length,
-      preview: targets.slice(0, 20).map(({ id, display_name, email }) => ({ id, display_name, email })),
+      preview: targets.slice(0, 20).map(({ id, user_name, email }) => ({ id, user_name, email })),
     })
   }
 
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
         from: FROM_EMAIL,
         to: influencer.email!,
         subject: 'Tu cuenta de SCENCE ya está lista',
-        html: accessEmail(influencer.display_name ?? 'Influencer', actionLink),
+        html: accessEmail(influencer.user_name ?? 'Influencer', actionLink),
       })
       if (emailError) throw new Error(emailError.message)
 

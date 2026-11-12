@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('affiliate_links')
     .select(`
       *,
-      influencer:influencers (id, display_name),
+      influencer:influencers (id, user_name),
       campaign:campaigns (id, name),
       clicks_history:affiliate_link_clicks (*)
     `)
@@ -75,7 +75,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .eq('organization_id', orgId)
     .select(`
       *,
-      influencer:influencers (id, display_name),
+      influencer:influencers (id, user_name),
       campaign:campaigns (id, name)
     `)
     .single()

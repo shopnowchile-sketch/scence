@@ -1,7 +1,7 @@
 // FUENTE ÚNICA de las reglas de datos legales de una marca para firmar documentos (NDA).
 //
 //   Empresa        → brands.rut + brands.address_street/city/region/country  (razón social: brands.name)
-//   Representante  → profiles.full_name + profiles.signer_rut + profiles.signer_role  (del owner que firma)
+//   Representante  → profiles.user_name + profiles.signer_rut + profiles.signer_role  (del owner que firma)
 //   Captura/edición → UN solo lugar: /brand-settings/organization (Perfil legal). Nadie más pide estos datos.
 //   Copia histórica → brand_documents.content_snapshot + signer_* + metadata.signed_legal_data (al firmar).
 //
@@ -12,11 +12,11 @@ export const BRAND_LEGAL_FIX_URL = '/brand-settings/organization'
 
 export const BRAND_LEGAL_SELECT =
   'id, organization_id, name, rut, address_street, address_number, address_city, address_region, address_country'
-export const PROFILE_LEGAL_SELECT = 'full_name, signer_rut, signer_role'
+export const PROFILE_LEGAL_SELECT = 'user_name, signer_rut, signer_role'
 
 export type LegalSection = 'empresa' | 'representante'
 export type CompanyLegalKey = 'rut' | 'address_street' | 'address_city' | 'address_region' | 'address_country'
-export type RepresentativeLegalKey = 'full_name' | 'signer_rut' | 'signer_role'
+export type RepresentativeLegalKey = 'user_name' | 'signer_rut' | 'signer_role'
 export type LegalFieldKey = CompanyLegalKey | RepresentativeLegalKey
 export type MissingLegalField = { key: LegalFieldKey; label: string; section: LegalSection }
 
@@ -29,7 +29,7 @@ export const COMPANY_LEGAL_FIELDS: ReadonlyArray<{ key: CompanyLegalKey; label: 
 ]
 
 export const REPRESENTATIVE_LEGAL_FIELDS: ReadonlyArray<{ key: RepresentativeLegalKey; label: string }> = [
-  { key: 'full_name', label: 'Nombre completo del representante legal' },
+  { key: 'user_name', label: 'Nombre completo del representante legal' },
   { key: 'signer_rut', label: 'RUT personal del representante legal' },
   { key: 'signer_role', label: 'Cargo del representante legal' },
 ]
@@ -39,7 +39,7 @@ export type BrandLegalRow = {
   id?: string; organization_id?: string | null; name?: Maybe; rut?: Maybe
   address_street?: Maybe; address_number?: Maybe; address_city?: Maybe; address_region?: Maybe; address_country?: Maybe
 }
-export type RepresentativeRow = { full_name?: Maybe; signer_rut?: Maybe; signer_role?: Maybe }
+export type RepresentativeRow = { user_name?: Maybe; signer_rut?: Maybe; signer_role?: Maybe }
 
 const blank = (value: unknown) => !String(value ?? '').trim()
 const clean = (value: unknown) => String(value ?? '').trim()
@@ -77,7 +77,7 @@ export function buildBrandLegalProfile(brand: BrandLegalRow | null | undefined, 
   const missing = missingLegalFields(brand, rep)
   return {
     company: { name: clean(brand?.name), rut: clean(brand?.rut), address: formatBrandAddress(brand) },
-    representative: { name: clean(rep?.full_name), rut: clean(rep?.signer_rut), role: clean(rep?.signer_role) },
+    representative: { name: clean(rep?.user_name), rut: clean(rep?.signer_rut), role: clean(rep?.signer_role) },
     missing,
     complete: missing.length === 0,
   }

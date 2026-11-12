@@ -24,7 +24,7 @@ interface UploadResult {
 
 // Columnas reconocidas por el backend
 const KNOWN_COLUMNS = [
-  'display_name', 'email', 'phone', 'city', 'country', 'bio', 'categories',
+  'user_name', 'email', 'phone', 'city', 'country', 'bio', 'categories',
   'instagram', 'tiktok', 'youtube', 'twitter', 'facebook', 'linkedin',
   'instagram_url', 'tiktok_url',
 ]
@@ -56,7 +56,7 @@ function parseCSV(text: string): { rows: BulkRow[]; headers: string[] } {
 }
 
 // ── Template CSV ──────────────────────────────────────────────────────────────
-const TEMPLATE_HEADERS = 'display_name,email,phone,city,country,bio,categories,instagram,tiktok,youtube,twitter,facebook,linkedin,instagram_url,tiktok_url'
+const TEMPLATE_HEADERS = 'user_name,email,phone,city,country,bio,categories,instagram,tiktok,youtube,twitter,facebook,linkedin,instagram_url,tiktok_url'
 const TEMPLATE_EXAMPLE = 'María García,maria@gmail.com,+56912345678,Santiago,CL,"Lifestyle & fashion creator","fashion,beauty",125000,89000,,12000,,,https://www.instagram.com/mariagarcia,https://www.tiktok.com/@mariagarcia'
 
 function downloadTemplate() {
@@ -92,7 +92,7 @@ export function BulkUploadModal({ onClose, onSuccess }: Props) {
   }, [])
 
   // Diagnóstico de columnas
-  const missingRequired = !headers.includes('display_name') && !headers.includes('email')
+  const missingRequired = !headers.includes('user_name') && !headers.includes('email')
   const hasInstagramCol = headers.includes('instagram_url')
   const unmappedHeaders = headers.filter(h => !KNOWN_COLUMNS.includes(h))
 
@@ -203,7 +203,7 @@ export function BulkUploadModal({ onClose, onSuccess }: Props) {
                 {missingRequired && (
                   <div className="flex items-center gap-2 text-xs text-red-600">
                     <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                    Falta columna obligatoria: <strong>display_name</strong> o <strong>email</strong>
+                    Falta columna obligatoria: <strong>user_name</strong> o <strong>email</strong>
                   </div>
                 )}
                 {!hasInstagramCol && (

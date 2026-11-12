@@ -13,7 +13,7 @@ export type LocationStatus = 'ok' | 'missing' | 'orphan' | 'inactive'
 
 export interface ScanInfluencer {
   id: string
-  display_name: string | null
+  user_name: string | null
   email: string | null
   is_active: boolean
   created_at: string | null
@@ -42,7 +42,7 @@ export interface GeographyCountNode extends GeographyNode {
 /** Fila mínima para los listados del drilldown (sin email ni datos de contacto). */
 export interface GeographyInfluencer {
   id: string
-  display_name: string | null
+  user_name: string | null
   instagram_username: string | null
   is_active: boolean
   location_status: LocationStatus
@@ -120,7 +120,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
     const { data, error } = await admin
       .from('influencers')
       .select(`
-        id, display_name, email, is_active, created_at, location_id, address,
+        id, user_name, email, is_active, created_at, location_id, address,
         social_profiles:influencer_social_profiles ( platform, profile_url, username, followers )
       `)
       .eq('organization_id', orgId)
@@ -141,7 +141,7 @@ export async function loadScan(admin: SupabaseClient, orgId: string): Promise<Sc
       const totalFollowers = ig?.followers ?? 0
       all.push({
         id: inf.id,
-        display_name: inf.display_name,
+        user_name: inf.user_name,
         email: inf.email,
         is_active: inf.is_active !== false,
         created_at: inf.created_at,
@@ -284,7 +284,7 @@ export function buildReport(scan: ScanInfluencer[]): DataQualityReport {
   }
   const instagramHint = (inf: ScanInfluencer): GeographyInfluencer['instagram_hint'] => {
     if (extractInstagramHandle(inf.instagram_url, inf.instagram_username)) return null
-    const fromName = /^@/.test(inf.display_name?.trim() ?? '') ? normHandle(inf.display_name) : null
+    const fromName = /^@/.test(inf.user_name?.trim() ?? '') ? normHandle(inf.user_name) : null
     if (!fromName) return null
     const owner = instagramOwner.get(fromName)
     return owner && owner !== inf.id ? 'conflict' : 'pending'
@@ -294,7 +294,7 @@ export function buildReport(scan: ScanInfluencer[]): DataQualityReport {
     geographyNodes: Array.from(usedNodes.values()),
     geographyInfluencers: scan.map(i => ({
       id: i.id,
-      display_name: i.display_name,
+      user_name: i.user_name,
       instagram_username: extractInstagramHandle(i.instagram_url, i.instagram_username),
       is_active: i.is_active,
       location_status: i.location_status,

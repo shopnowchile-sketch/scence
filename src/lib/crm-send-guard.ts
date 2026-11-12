@@ -170,6 +170,23 @@ export async function loadHandledLeadIds(admin: SupabaseClient, jobId: string, l
 }
 
 /**
+ * Leads de la tanda que YA recibieron esta plantilla (cualquier job anterior). Evita el duplicado
+ * cuando la misma lista se vuelve a lanzar. Los eventos antiguos sin `template_key` no se pueden
+ * identificar: para ellos solo protege la reserva por lead. Falla cerrado.
+ */
+export async function loadLeadsAlreadySentTemplate(admin: SupabaseClient, templateKey: string, leadIds: string[]): Promise<Set<string>> {
+  if (leadIds.length === 0) return new Set()
+  const { data, error } = await admin
+    .from('crm_email_events')
+    .select('lead_id')
+    .in('lead_id', leadIds)
+    .eq('event_type', 'email.sent')
+    .filter('raw_payload->>template_key', 'eq', templateKey)
+  if (error) throw new Error(`No se pudo verificar los envíos previos de la plantilla: ${error.message}`)
+  return new Set((data ?? []).map(row => row.lead_id as string))
+}
+
+/**
  * Intentos interrumpidos: leads reservados (contacted_at desde `since`) sin ningún
  * evento de este job. NO se reenvían solos; es una lista para revisión manual.
  */
@@ -223,6 +240,10 @@ export type BatchResult = {
   /** Subconjunto de `failed`: el email pudo haber salido. No se reintenta solo. */
   unconfirmed: number
   alreadyHandled: number
+  /** Omitidos porque ya recibieron esta misma plantilla en otro job. */
+  alreadySentTemplate: number
+  /** Omitidos porque la barrera de influencers inactivas retiró al destinatario: el correo NO salió. */
+  blockedByGuard: number
   recentlyContacted: number
   /** Escrituras posteriores al envío que fallaron (el email SÍ salió). */
   recordErrors: number
@@ -230,13 +251,15 @@ export type BatchResult = {
 
 export async function processLeadBatch(
   admin: SupabaseClient,
-  params: { jobId: string; userId: string; leads: BatchLead[]; jobCreatedAt?: string },
+  params: { jobId: string; userId: string; leads: BatchLead[]; jobCreatedAt?: string; templateKey?: string },
   deps: BatchDeps,
 ): Promise<BatchResult> {
-  const { jobId, userId, leads, jobCreatedAt } = params
+  const { jobId, userId, leads, jobCreatedAt, templateKey } = params
   const jobStart = jobCreatedAt ? new Date(jobCreatedAt).getTime() : NaN
-  const result: BatchResult = { sent: 0, skipped: 0, failed: 0, unconfirmed: 0, alreadyHandled: 0, recentlyContacted: 0, recordErrors: 0 }
-  const handled = await loadHandledLeadIds(admin, jobId, leads.map(lead => lead.id))
+  const result: BatchResult = { sent: 0, skipped: 0, failed: 0, unconfirmed: 0, alreadyHandled: 0, alreadySentTemplate: 0, blockedByGuard: 0, recentlyContacted: 0, recordErrors: 0 }
+  const leadIds = leads.map(lead => lead.id)
+  const handled = await loadHandledLeadIds(admin, jobId, leadIds)
+  const alreadySent = templateKey ? await loadLeadsAlreadySentTemplate(admin, templateKey, leadIds) : new Set<string>()
 
   for (const lead of leads) {
     if (!lead.email) { result.skipped++; continue }
@@ -253,6 +276,7 @@ export async function processLeadBatch(
     }
 
     if (handled.has(lead.id)) { result.skipped++; result.alreadyHandled++; continue }
+    if (alreadySent.has(lead.id)) { result.skipped++; result.alreadySentTemplate++; continue }
 
     // Intento INTERRUMPIDO: el lead quedó reservado después de que arrancó este job y no tiene ningún
     // evento de este job. Pudo haber salido (Resend acepta y el proceso muere antes de registrar).
@@ -322,6 +346,23 @@ export async function processLeadBatch(
         raw_payload: { source: 'bulk-send', job_id: jobId, template_key: outgoing.templateKey, error: detail },
       })
       if (error) result.recordErrors++
+      continue
+    }
+
+    if (!providerError && !resendId) {
+      // Sin id del proveedor y sin error: la barrera de influencers inactivas (getResend) retiró al
+      // destinatario y el correo NO salió. No es un envío: se libera la reserva y no se registra
+      // `email.sent` (inflaría los KPI y marcaría al lead como contactado).
+      const released = await releaseLeadSend(admin, lead.id, claim)
+      if (released.error) console.error('[crm-bulk-send] no se pudo liberar la reserva', released.error)
+      result.skipped++
+      result.blockedByGuard++
+      await admin.from('crm_lead_activities').insert({
+        lead_id: lead.id,
+        action_type: 'note',
+        description: `Envío comercial omitido: ${lead.email} pertenece a una influencer inactiva (no se le escribe).`,
+        created_by: userId,
+      })
       continue
     }
 

@@ -190,8 +190,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: emailErr.message ?? 'Error al enviar email' }, { status: 500 })
   }
 
+  if (!emailData?.id) {
+    // Sin id del proveedor y sin error: la barrera de influencers inactivas (getResend) retiró al destinatario
+    // y el correo NO salió. No se registra como enviado (inflaría los KPI) y se libera la reserva.
+    const released = await releaseLeadSend(admin, params.id, claim)
+    if (released.error) console.error('[send-intro] no se pudo liberar la reserva', released.error)
+    await admin.from('crm_lead_activities').insert({
+      lead_id: params.id,
+      action_type: 'note',
+      description: `Envío omitido: ${lead.email} pertenece a una influencer inactiva (no se le escribe).`,
+      created_by: user.id,
+    })
+    return NextResponse.json(
+      { error: 'No se envió: este correo pertenece a una influencer inactiva y SCENCE no le escribe.', code: 'blocked_inactive_influencer' },
+      { status: 409 },
+    )
+  }
+
   const now = new Date().toISOString()
-  const resendEmailId = emailData?.id ?? null
+  const resendEmailId = emailData.id
 
   const leadUpdate: Record<string, unknown> = { contacted_at: now, updated_at: now }
   // Solo avanza a "Contactada" si el lead todavía no entró al pipeline. Un lead

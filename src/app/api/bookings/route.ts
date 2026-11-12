@@ -253,6 +253,59 @@ export async function POST(req: NextRequest) {
 }
 
 // ── PUT /api/bookings ─────────────────────────────────────────────────────────
+// Lista blanca de escritura (antes `...rest` mandaba el body completo al UPDATE: un cliente con permiso sobre la
+// campaña podía reescribir influencer_id, confirmation_token/confirmation_status, confirmed_at, canceled_at,
+// internal_notes, metadata, fee/currency/travel_budget, etc.). Solo estas claves se escriben; el resto se ignora.
+//  - Generales (quien tenga permiso sobre la reserva): título, descripción, fechas, ubicación, notas, enlace, etc.
+//  - RESTRINGIDAS (solo admin de plataforma): fee, currency, travel_budget, internal_notes y status. Una marca,
+//    aunque administre la campaña, recibe 403 si las envía.
+//  - `status` solo admite proposed/confirmed/completed/no_show. Cancelar NO se hace por aquí: usa DELETE
+//    (marca canceled + canceled_at y retira el evento de calendario). La confirmación de la influencer sigue
+//    su propio flujo (/api/bookings/confirm con enlace firmado).
+// NO están: campaign_id, organization_id, created_by, calendar_event_id (propiedad), influencer_id, event_type,
+// tokens/estado de confirmación, canceled_at/cancellation_reason, metadata, wardrobe_provided.
+const BOOKING_STATUSES = ['proposed', 'confirmed', 'completed', 'no_show'] as const
+const BOOKING_CURRENCIES = ['USD', 'EUR', 'MXN', 'CLP', 'COP', 'ARS', 'BRL', 'GBP'] as const
+const BOOKING_PUT_EXTRA_FIELDS = ['location_details', 'is_virtual', 'virtual_link', 'notes', 'travel_covered'] as const
+const BOOKING_PUT_RESTRICTED_FIELDS = ['status', 'fee', 'currency', 'travel_budget', 'internal_notes'] as const
+
+type BookingPatchResult = { ok: true; extras: Record<string, unknown> } | { ok: false; error: string }
+
+const isTextOrNull = (v: unknown, max: number) => v === null || (typeof v === 'string' && v.length <= max)
+const isAmountOrNull = (v: unknown, max: number) => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max)
+const hasField = (body: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(body, k) && body[k] !== undefined
+
+/** Valida los tipos de los campos editables presentes en el body (los ausentes no se tocan). */
+function validateBookingPatch(body: Record<string, unknown>): BookingPatchResult {
+  const has = (k: string) => hasField(body, k)
+  if (has('title') && (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 200)) return { ok: false, error: 'El título no es válido' }
+  if (has('description') && !isTextOrNull(body.description, 5000)) return { ok: false, error: 'La descripción no es válida' }
+  if (has('location') && !isTextOrNull(body.location, 500)) return { ok: false, error: 'La ubicación no es válida' }
+  if (has('location_id') && !isTextOrNull(body.location_id, 64)) return { ok: false, error: 'El identificador de lugar no es válido' }
+  if (has('timezone') && (typeof body.timezone !== 'string' || body.timezone.length > 64)) return { ok: false, error: 'La zona horaria no es válida' }
+  for (const k of ['starts_at', 'ends_at']) {
+    if (has(k) && (typeof body[k] !== 'string' || Number.isNaN(new Date(body[k] as string).getTime()))) return { ok: false, error: 'La fecha no es válida' }
+  }
+  const extras: Record<string, unknown> = {}
+  for (const k of [...BOOKING_PUT_EXTRA_FIELDS, ...BOOKING_PUT_RESTRICTED_FIELDS]) if (has(k)) extras[k] = body[k]
+  if ('status' in extras) {
+    if (extras.status === 'canceled') return { ok: false, error: 'Para cancelar una reserva usa la acción Cancelar' }
+    if (!(BOOKING_STATUSES as readonly unknown[]).includes(extras.status)) return { ok: false, error: 'El estado no es válido' }
+  }
+  if ('fee' in extras && !isAmountOrNull(extras.fee, 9_999_999_999)) return { ok: false, error: 'El honorario no es válido' }
+  if ('travel_budget' in extras && !isAmountOrNull(extras.travel_budget, 99_999_999)) return { ok: false, error: 'El presupuesto de viaje no es válido' }
+  if ('currency' in extras && !(BOOKING_CURRENCIES as readonly unknown[]).includes(extras.currency)) return { ok: false, error: 'La moneda no es válida' }
+  if ('internal_notes' in extras && !isTextOrNull(extras.internal_notes, 5000)) return { ok: false, error: 'Las notas internas no son válidas' }
+  for (const k of ['is_virtual', 'travel_covered']) if (k in extras && typeof extras[k] !== 'boolean') return { ok: false, error: 'Valor no válido' }
+  if ('virtual_link' in extras && !isTextOrNull(extras.virtual_link, 2000)) return { ok: false, error: 'El enlace no es válido' }
+  if ('notes' in extras && !isTextOrNull(extras.notes, 5000)) return { ok: false, error: 'Las notas no son válidas' }
+  if ('location_details' in extras) {
+    const ld = extras.location_details
+    if (ld !== null && (typeof ld !== 'object' || Array.isArray(ld))) return { ok: false, error: 'El detalle de ubicación no es válido' }
+  }
+  return { ok: true, extras }
+}
+
 export async function PUT(req: NextRequest) {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -262,26 +315,44 @@ export async function PUT(req: NextRequest) {
   const orgId = await getOrgId(user.id, user.user_metadata, admin)
   if (!orgId) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
 
-  const body = await req.json()
-  // campaign_id / organization_id / created_by no se pueden reasignar por PUT: permitirlo dejaría
-  // mover un booking a una campaña u organización ajena tras autorizar solo la original.
-  const {
-    id, title, description, location: clientLocation, location_id: clientLocationId, starts_at, ends_at, timezone,
-    campaign_id: _campaignId, organization_id: _organizationId, created_by: _createdBy, calendar_event_id: _calendarEventId,
-    ...rest
-  } = body
+  const raw = await req.json().catch(() => null)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return NextResponse.json({ error: 'Cuerpo no válido' }, { status: 400 })
+  const body = raw as Record<string, unknown>
+  const id = body.id
+  if (typeof id !== 'string' || !id) return NextResponse.json({ error: 'Falta el id del evento' }, { status: 400 })
 
   // Obtain existing to get gcal ID
-  const { data: existing } = await admin
+  const { data: existing, error: existingError } = await admin
     .from('bookings')
-    .select('calendar_event_id, campaign_id, organization_id, event_type, influencer_id, location_details')
+    .select('calendar_event_id, campaign_id, organization_id, event_type, influencer_id, location_details, starts_at, ends_at')
     .eq('id', id)
     .maybeSingle()
 
+  if (existingError) { console.error('[PUT /api/bookings] lectura', existingError); return NextResponse.json({ error: 'No se pudo leer el evento' }, { status: 500 }) }
   if (!existing) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
-  const isDraftEvent = existing.event_type === 'event' && !existing.influencer_id && Object.keys(rest).length === 0
+
+  // Primero la autorización (propiedad), después la validación: un rol sin permiso recibe 403 con cualquier body.
+  const sendsRestricted = BOOKING_PUT_RESTRICTED_FIELDS.some(k => hasField(body, k))
+  const isDraftEvent = existing.event_type === 'event' && !existing.influencer_id
+    && !sendsRestricted && !BOOKING_PUT_EXTRA_FIELDS.some(k => hasField(body, k))
   const writeOrgId = await resolveBookingWriteOrg(admin, user.id, existing.campaign_id ?? null, orgId, existing.organization_id, isDraftEvent)
   if (!writeOrgId) return NextResponse.json({ error: 'No tienes permiso para editar este evento' }, { status: 403 })
+  // Estado y campos financieros/internos: solo admin de plataforma (una marca con permiso sobre la campaña no los toca).
+  if (sendsRestricted && !(await isPlatformAdmin(user.id, admin))) {
+    return NextResponse.json({ error: 'Solo el equipo de SCENCE puede cambiar el estado, los montos o las notas internas de una reserva' }, { status: 403 })
+  }
+
+  const validated = validateBookingPatch(body)
+  if (!validated.ok) return NextResponse.json({ error: validated.error }, { status: 422 })
+  const { title, description, location: clientLocation, location_id: clientLocationId, starts_at, ends_at, timezone } = body as {
+    title?: string; description?: string | null; location?: string | null; location_id?: string | null
+    starts_at?: string; ends_at?: string; timezone?: string
+  }
+  const effectiveStart = starts_at ?? existing.starts_at
+  const effectiveEnd = ends_at ?? existing.ends_at
+  if (effectiveStart && effectiveEnd && new Date(effectiveEnd).getTime() < new Date(effectiveStart).getTime()) {
+    return NextResponse.json({ error: 'El término no puede ser anterior al inicio' }, { status: 422 })
+  }
 
   // Igual que en POST: con direcciones canónicas, la ubicación del evento sale de la principal.
   const canonicalLocation = existing.campaign_id && existing.event_type === 'event' && !existing.influencer_id
@@ -299,13 +370,33 @@ export async function PUT(req: NextRequest) {
   }
   const location = canonicalLocation ? canonicalLocation.location : (picked?.locationDisplay ?? clientLocation)
   const canonicalFields = canonicalLocation
-    ? { location_id: canonicalLocation.location_id, location_details: mergeBookingLocationDetails(existing.location_details, rest.location_details, canonicalLocation.details) }
+    ? { location_id: canonicalLocation.location_id, location_details: mergeBookingLocationDetails(existing.location_details, validated.extras.location_details as Record<string, unknown> | null | undefined, canonicalLocation.details) }
     : picked ? { location_id: picked.locationId } : {}
 
-  if (existing?.calendar_event_id && isGoogleCalendarEnabled()) {
+  const patch: Record<string, unknown> = { ...validated.extras }
+  if (title !== undefined) patch.title = title
+  if (description !== undefined) patch.description = description
+  if (location !== undefined) patch.location = location
+  if (starts_at !== undefined) patch.starts_at = starts_at
+  if (ends_at !== undefined) patch.ends_at = ends_at
+  Object.assign(patch, canonicalFields, { updated_at: new Date().toISOString() })
+
+  const { data, error } = await admin
+    .from('bookings')
+    .update(patch)
+    .eq('id', id)
+    .eq('organization_id', writeOrgId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) { console.error('[PUT /api/bookings] update', error); return NextResponse.json({ error: 'No se pudo actualizar el evento' }, { status: 500 }) }
+  if (!data) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
+
+  // Calendar después de guardar: si la escritura falla no queda el evento externo cambiado sin el registro.
+  if (existing.calendar_event_id && isGoogleCalendarEnabled()) {
     try {
       await updateCalendarEvent(existing.calendar_event_id, {
-        title, description, location,
+        title, description: description ?? undefined, location: location ?? undefined,
         startsAt: starts_at ? new Date(starts_at) : undefined,
         endsAt: ends_at ? new Date(ends_at) : undefined,
         timeZone: timezone,
@@ -315,15 +406,6 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const { data, error } = await admin
-    .from('bookings')
-    .update({ title, description, location, starts_at, ends_at, ...rest, ...canonicalFields, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('organization_id', writeOrgId)
-    .select('*')
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 

@@ -9,10 +9,12 @@ import { claimJobBatch, finishJobBatch, failJobBatch, type BatchLead } from '@/l
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.app'
 
-// Una tanda puede rozar el minuto con latencia del proveedor. El margen extra
-// deja tiempo para guardar el avance y disparar la siguiente tanda. Sigue por
-// debajo del lease de tres minutos.
-export const maxDuration = 120
+// Cada invocación procesa VARIAS tandas seguidas (hasta agotar LOOP_BUDGET_MS) y solo entonces se
+// encadena a sí misma. Antes encadenaba tras cada tanda de 50 y la cadena se cortaba a los 200 leads
+// (4 invocaciones): con varias tandas por invocación hay ~10 veces menos saltos. Una tanda sola sigue
+// siendo corta (≈20 s; peor caso ~60 s) y el lease (3 min) se renueva en cada una.
+export const maxDuration = 300
+const LOOP_BUDGET_MS = 150_000
 
 // POST /api/crm-leads/bulk-send/process — interno, NO expuesto a usuarios.
 // Se llama a sí mismo (vía waitUntil) hasta que el job completa. Protegido
@@ -62,33 +64,13 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ data: job })
   }
-  const marker = claim.marker
-
-  const leadIds: string[] = job.lead_ids ?? []
-  const batchIds = leadIds.slice(job.cursor, job.cursor + BATCH_SIZE)
-
-  if (batchIds.length === 0) {
-    // No debería pasar (cursor >= total ya se marca completed abajo), pero
-    // por seguridad cerramos el job igual si llegamos acá sin nada que hacer.
-    const closed = await finishJobBatch(admin, jobId, marker, {
-      status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    })
-    return NextResponse.json({ data: closed.row ?? { ...job, status: 'completed' } })
-  }
-
-  const { data: leads, error: leadsError } = await admin
-    .from('crm_leads')
-    .select('id, contact_name, company_name, email, qualification_status, contacted_at, source, marketing_consent')
-    .in('id', batchIds)
-
-  if (leadsError) {
-    console.error('[bulk-send/process] error cargando leads', leadsError)
-    await failJobBatch(admin, jobId, marker, leadsError.message)
-    return NextResponse.json({ error: leadsError.message }, { status: 500 })
-  }
+  const startedAt = Date.now()
+  const depth = Number.isInteger(body.depth) && body.depth >= 0 ? body.depth : 0
+  let marker = claim.marker
+  let current = job
 
   // Adjunto del job: si está definido y no se puede leer, la tanda se aborta sin
-  // enviar (nunca se manda el email sin el archivo prometido).
+  // enviar (nunca se manda el email sin el archivo prometido). Se lee una vez por invocación.
   let attachment: LoadedAttachment | null = null
   if (job.attachment_path) {
     try {
@@ -101,89 +83,127 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // FAIL CLOSED: sendLeadBatch consulta la lista de bajas y el ledger del job ANTES
-  // de mandar nada. Si alguna consulta falla lanza, y acá se aborta la tanda con el
-  // `cursor` intacto. Nunca se avanza en silencio.
-  let batchResult: Awaited<ReturnType<typeof sendLeadBatch>>
-  try {
-    batchResult = await sendLeadBatch(
-      admin,
-      (leads ?? []) as BatchLead[],
-      jobId,
-      job.subject,
-      job.message ?? '',
-      job.created_by,
-      job.template_key ?? 'crm_intro',
-      job.created_at,
-      attachment
-    )
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'error desconocido'
-    console.error('[bulk-send/process] tanda abortada sin enviar', error)
-    await failJobBatch(admin, jobId, marker, `Tanda abortada sin enviar (cursor ${job.cursor} intacto): ${message}`)
-    return NextResponse.json({ error: message }, { status: 503 })
-  }
+  for (let batchNumber = 1; ; batchNumber++) {
+    const leadIds: string[] = current.lead_ids ?? []
+    const batchIds = leadIds.slice(current.cursor, current.cursor + BATCH_SIZE)
 
-  const { sent, skipped, failed, unconfirmed, recordErrors } = batchResult
-  if (unconfirmed > 0 || recordErrors > 0) {
-    console.error('[bulk-send/process] tanda con envíos no confirmados o registros incompletos — revisar, NO reenviar', { jobId, unconfirmed, recordErrors })
-  }
+    if (batchIds.length === 0) {
+      // No debería pasar (cursor >= total ya se marca completed abajo), pero
+      // por seguridad cerramos el job igual si llegamos acá sin nada que hacer.
+      const closed = await finishJobBatch(admin, jobId, marker, {
+        status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      })
+      return NextResponse.json({ data: closed.row ?? { ...current, status: 'completed' } })
+    }
 
-  const newCursor = job.cursor + batchIds.length
-  const isDone = newCursor >= job.total
+    const { data: leads, error: leadsError } = await admin
+      .from('crm_leads')
+      .select('id, contact_name, company_name, email, qualification_status, contacted_at, source, marketing_consent')
+      .in('id', batchIds)
 
-  // Solo avanza si seguimos teniendo el lease. Si lo perdimos, otra invocación tomó
-  // el job: no se pisa su avance ni se encadena una tanda más.
-  const finished = await finishJobBatch(admin, jobId, marker, {
-    cursor: newCursor,
-    sent: job.sent + sent,
-    skipped: job.skipped + skipped,
-    failed: job.failed + failed,
-    status: isDone ? 'completed' : 'processing',
-    completed_at: isDone ? new Date().toISOString() : null,
-    updated_at: new Date().toISOString(),
-  })
+    if (leadsError) {
+      console.error('[bulk-send/process] error cargando leads', leadsError)
+      await failJobBatch(admin, jobId, marker, leadsError.message)
+      return NextResponse.json({ error: leadsError.message }, { status: 500 })
+    }
 
-  if (!finished.held) {
-    console.error('[bulk-send/process] lease perdido al guardar el avance — no se encadena', { jobId, message: finished.message })
-    return NextResponse.json({ error: finished.message ?? 'Se perdió el bloqueo del job' }, { status: 409 })
-  }
-  const updated = finished.row as typeof job
+    // FAIL CLOSED: sendLeadBatch consulta la lista de bajas y el ledger del job ANTES
+    // de mandar nada. Si alguna consulta falla lanza, y acá se aborta la tanda con el
+    // `cursor` intacto. Nunca se avanza en silencio.
+    let batchResult: Awaited<ReturnType<typeof sendLeadBatch>>
+    try {
+      batchResult = await sendLeadBatch(
+        admin,
+        (leads ?? []) as BatchLead[],
+        jobId,
+        current.subject,
+        current.message ?? '',
+        current.created_by,
+        current.template_key ?? 'crm_intro',
+        current.created_at,
+        attachment
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'error desconocido'
+      console.error('[bulk-send/process] tanda abortada sin enviar', error)
+      await failJobBatch(admin, jobId, marker, `Tanda abortada sin enviar (cursor ${current.cursor} intacto): ${message}`)
+      return NextResponse.json({ error: message }, { status: 503 })
+    }
 
-  if (isDone) {
-    if (updated.notify_email) {
-      try {
-        await getResend().emails.send({
-          from: FROM_EMAIL,
-          to: updated.notify_email, tags: [emailAudience('admin')],
-          subject: `Envío masivo CRM terminado — ${updated.sent} enviados`,
-          html: bulkSendCompleteEmail({
-            total: updated.total,
-            sent: updated.sent,
-            skipped: updated.skipped,
-            failed: updated.failed,
-          }),
-        })
-      } catch (err) {
-        console.error('[bulk-send/process] error mandando email de resumen', err)
+    const { sent, skipped, failed, unconfirmed, recordErrors } = batchResult
+    if (unconfirmed > 0 || recordErrors > 0) {
+      console.error('[bulk-send/process] tanda con envíos no confirmados o registros incompletos — revisar, NO reenviar', { jobId, unconfirmed, recordErrors })
+    }
+
+    const newCursor = current.cursor + batchIds.length
+    const isDone = newCursor >= current.total
+
+    // Solo avanza si seguimos teniendo el lease. Si lo perdimos, otra invocación tomó
+    // el job: no se pisa su avance ni se encadena una tanda más.
+    const finished = await finishJobBatch(admin, jobId, marker, {
+      cursor: newCursor,
+      sent: current.sent + sent,
+      skipped: current.skipped + skipped,
+      failed: current.failed + failed,
+      status: isDone ? 'completed' : 'processing',
+      completed_at: isDone ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+
+    if (!finished.held) {
+      console.error('[bulk-send/process] lease perdido al guardar el avance — no se encadena', { jobId, message: finished.message })
+      return NextResponse.json({ error: finished.message ?? 'Se perdió el bloqueo del job' }, { status: 409 })
+    }
+    const updated = finished.row as typeof job
+
+    if (isDone) {
+      if (updated.notify_email) {
+        try {
+          await getResend().emails.send({
+            from: FROM_EMAIL,
+            to: updated.notify_email, tags: [emailAudience('admin')],
+            subject: `Envío masivo CRM terminado — ${updated.sent} enviados`,
+            html: bulkSendCompleteEmail({
+              total: updated.total,
+              sent: updated.sent,
+              skipped: updated.skipped,
+              failed: updated.failed,
+            }),
+          })
+        } catch (err) {
+          console.error('[bulk-send/process] error mandando email de resumen', err)
+        }
       }
+      return NextResponse.json({ data: updated })
+    }
+
+    // Quedan leads. Si todavía hay presupuesto de tiempo, se toma el lease otra vez y se sigue en
+    // esta misma invocación (la fila `updated` ya trae cursor nuevo y `error = null`).
+    if (Date.now() - startedAt < LOOP_BUDGET_MS) {
+      const next = await claimJobBatch(admin, updated)
+      if (!next.ok) {
+        // 'busy' = otra invocación tomó el job: ella continúa; no se encadena otra.
+        console.error('[bulk-send/process] no se pudo tomar la siguiente tanda — se detiene aquí', { jobId, reason: next.reason })
+        return NextResponse.json({ data: updated })
+      }
+      marker = next.marker
+      current = updated
+      continue
+    }
+
+    // Presupuesto agotado: encadena la siguiente invocación sin bloquear esta respuesta.
+    const chainSecret = process.env.INTERNAL_JOB_SECRET
+    if (chainSecret) {
+      waitUntil(
+        fetch(`${APP_URL}/api/crm-leads/bulk-send/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-internal-job-secret': chainSecret },
+          body: JSON.stringify({ job_id: jobId, depth: depth + 1 }),
+        }).then(response => {
+          if (!response.ok) console.error('[bulk-send/process] siguiente tanda rechazada', { jobId, depth: depth + 1, batches: batchNumber, status: response.status })
+        }).catch(err => console.error('[bulk-send/process] error encadenando siguiente tanda', { jobId, depth: depth + 1 }, err))
+      )
     }
     return NextResponse.json({ data: updated })
   }
-
-  // Todavía quedan tandas — encadena la siguiente sin bloquear esta respuesta.
-  const chainSecret = process.env.INTERNAL_JOB_SECRET
-  if (chainSecret) {
-    waitUntil(
-      fetch(`${APP_URL}/api/crm-leads/bulk-send/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-job-secret': chainSecret },
-        body: JSON.stringify({ job_id: jobId }),
-      }).then(response => {
-        if (!response.ok) console.error('[bulk-send/process] siguiente tanda rechazada', { jobId, status: response.status })
-      }).catch(err => console.error('[bulk-send/process] error encadenando siguiente tanda', err))
-    )
-  }
-
-  return NextResponse.json({ data: updated })
 }

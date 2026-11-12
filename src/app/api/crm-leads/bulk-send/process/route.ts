@@ -130,7 +130,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: 503 })
     }
 
-    const { sent, skipped, failed, unconfirmed, recordErrors } = batchResult
+    // Contactos de la tanda que ya no existen en el CRM (borrados después de crear el job): no hay a quién
+    // enviar y se cuentan como omitidos. Sin esto el cursor avanza más que los contadores y el job queda
+    // "no cuadra" y no reanudable (job 2cc04ae7: 1297+102 ≠ 1400).
+    const missingLeads = batchIds.length - (leads?.length ?? 0)
+    const { sent, skipped: skippedInBatch, failed, unconfirmed, recordErrors } = batchResult
+    const skipped = skippedInBatch + missingLeads
     if (unconfirmed > 0 || recordErrors > 0) {
       console.error('[bulk-send/process] tanda con envíos no confirmados o registros incompletos — revisar, NO reenviar', { jobId, unconfirmed, recordErrors })
     }

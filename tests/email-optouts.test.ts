@@ -428,7 +428,7 @@ describe('13 · FAIL CLOSED — si no se puede comprobar la lista, no se envía'
     const code = src('app/api/crm-leads/bulk-send/process/route.ts')
     const catchStart = code.indexOf('} catch (error) {')
     assert.ok(catchStart > -1, 'la llamada a sendLeadBatch debe estar protegida')
-    const bloque = code.slice(catchStart, code.indexOf('const { sent, skipped, failed, unconfirmed, recordErrors } = batchResult'))
+    const bloque = code.slice(catchStart, code.indexOf('const missingLeads = '))
     // failJobBatch (crm-send-guard.ts) marca el job como fallido y NO toca el cursor.
     assert.ok(bloque.includes('failJobBatch('), 'el job debe quedar marcado como fallido')
     const guard = src('lib/crm-send-guard.ts')

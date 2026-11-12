@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, Loader2, Play, RefreshCw, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, ArrowLeft, LifeBuoy, Loader2, Play, RefreshCw, X } from 'lucide-react'
 import { cn, formatDatetime } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { JobReport } from '@/lib/crm-send-guard'
@@ -22,6 +23,8 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
   const [showModal, setShowModal] = useState(false)
   const [confirmText, setConfirmText] = useState('')
   const [resuming, setResuming] = useState(false)
+  const [recovering, setRecovering] = useState(false)
+  const router = useRouter()
 
   const load = useCallback(async (background = false) => {
     if (!background) { setLoading(true); setLoadError(null) }
@@ -84,6 +87,41 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
       toast.error(e instanceof Error ? e.message : 'No se pudo reanudar el envío')
     } finally {
       setResuming(false)
+    }
+  }
+
+
+  // Recuperación: crea un envío NUEVO solo con los pendientes verificados. No envía nada ni toca este envío.
+  async function recover() {
+    setRecovering(true)
+    try {
+      const pre = await fetch(`/api/crm-leads/bulk-send/jobs/${jobId}/recover`)
+      const preJson = await pre.json()
+      if (!pre.ok) throw new Error(preJson.error ?? 'No se pudo revisar los pendientes')
+      const d = preJson.data as { pending: number; eligible: number; excluded: { deleted: number; noEmail: number; alreadyReceived: number; uncertain: number; reservedWithoutResult: number } }
+      if (d.eligible === 0) { toast.error('No hay contactos pendientes verificados para recuperar.'); return }
+      const x = d.excluded
+      const ok = window.confirm(
+        `Se creará un envío NUEVO (sin enviar nada todavía) con ${d.eligible.toLocaleString('es-CL')} de ${d.pending.toLocaleString('es-CL')} pendientes.\n\n` +
+        `Excluidos: ${x.deleted} borrados del CRM, ${x.noEmail} sin correo, ${x.alreadyReceived} que ya lo recibieron, ${x.uncertain} con resultado incierto, ${x.reservedWithoutResult} reservados sin resultado.\n\n` +
+        'Este envío no se modifica. El envío real se inicia después, con «Reanudar envío» en el nuevo.')
+      if (!ok) return
+      const r = await fetch(`/api/crm-leads/bulk-send/jobs/${jobId}/recover`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true, expected_eligible: d.eligible }),
+      })
+      const j = await r.json()
+      if (!r.ok) {
+        toast.error(j.error ?? 'No se pudo crear el envío de recuperación')
+        if (j.new_job_id) router.push(`/admin-crm/envios/${j.new_job_id}`)
+        return
+      }
+      toast.success('Envío de recuperación creado. Revísalo antes de iniciarlo.')
+      router.push(`/admin-crm/envios/${j.data.new_job_id}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo recuperar el envío')
+    } finally {
+      setRecovering(false)
     }
   }
 
@@ -179,6 +217,12 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
 
           <div className="flex items-center justify-end gap-3">
             {!report.resumable && <span className="text-xs text-gray-400">Reanudación no disponible</span>}
+            {!report.resumable && ['pending', 'processing'].includes(report.job.status) && report.job.remaining > 0 && (
+              <button type="button" disabled={recovering} onClick={() => void recover()}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-violet-300 text-violet-700 text-sm font-semibold hover:bg-violet-50 disabled:opacity-40">
+                {recovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <LifeBuoy className="h-4 w-4" />} Recuperar pendientes
+              </button>
+            )}
             <button type="button" disabled={!report.resumable} onClick={() => { setConfirmText(''); setShowModal(true) }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed">
               <Play className="h-4 w-4" /> Reanudar envío

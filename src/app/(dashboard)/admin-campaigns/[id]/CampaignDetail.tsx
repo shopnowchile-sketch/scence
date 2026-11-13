@@ -1472,6 +1472,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     })
   }
   const [bulkRejectingPending, setBulkRejectingPending] = useState(false)
+  const [bulkApprovingPending, setBulkApprovingPending] = useState(false)
   const [syncingFollowers, setSyncingFollowers] = useState(false)
 
   const { data: res, isLoading, error, refetch } = useCampaignDetail(id, apiBase)
@@ -1697,6 +1698,57 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       else visiblePendingIds.forEach(applicationId => next.add(applicationId))
       return next
     })
+  }
+
+  async function approveSelectedPendingApplications() {
+    if (bulkApprovingPending || bulkRejectingPending || selectedVisiblePendingIds.length === 0) return
+    if (!confirm(`¿Aprobar ${selectedVisiblePendingIds.length} postulaciones seleccionadas?`)) return
+
+    setBulkApprovingPending(true)
+    const processedIds = new Set<string>()
+    let approved = 0
+    let omitted = 0
+    let failed = 0
+    let firstError: string | undefined
+    try {
+      for (const applicationId of selectedVisiblePendingIds) {
+        try {
+          const response = await fetch(applicationsEndpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ application_id: applicationId, action: 'accept' }),
+          })
+          const json = await response.json().catch(() => ({}))
+          if (response.ok && json.status === 'accepted') {
+            approved++
+            processedIds.add(applicationId)
+          } else if (response.status === 422 && (
+            json.error === 'Solo se pueden gestionar aplicaciones pendientes' ||
+            json.error === 'Esta postulación ya fue gestionada'
+          )) {
+            omitted++
+            processedIds.add(applicationId)
+          } else {
+            failed++
+            firstError ??= json.error
+          }
+        } catch {
+          failed++
+          firstError ??= 'Error de conexión al aprobar'
+        }
+      }
+      setPendingSelection(previous => {
+        const next = new Set(previous)
+        processedIds.forEach(applicationId => next.delete(applicationId))
+        return next
+      })
+      const summary = `Aprobadas: ${approved} · Omitidas: ${omitted} · Fallidas: ${failed}`
+      if (failed) toast.error(firstError ? `${summary}. ${firstError}` : summary)
+      else toast.success(summary)
+      await refetch()
+    } finally {
+      setBulkApprovingPending(false)
+    }
   }
 
   async function rejectSelectedPendingApplications() {
@@ -3247,10 +3299,21 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                           {syncingFollowers ? 'Actualizando…' : 'Actualizar followers'}
                         </button>
                       )}
+                      {!isBrandPortal && (id === 'b0c47da9-496b-4b59-a43c-34ac1321420d' || c.name === 'Minor League Pickleball Chile 2026') && (
+                        <button
+                          type="button"
+                          onClick={() => void approveSelectedPendingApplications()}
+                          disabled={selectedVisiblePendingIds.length === 0 || bulkApprovingPending || bulkRejectingPending}
+                          className="flex items-center gap-2 rounded-lg border border-green-200 bg-white px-3 py-1.5 text-xs font-bold text-green-700 hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {bulkApprovingPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                          Aprobar seleccionadas{selectedVisiblePendingIds.length > 0 ? ` (${selectedVisiblePendingIds.length})` : ''}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => void rejectSelectedPendingApplications()}
-                        disabled={selectedVisiblePendingIds.length === 0 || bulkRejectingPending}
+                        disabled={selectedVisiblePendingIds.length === 0 || bulkRejectingPending || bulkApprovingPending}
                         className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {bulkRejectingPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -3380,6 +3443,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                               <div className="flex justify-end gap-2 whitespace-nowrap">
                                 {ci.application_status === 'rejected' ? <span className="text-xs font-semibold text-blue-700">No seleccionada</span> : <>
                                 <button
+                                  disabled={bulkApprovingPending}
                                   onClick={async () => {
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'accept' }) })
                                     const json = await response.json().catch(() => ({}))
@@ -3396,6 +3460,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
                                   className="text-xs font-bold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700"
                                 >Aceptar</button>
                                 <button
+                                  disabled={bulkApprovingPending}
                                   onClick={async () => {
                                     if (!confirm(`¿Rechazar la solicitud de ${inf.display_name}?`)) return
                                     const response = await fetch(applicationsEndpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: ci.id, action: 'reject' }) })

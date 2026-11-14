@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getResend, FROM_EMAIL, influencerInviteEmail } from '@/lib/resend'
-import { resolveBrandPlan, getPlanLimits, rosterLimitMessage, PLAN_ERROR_CODES } from '@/lib/plan-limits'
+import { resolveBrandPlan, PLAN_ERROR_CODES } from '@/lib/plan-limits'
+import { checkBrandRosterLimit } from '@/lib/brand-roster-limit'
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import { getBrandInfluencerScope } from '@/lib/brand-influencer-scope'
@@ -68,41 +69,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   // ── Roster limit gating ───────────────────────────────────────────────────
   // Plan efectivo de la marca (fuente única: resolveBrandPlanAccess).
   const orgPlan = await resolveBrandPlan(admin, brand.id)
-  const limits  = getPlanLimits(orgPlan)
 
-  // IDs de campañas propias y compartidas con esta marca.
-  const [{ data: brandCampaigns }, { data: sharedCampaigns }] = await Promise.all([
-    admin.from('campaigns').select('id').or(`brand_id.eq.${brand.id},created_by_brand_id.eq.${brand.id}`),
-    admin.from('campaign_brands').select('campaign_id').eq('brand_id', brand.id),
-  ])
-
-  const campaignIdCandidates = [
-    ...(brandCampaigns ?? []).map(c => c.id),
-    ...(sharedCampaigns ?? []).map(c => c.campaign_id),
-  ]
-  const campaignIds = campaignIdCandidates.filter(
-    (id, index) => campaignIdCandidates.indexOf(id) === index,
-  )
-
-  if (campaignIds.length > 0) {
-    // Influencers únicos en el roster (excluir rechazados)
-    const { data: rosterRows } = await admin
-      .from('campaign_influencers')
-      .select('influencer_id')
-      .in('campaign_id', campaignIds)
-      .not('application_status', 'eq', 'rejected')
-
-    const uniqueInRoster = new Set((rosterRows ?? []).map(r => r.influencer_id))
-
-    // Si el influencer ya está en el roster no consume cupo
-    if (!uniqueInRoster.has(influencer_id) && uniqueInRoster.size >= limits.max_roster_influencers) {
-      return NextResponse.json({
-        error: rosterLimitMessage(orgPlan),
-        code:  PLAN_ERROR_CODES.ROSTER_LIMIT,
-        plan:  orgPlan,
-      }, { status: 403 })
-    }
-  }
+  // Misma regla que al aprobar postulaciones (src/lib/brand-roster-limit.ts): aceptadas + invitaciones
+  // pendientes en campañas vigentes de la marca.
+  const roster = await checkBrandRosterLimit(admin, brand.id, influencer_id)
+  if (!roster.ok) return NextResponse.json({ error: roster.error, code: roster.code, plan: roster.plan }, { status: roster.status })
 
   // Autorización por relación: una marca nunca obtiene catálogo global.
   // Solo puede invitar perfiles ya relacionados con alguna campaña propia.

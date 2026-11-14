@@ -11,6 +11,7 @@ import {
   getPlanLimits,
   PLAN_ERROR_CODES,
   resolveBrandPlan,
+  resolveBrandPlanAccess,
   visibilityLimitMessage,
 } from '@/lib/plan-limits'
 import {
@@ -22,7 +23,7 @@ import { getInfluencerProIds } from '@/lib/influencer-pro'
 import { AUTO_CLOSE_NOTES, closePendingCampaignApplications } from '@/lib/campaign-applications'
 import { normalizeCampaignBenefits } from '@/lib/campaign-utils'
 import { loadCampaignLocations, lockCanonicalLocationMetadata } from '@/lib/campaign-locations'
-import { AGENCY_SUBSCRIPTION_REQUIRED, brandHasCurrentSubscription } from '@/lib/agency-brands'
+import { AGENCY_SUBSCRIPTION_REQUIRED, brandHasCurrentSubscription, isAgencyScopedBrand } from '@/lib/agency-brands'
 
 type Params = { params: { id: string } }
 
@@ -276,15 +277,37 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const gateBrandId = (campaignBase.brand_id as string | null) ?? brand.id
     if (!(await brandHasCurrentSubscription(admin, gateBrandId))) {
       return NextResponse.json({
-        error: 'Esta marca necesita su mensualidad vigente para enviar campañas a aprobación.',
+        error: 'Esta marca necesita su plan vigente para enviar campañas a aprobación.',
         code: AGENCY_SUBSCRIPTION_REQUIRED,
         brand_id: gateBrandId,
+        // Qué se cobra: la mensualidad de agencia solo a marcas de una agencia; el resto elige su plan SCORE (Pymes / Marcas).
+        checkout: (await isAgencyScopedBrand(admin, gateBrandId)) ? 'agency' : 'plan',
       }, { status: 402 })
     }
   }
 
   if ((!onboarding || submitting) && !access.ndaSigned) {
     return NextResponse.json({ error: BRAND_NDA_MESSAGE, code: BRAND_NDA_REQUIRED }, { status: 403 })
+  }
+
+  // Tope de campañas simultáneas del plan CONTRATADO (suscripción pagada), aplicado al enviar a revisión: quien
+  // publica es SCENCE desde Admin, así que este es el único punto donde la marca puede superarlo. Cuentan las
+  // campañas activas y las que ya esperan revisión. Las marcas sin plan contratado conservan su operación actual.
+  if (submitting) {
+    const gateBrandId = (campaignBase.brand_id as string | null) ?? brand.id
+    const planAccess = await resolveBrandPlanAccess(admin, gateBrandId)
+    if (planAccess.source === 'subscription') {
+      const { count: liveCount, error: liveError } = await admin
+        .from('campaigns')
+        .select('id', { count: 'exact', head: true })
+        .eq('brand_id', gateBrandId)
+        .neq('id', params.id)
+        .in('status', ['active', 'pending_approval'])
+      if (liveError) return NextResponse.json({ error: liveError.message }, { status: 500 })
+      if ((liveCount ?? 0) >= getPlanLimits(planAccess.plan).max_active_campaigns) {
+        return NextResponse.json({ error: campaignLimitMessage(planAccess.plan), code: PLAN_ERROR_CODES.CAMPAIGN_LIMIT, plan: planAccess.plan }, { status: 403 })
+      }
+    }
   }
 
   if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {

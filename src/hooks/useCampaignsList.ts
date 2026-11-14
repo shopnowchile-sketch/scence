@@ -107,7 +107,7 @@ export function usePatchCampaign(id: string, apiBase = '/api/campaigns') {
         const err = await res.json()
         // Mensualidad de agencia pendiente: abre el checkout PayPal de la marca en vez de solo mostrar un error.
         if (res.status === 402 && err.code === 'AGENCY_SUBSCRIPTION_REQUIRED' && typeof err.brand_id === 'string') {
-          notifyAgencyPaymentRequired({ brandId: err.brand_id, campaignId: id })
+          notifyAgencyPaymentRequired({ brandId: err.brand_id, campaignId: id, checkout: err.checkout === 'plan' ? 'plan' : 'agency' })
           throw new AgencyPaymentRequired(err.error)
         }
         if (apiBase === '/api/brand/campaigns' && err.code === 'BRAND_NDA_REQUIRED') {

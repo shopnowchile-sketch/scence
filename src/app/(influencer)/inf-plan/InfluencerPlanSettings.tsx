@@ -5,6 +5,7 @@ import { Check, LockKeyhole, RefreshCw, X, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { INFLUENCER_PRO_TERMS } from '@/lib/influencer-pro-terms'
+import { PRICE_FX_NOTICE } from '@/lib/plan-limits'
 
 type Payment = {
   id: string
@@ -207,7 +208,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
         <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
           <div className="flex items-center justify-between bg-violet-600 px-5 py-4 text-white">
             <div><p className="text-xs font-semibold text-violet-100">PLAN ACTUAL: GRATIS</p><h2 className="text-xl font-bold">Cambia a Plan Pro</h2></div>
-            <div className="text-right"><p className="text-[10px] font-bold uppercase tracking-wide text-violet-100">Promoción 3 meses</p><strong className="text-xl">$7.990</strong><p className="text-xs text-violet-100">CLP / mes</p><p className="text-xs font-semibold text-white">Desde el mes 4: $14.990 CLP / mes</p></div>
+            <div className="text-right"><p className="text-[10px] font-bold uppercase tracking-wide text-violet-100">Promoción 3 meses</p><strong className="text-xl">$7.000</strong><p className="text-xs text-violet-100">CLP / mes · IVA incluido</p><p className="text-xs font-semibold text-white">Desde el mes 4: $14.000 CLP / mes</p></div>
           </div>
           <div className="p-5">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -218,7 +219,7 @@ export function InfluencerPlanSettings({ embedded = false }: { embedded?: boolea
                 </div>
               ))}
             </div>
-            <p className="mt-5 rounded-lg bg-violet-50 px-3 py-2 text-center text-xs text-violet-900"><strong>Promoción:</strong> $7.990 CLP/mes durante los primeros 3 meses. Desde el mes 4, el Plan Pro tiene un valor de $14.990 CLP/mes.</p>
+            <p className="mt-5 rounded-lg bg-violet-50 px-3 py-2 text-center text-xs text-violet-900"><strong>Promoción:</strong> $7.000 CLP/mes durante los primeros 3 meses. Desde el mes 4, el Plan Pro tiene un valor de $14.000 CLP/mes. {PRICE_FX_NOTICE}</p>
             <button onClick={upgradeToPro} disabled={upgrading} className="mt-3 w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-violet-700 disabled:opacity-50">
               {upgrading ? 'ABRIENDO PAYPAL…' : 'CAMBIAR A PLAN PRO'}
             </button>

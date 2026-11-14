@@ -8,9 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { formatPriceCLP } from '@/lib/plan-limits'
-
-type PlanInfo = { amount_usd: string; currency: string; price_clp: number; commitment_months: number; already_current: boolean }
+type PlanInfo = { amount_usd: string; currency: string; price_usd: number; commitment_months: number; already_current: boolean }
 
 export function AgencyPlanCard({ brandId, campaignId, brandName, onCancel }: {
   brandId: string
@@ -64,7 +62,7 @@ export function AgencyPlanCard({ brandId, campaignId, brandName, onCancel }: {
         Para activar tu servicio, debes contratar un plan de {info?.commitment_months ?? 3} meses mediante PayPal.
       </p>
       <p className="text-sm text-gray-600">
-        {formatPriceCLP(info?.price_clp ?? 69900)} CLP mensuales durante {info?.commitment_months ?? 3} meses, cobrados en USD según la conversión correspondiente.
+        US${info?.price_usd ?? 69} mensuales por marca, impuestos incluidos. Contratación inicial de {info?.commitment_months ?? 3} meses; después continúa al mismo precio.
       </p>
       {info && (
         <div className="rounded-xl bg-violet-50 border border-violet-100 px-4 py-3">

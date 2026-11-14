@@ -65,7 +65,7 @@ test('GET checkout: muestra el monto exacto en USD leído del plan de PayPal', a
   const res = await (await checkout()).GET(req(`http://localhost/api/paypal/checkout?tier=agency&brand_id=${UUID_A}`))
   assert.equal(res.status, 200)
   const json = await res.json()
-  assert.equal(json.amount_usd, '74.50'); assert.equal(json.currency, 'USD'); assert.equal(json.price_clp, 69900); assert.equal(json.commitment_months, 3)
+  assert.equal(json.amount_usd, '74.50'); assert.equal(json.currency, 'USD'); assert.equal(json.price_usd, 69); assert.equal(json.commitment_months, 3)
   assert.equal(json.brand_id, UUID_A); assert.equal(json.already_current, false)
 })
 

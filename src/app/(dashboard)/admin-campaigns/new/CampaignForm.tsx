@@ -670,8 +670,8 @@ export function CampaignForm({
           // Marca de agencia sin mensualidad vigente: la campaña queda en borrador y se abre el pago de ESA marca.
           const payment = await reviewRes.json().catch(() => ({}))
           if (payment.code === 'AGENCY_SUBSCRIPTION_REQUIRED' && typeof payment.brand_id === 'string') {
-            notifyAgencyPaymentRequired({ brandId: payment.brand_id, campaignId: savedCampaignId })
-            toast.info('Campaña guardada como borrador. Activa la mensualidad de la marca para enviarla a aprobación.')
+            notifyAgencyPaymentRequired({ brandId: payment.brand_id, campaignId: savedCampaignId, checkout: payment.checkout === 'plan' ? 'plan' : 'agency' })
+            toast.info(payment.checkout === 'plan' ? 'Campaña guardada como borrador. Elige tu plan para enviarla a aprobación.' : 'Campaña guardada como borrador. Activa la mensualidad de la marca para enviarla a aprobación.')
             router.push(`${redirectBase}/${savedCampaignId}`)
             return
           }

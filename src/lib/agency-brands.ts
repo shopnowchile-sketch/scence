@@ -13,7 +13,8 @@ import { brandSubscriptionGrantsAccess } from '@/lib/plan-limits'
 
 export const AGENCY_ACTIVE_BRAND_COOKIE = 'scence_active_brand'
 export const AGENCY_PLAN_TIER = 'agency'
-export const AGENCY_PLAN_PRICE_CLP = 69_900
+/** SCORE: US$69 mensuales por marca, precio final con impuestos incluidos. El cobro real lo fija el plan de PayPal. */
+export const AGENCY_PLAN_PRICE_USD = 69
 export const AGENCY_COMMITMENT_MONTHS = 3
 /** PayPal manda el estado con retraso: el período no se considera vencido hasta pasada esta gracia, solo si PayPal sigue diciendo ACTIVE. */
 export const AGENCY_PERIOD_GRACE_MS = 48 * 60 * 60 * 1000

@@ -22,11 +22,16 @@ test('brands.notes: el registro desde el portal de marca no lo escribe ni lo dev
   assert.match(code, /notes: _adminNotes/)
 })
 
-test('ningún pago ni webhook de PayPal reactiva una marca suspendida', () => {
-  const webhook = src('src/app/api/paypal/webhook/route.ts')
-  assert.doesNotMatch(webhook, /from\('brands'\)/, 'el webhook no debe escribir brands')
-  const complete = src('src/app/api/paypal/complete/route.ts')
-  assert.match(complete, /\.eq\('status', 'pending_approval'\)/, 'pagar solo aprueba marcas pendientes')
+test('ningún pago ni webhook de PayPal aprueba ni reactiva una marca: solo el Admin cambia su estado', () => {
+  // Decisión 2026-11-14: el pago solo confirma la suscripción. Ninguna ruta de pago escribe en `brands`.
+  for (const file of [
+    'src/app/api/paypal/webhook/route.ts',
+    'src/app/api/paypal/complete/route.ts',
+    'src/app/api/paypal/checkout/route.ts',
+  ]) {
+    assert.doesNotMatch(src(file), /from\('brands'\)\s*\.update|status: 'approved'/, `${file} no debe cambiar el estado de una marca`)
+  }
+  assert.doesNotMatch(src('src/app/api/paypal/webhook/route.ts'), /from\('brands'\)/, 'el webhook no debe escribir brands')
 })
 
 test('una marca suspendida ve el aviso de suspensión y no se redirige a Planes', () => {

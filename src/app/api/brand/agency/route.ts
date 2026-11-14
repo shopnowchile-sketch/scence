@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import {
-  AGENCY_ACTIVE_BRAND_COOKIE, AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_CLP, brandHasCurrentSubscription,
+  AGENCY_ACTIVE_BRAND_COOKIE, AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_USD, brandHasCurrentSubscription,
   listAgencyBrands, resolveAgencyBrandAccess, resolveAgencyContext,
 } from '@/lib/agency-brands'
 
@@ -32,7 +32,7 @@ export async function GET() {
   return NextResponse.json({
     is_agency: true,
     active_brand_id: activeBrandId ?? withPlan.find(brand => brand.is_agency_own)?.id ?? null,
-    plan: { price_clp: AGENCY_PLAN_PRICE_CLP, commitment_months: AGENCY_COMMITMENT_MONTHS },
+    plan: { price_usd: AGENCY_PLAN_PRICE_USD, commitment_months: AGENCY_COMMITMENT_MONTHS },
     brands: withPlan,
   })
 }

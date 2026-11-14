@@ -37,16 +37,16 @@ export interface PlanLimits {
 export const PLAN_LIMITS = {
   basic: {
     label:                     'Basic',
-    price_monthly_clp:         69_990,
+    price_monthly_clp:         150_000,  // SCORE · Pymes (IVA incluido). Primer mes: BRAND_PLAN_INTRO_CLP.
     max_active_campaigns:      1,
     max_roster_influencers:    5,
-    can_create_open_campaigns: false,
+    can_create_open_campaigns: true,     // SCORE: Pymes publica campañas abiertas; el tope es 1 campaña activa a la vez
     can_access_marketplace:    false,
     can_view_full_influencer_base: false,  // Basic: solo influencers relacionadas
   },
   growth: {
     label:                     'Growth',
-    price_monthly_clp:         259_000,
+    price_monthly_clp:         250_000,  // SCORE · Marcas / Pymes con gestión (IVA incluido)
     max_active_campaigns:      999,
     max_roster_influencers:    50,
     can_create_open_campaigns: true,
@@ -97,11 +97,43 @@ export function formatPriceCLP(amount: number): string {
  * PayPal y en el email de confirmación. Única definición en código.
  * (El monto que PayPal cobra lo fija cada PAYPAL_*_PLAN_ID en PayPal.)
  */
+// SCORE (2026-11): los precios CLP incluyen IVA y son la referencia comercial; PayPal cobra un monto fijo en USD.
+// Los USD de basic/growth son PROVISIONALES (referencia $930 CLP/USD) hasta fijar los planes de PayPal Live.
+// launchMonths = meses al precio de entrada (0 = sin precio de entrada). `pro` ya no se vende: conserva sus valores.
 export const BRAND_PLAN_USD_PRICING = {
-  basic:  { launch: 79,  regular: 106.65 },
-  growth: { launch: 279, regular: 376.65 },
-  pro:    { launch: 749, regular: 1011.15 },
-} as const satisfies Record<PlanTier, { launch: number; regular: number }>
+  basic:  { launch: 75,  launchMonths: 1, regular: 161 },
+  growth: { launch: 269, launchMonths: 0, regular: 269 },
+  pro:    { launch: 749, launchMonths: 3, regular: 1011.15 },
+} as const satisfies Record<PlanTier, { launch: number; launchMonths: number; regular: number }>
+
+/** Planes de marca a la venta. `pro` queda solo para los accesos ya otorgados (no se contrata de nuevo). */
+export const BRAND_PLANS_FOR_SALE: readonly PlanTier[] = ['basic', 'growth']
+
+/** Nombre comercial SCORE de cada plan (pantalla de planes y correos). El `label` interno no cambia. */
+export const BRAND_PLAN_COMMERCIAL_NAME = { basic: 'Pymes', growth: 'Marcas', pro: 'Pro' } as const satisfies Record<PlanTier, string>
+
+/** Precio de entrada en CLP (IVA incluido) del primer mes, por plan. */
+export const BRAND_PLAN_INTRO_CLP: Partial<Record<PlanTier, number>> = { basic: 70_000 }
+
+/** Aviso único de moneda: referencia en CLP, cobro fijo en USD. */
+export const PRICE_FX_NOTICE = 'Precios de referencia en CLP con IVA incluido. PayPal cobra un monto fijo en USD; el valor final en pesos puede variar según el tipo de cambio.'
+
+// Modalidad comercial del plan de $250.000 (mismo plan técnico `growth`): 'managed' = Pymes con gestión,
+// 'training' = Marcas con entrenamiento. Vive en brands.metadata.service_mode y solo la escribe un admin.
+export const BRAND_SERVICE_MODES = ['managed', 'training'] as const
+export type BrandServiceMode = (typeof BRAND_SERVICE_MODES)[number]
+export const BRAND_SERVICE_MODE_LABEL = { managed: 'Pymes con gestión', training: 'Marcas con entrenamiento' } as const satisfies Record<BrandServiceMode, string>
+export function normalizeServiceMode(value: unknown): BrandServiceMode | null {
+  return typeof value === 'string' && (BRAND_SERVICE_MODES as readonly string[]).includes(value) ? value as BrandServiceMode : null
+}
+
+/** Texto único del cobro USD de un plan (botón y correos). */
+export function brandPlanUsdTerms(tier: PlanTier): string {
+  const { launch, launchMonths, regular } = BRAND_PLAN_USD_PRICING[tier]
+  const usd = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`
+  if (launchMonths <= 0 || launch === regular) return `${usd(regular)}/mes`
+  return `${usd(launch)}${launchMonths === 1 ? ' el primer mes' : `/mes durante ${launchMonths} meses`}. Luego ${usd(regular)}/mes`
+}
 
 // ── Plan y acceso de marca (backend) — fuente única ──────────────────────────
 //
@@ -253,10 +285,10 @@ export function campaignLimitMessage(orgPlan: string | null | undefined): string
 export function rosterLimitMessage(orgPlan: string | null | undefined): string {
   const limits = getPlanLimits(orgPlan)
   const n = limits.max_roster_influencers
-  return `Tu plan ${limits.label} permite máximo ${n} influencer${n !== 1 ? 's' : ''} en tu roster. Actualiza tu plan para agregar más.`
+  return `Tu plan ${limits.label} permite máximo ${n} influencer${n !== 1 ? 's' : ''} entre aceptadas e invitadas en tus campañas vigentes. Actualiza tu plan para agregar más.`
 }
 
 export function visibilityLimitMessage(orgPlan: string | null | undefined): string {
   const limits = getPlanLimits(orgPlan)
-  return `Tu primera campaña pública ya fue utilizada. En tu plan ${limits.label} puedes seguir creando campañas privadas con tus creadoras invitadas. Sube de plan para publicar nuevas campañas abiertas al marketplace.`
+  return `Tu plan ${limits.label} no permite publicar más campañas abiertas. Puedes seguir creando campañas privadas con tus creadoras invitadas o subir de plan.`
 }

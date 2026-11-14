@@ -11,7 +11,7 @@ import {
 import { toast } from 'sonner'
 import { SalesPointsPanel } from '@/components/brand/SalesPointsPanel'
 import { cn } from '@/lib/utils'
-import { getPlanTier, PLAN_LIMITS, formatPriceCLP } from '@/lib/plan-limits'
+import { getPlanTier, PLAN_LIMITS, formatPriceCLP, BRAND_SERVICE_MODES, BRAND_SERVICE_MODE_LABEL, normalizeServiceMode, type BrandServiceMode } from '@/lib/plan-limits'
 import { BrandModal } from '@/components/brands/BrandModal'
 import { BrandsTable } from '@/components/brands/BrandsTable'
 import { BrandDocumentsAdmin } from '@/components/brands/BrandDocumentsAdmin'
@@ -125,6 +125,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
   const [invoiceEmail, setInvoiceEmail] = useState('')
   const [creatingInvoice, setCreatingInvoice] = useState(false)
   const [planOverride, setPlanOverride] = useState<'' | 'basic' | 'growth' | 'pro'>('')
+  const [serviceMode, setServiceMode] = useState<'' | BrandServiceMode>('')
   const [savingPlan, setSavingPlan] = useState(false)
   const [members, setMembers] = useState<BrandMember[]>([])
   const [loadingMembers, setLoadingMembers] = useState(false)
@@ -148,6 +149,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
       setInvoiceEmail(json.data?.contact_email ?? '')
       setOwnerEmail(json.data?.contact_email ?? '')
       setPlanOverride(json.data?.subscription_plan_override ?? '')
+      setServiceMode(normalizeServiceMode(json.data?.metadata?.service_mode) ?? '')
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -475,6 +477,7 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subscription_plan_override: planOverride || null,
+          service_mode: serviceMode || null,
         }),
       })
 
@@ -1087,6 +1090,25 @@ export default function AdminBrandDetailPage({ params }: { params: { id: string 
                 <option value="growth">Growth</option>
                 <option value="pro">Pro</option>
               </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-semibold text-gray-500 uppercase">
+                Modalidad comercial
+              </span>
+              <select
+                value={serviceMode}
+                onChange={event => setServiceMode(event.target.value as '' | BrandServiceMode)}
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              >
+                <option value="">Sin definir</option>
+                {BRAND_SERVICE_MODES.map(mode => (
+                  <option key={mode} value={mode}>{BRAND_SERVICE_MODE_LABEL[mode]}</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-gray-400">
+                Solo informativa: indica si SCENCE gestiona las campañas o entrega entrenamiento. No cambia permisos ni límites.
+              </span>
             </label>
 
             <button

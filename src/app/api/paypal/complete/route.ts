@@ -4,7 +4,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { canPayBrandPlan, resolveAgencyManagedBrandAccess, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { emailAudience } from '@/lib/inactive-influencer-email-guard'
-import { BRAND_PLAN_USD_PRICING, PLAN_LIMITS, isInfluencerSubscription, type PlanTier } from '@/lib/plan-limits'
+import { BRAND_PLAN_COMMERCIAL_NAME, PRICE_FX_NOTICE, brandPlanUsdTerms, isInfluencerSubscription, type PlanTier } from '@/lib/plan-limits'
 
 function baseUrl() { return payPalBaseUrl() }
 const ADMIN_PAYMENT_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
@@ -83,13 +83,10 @@ export async function POST(request: NextRequest) {
     : await admin.from('subscriptions').insert(subscriptionRow)
   if (saved.error) return NextResponse.json({ error: 'No se pudo guardar la nueva suscripción.' }, { status: 500 })
 
-  // El pago confirmado aprueba a una marca autorregistrada. El ACCESO pagado
-  // se deriva de la suscripción activa (resolveBrandPlanAccess); el override
-  // queda reservado a planes otorgados manualmente por un admin.
-  // Solo una marca pendiente se aprueba al pagar: una suspendida o rechazada NUNCA cambia por un pago (solo Admin).
-  // Plan de agencia: el pago NO cambia el estado de la marca ni aprueba nada; las campañas siguen su revisión.
-  const { error: brandError } = tier === 'agency' ? { error: null } : await admin.from('brands').update({ status: 'approved' }).eq('id', access.brandId).eq('status', 'pending_approval')
-  if (brandError) return NextResponse.json({ error: 'El pago está registrado, pero no se pudo activar la marca.' }, { status: 500 })
+  // El pago SOLO confirma la suscripción (decisión de la fundadora, 2026-11-14): no aprueba, reactiva ni cambia el
+  // estado de ninguna marca, en ningún plan. Aprobar una marca es exclusivo del Admin de SCENCE; después del pago
+  // la marca firma el NDA y su campaña sigue la revisión habitual. El ACCESO pagado se deriva de la suscripción
+  // activa (resolveBrandPlanAccess); el override queda reservado a planes otorgados manualmente por un admin.
 
   // Cambio de plan: otra suscripción de MARCA activa en la misma organización
   // se cancela en PayPal. Nunca una suscripción de influencer.
@@ -119,22 +116,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ tier, brand_id: access.brandId, nda_signed: access.ndaSigned === true })
   }
   const planTier = tier as PlanTier
-  const name = PLAN_LIMITS[planTier].label
-  const launch = BRAND_PLAN_USD_PRICING[planTier].launch.toFixed(2)
-  const regular = BRAND_PLAN_USD_PRICING[planTier].regular.toFixed(2)
+  const name = BRAND_PLAN_COMMERCIAL_NAME[planTier]
+  const terms = brandPlanUsdTerms(planTier)
   if (user.email) {
     await getResend().emails.send({
       from: FROM_EMAIL,
       to: user.email, tags: [emailAudience('brand')],
       subject: `Confirmación de suscripción SCENCE · ${name}`,
-      html: `<h2>Tu suscripción está activa</h2><p>Plan: <strong>${name}</strong></p><p>Precio de lanzamiento: <strong>US$${launch}/mes</strong> durante 3 meses.</p><p>Luego: <strong>US$${regular}/mes</strong>.</p><p>Tu acceso en SCENCE ya fue actualizado.</p>`,
+      html: `<h2>Tu suscripción está activa</h2><p>Plan: <strong>${name}</strong></p><p>Cobro con PayPal: <strong>${terms}</strong>.</p><p>${PRICE_FX_NOTICE}</p><p>Tu acceso en SCENCE ya fue actualizado.</p>`,
     }).catch(() => null)
   }
   await getResend().emails.send({
     from: FROM_EMAIL,
     to: ADMIN_PAYMENT_EMAIL, tags: [emailAudience('admin')],
     subject: `Nuevo pago PayPal · ${name}`,
-    html: `<h2>Nuevo pago confirmado</h2><p>Plan: <strong>${name}</strong></p><p>Cliente: <strong>${user.email ?? 'Sin email'}</strong></p><p>Organización: <strong>${access.organizationId}</strong></p><p>Suscripción PayPal: <strong>${subscriptionId}</strong></p><p>Precio de lanzamiento: <strong>US$${launch}/mes</strong> durante 3 meses. Luego US$${regular}/mes.</p>`,
+    html: `<h2>Nuevo pago confirmado</h2><p>Plan: <strong>${name}</strong></p><p>Cliente: <strong>${user.email ?? 'Sin email'}</strong></p><p>Organización: <strong>${access.organizationId}</strong></p><p>Suscripción PayPal: <strong>${subscriptionId}</strong></p><p>Cobro con PayPal: <strong>${terms}</strong>.</p>`,
   }).catch(() => null)
   return NextResponse.json({ tier, nda_signed: access.ndaSigned === true })
 }

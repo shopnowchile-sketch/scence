@@ -64,6 +64,8 @@ async function getBrandCampaignAccess(admin: ReturnType<typeof createAdminClient
 }
 
 
+const BRAND_NOT_APPROVED = 'BRAND_NOT_APPROVED'
+
 async function checkBrandCampaignPublication(admin: ReturnType<typeof createAdminClient>, campaignId: string) {
   const { data, error } = await admin.from('campaigns')
     .select('created_by_brand_id, brand_id, status').eq('id', campaignId).maybeSingle()
@@ -72,6 +74,14 @@ async function checkBrandCampaignPublication(admin: ReturnType<typeof createAdmi
   if (!data.created_by_brand_id || data.status === 'active') return null
   if (!['pending_approval', 'paused'].includes(data.status)) {
     return NextResponse.json({ error: 'La marca debe enviar esta campaña a revisión antes de publicarla.' }, { status: 409 })
+  }
+  // Flujo: pago → NDA → aprobación de la marca por Admin → publicación. La campaña de una marca que aún no
+  // está aprobada no se publica, aunque tenga pago y NDA firmado (decisión de la fundadora, 2026-11-14).
+  const { data: ownerBrand, error: ownerBrandError } = await admin.from('brands')
+    .select('status').eq('id', data.created_by_brand_id).maybeSingle()
+  if (ownerBrandError) return NextResponse.json({ error: 'No se pudo verificar la marca' }, { status: 500 })
+  if (ownerBrand?.status !== 'approved') {
+    return NextResponse.json({ error: 'Aprueba primero la marca: su campaña no se puede publicar mientras la marca no esté aprobada.', code: BRAND_NOT_APPROVED }, { status: 409 })
   }
   if (!(await brandHasCurrentSubscription(admin, data.brand_id ?? data.created_by_brand_id))) {
     return NextResponse.json({ error: 'La marca necesita una suscripción vigente.', code: AGENCY_SUBSCRIPTION_REQUIRED }, { status: 402 })

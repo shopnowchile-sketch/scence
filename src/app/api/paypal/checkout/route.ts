@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { payPalBaseUrl } from '@/lib/paypal-env'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { canPayBrandPlan, resolveAgencyManagedBrandAccess, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
-import { type PlanTier } from '@/lib/plan-limits'
-import { AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_CLP, brandHasCurrentSubscription } from '@/lib/agency-brands'
+import { BRAND_PLANS_FOR_SALE, resolveBrandPlanAccess, type PlanTier } from '@/lib/plan-limits'
+import { AGENCY_COMMITMENT_MONTHS, AGENCY_PLAN_PRICE_USD, brandHasCurrentSubscription, isAgencyScopedBrand } from '@/lib/agency-brands'
+
+const AGENCY_ONLY_MESSAGE = 'La mensualidad de agencia es solo para marcas administradas por una agencia. Elige tu plan SCENCE.'
 
 // 'agency' = mensualidad por marca de una agencia (Impulso Consulting): una suscripción por marca.
 type CheckoutTier = PlanTier | 'agency'
@@ -46,6 +48,7 @@ export async function GET(request: NextRequest) {
   const brandId = request.nextUrl.searchParams.get('brand_id') ?? undefined
   const access = await resolvePayerAccess(user.id, 'agency', brandId && UUID.test(brandId) ? brandId : undefined)
   if (!access || !canPayBrandPlan(access)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isAgencyScopedBrand(createAdminClient(), access.brandId))) return NextResponse.json({ error: AGENCY_ONLY_MESSAGE, code: 'PLAN_REQUIRED' }, { status: 422 })
   const paypalPlanId = planIdFor('agency')
   if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavía no está habilitado para este plan.' }, { status: 503 })
   try {
@@ -58,7 +61,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       brand_id: access.brandId,
       amount_usd: amount.value, currency: amount.currency_code ?? 'USD',
-      price_clp: AGENCY_PLAN_PRICE_CLP, commitment_months: AGENCY_COMMITMENT_MONTHS,
+      price_usd: AGENCY_PLAN_PRICE_USD, commitment_months: AGENCY_COMMITMENT_MONTHS,
       already_current: await brandHasCurrentSubscription(createAdminClient(), access.brandId),
     })
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo conectar con PayPal.' }, { status: 502 }) }
@@ -77,13 +80,28 @@ export async function POST(request: NextRequest) {
   if (!access) return NextResponse.json({ error: 'No organization found' }, { status: 404 })
   // Pagar el plan sigue siendo exclusivo del owner; vale para marcas pendientes (eligen plan) y suspendidas (reactivan).
   if (!canPayBrandPlan(access)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Un plan retirado de la venta no se contrata aunque se pida directo a la API (los accesos ya otorgados no pasan por aquí).
+  if (tier !== 'agency' && !BRAND_PLANS_FOR_SALE.includes(tier)) return NextResponse.json({ error: 'Este plan ya no está disponible para nuevas contrataciones.' }, { status: 422 })
   const paypalPlanId = planIdFor(tier)
   if (!paypalPlanId) return NextResponse.json({ error: 'PayPal todavÃ­a no estÃ¡ habilitado para este plan.' }, { status: 503 })
   const admin = createAdminClient()
+  // La mensualidad de agencia es solo para marcas de una agencia (propia o administrada). Una pyme o marca
+  // independiente paga su plan SCORE (basic / growth), nunca Agency por defecto.
+  if (tier === 'agency' && !(await isAgencyScopedBrand(admin, access.brandId))) {
+    return NextResponse.json({ error: AGENCY_ONLY_MESSAGE, code: 'PLAN_REQUIRED' }, { status: 422 })
+  }
   // Plan de agencia: una mensualidad vigente ya paga ese período (no se cobra dos veces) y un alta reciente
   // sin completar se reutiliza en vez de abrir otra suscripción en PayPal.
   if (tier === 'agency' && await brandHasCurrentSubscription(admin, access.brandId)) {
     return NextResponse.json({ error: 'Esta marca ya tiene su mensualidad vigente.', code: 'ALREADY_ACTIVE' }, { status: 409 })
+  }
+  // Planes SCORE: no se abre otra suscripción del mismo plan que la marca ya tiene pagado y vigente (sin doble cobro).
+  // Cambiar a otro plan sí se permite: /complete cancela el anterior al activarse el nuevo.
+  if (tier !== 'agency') {
+    const current = await resolveBrandPlanAccess(admin, access.brandId)
+    if (current.source === 'subscription' && current.plan === tier) {
+      return NextResponse.json({ error: 'Esta marca ya tiene este plan vigente.', code: 'ALREADY_ACTIVE' }, { status: 409 })
+    }
   }
   // En la base, el plan que la UI llama Basic se almacena como `starter`.
   // La columna es un enum, por lo que no se puede consultar `basic` allÃ­.
@@ -101,7 +119,7 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.VERCEL_ENV === 'preview' ? request.nextUrl.origin : (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin)
     const response = await fetch(`${paypalBaseUrl()}/v1/billing/subscriptions`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': tier === 'agency' ? `scence-agency-${access.brandId}-${Math.floor(Date.now() / 3_600_000)}` : `scence-${access.organizationId}-${tier}-${Date.now()}` },
-      body: JSON.stringify({ plan_id: paypalPlanId, custom_id: tier === 'agency' ? `${access.organizationId}:${planRow.id}:agency:${access.brandId}` : `${access.organizationId}:${planRow.id}:${tier}`, application_context: { brand_name: 'SCENCE', user_action: 'SUBSCRIBE_NOW', return_url: `${appUrl}/brand-settings/plan?checkout=processing&provider=paypal${tier === 'agency' ? `&brand=${access.brandId}${body.campaign_id && UUID.test(body.campaign_id) ? `&campaign=${body.campaign_id}` : ''}` : ''}`, cancel_url: `${appUrl}/brand-settings/plan?checkout=cancelled&provider=paypal` } }),
+      body: JSON.stringify({ plan_id: paypalPlanId, custom_id: tier === 'agency' ? `${access.organizationId}:${planRow.id}:agency:${access.brandId}` : `${access.organizationId}:${planRow.id}:${tier}`, application_context: { brand_name: 'SCENCE', user_action: 'SUBSCRIBE_NOW', return_url: `${appUrl}/brand-settings/plan?checkout=processing&provider=paypal${tier === 'agency' ? `&brand=${access.brandId}` : ''}${body.campaign_id && UUID.test(body.campaign_id) ? `&campaign=${body.campaign_id}` : ''}`, cancel_url: `${appUrl}/brand-settings/plan?checkout=cancelled&provider=paypal` } }),
     })
     const result = await response.json()
     if (!response.ok) return NextResponse.json({ error: result?.message ?? 'No se pudo iniciar la suscripciÃ³n con PayPal.' }, { status: 502 })

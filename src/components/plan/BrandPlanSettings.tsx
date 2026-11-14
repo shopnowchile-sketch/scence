@@ -12,20 +12,26 @@ import { Check, RefreshCw, Sparkles, Clock, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { AgencyPlanCard } from './AgencyPlanCard'
-import { PLAN_LIMITS, BRAND_PLAN_USD_PRICING, getPlanTier, formatPriceCLP, type PlanTier } from '@/lib/plan-limits'
+import {
+  PLAN_LIMITS, BRAND_PLANS_FOR_SALE, BRAND_PLAN_COMMERCIAL_NAME, BRAND_PLAN_INTRO_CLP, BRAND_PLAN_USD_PRICING, PRICE_FX_NOTICE,
+  brandPlanUsdTerms, getPlanTier, formatPriceCLP, type PlanTier,
+} from '@/lib/plan-limits'
 
+// Solo los planes a la venta (SCORE). El plan Pro antiguo no se ofrece; quien lo tiene asignado lo conserva.
 const PLAN_DEFS: Array<{
   tier: PlanTier
   highlight?: boolean
+  subtitle: string
   features: string[]
-}> = [
+}> = ([
   {
     tier: 'basic',
+    subtitle: 'Plataforma, sin gestión',
     features: [
-      'Campañas privadas ilimitadas',
-      'Primera campaña pública incluida',
+      'Campañas abiertas con postulaciones de creadoras',
+      '1 campaña activa a la vez',
+      'Hasta 5 creadoras por campaña vigente',
       'Contenido ilimitado',
-      'Hasta 5 creadoras activas',
       'Programa de afiliados / códigos',
       '1 marca incluida',
       'Hasta 5 usuarios',
@@ -35,36 +41,19 @@ const PLAN_DEFS: Array<{
   {
     tier: 'growth',
     highlight: true,
+    subtitle: 'Marcas con entrenamiento · Pymes con gestión',
     features: [
-      'Campañas privadas ilimitadas',
-      'Primera campaña pública incluida',
-      'Contenido ilimitado',
+      'Campañas abiertas y privadas sin límite',
       'Hasta 50 creadoras activas',
+      'Contenido ilimitado',
       'Programa de afiliados / códigos',
-      'Hasta 3 marcas incluidas',
-      'Hasta 10 usuarios',
+      'Marcas: entrenamiento para tu equipo (gestión de campañas como servicio aparte)',
+      'Pymes con gestión: plataforma y gestión de campañas incluidas',
       'Reportería avanzada de campañas',
       'Soporte preferente',
     ],
   },
-  {
-    tier: 'pro',
-    features: [
-      'Acceso ilimitado a todo',
-      'Campañas privadas ilimitadas',
-      'Campañas públicas ilimitadas',
-      'Marketplace abierto',
-      'Postulaciones abiertas de creadoras',
-      'Contenido ilimitado',
-      'Creadoras ilimitadas',
-      'Marcas ilimitadas',
-      'Usuarios ilimitados',
-      'Programa de afiliados / códigos',
-      'Reportería completa',
-      'Soporte prioritario',
-    ],
-  },
-]
+] satisfies Array<{ tier: PlanTier; highlight?: boolean; subtitle: string; features: string[] }>).filter(plan => BRAND_PLANS_FOR_SALE.includes(plan.tier))
 
 
 export function BrandPlanSettings() {
@@ -117,13 +106,13 @@ export function BrandPlanSettings() {
         if (!res.ok) throw new Error(json.error)
         const params = new URLSearchParams(window.location.search)
         const campaign = params.get('campaign')
-        toast.success(json.tier === 'agency' ? 'Mensualidad activa. Ya puedes continuar con tu campaña.' : 'Tu pago fue confirmado. Ahora crea tu primera campaña.')
+        toast.success(json.tier === 'agency' ? 'Mensualidad activa. Ya puedes continuar con tu campaña.' : campaign ? 'Tu pago fue confirmado. Ya puedes enviar tu campaña a aprobación.' : 'Tu pago fue confirmado. Ahora crea tu primera campaña.')
         window.history.replaceState({}, '', window.location.pathname)
         await load()
         // El pago solo habilita el envío: la campaña sigue en borrador hasta que la envíes y SCENCE la apruebe.
         router.replace(json.nda_signed === false
           ? (campaign ? `/brand-documents?campaign=${encodeURIComponent(campaign)}` : '/brand-documents')
-          : json.tier === 'agency' ? (campaign ? `/brand-campaigns/${campaign}` : '/brand-campaigns') : '/brand-campaigns/new')
+          : campaign ? `/brand-campaigns/${campaign}` : json.tier === 'agency' ? '/brand-campaigns' : '/brand-campaigns/new')
       })
       .catch((error) => toast.error(error.message ?? 'Estamos confirmando tu pago.'))
       .finally(() => setPaymentProcessing(false))
@@ -138,7 +127,8 @@ export function BrandPlanSettings() {
       const res = await fetch(`/api/${provider}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier }),
+        // Si vino desde «Enviar a aprobación», la campaña viaja para volver a ella después del pago.
+        body: JSON.stringify({ tier, campaign_id: new URLSearchParams(window.location.search).get('campaign') ?? undefined }),
       })
 
       const json = await res.json()
@@ -208,11 +198,12 @@ export function BrandPlanSettings() {
       )}
 
       {/* Cards de planes */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {PLAN_DEFS.map(({ tier, highlight, features }) => {
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {PLAN_DEFS.map(({ tier, highlight, subtitle, features }) => {
           const info       = PLAN_LIMITS[tier]
           const isCurrent  = hasActiveSubscription && tier === currentTier
           const regular    = prices[tier] ?? info.price_monthly_clp
+          const intro      = BRAND_PLAN_INTRO_CLP[tier]
 
           return (
             <div
@@ -241,7 +232,8 @@ export function BrandPlanSettings() {
               </div>
 
               {/* Nombre */}
-              <h3 className="text-base font-bold text-gray-900">{info.label}</h3>
+              <h3 className="text-base font-bold text-gray-900">{BRAND_PLAN_COMMERCIAL_NAME[tier]}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
 
               {/* Precio */}
               <div className="mt-3 mb-1">
@@ -249,8 +241,9 @@ export function BrandPlanSettings() {
                   <span className="text-xl font-bold text-gray-900">
                     {formatPriceCLP(regular)}
                   </span>
-                  <span className="text-xs text-gray-400 mb-0.5">CLP/mes</span>
+                  <span className="text-xs text-gray-400 mb-0.5">CLP/mes · IVA incluido</span>
                 </div>
+                {intro && <p className="text-xs font-semibold text-violet-700 mt-1">Primer mes: {formatPriceCLP(intro)} CLP</p>}
                 <p className="text-xs text-gray-500 mt-1">Cobro mensual automático con PayPal</p>
               </div>
 
@@ -280,11 +273,11 @@ export function BrandPlanSettings() {
                     disabled={checkoutLoading?.tier === tier}
                     className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-2 rounded-xl border border-[#0070ba]/25 text-[#003087] hover:bg-[#f5f9ff] transition-colors disabled:opacity-60"
                   >
-                    {checkoutLoading?.tier === tier && checkoutLoading.provider === 'paypal' ? 'Abriendo PayPal…' : `PayPal · US$${BRAND_PLAN_USD_PRICING[tier].launch}/mes`}
+                    {checkoutLoading?.tier === tier && checkoutLoading.provider === 'paypal' ? 'Abriendo PayPal…' : `PayPal · US$${BRAND_PLAN_USD_PRICING[tier].launch}${intro ? ' el primer mes' : '/mes'}`}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                   <p className="text-[11px] leading-4 text-center text-gray-400 -mt-0.5">
-                    Precio lanzamiento por 3 meses. Luego US${BRAND_PLAN_USD_PRICING[tier].regular.toFixed(2)}/mes.
+                    Cobro en USD: {brandPlanUsdTerms(tier)}.
                   </p>
                 </div>
               )}
@@ -295,7 +288,7 @@ export function BrandPlanSettings() {
 
       {/* Nota método de pago */}
       <p className="text-xs text-gray-400 text-center pb-4">
-        Paga con PayPal en USD. Tu acceso se actualiza cuando la suscripción sea aprobada.
+        {PRICE_FX_NOTICE} Tu acceso se actualiza cuando la suscripción sea aprobada.
       </p>
     </div>
   )

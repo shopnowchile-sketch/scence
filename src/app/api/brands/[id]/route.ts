@@ -1,7 +1,7 @@
 import { BRAND_ACTIVITY_LABELS } from '@/lib/brand-activity'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
-import { PLAN_TIERS, resolveBrandPlan } from '@/lib/plan-limits'
+import { PLAN_TIERS, normalizeServiceMode, resolveBrandPlan } from '@/lib/plan-limits'
 import { resolveLastSeen } from '@/lib/supabase/lastSeen'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import { isPlatformAdmin } from '@/lib/supabase/ensureOrg'
@@ -371,6 +371,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     rest.subscription_plan_override = normalized
   }
 
+  // Modalidad comercial (gestión / entrenamiento): único dato de metadata que un admin puede fijar desde aquí.
+  // El metadata del cliente se sigue descartando; se valida el valor y se fusiona en servidor sobre el metadata actual.
+  let serviceModeMetadata: Record<string, unknown> | null = null
+  if ('service_mode' in body) {
+    const raw = body.service_mode
+    const mode = raw === null || raw === '' ? null : normalizeServiceMode(raw)
+    if (raw !== null && raw !== '' && !mode) {
+      return NextResponse.json({ error: 'La modalidad debe ser gestión, entrenamiento o sin definir' }, { status: 422 })
+    }
+    const { data: current, error: currentError } = await admin.from('brands').select('metadata').eq('id', params.id).maybeSingle()
+    if (currentError) return NextResponse.json({ error: 'No se pudo verificar la marca' }, { status: 500 })
+    if (!current) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
+    const base = current.metadata && typeof current.metadata === 'object' && !Array.isArray(current.metadata) ? current.metadata as Record<string, unknown> : {}
+    const { service_mode: _previousMode, ...withoutMode } = base
+    serviceModeMetadata = mode ? { ...withoutMode, service_mode: mode } : withoutMode
+  }
+
   // Suspender bloquea el acceso OPERATIVO (brand-status-access.ts) pero NO toca el plan ni las suscripciones
   // ni el historial: son procesos distintos (decisión de la fundadora, 2026-11-12). Exige un motivo y deja el
   // cambio de estado registrado en audit_logs.
@@ -404,6 +421,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   for (const key of BRAND_PATCH_ALLOWED_FIELDS) {
     if (key in rest) updatePayload[key] = rest[key]
   }
+  if (serviceModeMetadata) updatePayload.metadata = serviceModeMetadata
   updatePayload.updated_at = new Date().toISOString()
 
   // Concurrencia optimista: si el cliente envía if_updated_at y la marca

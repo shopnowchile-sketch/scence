@@ -5,6 +5,7 @@ import { acceptCampaignApplication, rejectCampaignApplications } from '@/lib/cam
 import { hasBrandPermission, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import { getInfluencerProStatuses } from '@/lib/influencer-pro'
+import { checkBrandRosterLimit } from '@/lib/brand-roster-limit'
 
 type Params = { params: { id: string } }
 
@@ -111,7 +112,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Verificar que la aplicación exista y esté pendiente
   const { data: application } = await admin
     .from('campaign_influencers')
-    .select('id, application_status, origin')
+    .select('id, influencer_id, application_status, origin')
     .eq('id', application_id)
     .eq('campaign_id', params.id)
     .single()
@@ -131,6 +132,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       error: 'Esta es una invitación enviada por ti — falta que el influencer la acepte, no puedes aprobarla tú.',
     }, { status: 422 })
   }
+
+  // Tope de influencers del plan CONTRATADO por la marca que aprueba (misma regla que al invitar). Solo aplica a
+  // suscripciones pagadas: las marcas que ya operaban sin plan contratado no se bloquean. Solo en el portal Marca:
+  // las aprobaciones que hace SCENCE desde Admin no se limitan aquí.
+  const roster = await checkBrandRosterLimit(admin, brand.id, application.influencer_id as string, { contractedPlanOnly: true })
+  if (!roster.ok) return NextResponse.json({ error: roster.error, code: roster.code, plan: roster.plan }, { status: roster.status })
 
   // Lógica única compartida con el portal Admin (src/lib/campaign-applications.ts)
   const result = await acceptCampaignApplication(admin, {

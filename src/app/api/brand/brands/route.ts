@@ -216,12 +216,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ya existe una marca registrada con ese email' }, { status: 409 })
   }
 
-  // Marca de agencia: crear marcas es gratis y la agencia opera sin esperar la revisión de la marca;
-  // la revisión de SCENCE recae en cada campaña (super_admin). El vínculo con la agencia se fija en servidor.
+  // Marca de agencia: crear marcas es gratis, pero nace `pending_approval` como cualquier otra (decisión de la
+  // fundadora, 2026-11-14): solo el Admin de SCENCE aprueba una marca. Aquí solo se fija en servidor el vínculo
+  // con la agencia; las marcas de agencia ya aprobadas no cambian.
   if (agency && registered.outcome === 'created') {
     const { data: fresh } = await admin.from('brands').select('metadata').eq('id', registered.brandId).single()
     const { error: agencyError } = await admin.from('brands').update({
-      status: 'approved',
       metadata: { ...((fresh?.metadata as Record<string, unknown> | null) ?? {}), managed_by_org_id: agency.organizationId },
     }).eq('id', registered.brandId)
     if (agencyError) {

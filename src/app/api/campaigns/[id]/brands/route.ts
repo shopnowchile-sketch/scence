@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exactEmailPattern, isPlausibleEmail } from '@/lib/email-match'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
-import { getOrgId, getUserRole, hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
 import { registerBrandAtomic } from '@/lib/supabase/registerBrand'
 import { registrationKey } from '@/lib/brand-registration-policy'
-import { brandStatusAllows } from '@/lib/brand-status-access'
-import { isCampaignBrandCollaborator } from '@/lib/campaign-brand-access'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 
 type Params = { params: { id: string } }
+
+async function canManageParticipants(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  campaign: { brand_id: string | null; created_by_brand_id: string | null }
+) {
+  if (await isPlatformAdmin(userId, admin)) return true
+  const access = await resolveBrandAccess(userId)
+  const primaryBrandId = campaign.brand_id ?? campaign.created_by_brand_id
+  return !!access && access.brandId === primaryBrandId && hasBrandPermission(access, 'campaign.manage', 'operate')
+}
 
 // POST /api/campaigns/[id]/brands
 // Alta de marca colaboradora. Tres modos de body:
@@ -34,16 +43,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  // Una marca pendiente, rechazada o suspendida no opera (CLAUDE.md §16.9): solo
-  // un admin de plataforma puede seguir usando esta ruta aunque tenga esa membresía.
-  const resolvedBrand = await resolveBrandAccess(user.id)
-  const brandBlocked = !!resolvedBrand && !brandStatusAllows(resolvedBrand.status, 'operate')
-  if (brandBlocked && !(await isPlatformAdmin(user.id, admin))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-  const brandAccess = brandBlocked ? null : resolvedBrand
-  const orgId = brandAccess?.organizationId ?? await getOrgId(user.id, user.user_metadata, admin)
-
   let body: { brand_id?: string; role?: string; email?: string; instagram?: string; name?: string } = {}
   try {
     body = await req.json()
@@ -57,7 +56,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: campaign, error: campaignError } = await admin
     .from('campaigns')
-    .select('id, organization_id, brand_id, created_by_brand_id')
+    .select('id, brand_id, created_by_brand_id')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -65,16 +64,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: campaignError.message }, { status: 500 })
   }
 
-  // Mismo criterio que /api/campaigns/[id]: admin/super_admin/owner de Scence,
-  // o la marca dueña de la campaña (su organization_id coincide con el de la
-  // campaña) puede administrar marcas colaboradoras. Una co-marca (org propia
-  // distinta) NO pasa este check — solo la principal o admin gestionan.
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  const isCollaborator = Boolean(campaign && brandAccess?.brandId && hasBrandPermission(brandAccess, 'campaign.manage')
-    && await isCampaignBrandCollaborator(admin, params.id, brandAccess.brandId))
-  const ownsCampaign = Boolean(brandAccess && hasBrandPermission(brandAccess, 'campaign.manage')
-    && (brandAccess.brandId === campaign?.brand_id || brandAccess.brandId === campaign?.created_by_brand_id || isCollaborator))
-  if (!campaign || (!isAdmin && !ownsCampaign && (!orgId || campaign.organization_id !== orgId))) {
+  if (!campaign || !(await canManageParticipants(admin, user.id, campaign))) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
@@ -96,7 +86,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .maybeSingle()
 
     if (existingBrand) {
-      if (campaign.brand_id === existingBrand.id) return NextResponse.json({ error: 'Esta marca ya es la marca principal' }, { status: 409 })
+      if ((campaign.brand_id ?? campaign.created_by_brand_id) === existingBrand.id) return NextResponse.json({ error: 'Esta marca ya es la marca principal' }, { status: 409 })
       const { data, error } = await admin
         .from('campaign_brands')
         .upsert({ campaign_id: params.id, brand_id: existingBrand.id, role: 'collaborator', assigned_by: user.id }, { onConflict: 'campaign_id,brand_id' })
@@ -156,7 +146,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .maybeSingle()
 
     if (existingBrand) {
-      if (campaign.brand_id === existingBrand.id) {
+      if ((campaign.brand_id ?? campaign.created_by_brand_id) === existingBrand.id) {
         return NextResponse.json({ error: 'Esta marca ya es la marca principal' }, { status: 409 })
       }
 
@@ -208,7 +198,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // ── Modo legacy: por brand_id directo ───────────────────────────────────
-  if (campaign.brand_id === body.brand_id) {
+  if ((campaign.brand_id ?? campaign.created_by_brand_id) === body.brand_id) {
     return NextResponse.json({ error: 'Esta marca ya es la marca principal' }, { status: 409 })
   }
 
@@ -249,15 +239,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient()
-  // Una marca pendiente, rechazada o suspendida no opera (CLAUDE.md §16.9): solo
-  // un admin de plataforma puede seguir usando esta ruta aunque tenga esa membresía.
-  const resolvedBrand = await resolveBrandAccess(user.id)
-  const brandBlocked = !!resolvedBrand && !brandStatusAllows(resolvedBrand.status, 'operate')
-  if (brandBlocked && !(await isPlatformAdmin(user.id, admin))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-  const brandAccess = brandBlocked ? null : resolvedBrand
-  const orgId = brandAccess?.organizationId ?? await getOrgId(user.id, user.user_metadata, admin)
   const brandId = new URL(req.url).searchParams.get('brand_id')
 
   if (!brandId) {
@@ -266,20 +247,15 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   const { data: campaign } = await admin
     .from('campaigns')
-    .select('id, organization_id, brand_id, created_by_brand_id')
+    .select('id, brand_id, created_by_brand_id')
     .eq('id', params.id)
     .maybeSingle()
 
-  const { isAdmin } = orgId ? await getUserRole(user.id, orgId, admin) : { isAdmin: false }
-  const isCollaborator = Boolean(campaign && brandAccess?.brandId && hasBrandPermission(brandAccess, 'campaign.manage')
-    && await isCampaignBrandCollaborator(admin, params.id, brandAccess.brandId))
-  const ownsCampaign = Boolean(brandAccess && hasBrandPermission(brandAccess, 'campaign.manage')
-    && (brandAccess.brandId === campaign?.brand_id || brandAccess.brandId === campaign?.created_by_brand_id || isCollaborator))
-  if (!campaign || (!isAdmin && !ownsCampaign && (!orgId || campaign.organization_id !== orgId))) {
+  if (!campaign || !(await canManageParticipants(admin, user.id, campaign))) {
     return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
   }
 
-  if (campaign.brand_id === brandId) {
+  if ((campaign.brand_id ?? campaign.created_by_brand_id) === brandId) {
     return NextResponse.json({ error: 'No se puede quitar la marca principal desde colaboradoras' }, { status: 409 })
   }
 

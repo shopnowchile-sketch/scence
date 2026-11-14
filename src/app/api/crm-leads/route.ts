@@ -5,7 +5,7 @@ import { isCrmAdmin } from '@/lib/crm-auth'
 import { sanitizeSearchTerm } from '@/lib/campaign-field-guards'
 import { crmCacheVersion, bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 import { canonicalCommune } from '@/lib/crm-commune'
-import { normalizeLeadLocation } from '@/lib/crm-location'
+import { normalizeLeadLocation, resolveLeadLocationId } from '@/lib/crm-location'
 
 // Módulo CRM — aislado, no toca brands/influencers/campaigns.
 // Solo super_admin / brand_manager (mismo criterio que useIsAdmin / Sidebar admin).
@@ -541,6 +541,8 @@ export async function POST(request: NextRequest) {
 
   // País y región solo del catálogo `locations` (lo que no exista allí no se guarda).
   const loc = await normalizeLeadLocation(admin, { country, region })
+  const leadCommune = await canonicalCommune(admin, commune)
+  const leadLocationId = await resolveLeadLocationId(admin, { country: loc.country, region: loc.region, commune: leadCommune })
   const { data: lead, error } = await admin
     .from('crm_leads')
     .insert({
@@ -549,7 +551,8 @@ export async function POST(request: NextRequest) {
       email: email || null,
       phone_1: phone1 || null,
       instagram: instagram || null,
-      commune: await canonicalCommune(admin, commune),
+      commune: leadCommune,
+      location_id: leadLocationId,
       region: loc.region,
       country: loc.country,
       industry: industry || null,

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { fmtDate, fmtMoney, CAMPAIGN_STATUS } from '@/lib/campaign-utils'
 import { BartersReadonly } from '@/components/campaigns/BartersReadonly'
+import { CampaignLogisticsChoices } from '@/components/campaigns/CampaignLogisticsChoices'
 import { CampaignCover } from '@/components/influencer/CampaignVisual'
 import { isDeliverableComplete, isDeliverableOverdue, isAttendanceDeliverable, isAwaitingContentReview, isContentRejected, effectiveDeliverableStatus } from '@/lib/deliverable-status'
 import { deliverableTemplateTitle } from '@/lib/deliverable-template-title'
@@ -1181,6 +1182,7 @@ export function InfluencerCampaignView({ id }: { id: string }) {
             exactas siguen apareciendo solo cuando la influencer fue aceptada. */}
         <EventBookingCard booking={data.event_booking ?? null} showLocation={isAccepted || isSelfCreated} fallbackDate={c.start_date} />
         <OtherCampaignAddresses locations={data.locations} />
+        {isAccepted && c.id && <CampaignLogisticsChoices campaignId={c.id} locations={data.locations as never} attendanceLocationId={(data as { attendance_location_id?: string | null }).attendance_location_id} />}
         <CampaignWhatsappCard campaign={c} confirmed={isAccepted && (data.campaign_deliverables ?? []).some(d => d.type === 'event_attendance' && d.attendance_response === 'confirmed')} />
         <CampaignBenefitsCard benefits={c.campaign_benefits} />
 

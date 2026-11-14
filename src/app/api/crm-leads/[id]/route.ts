@@ -3,7 +3,7 @@ import { registerBrandAtomic } from '@/lib/supabase/registerBrand'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { canonicalCommune } from '@/lib/crm-commune'
-import { normalizeLeadLocation } from '@/lib/crm-location'
+import { normalizeLeadLocation, resolveLeadLocationId } from '@/lib/crm-location'
 import { normalizeRut } from '@/lib/rut'
 import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 
@@ -185,6 +185,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     update.email_status_code = null
     update.email_role_account = null
     update.email_free_domain = null
+  }
+
+  // Vínculo al catálogo: se recalcula solo si cambió país, región o comuna (los textos se conservan).
+  if (editedFields.some(f => f === 'country' || f === 'region' || f === 'commune')) {
+    const { data: cur } = await admin.from('crm_leads').select('country, region, commune').eq('id', params.id).maybeSingle()
+    const pick = (k: 'country' | 'region' | 'commune') => (k in update ? (update[k] as string | null) : (cur?.[k] as string | null | undefined)) ?? null
+    update.location_id = await resolveLeadLocationId(admin, { country: pick('country'), region: pick('region'), commune: pick('commune') })
   }
 
   const note = typeof body.note === 'string' ? body.note.trim() : ''

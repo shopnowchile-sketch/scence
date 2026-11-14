@@ -9,8 +9,8 @@ Alcance: SOLO lectura. Nunca editar archivos, ni ejecutar DDL/DML, commit, push 
 
 Método:
 1. Buscar lo que YA existe antes de opinar: tablas, columnas, migraciones (`supabase/migrations`), rutas `src/app/api`, helpers `src/lib`, componentes.
-2. Contrastar código vs base real (las migraciones no siempre reflejan producción: `locations` existía sin migración).
-3. Contar filas reales afectadas; distinguir columnas vivas de columnas muertas.
+2. Contrastar código vs esquema del entorno autorizado. Identificar el entorno y fechar la evidencia.
+3. Cuantificar el impacto si aplica, con consultas de solo lectura y sin exponer datos privados.
 4. Identificar ownership, roles con acceso y protección backend de cada dato.
 
 Entrega (máx. 1 página):

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getOrgId, getUserRole, hasBrandPermission, resolveBrandAccess, type BrandPermission } from '@/lib/supabase/ensureOrg'
 import { readEcommerceLinks, validateEcommerceLinks } from '@/lib/brand-ecommerce'
+import { sharedPlacesForBrand } from '@/lib/location-sharing'
 
 type Params = { params: { id: string } }
 
@@ -43,10 +44,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .order('name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const places = await Promise.all((data ?? []).map(async place => {
+  // Lugares de otras marcas compartidos con ésta (solo lectura): se marcan `shared`.
+  const shared = (await sharedPlacesForBrand(admin, params.id, 'id, name, address, type, notes')) as Array<{ id: string; name: string; address: string | null; type: string | null; notes: string | null }>
+  const rows = [...(data ?? []).map(p => ({ ...p, shared: false })), ...shared.map(p => ({ ...p, shared: true }))]
+  const places = await Promise.all(rows.map(async place => {
     const { data: breadcrumb } = await admin.rpc('location_breadcrumb', { p_id: place.id })
     const byLevel = (level: string) => (breadcrumb ?? []).find((i: { level: string; name: string }) => i.level === level)?.name ?? null
-    return { ...place, city: byLevel('commune'), region: byLevel('region'), country: byLevel('country') }
+    return { ...place, city: byLevel('commune'), commune: byLevel('commune'), region: byLevel('region'), country: byLevel('country') }
   }))
   return NextResponse.json({ data: places, ecommerce: readEcommerceLinks(brand.metadata) })
 }

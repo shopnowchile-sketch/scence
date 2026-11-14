@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
-import { MapPin, Save, Loader2, ChevronDown } from 'lucide-react'
+import { MapPin, Save, Loader2, ChevronDown, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, COUNTRY_OPTIONS } from '@/lib/utils'
 import { GooglePlacesAddress } from '@/components/brand/GooglePlacesAddress'
@@ -61,6 +61,8 @@ export function BrandAddressForm() {
   const [showAddr2, setShowAddr2] = useState(false)
   const [countryCode, setCountryCode] = useState('CL')
   const [addressSearch, setAddressSearch] = useState('')
+  // Vista compacta por defecto: una línea con la dirección; el formulario completo solo al editar.
+  const [editing, setEditing] = useState(false)
 
   const set = (k: keyof AddressFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
@@ -124,6 +126,7 @@ export function BrandAddressForm() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       toast.success('Direcciones actualizadas')
+      setEditing(false)
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -137,11 +140,26 @@ export function BrandAddressForm() {
     </div>
   )
 
+  const summary = [[form.address_street, form.address_number].filter(Boolean).join(' '), form.address_city, form.address_region]
+    .map(v => (v ?? '').toString().trim()).filter(Boolean).join(', ')
+
+  if (!editing) return (
+    <div className="flex items-center justify-between gap-4 border-b border-gray-100 pb-4" data-testid="brand-address-summary">
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Dirección principal</p>
+        <p className="mt-0.5 truncate text-sm text-gray-900">{summary || <span className="text-gray-400">Aún no registras una dirección principal.</span>}</p>
+      </div>
+      <button type="button" onClick={() => setEditing(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-violet-700 hover:bg-violet-50">
+        <Pencil className="h-3.5 w-3.5" />{summary ? 'Editar' : 'Agregar'}
+      </button>
+    </div>
+  )
+
   return (
     <div className="space-y-5">
 
       {/* Dirección principal */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
+      <div className="border-b border-gray-100 pb-5 space-y-4">
         <SectionTitle icon={MapPin} label="Dirección principal" />
         <div className="grid grid-cols-2 gap-3">
           <Field label="País">
@@ -214,14 +232,17 @@ export function BrandAddressForm() {
         )}
       </div>
 
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 transition-colors"
-      >
-        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-        {saving ? 'Guardando…' : 'Guardar direcciones'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" disabled={saving} onClick={() => { setEditing(false); void load() }} className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-800">Cancelar</button>
+      </div>
     </div>
   )
 }

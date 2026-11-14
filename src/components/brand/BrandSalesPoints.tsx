@@ -12,7 +12,6 @@ export function BrandSalesPoints() {
   if (!brand) return null
   return (
     <div className="mt-8">
-      <h2 className="mb-3 text-base font-bold text-gray-900">Puntos de venta y e-commerce</h2>
       <SalesPointsPanel brandId={brand.id} brandName={brand.name} portal="brand" />
     </div>
   )

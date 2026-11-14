@@ -121,17 +121,17 @@ test('ruta: crea solo relaciones con marcas existentes (sin registerBrand) y sin
 })
 
 test('ruta: toda operación pasa por authorize() y la marca sale de la decisión, no del body', () => {
-  for (const verb of ['GET', 'POST', 'DELETE']) assert.match(route, new RegExp(`export async function ${verb}`))
-  assert.equal((route.match(/await authorize\(/g) ?? []).length, 3)
+  for (const verb of ['GET', 'POST', 'PATCH', 'DELETE']) assert.match(route, new RegExp(`export async function ${verb}`))
+  assert.equal((route.match(/await authorize\(/g) ?? []).length, 4)
   assert.match(route, /23505/)
   assert.match(route, /hasBrandPermission\(access, 'brand\.read', 'operate'\)/)
   assert.match(route, /hasBrandPermission\(access, 'team\.manage', 'operate'\)/)
 })
 
-test('ruta: solo expone nombre, logo, Instagram y estado de la colaboradora', () => {
+test('ruta: solo expone ID, nombre, logo e Instagram como campos de marca de la colaboradora', () => {
   assert.equal(COLLABORATOR_BRAND_FIELDS, 'id, name, logo_url, instagram')
   assert.doesNotMatch(COLLABORATOR_BRAND_FIELDS, /status/, 'el estado de aprobación no se expone a otras marcas')
   assert.match(route, /\.eq\('status', 'approved'\)/, 'la búsqueda se limita a marcas aprobadas')
-  assert.doesNotMatch(route, /contact_email|metadata|organization_id|user_id|created_by,/)
+  assert.doesNotMatch(route, /metadata|organization_id|user_id|created_by,/)
   assert.ok(UUID_RE.test(A))
 })

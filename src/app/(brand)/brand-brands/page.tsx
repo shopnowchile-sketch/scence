@@ -16,6 +16,15 @@ interface BrandRow {
   campaigns: string[]
 }
 
+type Contact = { contact_name: string | null; contact_email: string | null; contact_phone: string | null }
+type Collaborator = Contact & { brand: { id: string; name: string; instagram: string | null } }
+const emptyContact: Contact = { contact_name: null, contact_email: null, contact_phone: null }
+const contactFields = [
+  { key: 'contact_name', label: 'Nombre', type: 'text' },
+  { key: 'contact_email', label: 'Email', type: 'email' },
+  { key: 'contact_phone', label: 'Teléfono', type: 'tel' },
+] as const
+
 function initials(name: string) {
   return name
     .split(' ')
@@ -42,6 +51,47 @@ export default function BrandBrandsPage() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+
+  const [portfolio, setPortfolio] = useState<Collaborator[] | null>(null)
+  const [canManagePortfolio, setCanManagePortfolio] = useState(false)
+  const [contactForm, setContactForm] = useState<(Contact & { id?: string; instagram: string }) | null>(null)
+  const [savingContact, setSavingContact] = useState(false)
+
+  const loadPortfolio = useCallback(async () => {
+    try {
+      const response = await fetch('/api/brand/collaborators')
+      if (response.status === 403) return
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error)
+      setPortfolio(json.data)
+      setCanManagePortfolio(json.canManage)
+    } catch {
+      toast.error('No se pudo cargar la cartera')
+    }
+  }, [])
+
+  async function saveContact(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!contactForm || savingContact) return
+    const { id, instagram, ...contact } = contactForm
+    setSavingContact(true)
+    try {
+      const response = await fetch('/api/brand/collaborators', {
+        method: id ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id ? { collaborator_brand_id: id, ...contact } : { instagram, ...contact }),
+      })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.error)
+      setContactForm(null)
+      toast.success('Contacto guardado')
+      await loadPortfolio()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el contacto')
+    } finally {
+      setSavingContact(false)
+    }
+  }
 
   const load = useCallback(async (value = '') => {
     setLoading(true)
@@ -72,7 +122,8 @@ export default function BrandBrandsPage() {
 
   useEffect(() => {
     load()
-  }, [load])
+    loadPortfolio()
+  }, [load, loadPortfolio])
 
   return (
     <div className="space-y-6">
@@ -194,6 +245,72 @@ export default function BrandBrandsPage() {
           </div>
         )}
       </div>
+
+      {portfolio && (
+        <section className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-semibold text-gray-900">Cartera de colaboradoras</h2>
+            {canManagePortfolio && (
+              <button type="button" className="text-sm font-semibold text-violet-700"
+                disabled={savingContact}
+                onClick={() => setContactForm({ ...emptyContact, instagram: '' })}>
+                Agregar colaboradora
+              </button>
+            )}
+          </div>
+          {contactForm && (
+            <form onSubmit={saveContact} className="space-y-3 rounded-lg border border-gray-200 p-4">
+              <fieldset disabled={savingContact} className="grid gap-3 sm:grid-cols-2">
+                {!contactForm.id && (
+                  <label className="grid gap-1 text-sm">
+                    Instagram de la marca
+                    <input required className="rounded-lg border border-gray-300 px-3 py-2"
+                      value={contactForm.instagram}
+                      onChange={event => setContactForm({ ...contactForm, instagram: event.target.value })} />
+                  </label>
+                )}
+                {contactForm.id && (
+                  <p className="text-sm font-semibold text-gray-900 sm:col-span-2">
+                    {portfolio.find(row => row.brand.id === contactForm.id)?.brand.name}
+                  </p>
+                )}
+                {contactFields.map(({ key, label, type }) => (
+                  <label key={key} className="grid gap-1 text-sm">
+                    {label}
+                    <input type={type} className="rounded-lg border border-gray-300 px-3 py-2"
+                      value={contactForm[key] ?? ''}
+                      onChange={event => setContactForm({ ...contactForm, [key]: event.target.value })} />
+                  </label>
+                ))}
+                <div className="flex gap-4">
+                  <button type="submit" className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white">Guardar</button>
+                  <button type="button" className="text-sm text-gray-600" onClick={() => setContactForm(null)}>Cancelar</button>
+                </div>
+              </fieldset>
+            </form>
+          )}
+          {portfolio.length === 0 ? (
+            <p className="text-sm text-gray-500">Aún no tienes colaboradoras en tu cartera.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {portfolio.map(({ brand, contact_name, contact_email, contact_phone }) => (
+                <li key={brand.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                  <div>
+                    <p className="font-medium text-gray-900">{brand.name} {brand.instagram}</p>
+                    <p className="text-gray-600">{[contact_name, contact_email, contact_phone].filter(Boolean).join(' · ') || 'Sin contacto'}</p>
+                  </div>
+                  {canManagePortfolio && (
+                    <button type="button" className="font-medium text-violet-700" disabled={savingContact}
+                      onClick={() => setContactForm({ id: brand.id, instagram: '', contact_name, contact_email, contact_phone })}>
+                      Editar contacto
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {showModal && (
         <BrandModal

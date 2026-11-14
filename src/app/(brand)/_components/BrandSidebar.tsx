@@ -42,7 +42,7 @@ const navSections: NavSection[] = [
   },
 ]
 
-export function BrandSidebar({ plan, ndaLocked }: { plan?: string | null; ndaLocked?: boolean }) {
+export function BrandSidebar({ brandName, plan, ndaLocked }: { brandName: string; plan?: string | null; ndaLocked?: boolean }) {
   const [hasInfluencerAccess, setHasInfluencerAccess] = useState(false)
 
   // Solo controla la visibilidad del enlace. El portal influencer vuelve a
@@ -63,5 +63,5 @@ export function BrandSidebar({ plan, ndaLocked }: { plan?: string | null; ndaLoc
     { href: '/brand-settings/organization', label: 'Datos legales', icon: Building2 },
     { href: '/brand-documents', label: 'Documentos', icon: FileText },
   ] }]
-  return <AppSidebar portal="brand" navSections={ndaLocked ? legalSections : sections} plan={ndaLocked ? null : plan} />
+  return <AppSidebar portal="brand" orgName={brandName} navSections={ndaLocked ? legalSections : sections} plan={ndaLocked ? null : plan} />
 }

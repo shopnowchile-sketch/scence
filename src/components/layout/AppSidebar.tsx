@@ -84,7 +84,7 @@ function SidebarContent({
       {/* Logo */}
       <div className="h-14 flex items-center gap-2.5 px-4 border-b border-gray-100 flex-shrink-0">
         <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-white font-extrabold text-sm">S</div>
-        <span className="text-base font-bold text-gray-900 tracking-tight">Scence</span>
+        <span className="min-w-0 truncate text-base font-bold text-gray-900 tracking-tight" title={portal === 'brand' ? orgName : undefined}>{portal === 'brand' ? orgName || 'Scence' : 'Scence'}</span>
         <span className={cn('ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full', cfg.badgeColor)}>
           {cfg.label}
         </span>
@@ -202,7 +202,7 @@ function SidebarContent({
 interface AppSidebarProps {
   portal: Portal
   navSections: NavSection[]
-  /** Admin only — org display name */
+  /** Active brand or admin organization name */
   orgName?: string
   /** Brand only — effective subscription plan */
   plan?: string | null
@@ -251,7 +251,7 @@ export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarPro
 
   const contentProps = {
     portal, pathname, navSections,
-    orgName: resolvedOrg, orgInitial,
+    orgName: orgName ?? resolvedOrg, orgInitial,
     userName, userEmail, userInitial,
     plan,
     onSignOut: handleSignOut,
@@ -265,7 +265,7 @@ export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarPro
           <Menu className="h-5 w-5" />
         </button>
         <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center text-white font-extrabold text-sm">S</div>
-        <span className="text-base font-bold text-gray-900">Scence</span>
+        <span className="min-w-0 truncate text-base font-bold text-gray-900" title={portal === 'brand' ? orgName : undefined}>{portal === 'brand' ? orgName || 'Scence' : 'Scence'}</span>
         <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full', PORTAL_CONFIG[portal].badgeColor)}>
           {PORTAL_CONFIG[portal].label}
         </span>

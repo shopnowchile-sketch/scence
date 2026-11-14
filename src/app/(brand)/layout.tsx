@@ -40,6 +40,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   // (no bloquear mientras carga, igual que instagramComplete).
   const [ndaSigned, setNdaSigned] = useState(false)
   const [brandStatus, setBrandStatus] = useState<string | null>(null)
+  const [brandName, setBrandName] = useState('')
   const [brandPlan, setBrandPlan] = useState<string | null>(null)
   const pathname = usePathname()
   // NOTA (build fix): NO usar useSearchParams() acá. Este layout envuelve
@@ -83,6 +84,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
           console.error('[BrandLayout] brand/me failed:', res.status)
 
           if (!cancelled) {
+            setBrandName('')
             setBrandStatus('error')
             setBrandPlan(null)
             setInstagramComplete(false)
@@ -94,6 +96,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
 
         if (cancelled) return
 
+        setBrandName(typeof json?.data?.name === 'string' ? json.data.name.trim() : '')
         setNdaSigned(json?.data?.nda_signed === true)
         setBrandStatus(json?.data?.status ?? 'error')
         setBrandPlan(typeof json?.data?.org_plan === 'string' ? json.data.org_plan : null)
@@ -107,6 +110,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         console.error('[BrandLayout] brand/me network error:', error)
 
         if (!cancelled) {
+          setBrandName('')
           setBrandStatus('error')
           setBrandPlan(null)
           setInstagramComplete(false)
@@ -200,7 +204,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <PresenceHeartbeat />
-      <BrandSidebar plan={brandPlan} ndaLocked={ndaLocked} />
+      <BrandSidebar brandName={brandName} plan={brandPlan} ndaLocked={ndaLocked} />
       <AgencyBrandSwitcher />
       {!ndaLocked && <AgencyCheckoutGate />}
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">

@@ -254,6 +254,7 @@ export interface CampaignDeliverableDetail {
 }
 
 export interface CampaignDetail extends Campaign {
+  created_by_brand_id?: string | null
   campaign_influencers: CampaignInfluencerDetail[]
   campaign_deliverables: CampaignDeliverableDetail[]
   social_tags: string[] | null
@@ -261,7 +262,7 @@ export interface CampaignDetail extends Campaign {
   commission_rate: number | null
   // Solo presente cuando GET /api/campaigns/[id] lo resuelve para un usuario de Marca
   // (ver getBrandAccess en esa ruta) — no existe para Admin.
-  _brand_permissions?: { isBrand: boolean; canView: boolean; canEdit: boolean } | null
+  _brand_permissions?: { isBrand: boolean; canView: boolean; canEdit: boolean; brandId?: string | null } | null
 }
 
 // computed helpers

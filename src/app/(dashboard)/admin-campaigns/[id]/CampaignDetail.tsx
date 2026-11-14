@@ -2093,6 +2093,11 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
     return metadata?.asset_type === 'campaign_cover'
   })
   const canEditCampaign = !isBrandPortal || c._brand_permissions?.canEdit === true
+  const canManageCampaignBrands = !isBrandPortal || (
+    c._brand_permissions?.canEdit === true &&
+    c._brand_permissions.brandId != null &&
+    c._brand_permissions.brandId === (c.brand_id ?? c.created_by_brand_id)
+  )
   type CampaignEventBooking = { id?: string; starts_at?: string | null; ends_at?: string | null; location?: string | null; location_details?: { venue_name?: string; instructions?: string; commune?: string } | null }
   const eventBookings = (c as unknown as {
     event_bookings?: CampaignEventBooking[]
@@ -2855,7 +2860,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
       {/* ── OVERVIEW ───────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
         <>
-        {(campaignBrands.length > 0 || (!isBrandPortal || c._brand_permissions?.canEdit)) && (
+        {(campaignBrands.length > 0 || canManageCampaignBrands) && (
           <CampaignBrandsPanel
             campaignId={id}
             brands={campaignBrands.map(brand => ({
@@ -2865,7 +2870,7 @@ export function CampaignDetail({ id, defaultTab, portal = 'admin' }: { id: strin
               instagram: brand.instagram as string | null,
               _role: String(brand._role ?? ''),
             }))}
-            canManage={!isBrandPortal || c._brand_permissions?.canEdit === true}
+            canManage={canManageCampaignBrands}
             canChangePrimary={!isBrandPortal}
             linkToBrandProfile={!isBrandPortal}
             isBrandPortal={isBrandPortal}

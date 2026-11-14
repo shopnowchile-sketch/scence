@@ -74,3 +74,26 @@ test('duplicate: el admin crea la copia; una marca ajena no crea nada', async ()
   const db2 = as('uMgrB'); await st(ROUTES.duplicate)
   assert.equal(db2.campaigns.length, 1)
 })
+
+const participants = await import('../src/app/api/campaigns/[id]/brands/route.ts')
+
+test('altas y bajas de marcas: solo Admin activo o principal; creadora solo como respaldo', async () => {
+  for (const [user, principal, creator, allowed] of [
+    ['uMgrB', 'brand-A', null, false],
+    ['uMgrB', 'brand-A', 'brand-B', false],
+    ['uNoBrand', 'brand-A', null, false],
+    ['uMgrA', 'brand-A', 'brand-B', true],
+    ['uMgrA', null, 'brand-A', true],
+    ['uMgrA', null, null, false],
+    ['uDual', 'brand-A', null, true],
+  ] as const) {
+    const db = as(user)
+    Object.assign(db.campaigns[0], { brand_id: principal, created_by_brand_id: creator })
+    db.brands.push({ id: 'brand-C' })
+    db.campaign_brands.push({ id: 'link-B', campaign_id: 'camp-A', brand_id: 'brand-B' })
+    const url = 'http://x/api/campaigns/camp-A/brands'
+    assert.equal((await participants.POST(mk(url, { brand_id: 'brand-C' }), ctx)).status, allowed ? 200 : 404, user)
+    assert.equal((await participants.DELETE(mk(url + '?brand_id=brand-C'), ctx)).status, allowed ? 200 : 404, user)
+    assert.equal(db.campaign_brands.length, 1)
+  }
+})

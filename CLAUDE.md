@@ -1,677 +1,115 @@
-# Flujo permanente — actualizado 2026-10-29
+# SCENCE — instrucciones permanentes (actualizado 2026-11-14)
 
-**LOCAL → DEV (`staging`) → PROD (`master`). Nunca crear ramas nuevas, worktrees ni infraestructura paralela.** Esta regla reemplaza cualquier instrucción anterior incompatible, incluso en documentos históricos. Reutilizar el repositorio y DEV existentes. Preservar cambios locales ajenos; nunca forzar un push ni borrar historial. Producción requiere autorización explícita independiente y no se publica durante auditorías.
+Única fuente de instrucciones. `AGENTS.md` y `.claude/agents/` solo apuntan aquí. Historial, cifras, evidencias y pendientes: [docs/audits/CLAUDE_historico_2026-11-14.md](docs/audits/CLAUDE_historico_2026-11-14.md) (consultar solo si hace falta; no es regla vigente).
 
-# 🚨 REGLA CERO — NO CAMBIAR COMPORTAMIENTO DE NEGOCIO SIN AUDITAR
+## 1. Ubicación y ramas
 
-Si un cambio puede afectar:
+- Única carpeta de desarrollo: `/Users/priscillaperez/Claude/Projects/APP SCENCE/scence-app-clean`. Antes de cualquier comando, verificar `pwd -P` y estado Git; si la carpeta es otra, detenerse.
+- Nunca modificar ni publicar desde copias antiguas (`scence`, `scence-app`, `scence-work`, `wt-*`, `*-BACKUP-*`). Respaldos: `SCENCE-Backups`, fuera del repo.
+- Solo existen las ramas `staging` (DEV) y `master` (PROD). **Nunca crear ramas, worktrees ni infraestructura paralela.** Los worktrees históricos se conservan sin usarlos.
+- Preservar cambios locales ajenos. Nunca force push ni borrar historial.
 
-- quién ve una campaña;
-- quién puede postular;
-- quién puede aprobar;
-- quién puede ver un brief;
-- quién puede ver información de una marca;
-- quién puede ver información de una influencer;
-- pagos;
-- ownership;
-- permisos;
+## 2. Regla Cero
 
-**NO IMPLEMENTAR DIRECTAMENTE.**
+Auditar y explicar la causa antes de modificar comportamiento de negocio. Presentar el impacto y esperar aprobación antes de cambios sensibles en: visibilidad de campañas o briefs, postulaciones, aprobaciones, marcas, influencers, datos privados, pagos, ownership, Auth, triggers, RLS o permisos. Un solo cambio sensible de Auth/triggers/RLS/permisos por vez.
 
-Primero AUDITAR y explicar la causa raíz.
+## 3. Principios
 
-Nunca asumir.
+- Priorizar ventas, activación y retención; simplificar la gestión de campañas y reducir trabajo manual.
+- Reutilizar componentes, vistas, APIs, tablas y helpers; una fuente de verdad por dato. Reutilizar la experiencia de Admin en Marca con el alcance filtrado en servidor.
+- Lo oculto en frontend no está protegido: todo dato sensible (briefs, contratos, pagos, marcas, influencers, datos internos) se protege también en backend/API, separado entre ADMIN, MARCA e INFLUENCER.
+- Cambios pequeños, verificables, separados por objetivo. No cambiar interfaz o diseños existentes sin autorización. Confirmar consumidores antes de retirar código heredado y pedir aprobación. Si la solución crece o hay decisión crítica pendiente, detenerse y proponer el mínimo.
+- Bugs: causa raíz, cambio mínimo, archivos afectados, riesgo y verificación.
 
-Nunca inventar.
+## 4. Protocolo de implementación
 
-Nunca crear una solución paralela si ya existe lógica reutilizable.
+1. **Auditoría:** qué se entendió, archivos, límites y riesgos; diagnóstico en solo lectura.
+2. **Plan:** causa, archivos, cambio mínimo, validación.
+3. **Implementación:** solo lo necesario; actualizar la fuente según [la guía de documentación](docs/00-MASTER/GUIA-DE-DOCUMENTACION_v1.0_2026-10-19.md).
+4. **Validación:** `npx tsc --noEmit`, `npx next lint`, `next build` y `npm test` según alcance (sin acceso a Google Fonts, el build usa `NEXT_FONT_GOOGLE_MOCKED_RESPONSES`). Revisar diff, rutas y casos por rol. Integración solo contra base de pruebas. Toda prueba omitida se justifica por escrito. Cambios de Auth, autorización, RLS, facturación o permisos exigen además revisión de seguridad registrada (rutas, chequeo backend, RLS, otros roles).
+5. **Entrega:** resultado, cambios, verificaciones y pendientes. Distinguir implementado · probado · verificado en Preview · confirmado en producción. «Verificado» solo si se abrió y comprobó en el navegador; si no, «Por verificar».
 
-Una modificación aparentemente pequeña puede afectar todo el negocio.
+**Respuestas a la fundadora:** breves y ejecutivas (máx. 5 líneas en tareas simples): qué se encontró, qué se hará, si requiere aprobación. Sin repetir antecedentes, sin preguntar lo resoluble con la información existente; explicación extensa solo si la pide.
 
----
+Commit, push, merge, deploy y aplicar migraciones requieren autorización explícita para cada acción. No usar `git add -A`.
 
-# SCENCE — PRINCIPIOS DE PRODUCTO, NEGOCIO Y EJECUCIÓN
+## 5. Despliegue: LOCAL → DEV (`staging`) → PROD (`master`)
 
-Estos principios son permanentes para cualquier trabajo realizado sobre SCENCE.
+Proceso único (decidido 2026-10-21). No se salta ninguna etapa, ni por urgencia (salvo HOTFIX).
 
-## 1. Objetivo principal de SCENCE
+1. **LOCAL** (`localhost:3000`): implementar y validar.
+2. **DEV/Preview** (`dev.scence.cl` = rama `staging`, base Supabase `dexpvoubiklgotuukrml`): requiere autorización de commit y push.
+3. **PROD**: solo con autorización explícita, por merge revisado `staging` → `master`; sin commits directos ni ramas de trabajo. Verificar después en producción (sin efectos reales no autorizados) y actualizar documentación.
 
-SCENCE no existe para crear software por crear software.
+- **Migraciones:** archivo aditivo e idempotente en `supabase/migrations/` con rollback en `supabase/rollbacks/`; los DROP quedan en `supabase/pending/` hasta desplegar el código compatible. Primero DEV, luego PROD con autorización propia y antes de publicar el código que las usa. Su identidad es el nombre, no el prefijo de fecha.
+- `READY` en Vercel no equivale a «verificado». Una orden de «publicar directamente» no autoriza saltarse DEV: avisar del conflicto. Solo la palabra «HOTFIX» activa el protocolo siguiente.
+- **Preview seguro** = base distinta de producción (comprobar el ref, sin exponer secretos) + claves de terceros vacías o en modo prueba + acceso protegido. Si algo no se confirma, tratarlo como producción: solo verificación visual, sin escrituras, correos, cobros ni mensajes. Detalle de entornos: `SETUP.md` §7.
+- **Localhost:** reutilizar el servidor del puerto 3000; no duplicarlo, ni cambiar de puerto, ni matar procesos sin autorización. `localhost` no implica base local: antes de escribir datos, comprobar el ref de Supabase. `.env.local` apunta a DEV; nunca cargar `.env.local.respaldo-produccion`.
+- **Producción:** nunca pruebas que escriban datos. En auditorías es solo lectura; antes de una escritura autorizada, identificar registros y previsualizar. Correos, cobros y mensajes reales requieren autorización explícita.
+- Sin base aislada disponible: detener solo esa prueba y seguir con las verificaciones locales seguras. No instalar Docker ni herramientas nuevas como requisito.
 
-El objetivo principal es construir una empresa rentable y escalable que facilite la gestión de campañas de influencer marketing y que las marcas quieran seguir utilizando.
+### HOTFIX (errores pequeños y urgentes en PROD)
 
-Prioridades:
+Si toca la Regla Cero, migraciones o crece más de lo mínimo: no es HOTFIX, detenerse.
 
-1. Ventas
-2. Retención de clientes
-3. Valor para las marcas
-4. Experiencia simple
-5. Escalabilidad
-6. Automatización
-7. Tecnología
+1. Base: `master` actualizado con `git fetch`.
+2. Cambio mínimo: solo el error pedido.
+3. Pruebas según riesgo (mínimo `tsc`).
+4. Publicar con una sola autorización: commit solo con los archivos del arreglo a `master`, sin `staging`.
+5. Sincronizar siempre: cherry-pick a `staging` y reconciliar LOCAL sin sobrescribir.
+6. Verificar: PROD `READY`, error resuelto, arreglo presente en `staging`.
 
-La tecnología está al servicio del negocio.
+Conflicto real: detenerse y explicar. Entrega: qué se corrigió, qué se publicó, si quedó sincronizado.
 
-Cuando haya varias soluciones técnicamente válidas, preferir la que:
-- sea más simple;
-- genere más valor para el cliente;
-- facilite la venta;
-- aumente la retención;
-- reduzca trabajo manual;
-- pueda escalar.
+## 6. Invariantes (verificados contra schema y datos reales; no contradecir sin auditar de nuevo)
 
-## 2. SCENCE debe venderse fácil
+### 6.1 Campañas y postulaciones
+- `campaign_influencers.application_status` (`pending|accepted|rejected`) es la única fuente. **Nunca escribir `campaign_influencers.status`** (enum de campaña; el UPDATE falla en silencio). Toda escritura con admin client revisa `error`.
+- Visibilidad: marca ve solo sus campañas; influencer ve campañas publicadas/disponibles, nunca campañas personales de otras ni brief privado/PDF/contenido privado con postulación `pending` (solo info general, descripción pública y estado); con `accepted`, brief completo y PDF. No crear arquitectura nueva si ownership, visibility, status y relaciones ya lo permiten.
+- `visibility='private'` ≠ oculta: significa «requiere Plan Pro para postular». Toda influencer ve las privadas activas; gratis → CTA «POSTULAR CON PRO» (`/inf-profile?tab=plan&return_campaign_id=<id>`), Pro → «Postular». Invitación rechazada no bloquea; postulación rechazada por la marca sí oculta. `(campaign_id, influencer_id)` es UNIQUE: re-postular reutiliza la fila con UPDATE. Se excluyen campañas cuyo `created_by` es un `influencers.user_id`.
+- Creación de campaña: todo campo nuevo en `POST /api/campaigns` o `/api/brand/campaigns` debe entrar al objeto del insert, no solo al destructuring. Direcciones de campaña: `campaign_locations` → `locations` (§6.6); `metadata.address` es solo una copia de la principal para consumidores heredados, nunca la fuente. El lugar del evento vive en `bookings.location_id`.
+- Aviso de campaña disponible: activa y `open` o `private`. Fuente única `resolvePendingCampaignAnnouncement()` (activación, botón manual, contador). Idempotencia en `campaign_influencer_notifications`; respetar `public_campaigns_email`; rutas de envío masivo con `maxDuration = 300`; revisar `error` de Resend en cada envío.
 
-Cada nueva funcionalidad debe evaluarse preguntando:
+### 6.2 Autorización
+- Autorizar SIEMPRE con `organization_members` vía `getUserRole()`, `resolveBrandAccess()` / `hasBrandPermission()`; en campañas, `authorizeCampaignBrandAction()`. **Nunca `profiles.role`** ni un `isAdmin()` local.
+- Las rutas con service role omiten RLS: su protección depende del chequeo de cada ruta.
 
-"¿Esto hace que SCENCE sea más fácil de vender?"
+### 6.3 Plan Pro y pagos
+- `INFLUENCER_PRO_TERMS.version` se compara exacta con `influencer_terms_acceptances.document_version` en `/apply` y `/paypal/checkout`; al subirla, usar `acceptCurrentInfluencerProTerms()` (`POST /api/influencer/terms`), sin duplicar lógica.
+- PayPal es la única pasarela con datos reales. No crear checkouts nuevos: `upgradeToPro()` → `/api/influencer/paypal/checkout` → `/complete`. Pro se deriva de `subscriptions` (`active`/`trialing`) + `influencers.metadata.manual_pro.active`, vía `getInfluencerProStatuses()` / `isInfluencerPro()`.
 
-y:
+### 6.4 Marcas, organizaciones y roles
+- **SCENCE es la plataforma**; todo lo demás son marcas, sin privilegios por nombre. SCENCE SpA es solo una marca de pruebas. La org técnica `Scence SpA` (`type='agency'`) concentra la operación de plataforma; no es «la marca SCENCE SpA». No renombrar, fusionar ni borrar.
+- Solo SCENCE (`super_admin` vía `organization_members`) ve, crea, edita, aprueba, suspende y borra marcas. Registro, confirmación de correo y aprobación son etapas distintas. Toda marca nueva nace `pending_approval` (también las colaboradoras) → `approved|rejected|suspended`; aprobar no crea ni cambia organización. Estado aplicado en servidor por `hasBrandPermission` → `brand-status-access.ts`.
+- Cada marca vive en su propia org técnica `type='brand'` (crear con `provisionOrgForBrand()`); acceso por `brand_id`, nunca por `organization_id`. Borrado: archivar/desactivar por defecto; definitivo solo excepcional y autorizado.
+- Pueden registrar marcas los usuarios autorizados, incluidas influencers; registrar no concede permisos sobre otras marcas.
+- **Roles de marca: solo `owner` (`is_owner`) y `member`.** `member` = operación completa y facturación de su marca; `owner` = además equipo, datos, documentos legales (solo `owner` firma NDA) y pago del plan. `void` y `mark_overdue` de facturas son de SCENCE. Valores heredados (`brand_manager`, `finance`) se normalizan con `normalizeBrandRole()`; invitar/cambiar rol vía `ensureBrandMembership()` (solo `member`). Fuente: `src/lib/brand-permissions.ts`. No recrear la migración `preserve_brand_member_role_sync`.
+- Aislamiento: en campañas compartidas, de las otras marcas solo se ve nombre, logo e Instagram público. Agregar/quitar marcas de una campaña: solo Admin o la marca principal con permiso operativo (`created_by_brand_id` si falta `brand_id`).
+- **Cartera de colaboradoras** (`brand_collaborators`, direccional: A→B no crea B→A ni acceso). Contactos por relación; notificaciones al contacto de la marca madre que origina la gestión (sin contacto válido, no se envía). Solo `owner` (`team.manage`) y `super_admin` agregan/quitan/editan; los demás solo consultan; la marca sale de la sesión. Solo se vincula una marca existente y `approved` (inexistente o no aprobada = 404 igual; varias = 409). No se crean marcas desde esta función. Sin RLS/privilegios para `anon`/`authenticated`: protege el chequeo de cada ruta.
+- **Agencia multimarca (Impulso Consulting)**, excepción acotada: org con `organizations.settings.agency_portal = true`; solo su owner activo administra sus marcas (`metadata.managed_by_org_id`, nacen `approved`), vía `resolveAgencyBrandAccess()` y cookie `scence_active_brand`. Nunca por nombre.
+- **Mensualidad (todas las marcas):** sin barrera de pago al entrar ni al crear borradores. `brandHasCurrentSubscription()` se exige solo en «Enviar a aprobación» (402 → checkout PayPal de esa marca, US$79/mes, plan `agency`; solo el owner paga). Vigentes: mensualidad `agency`, suscripción Basic/Growth/Pro con acceso, o `subscription_plan_override`. **El pago nunca activa ni aprueba**: solo `super_admin`. Sin doble cobro (409 `ALREADY_ACTIVE`); solo el backend pasa la suscripción a `active` leyendo PayPal.
 
-"¿Esto hace que una marca tenga más razones para seguir pagando?"
+### 6.5 Influencers: privacidad y emails
+- Una marca solo ve influencers con relación comprobable (postularon, invitadas, participaron, `campaign_brands`, `brand_influencers`); no hay catálogo global para marcas. Fuente única `getBrandInfluencerScope()` en todo endpoint de marca que liste, busque, abra, invite o agregue influencers. Nunca ven email, teléfono, WhatsApp ni `user_id`: toda respuesta a marcas con `influencer` pasa por `src/lib/brand-influencer-privacy.ts`.
+- RUT de influencer: privado y opcional, solo en `influencer_private_data` (service role); validar/formatear con `src/lib/rut.ts`. Lo leen/escriben la propia influencer, el Super Admin (ficha, solo lectura) y la exportación. **Exportación de campaña (`/influencers/export`): solo Super Admin**; ninguna marca descarga datos personales. Columnas: `src/lib/campaign-export-columns.ts`.
+- Teléfonos visibles: `PhoneLink`/`whatsappUrl()`, sin `tel:` sueltos.
+- **Influencer inactiva (`is_active=false`) = cero emails.** La barrera vive en `getResend()` (`lib/resend.ts`); nunca otro cliente Resend. Envíos a marcas/admin/CRM/cuentas declaran `emailAudience(...)`. Falla cerrado.
 
-No construir funcionalidades solamente porque sean técnicamente interesantes.
+### 6.6 Ubicación
+`public.locations` es la única fuente (`country → region → [city] → commune → place`; `level` ≠ `type`). Geografía global sin dirección; `place` con dueño, `address`, `lat/lng`, `is_private`. Consumidores guardan solo `location_id` → place; nunca country/region/commune/address en paralelo (usar `location_breadcrumb()`). Soft delete con `is_active`. `/api/locations` solo admin de plataforma; consumidores no-admin filtran por dueño + `is_private`. Jerarquía validada por la base. Compartir un `place` entre marcas = fila en `location_brand_shares` (solo propietaria o Admin; la receptora lo usa en sus campañas, solo lectura —el trigger `campaign_locations_validate` lo permite si no es privado ni está desactivado—; no da acceso a campañas ni datos de otra marca; `granted_by` lo fija el servidor; retirar el acceso no rompe campañas históricas). Domicilios de influencer = `place` privado `influencer_home` (varios, uno `is_primary`); solo la dueña y Admin los leen; el envío guarda su dirección en `barter_benefits.shipping_location_id` y cambiar la principal no lo altera. Leads CRM: `crm_leads.location_id` es el vínculo; los textos originales se conservan.
 
-Priorizar funcionalidades que permitan:
+### 6.7 Facturas
+Propiedad = `invoices.owner_brand_id` (no `organization_id` ni `brand_id`). Autorizar con `authorizeInvoice()` / `decideInvoiceAccess()` (`src/lib/invoice-access.ts`). `owner_brand_id` NULL = ninguna marca accede; nunca asignarlo por suposición. Propiedad derivada de la sesión (payload ajeno → 403); sin acceso → 404. Acceso compartido = `invoice_shares` activa, solo lectura. Escritura solo por service role.
 
-- conseguir clientes;
-- activar clientes rápidamente;
-- lograr que una marca ejecute su primera campaña;
-- conseguir que una marca vuelva a crear otra campaña;
-- aumentar campañas por cliente;
-- aumentar influencers activos;
-- reducir trabajo operativo;
-- demostrar resultados.
+### 6.8 Entregables y asistencia
+Fuentes únicas: `src/lib/deliverable-status.ts` y `src/lib/attendance-state.ts`; prohibido recalcular «completado/pendiente/vencido/confirmada» con listas propias. La confirmación de la influencer no requiere aprobación (`attendance_response` manda; trigger deriva `status`). Toda consulta que alimente `isDeliverableComplete` selecciona `attendance_response`. No modificar filas «sin respuesta vencida» ni aprobadas legadas sin autorización. Plan Pro: `isCommitmentSatisfied` en `influencer-pro-commitment.ts`.
 
-## 3. SCENCE no debe depender de perseguir clientes
+### 6.9 Perfil legal y NDA
+Captura y edición solo en `/brand-settings/organization` (Perfil legal); Mi perfil y el modal del NDA no los piden. Fuentes: `brands.rut`, `brands.address_*`, `brands.name`, y `profiles.full_name/signer_rut/signer_role` del owner firmante; no usar `organizations.tax_id` ni `brands.metadata.rut/legal_name`. Reglas solo en `src/lib/brand-legal-profile.ts`. `PATCH /api/brand/documents/[id]` firma con datos registrados (ignora `signer_*`; falta algo → 422 `LEGAL_PROFILE_INCOMPLETE`); un NDA firmado no se modifica.
 
-El producto debe hacer visible qué necesita hacer el cliente.
+### 6.10 Soporte
+Un solo módulo. Estados `open|in_progress|closed`; prioridad `P0`–`P3`. «Todos» = solo activos. Responder (`saveAdminReply`) pasa Abierto → En progreso; el cierre es manual; el correo sale por `deliverReplyEmail` → `getResend()`. Plantillas en `support_reply_templates`; respuesta masiva exige `confirm:true`. «Actualizar Pro» crea tickets (`category='pro_followup'`) sin enviar correo.
 
-Ejemplos:
+## 7. Documentación y estado
 
-Si una marca tiene postulaciones pendientes → SCENCE debe hacerlo evidente.
-
-Si una campaña necesita aprobación → SCENCE debe indicarlo.
-
-Si faltan entregables → SCENCE debe mostrarlo.
-
-Si una campaña está detenida → SCENCE debe señalarlo.
-
-El objetivo es reducir situaciones donde la fundadora tenga que escribir manualmente:
-
-"¿Pudiste entrar?"
-"¿Pudiste revisar?"
-"¿Pudiste aprobar?"
-"¿Pudiste crear la campaña?"
-
-SCENCE debe reemplazar ese seguimiento manual por producto.
-
-## 4. No entregar gratuitamente el valor estructural de SCENCE
-
-Las marcas pueden trabajar con influencers, pero SCENCE debe conservar el valor de la infraestructura que permite gestionar esa relación.
-
-SCENCE debe ser el sistema donde ocurre:
-
-- descubrimiento;
-- selección;
-- postulación;
-- aprobación;
-- brief;
-- contratos;
-- entregables;
-- seguimiento;
-- pagos;
-- métricas;
-- reporting;
-- historial.
-
-No diseñar flujos que conviertan a SCENCE en un intermediario fácilmente reemplazable.
-
-El objetivo no es "poseer" influencers.
-
-El objetivo es que tanto marcas como influencers encuentren valor en permanecer dentro de SCENCE.
-
-## 5. Network effect
-
-Cada influencer activa aumenta el valor potencial de SCENCE.
-
-Cada marca activa aumenta las oportunidades para las influencers.
-
-Cada campaña ejecutada genera datos y aprendizaje.
-
-Cada interacción debe fortalecer la plataforma.
-
-Pensar siempre: "¿Cómo hace esto que SCENCE sea más valioso a medida que crece?"
-
-## 6. Experiencia Apple / extrema simplicidad
-
-SCENCE debe sentirse simple.
-
-Antes de agregar una nueva pantalla, componente, configuración, estado o flujo, preguntar:
-
-- ¿Ya existe algo que haga esto?
-- ¿Podemos reutilizarlo?
-- ¿Podemos simplificarlo?
-- ¿Podemos resolverlo modificando la lógica existente?
-
-Regla: **REUTILIZAR > MODIFICAR > CREAR**
-
-No crear arquitectura nueva si la existente puede resolver el problema.
-
-## 7. Proteger el negocio
-
-La información debe estar correctamente separada entre ADMIN, MARCA e INFLUENCER.
-
-Nunca asumir que porque algo está oculto en frontend está protegido.
-
-Toda información sensible debe estar protegida también en backend/API.
-
-Especialmente:
-
-- briefs;
-- datos privados de campañas;
-- información de marcas;
-- información de influencers;
-- contratos;
-- pagos;
-- datos internos.
-
-## 8. Regla de visibilidad de campañas
-
-Las campañas no son globales.
-
-**Marca:** una marca solamente puede ver sus propias campañas.
-
-**Influencer:** una influencer puede ver campañas de marcas que estén publicadas/disponibles según las reglas existentes. Una influencer NO debe ver campañas personales de otras influencers. Una influencer NO debe acceder a briefs privados mientras su postulación esté pendiente.
-
-Pending:
-- información general de campaña
-- descripción pública
-- estado de postulación
-
-NO:
-- brief privado
-- PDF
-- contenido privado
-
-Approved:
-- acceso al brief completo
-- descarga del PDF
-
-**Admin:** acceso según permisos administrativos existentes.
-
-Nunca crear una arquitectura nueva para resolver esta regla si ya existen ownership, visibility, status y relaciones que permitan hacerlo.
-
-## 9. Aprender de los clientes
-
-Cada problema real de un cliente debe convertirse en aprendizaje de producto.
-
-No reaccionar solamente con un parche.
-
-Preguntar:
-
-- ¿Qué ocurrió?
-- ¿Por qué ocurrió?
-- ¿Podría ocurrir con otro cliente?
-- ¿Podemos evitarlo desde producto?
-- ¿Podemos automatizarlo?
-- ¿Esto afecta ventas o retención?
-- ¿Esto puede convertirse en una ventaja competitiva?
-
-## 10. No perseguir perfección técnica antes de validar negocio
-
-Cuando exista una decisión entre:
-
-A) construir una solución técnicamente sofisticada
-B) hacer un cambio pequeño que permita vender, validar o aprender
-
-preferir B cuando sea suficiente.
-
-SCENCE debe avanzar rápido.
-
-**MASSIVE ACTION > PERFECCIONISMO.**
-
-Pero massive action NO significa hacer cambios irresponsables. Significa:
-
-AUDITAR → DECIDIR → IMPLEMENTAR → VALIDAR → MEDIR → REPETIR.
-
-## 11. Regla anti-regresiones
-
-Antes de modificar una funcionalidad existente:
-
-1. Auditar cómo funciona actualmente.
-2. Identificar quién puede acceder.
-3. Identificar ownership.
-4. Identificar estados.
-5. Identificar APIs existentes.
-6. Identificar dependencias.
-7. Buscar casos existentes que puedan romperse.
-
-Después de modificar:
-
-1. Validar tipos.
-2. Validar el flujo principal.
-3. Validar permisos.
-4. Validar los casos de otros roles.
-5. Revisar el diff.
-6. Confirmar que solamente se modificó lo necesario.
-
-Nunca utilizar `git add -A` sin autorización explícita.
-
-Nunca hacer commit, push, deploy ni migration sin autorización explícita.
-
-## 12. Cuando haya un bug
-
-NO comenzar creando código.
-
-Primero responder:
-
-- ¿Cuál es la causa raíz?
-- ¿Existe ya una solución parcialmente implementada?
-- ¿Qué archivo controla realmente este comportamiento?
-- ¿Es frontend, backend, DB o permisos?
-- ¿Puede solucionarse con un cambio mínimo?
-
-Después proponer: archivos a modificar, causa raíz, cambio mínimo, riesgo, validación.
-
-## 13. Prioridad comercial
-
-Cuando la fundadora pregunte "¿Qué hacemos ahora?", priorizar:
-
-1. Algo que pueda generar ventas.
-2. Algo que permita cerrar un cliente.
-3. Algo que active un cliente existente.
-4. Algo que aumente retención.
-5. Algo que elimine trabajo manual.
-6. Algo que mejore el producto.
-7. Mejoras técnicas internas.
-
-No perder semanas construyendo funcionalidades que no tienen impacto comercial claro.
-
-## 14. Mentalidad de SCENCE
-
-Pensar siempre desde: abundancia, claridad, velocidad, simplicidad, valor, ventas, escala, resultados.
-
-Los problemas no son señales de fracaso. Son información para mejorar el producto.
-
-Cada bug puede revelar una oportunidad.
-
-Cada cliente puede revelar una necesidad.
-
-Cada campaña puede generar aprendizaje.
-
-Cada influencer puede aumentar el valor de la red.
-
-Cada marca satisfecha puede convertirse en recurrencia.
-
-## 15. Frase central
-
-SCENCE debe convertirse en: "El sistema que las marcas necesitan para gestionar influencer marketing de principio a fin."
-
-El objetivo final no es que SCENCE tenga muchas funcionalidades.
-
-El objetivo es que una marca piense: "¿Cómo hacía esto antes sin SCENCE?"
-
-## 16. Invariantes verificados (auditoría 2026-09-05/06)
-
-Verificados contra el schema real de Supabase y datos de producción. No re-derivarlos ni contradecirlos sin auditar de nuevo.
-
-### 16.1 Estado de participación en campaña
-
-`campaign_influencers.application_status` (`pending` | `accepted` | `rejected`) es la **única fuente de verdad**.
-
-**NUNCA escribir `campaign_influencers.status`.** Esa columna está tipada con el enum `campaign_status` (`draft | pending_approval | active | paused | completed | canceled`) — no acepta `inactive`. Escribirlo hacía fallar el UPDATE en silencio y dejaba postulaciones "pendientes" para siempre en campañas ya cerradas.
-
-Toda escritura con el admin client debe revisar `error` antes de continuar con el siguiente paso. Un UPDATE que falla y no se revisa deja la operación a medias.
-
-### 16.2 Autorización — una sola fuente
-
-Autorizar SIEMPRE con `organization_members`, vía `getUserRole()` (plataforma) o `resolveBrandAccess()` / `hasBrandPermission()` (marca).
-
-- **NUNCA usar `profiles.role` para autorizar.** No es fuente de autorización: solo dato de presentación, y `ensureOrg` lo sobrescribe. Llegó a haber 3 `super_admin` en `profiles` y 1 en `organization_members`.
-- **Nunca definir un `isAdmin()` local** en una ruta. Si falta el helper, importarlo.
-- Para campañas, el helper central es `authorizeCampaignBrandAction()`.
-- RLS está habilitado en las ocho tablas revisadas en DEV (2026-10-29); las rutas que usan service role omiten RLS: **su protección depende del chequeo de cada ruta**. La cifra histórica de rutas no es una medida actual de cobertura.
-
-### 16.3 Campañas privadas y Plan Pro
-
-`visibility = 'private'` **no** significa oculta. Significa "requiere Plan Pro para postular". Reglas:
-
-- Toda influencer VE las campañas privadas activas del marketplace (Términos Plan Pro, secc. 6).
-- Gratis: CTA "POSTULAR CON PRO" → `/inf-profile?tab=plan&return_campaign_id=<id>` → checkout PayPal existente. Pro: CTA "Postular".
-- Una **invitación rechazada** no bloquea ver ni postular a esa campaña. Una **postulación rechazada por la marca** sí se sigue ocultando.
-- `(campaign_id, influencer_id)` es UNIQUE: para re-postular sobre una invitación rechazada se **reutiliza la fila con UPDATE**, no se inserta.
-- Se excluyen del marketplace las campañas cuyo `created_by` corresponde a un `influencers.user_id` (campañas personales).
-
-### 16.4 Términos del Plan Pro son versionados
-
-`INFLUENCER_PRO_TERMS.version` se compara exacta contra `influencer_terms_acceptances.document_version` en `/apply` y en `/paypal/checkout`.
-
-**Al subir la versión, toda influencer con Pro activo queda bloqueada para postular a privadas** hasta aceptar la nueva. Usar `acceptCurrentInfluencerProTerms()` (llama al endpoint existente `POST /api/influencer/terms`) y reintentar; no duplicar esa lógica.
-
-### 16.5 Pagos
-
-PayPal es la única pasarela con datos reales. Stripe, MercadoPago y Oneclick no tienen ni una fila. **No crear checkouts nuevos**: el flujo Pro es `upgradeToPro()` → `/api/influencer/paypal/checkout` → `/api/influencer/paypal/complete`.
-
-Pro se deriva de `subscriptions` (`active`/`trialing`) + `influencers.metadata.manual_pro.active`, siempre vía `getInfluencerProStatuses()` / `isInfluencerPro()`.
-
-### 16.6 Creación de campaña
-
-Al agregar o tocar un campo en `POST /api/campaigns` o `POST /api/brand/campaigns`, **confirmar que entra al objeto del insert**, no solo al destructuring del body: `social_tags` se extraía y se descartaba en ambas rutas, y las etiquetas que escribía la marca se perdían sin error.
-
-La dirección de campaña vive en `metadata.address` y el lugar real del evento en `bookings`.
-
-### 16.8 Aviso de campaña disponible
-
-Una campaña se anuncia al roster cuando está **activa** y su `visibility` es `open` **o** `private`. `private` no es "oculta" (ver 16.3), así que también se anuncia; solo cambia el copy y el CTA, que lleva al flujo Pro → PayPal ya existente.
-
-- La fuente única de "a quién le falta el aviso" es `resolvePendingCampaignAnnouncement()`. Los tres puntos de entrada (activación, botón manual y contador del detalle) deben usarla: no duplicar el criterio.
-- La idempotencia la da `campaign_influencer_notifications`. Reactivar una campaña no reenvía correos.
-- Se respeta el opt-out `profiles.metadata.notification_preferences.public_campaigns_email`.
-- El envío recorre ~2.400 influencers en lotes de 100 (`resend.batch.send`): toda ruta que lo dispare necesita `maxDuration = 300`, o Vercel corta el envío a medias.
-- Resend no lanza excepción ante errores de API: hay que revisar `error` en cada envío.
-
-### 16.7 Verificación mínima antes de commit
-
-`npx tsc --noEmit`, `npx next lint` y `next build`. En un sandbox sin salida a `fonts.googleapis.com`, el build se valida con la fuente simulada (`NEXT_FONT_GOOGLE_MOCKED_RESPONSES`); el build real lo confirma Vercel al desplegar. La validación final del protocolo (sección 18, paso 9) añade `npm test`.
-
-### 16.9 Modelo de marcas y organizaciones (una marca = una organización técnica)
-
-**Modelo de negocio oficial** (decisión de la fundadora, 2026-10-22; reemplaza la redacción anterior de esta sección).
-
-- **SCENCE** es la plataforma administradora. Es la única que puede ver, crear, editar, aprobar, suspender y borrar marcas, y lo hace mediante permisos administrativos (`super_admin` vía `organization_members`), nunca por el nombre de una marca. SCENCE (plataforma) **no** es lo mismo que SCENCE SpA.
-- **Todo lo demás son marcas.** **SCENCE SpA es simplemente una marca de pruebas**: no es la plataforma, no es superior a las demás y **ninguna marca tiene privilegios especiales por su nombre**.
-- **Cada marca tiene su propio perfil** y puede consultar las marcas que ella misma registró, según los permisos correspondientes (Marca A registra X e Y; Marca B registra Z). Las marcas registradas pertenecen igualmente al conjunto global administrado por SCENCE. «A registró a X» solo indica quién la registró: no hace a A plataforma ni crea otra categoría de marca.
-- **Registro, confirmación de correo y aprobación son etapas distintas.** Toda marca pasa por la aprobación de SCENCE (`pending_approval` → `approved` | `rejected` | `suspended`). La aprobación cambia el estado de la marca; **no crea ni cambia una organización** (comprobado en `PATCH /api/brands/[id]`, solo `super_admin`).
-- **Quién registra:** los usuarios autorizados, **incluidas las influencers**, pueden registrar marcas. Registrar **no** concede `brand_manager` ni permisos sobre otras marcas. La persona que registra consulta lista, estado de aprobación y datos básicos de las marcas que registró; campañas, facturas, contactos privados e información interna solo con permiso explícito.
-- **Qué puede hacer una marca según su estado (el servidor lo aplica, no solo la interfaz):** `pending_approval`: completar perfil, ver estado y hacer los pasos de aprobación, sin funciones operativas; `approved`: lo que permitan su rol y plan; `rejected`: ver el resultado y pedir revisión, sin funciones operativas; `suspended`: operaciones bloqueadas, solo lo expresamente autorizado para resolver la suspensión u obligaciones pendientes. *(Aplicada en el servidor por `hasBrandPermission` → `brand-status-access.ts` en las rutas que la usan; comprobada para `influencer-report` con prueba el 2026-10-24. Cobertura del resto de rutas y RLS: ver pendiente 3.)*
-- **Borrado:** archivar o desactivar por defecto; el borrado definitivo es excepcional, autorizado y con revisión de dependencias. *(Hoy `DELETE /api/brands/[id]` es físico; pendiente 8.)*
-- **Toda marca nueva nace `pending_approval`**, también las colaboradoras de campaña: ser colaboradora no equivale a estar aprobada.
-- **Aislamiento:** las marcas no se ven entre sí; datos y permisos se separan por marca.
-- **Marcas colaboradoras persistentes (M5, decisión de la fundadora 2026-10-23).** Una marca puede registrar tantas marcas colaboradoras como necesite en `brand_collaborators` (fila = «A agregó a B»).
-  - **Direccional:** no crea la relación inversa ni jerarquía comercial; B no ve a A por eso.
-  - **Quién:** solo `owner` (permiso `team.manage`) y `super_admin` agregan o quitan colaboradoras. Los demás roles autorizados de la marca (`member`, `brand_manager`, `finance`, vía `brand.read`) solo **consultan** la lista de su propia marca. Para los usuarios de marca, toda operación exige marca `approved` según las reglas de acceso existentes (rol + estado, `hasBrandPermission`); `super_admin` conserva la excepción vigente de admin de plataforma (no depende del estado de la marca) y debe indicar `brand_id`. Para usuarios de marca, la marca sale de la sesión, nunca del payload.
-  - **Identidad:** Instagram normalizado (`normalizeInstagramHandle`). Se vincula únicamente una marca **ya existente y `approved`**, reutilizando su `brand_id`. Marca inexistente o no aprobada = misma respuesta 404, sin revelar existencia ni estado. Varias coincidencias = 409, sin fusión automática. **Crear marcas nuevas desde esta función está deshabilitado** hasta resolver M3 (`register_brand`).
-  - **Sin acceso cruzado:** colaborar no otorga acceso a campañas, influencers, facturas, contactos ni datos privados de la otra marca, y no toca membresías, roles ni `campaign_brands`. La lista expone solo `id`, nombre, logo e Instagram, **nunca el estado**. No hay backfill desde `campaign_brands` (colaborar en una campaña no implica relación permanente).
-  - La tabla no tiene políticas RLS ni privilegios para `anon`/`authenticated`; `service_role` solo `SELECT, INSERT, DELETE` (GRANT explícito en la migración). La protección real es el chequeo de cada ruta.
-  - **Estado de verificación (no marcar un nivel sin evidencia):**
-
-    | Estado | Situación (2026-10-23) | Evidencia |
-    |---|---|---|
-    | 1. Implementado en local | **Sí**, sin commit. Migración `20261023120000_brand_collaborators.sql`, API `GET/POST/DELETE /api/brand/collaborators`, helper `src/lib/brand-collaborators.ts`. Sin UI. | Archivos en el árbol de trabajo. |
-    | 2. Probado en local | **Parcial: solo simulado.** 13 pruebas puras/estáticas (`tests/brand-collaborators.test.ts`) + 29 que ejecutan los handlers reales sobre una **base en memoria simulada** (`tests/brand-collaborators-routes.test.ts`); `tsc --noEmit` y `next lint` sin errores. **Pruebas reales contra PostgreSQL: ninguna** (RLS, privilegios, claves foráneas, índices y concurrencia real sin verificar). `next build`: **no ejecutado** (el `node_modules` es de macOS y falta el binario SWC de Linux). | Salida de `node --test`, `tsc` y `next lint`. |
-    | 3. Verificado en Preview | **No.** Sin evidencia. | — |
-    | 4. Confirmado en producción | **No.** La migración no está aplicada en producción. En la rama DEV `dexpvoubiklgotuukrml` ya existe (`20261023151432 brand_collaborators`; comprobado el 2026-10-24: columnas, restricciones, índice y RLS coinciden con el archivo; `service_role` tiene además `REFERENCES`/`TRIGGER`/`TRUNCATE` por privilegios por defecto, a decidir antes de producción). | Consulta de solo lectura al catálogo de DEV. |
-
-**Cómo lo representa hoy el sistema** (comprobado en código y esquema el 2026-10-22). La organización técnica es un detalle de implementación, no un concepto de negocio.
-
-- Toda marca vive en su propia organización técnica `type='brand'` (crear con `provisionOrgForBrand()`), y su usuario tiene `organization_members` en esa org con `brand_id`. Hoy eso aísla a las marcas en RLS y rutas.
-- La organización técnica `Scence SpA` (`d23d88ee-…`, `type='agency'`) concentra la operación de plataforma (admin de plataforma, roster de influencers y campañas que opera SCENCE). Tiene 0 marcas. Su nombre **no** debe leerse como «la marca SCENCE SpA».
-- Las campañas pueden seguir en la org de la agencia; la marca accede por `brand_id` (`resolveBrandAccess` / `authorizeCampaignBrandAction`), nunca por `organization_id`.
-- **Quién registró una marca (auditado 2026-10-22):** `created_by` es el usuario de Auth que ejecutó la creación; **no** es una relación marca→marca ni identifica de forma uniforme al registrante (en un autorregistro es la propia dueña; en altas administrativas, un admin; en colaboradoras, quien las añadió). `POST /api/brand/brands` guarda además `metadata.invited_by_organization_id` (primera membresía por antigüedad, no necesariamente de marca) y `campaigns/[id]/brands` guarda `metadata.invited_by_brand_id` (la marca *de la campaña*); ninguna marca de producción probable tiene esos campos. Solo el flujo de influencer deja un vínculo fiable (`referred_by_influencer_id`). No existe clave marca→marca ni persona→marca uniforme. Detalle por flujo: `docs/audits/brand_model_hardening_proposal_2026-10-22.md` §3.
-- **Registro de marca:** `POST /api/auth/register-brand` crea el usuario y, vía `ensureBrandRow()`, la marca en `pending_approval` con su propia organización técnica. `POST /api/brand/register` no crea nada: confirma el acceso o vincula una invitación pendiente.
-- Migración 2026-09-23: 15 marcas separadas (mapeo en `ops.tenant_split_20260923`; 13 recibieron `subscription_plan_override='pro'` para preservar el plan que heredaban de suscripciones de influencers — decisión comercial pendiente).
-
-**Cifras: fuente y entorno (no mezclar).**
-
-| Fuente | Entorno | Estado de verificación | Cifras (2026-10-22, solo lectura) |
-|---|---|---|---|
-| Proyecto Supabase `xzzbishzfyovrladcaeb` (rama `main`) | Producción **probable** | Indirecta: único proyecto de la cuenta; 2.722 usuarios y 2.873 influencers; login el mismo día; sin datos `.invalid`. Falta confirmar que el `NEXT_PUBLIC_SUPABASE_URL` de producción en Vercel (valor oculto) apunta a este proyecto. | 71 marcas (61 `approved`, 10 `pending_approval`); 97 organizaciones `brand` y 28 `agency`; 19 campañas; 26 orgs `brand` y 28 orgs `agency` sin marca; 4 orgs con «gmail» en el nombre; las 71 marcas con `created_by` (27 usuarios distintos; 45 del usuario administrador) y 0 con `metadata.invited_by_organization_id`; 41 con `user_id` y 30 sin él. |
-| Rama `dexpvoubiklgotuukrml` (`campaign-locations-test`) | **Prueba, no producción** | Comprobada (rama de `xzzbishzfyovrladcaeb`; Vercel la rotula «NO produccion»). | 73 marcas (63 `approved`, 10 `pending_approval`); 2 con `created_by`. **No usar como cifra de producción.** |
-
-**Hechos comprobados sobre `Scence` e `Influencers.snc`** (producción probable; lectura):
-
-- `Scence` (`04eab544-…`, `approved`, creada 2026-07-26): usuario `hola@scence.cl`, sitio `scence.cl`, organización `Scence` con 2 miembros, 8 campañas vinculadas.
-- `Influencers.snc` (`fb04fffe-…`, `approved`, creada 2026-06-23): sin usuario ni contacto, organización `Influencers SCence` con 0 miembros, 7 campañas vinculadas y 1 factura borrador de 0 CLP.
-- 5 campañas incluyen a ambas marcas. Ninguna tiene `invited_by_organization_id`.
-- Existe una organización `SCENCE SpA` (`4dfdb20c-…`, `type='brand'`, creada 2026-06-26) con 0 marcas y 0 campañas; su slug alude a un id de marca (`3bf3ab62…`) que no existe en esa base.
-- Las suscripciones (muchas `incomplete`) cuelgan de la organización `Scence SpA` (agency), no de estas marcas.
-
-**Hipótesis (no comprobadas; no usar como regla).** `Influencers.snc` sería un registro operativo interno; `Scence` tendría la presencia comercial; la org `SCENCE SpA` (brand) sería un residuo de un registro anterior. **No se ha decidido** qué registro (si alguno) es la marca de pruebas SCENCE SpA; la fundadora indicó que no hace falta decidirlo ahora. No renombrar, fusionar ni borrar.
-
-**Pendiente de decisión o de verificación (no vigente ni implementado).** Detalle, SQL propuesto, riesgos y reversión: `docs/audits/brand_model_hardening_proposal_2026-10-22.md`.
-
-1. *Producción:* confirmar que `xzzbishzfyovrladcaeb` es la base de producción (valor de la variable en Vercel o consola del proveedor).
-2. *Linaje entre marcas:* `created_by` está en las 71 marcas (27 usuarios, 45 del usuario administrador) pero identifica a un **usuario**, no a una marca, y `invited_by_organization_id` e `invited_by_brand_id` están vacíos en todas: **no registra qué marca registró a cuál**. Falta una relación marca→marca explícita y su permiso de consulta (decisión de modelo). *M5 la implementa en local como `brand_collaborators` (direccional, ver arriba): migración sin aplicar y sin backfill histórico, por lo que las 71 marcas actuales siguen sin linaje.*
-3. *Estado de la marca:* `resolveBrandAccess` devuelve `brands.status` y `hasBrandPermission` aplica `brandStatusAllows` (`src/lib/brand-status-access.ts`): una marca `pending_approval`, `rejected` o `suspended` recibe 404 en las rutas que usan ese helper (probado en `influencer-report`, `tests/route-access-audit.test.ts`, 2026-10-24). Pendiente: auditar las rutas de marca que no usan el helper y RLS, que según la auditoría del 2026-10-22 no lee `brands.status` (sin re-verificar).
-4. *Quién registra marcas:* `POST /api/brand/brands` exige cualquier membresía y registra la «org del registrante» como la primera por antigüedad; no hay antiduplicados atómicos ni vínculo fiable persona→marca. La regla ya está decidida (influencers incluidas; sin `brand_manager` automático); falta el registro del registrante y la función atómica (P4, P6).
-5. *Aprobación:* las 14 marcas colaboradoras sin correo ya existentes están `approved` sin revisión de SCENCE; se revisan una a una (P8). La ruta ya crea las nuevas como `pending_approval` (corregido en local).
-6. *Organizaciones huérfanas y carrera:* cinco rutas crean la organización y luego la marca; un fallo o un registro simultáneo deja organizaciones sin marca (hoy 26 `brand` y 28 `agency`, 4 con «gmail»). No hay índice único de correo de contacto. Limpieza y corrección atómica requieren autorización.
-7. *RLS:* `user_can_access_brand` consulta `profiles` (contra §16.2) y conserva cláusulas heredadas; hay políticas de `brand_members` con rol `public`.
-8. *Borrado de marcas:* `DELETE /api/brands/[id]` es físico, con cascada amplia, y deja la organización y el usuario de Auth. Decisión: archivar por defecto (P7).
-9. *Permisos:* 148 de 154 rutas usan service role; la auditoría de este día cubrió las rutas de marcas, no todas.
-10. *Vinculación por correo no verificado:* `ensureBrandRow` vincula una marca sin dueño por correo; falta verificar si producción exige confirmar el correo.
-11. *Nombre confuso:* la org `agency` `Scence SpA` se lee como una marca; evaluar un nombre que indique «operación de plataforma» (cambio de datos no autorizado).
-12. *Migraciones sin aplicar:* `20261012230000`, `20261021120000`, `20261022120000` y `20261022150000` (esta última sin aplicar y sin revisar en base aislada); falta la comparación completa repo↔base.
-
-**Corregido en local (sin commit):** (a) la búsqueda por correo de contacto en `ensureBrandRow`, `POST /api/brand/brands` y `POST /api/campaigns/[id]/brands`, y por nombre en `influencer/owned-brands`, usa coincidencia exacta (`src/lib/email-match.ts`); antes `_`, `%` y `*` actuaban como comodines; (b) las marcas colaboradoras nuevas nacen `pending_approval`.
-
-
-### 16.10 Influencer inactiva = cero emails
-
-Una influencer con `is_active = false` no puede recibir ningún email enviado por SCENCE, independientemente del origen, campaña, reserva, términos, Pro, cron, webhook o acción administrativa que genere el envío.
-
-- La barrera final vive en `getResend()` (`lib/resend.ts` → `lib/inactive-influencer-email-guard.ts`) y se aplica a todo `emails.send` y `batch.send`. **Nunca crear otro cliente de Resend ni enviar emails por fuera de `getResend()`.**
-- Se evalúa al momento de enviar, no cuando ocurrió la acción: si la desactivan después de postular, aceptar términos o reservar, ningún email posterior sale.
-- Por defecto todo envío se trata como dirigido a influencer. Los envíos a marcas, admins, leads CRM o cuentas deben declarar `tags: [emailAudience('brand' | 'admin' | 'crm' | 'account')]`; así, si una marca comparte email con una influencer inactiva, se le sigue escribiendo **solo si la base confirma ese rol**.
-- Falla cerrado: si no se puede verificar, no se envía.
-- Los filtros `is_active` en las queries de cada ruta se mantienen (contadores exactos y mensajes claros al admin); no reemplazan la barrera.
-
-### 16.11 Ubicación = `locations` (fuente única)
-
-`public.locations` es la **única fuente de verdad de ubicación**. Una sola tabla autorreferenciada (`parent_id`):
-`country → region → [city opcional] → commune → place`.
-
-- `level` = nivel jerárquico. `type` = categoría del lugar (solo `place`). No mezclar.
-- Geografía (country…commune) = catálogo global, `organization_id NULL`, sin dirección ni coordenadas. Una comuna existe **una vez por región** (cuelgue de la región o de una ciudad).
-- `place` = lugar físico: dueño (`organization_id` + `brand_id`/`owner_influencer_id`), `address`, `lat/lng`, `is_private`. `influencer_home` siempre privado.
-- La jerarquía la valida la base (`locations_validate_hierarchy`). No duplicar la validación como fuente de verdad en la app.
-- Sin DELETE: soft delete con `is_active` (bloqueado si hay hijos activos).
-- `/api/locations` es solo admin de plataforma (`isPlatformAdmin`). Incluye domicilios privados: cualquier consumidor no-admin debe filtrar por dueño + `is_private`.
-- Consumidores (brands, campaigns, bookings, events) guardan **solo `location_id` → place**. Nunca volver a guardar country/region/city/commune/address en paralelo. País/región/comuna se derivan con `location_breadcrumb()`.
-- `brand_locations` se migró a `locations` y se eliminó (2026-10-28; respaldo `ops.backup_brand_locations_20261028`). Puntos de venta = places `type='store'` con `brand_id`; enlaces e-commerce = `brands.metadata.ecommerce_links` (no son lugares físicos).
-
-### 16.12 Facturas: propiedad, aislamiento y acceso compartido
-
-La propiedad de una factura es `invoices.owner_brand_id` (migración `20261022120000`, pendiente de aplicar tras revisión). **No** es `organization_id` (organización contable) ni `brand_id` (marca receptora/pagadora).
-
-- Autorizar SIEMPRE con `authorizeInvoice()` / `decideInvoiceAccess()` (`src/lib/invoice-access.ts`); toda ruta de facturas la usa. No reintroducir comparaciones por `organization_id`.
-- `owner_brand_id` NULL (SCENCE o histórica) = ninguna marca accede. **Nunca** asignar propietario por suposición; solo por decisión de un administrador, con evidencia.
-- La propiedad la deriva el servidor de la sesión; un payload con otra marca u organización se rechaza (403).
-- Sin acceso → 404 (no revela existencia). Con lectura pero sin permiso para la acción → 403.
-- Acceso compartido = fila activa en `invoice_shares`; solo lectura, nunca re-compartir. `void` y `mark_overdue` son exclusivos de SCENCE.
-- `invoices` e `invoice_line_items` solo se escriben por rutas con service role; la lectura directa queda reservada al admin de plataforma.
-
-### 16.13 Roles de marca: solo owner y member (2026-10-26)
-
-Una marca tiene **dos** roles: `owner` (`organization_members.is_owner`) y `member`. No existen `brand_manager` ni `finance` como roles de marca.
-
-- `member` = operación completa (campañas, postulaciones, influencers, lugares, reportes) **y facturación/finanzas de su propia marca** (`billing.*`, `financial_document.*`; actualizado 2026-10-26). `owner` = además equipo, datos de la marca y documentos legales: **solo `owner` firma NDA** (`legal_document.manage`) y paga el plan de suscripción (PayPal `checkout`/`complete`, `brand.manage`). `void` y `mark_overdue` de facturas siguen siendo exclusivos de SCENCE. Fuente: `src/lib/brand-permissions.ts`.
-- Valores heredados en la base (`brand_manager`, `finance`, `member`) se **normalizan** con `normalizeBrandRole()`; todo no-owner se guarda en `organization_members.role` como `brand_manager` (igual que el trigger). `finance` no concede acceso a una marca.
-- Invitar, reenviar y cambiar rol pasan por `ensureBrandMembership()` y solo aceptan `member`; reenviar nunca baja permisos existentes.
-- La migración `preserve_brand_member_role_sync` se retiró: no se aplica. No re-crearla.
-- El enum `user_role` y los datos existentes no se tocaron; limpiarlos requiere migración y aprobación explícita. Los roles de plataforma (`super_admin`, `influencer`, `finance` de nómina) no cambian.
-
-### 16.14 Asistencia y KPI de entregables: una sola lógica (2026-10-29)
-
-- **Fuente única:** `src/lib/deliverable-status.ts` (`isDeliverableComplete`, `isDeliverableOverdue`, `isAttendanceConfirmed`, `effectiveDeliverableStatus`, `isAwaitingContentReview`, `isContentRejected`) y `src/lib/attendance-state.ts` (`getAttendanceState`, plazo). **Prohibido** recalcular «completado», «pendiente», «vencido» o «confirmada» con listas de estados propias o con `attendance_response === 'confirmed'` suelto.
-- **La confirmación de la influencer NO requiere aprobación.** `attendance_response` (`confirmed`/`declined`) manda; `status` deriva de ella (trigger `trg_campaign_deliverables_attendance_status`: confirmed → approved, declined → rejected). El equipo no aprueba ni rechaza asistencia.
-- **Estados reales en PROD:** confirmada (`approved` + respuesta); declinada (`rejected` + respuesta); **sin respuesta vencida** (`rejected`, `attendance_response` NULL: la marcó el cron `expire-attendance-confirmations`; es un hecho legítimo, no un error, y no se «repara»); aprobada legada sin respuesta (aprobación manual anterior a la regla; cuenta como completa). No modificar estas filas sin autorización.
-- **Toda consulta que alimente `isDeliverableComplete` debe seleccionar `attendance_response`** (la omisión causó el falso 50 %/pendiente/vencida de Diego Bravo). Lo vigilan `tests/attendance-single-source.test.ts` y `tests/deliverable-kpi-and-privacy-regression.test.ts`.
-- `campaign_deliverables.progress` sigue al status por trigger (`approved/published/completed` → 100; el trigger escucha también `attendance_response`, migración `20261029140000`, aplicada solo en DEV hasta validar); ningún KPI lo lee.
-- **Plan Pro (decidido 2026-10-29):** `influencer-pro-commitment.ts` (`isCommitmentSatisfied`) no cuenta como obligación pendiente una asistencia declinada o vencida sin respuesta; el contenido sin entregar o en revisión sigue bloqueando cancelar/desactivar. Probado en `tests/influencer-pro-commitment-attendance.test.ts`.
-
-### 16.15 Perfil legal de marca y NDA: un flujo, una fuente por dato (2026-11-02)
-
-Causa raíz del NDA de THE COLOR RUN: el RUT personal y el cargo se pedían en dos lugares (modal del NDA y Mi perfil) y la firma validaba contra una tercera fuente, sin decir qué faltaba. Decisión de la fundadora: **un solo flujo y una sola fuente por dato.**
-
-- **Captura y edición: solo `/brand-settings/organization` (Perfil legal).** Empresa (RUT, domicilio legal) y representante legal (nombre, RUT personal, cargo). El bloque del representante lo ve y lo edita solo el owner (que es el representante legal). **Mi perfil y el modal del NDA no piden esos datos.**
-- **Fuentes de verdad:** RUT empresa = `brands.rut`; domicilio = `brands.address_street/city/region/country` (+ número); razón social = `brands.name`; representante = `profiles.full_name`, `profiles.signer_rut`, `profiles.signer_role` **del owner que firma**. `organizations.tax_id` y `brands.metadata.rut/legal_name` **no** son fuentes de nada de esto: no leerlos ni escribirlos.
-- **Una sola definición de reglas:** `src/lib/brand-legal-profile.ts` (qué se exige, etiquetas, domicilio, copia al firmar). No volver a escribir listas de obligatorios en rutas ni componentes; importar el helper.
-- **NDA:** `PATCH /api/brand/documents/[id]` firma solo con los datos registrados; el cuerpo trae únicamente `accepted` y cualquier `signer_*` se ignora. Solo el owner firma (`legal_document.manage`, sin cambios). Si falta algo responde 422 `LEGAL_PROFILE_INCOMPLETE` con `missing[]` (clave, etiqueta, sección) y `fix_url`; la pantalla lista lo que falta y enlaza a Organización. Nunca se firma automáticamente.
-- **Copia histórica al firmar:** `content_snapshot` renderizado, `signer_*` del documento y `metadata.signed_legal_data` (empresa y representante). Un NDA firmado no se modifica ni se re-firma; los NDA firmados antes de esta fecha conservan su `content_snapshot` y `signer_*` (no tienen `signed_legal_data`, y no se rellenan).
-- **Facturación/colaboración:** `collaboration-opportunities` exige `brands.rut` (antes `metadata.rut/legal_name`, que ningún formulario escribía).
-- Pruebas: `tests/brand-legal-profile.test.ts` (rutas reales sobre base en memoria + guardias estáticas contra reglas duplicadas).
-
-### 16.16 RUT de influencer, exportación de campaña y WhatsApp (2026-11-02)
-
-- **RUT de influencer: dato privado, opcional, en `influencer_private_data` (tabla aparte, NO columna de `influencers`).** Varias rutas devuelven `select('*')` de `influencers` a marcas y `anon` tiene SELECT en esa tabla; una columna `rut` ahí se filtraría. La tabla no da privilegios a `anon`/`authenticated`: solo service role. Forma guardada `12345678-5`; validar y formatear solo con `src/lib/rut.ts`.
-- **Actualización 2026-11-03:** el campo del perfil formatea al escribir (`formatRutInput`) y valida el dígito verificador; el RUT **no** aparece en el resumen «Información personal» ni en tarjetas/listados (solo en el campo editable). `rut` es columna **por defecto** de la exportación. El Super Admin lo ve en solo lectura en la ficha de la influencer vía `GET /api/influencers/[id]/rut` (`isPlatformAdmin`; marcas e influencers 403). `influencer-report` ya no consulta email ni teléfono. Sin cambios de tablas ni RLS.
-- **Quién lo lee/escribe:** la propia influencer (`GET/PUT /api/influencer/rut`, la influencer sale de la sesión, nunca del cuerpo) y, **solo en la exportación de campaña**, que es **exclusiva del Super Admin** y solo de participantes aceptadas (decisión de la fundadora, 2026-11-02). No agregar el RUT a otra ruta sin autorización.
-- **Exportación (`GET /api/campaigns/[id]/influencers/export`): SOLO Super Admin (`isPlatformAdmin`); ninguna marca descarga datos personales de influencers, ni de sus propias campañas (403; el botón solo aparece en el portal admin). Antes la podía descargar la marca dueña con `report.read`: ya no.** Parámetros `filter` (`confirmed` por defecto | `approved` = aceptadas sin confirmar | `all`), `columns`, `format` (`xlsx` | `csv`). Columnas: lista cerrada en `src/lib/campaign-export-columns.ts` (fuente única de API y pantalla). Asistencia y entregables salen de `attendance-state.ts` / `deliverable-status.ts`. Sin parámetros, mismas columnas históricas (se retiró la columna constante «Estado: Seleccionada»).
-- **WhatsApp:** `PhoneLink` (`src/components/ui/PhoneLink.tsx`) sobre `whatsappUrl()`; usarlo en todo teléfono visible, sin `tel:` sueltos. No cambia quién ve el teléfono.
-- **Privacidad hacia marcas (2026-11-02):** una marca ve a las influencers que postularon, participaron o están en su roster, pero **nunca** su email, teléfono, WhatsApp ni `user_id`. Toda respuesta a marcas que embeba `influencer` pasa por `src/lib/brand-influencer-privacy.ts` (`scrubCampaignInfluencers` en `GET /api/campaigns/[id]` rama de marca; `scrubInfluencerRelation` en canjes, donde solo el Super Admin conserva el email). El ranking de marca no devuelve `user_id`: envía `has_account` (booleano) y `InfluencerRanking` usa `has_account ?? Boolean(user_id)`. Pruebas: `tests/brand-influencer-privacy.test.ts`. Rutas que usan el email solo para enviar correos (avisos, confirmación de asistencia) no lo devuelven.
-- Pruebas: `tests/influencer-rut-export-whatsapp.test.ts`. Migración `20261102120000_influencer_private_data.sql`: aplicada en DEV y en producción (2026-11-02). Código del RUT en producción desde 2026-11-03 (PR #133).
-
-### 16.17 Privacidad de influencers hacia marcas (2026-11-02)
-
-Una marca (owner o `member`) **solo** ve influencers con relación comprobable con ella: postularon, fueron invitadas o participaron en sus campañas (cualquier estado, incluida rechazada), están en campañas donde colabora (`campaign_brands`) o en su roster (`brand_influencers`). **No existe catálogo global para marcas.** `brand_collaborators` no concede acceso. Super Admin conserva acceso global.
-
-- **Fuente única:** `getBrandInfluencerScope()` (`src/lib/brand-influencer-scope.ts`). Todo endpoint de marca que liste, busque, abra, invite o agregue influencers debe usarla (hoy: `brand/influencers`, `/ranking`, `/[id]`, `/communes`, `brand/campaigns/[id]/invite`, `campaigns/[id]/influencers` POST/PATCH). No recalcular el alcance con consultas propias.
-- **Exportaciones:** solo Super Admin (ver 16.16).
-- **RLS (migración `20261102130000_brand_influencer_privacy_rls.sql`, aplicada en DEV y producción):** `influencers` y `campaign_influencers` se leen por relación (`can_view_influencer`, `can_view_campaign_participants`, `current_user_brand_ids`, `is_platform_super_admin`); sin escrituras para `authenticated` (solo service role). **Aplicada también en producción (2026-11-02).**
-- **Verificado en DEV + app local (2026-11-02):** 44 comprobaciones reales (PostgREST directo con JWT de marcas de prueba y API local) sin fallos: marca A ve solo lo suyo, marca B 0, anon 0, Super Admin 153/153, inserciones/updates directos denegados, exportación 403 para marcas.
-- **Búsqueda:** marca: nombre/ubicación se resuelven en memoria sobre el alcance (antes un término corto como «a» daba 500 por URL demasiado larga en `.or()`). Admin (`/api/influencers`): en Postgres con `influencers.search_text` (nombre + país/región/ciudad/comuna, sin tildes, índice trigram, mantenido por triggers en `influencers` y `locations`; sin email) + `email`, paginada en base. Migración `20261102140000_influencer_search_text.sql`: aplicada en DEV y en producción (2026-11-02).
-
-### 16.18 Agencia multimarca: Impulso Consulting (decisión de la fundadora, 2026-11-03)
-
-**Excepción acotada a §16.9** para permitir la administración multimarca de Impulso Consulting (IC). No abre permisos a otras marcas: el resto del modelo (aislamiento, estados, `pending_approval` para marcas normales) no cambia.
-
-- **IC es una agencia.** Su organización lleva `organizations.settings.agency_portal = true` (dato, no nombre: ninguna marca tiene privilegios por su nombre). Solo el **owner activo** de esa organización administra: sus propias campañas (marca IC) y las marcas que registre. Un miembro no-owner de IC, otra agencia o cualquier marca normal **no** ganan acceso.
-- **Marcas administradas:** `POST /api/brand/brands` por el owner de la agencia crea la marca (organización técnica propia, como siempre) con `brands.metadata.managed_by_org_id = <org de la agencia>` fijado en servidor. Nace `approved` (crear marcas es gratis y la revisión de SCENCE recae en cada campaña). No se crean membresías sobre ellas: el acceso lo decide `resolveAgencyBrandAccess()` (`src/lib/agency-brands.ts`) y siempre se valida en servidor.
-- **Marca activa:** cookie `scence_active_brand` (`POST /api/brand/agency`). `resolveBrandAccess()` solo la respeta si la agencia del usuario administra esa marca; si no, se ignora y rige el flujo normal. `GET /api/brand/agency` lista las marcas y su mensualidad.
-- **Mensualidad independiente por marca:** $69.900 CLP al mes, cobrados por PayPal en USD (monto fijado en el plan de PayPal `PAYPAL_AGENCY_PLAN_ID`, creado con `scripts/create-paypal-plans.mjs --agency-usd=<monto>`; TRIAL ×3 = compromiso inicial de 3 mensualidades y luego sigue mensual). Plan `subscription_plans.tier = 'agency'` (migraciones `20261103120000`/`20261103120100`). Cada pago mensual habilita 1 mes de campañas ilimitadas **de esa marca**. Una suscripción nunca se comparte: `custom_id = org:plan:agency:brand_id`, `subscriptions.metadata.brand_id` y cada marca ya tiene su propia organización. IC también paga por su marca propia.
-- **Flujo:** crear marca → crear campaña (borrador gratis) → «Enviar a aprobación» → `PATCH /api/brand/campaigns/[id]` verifica `brandHasCurrentAgencyMonth()` de la marca **dueña de la campaña**; sin mensualidad responde **402** `AGENCY_SUBSCRIPTION_REQUIRED` y la interfaz abre el checkout (`AgencyPlanCard`, con el monto exacto en USD leído de PayPal vía `GET /api/paypal/checkout?tier=agency`); con mensualidad vigente pasa a `pending_approval` sin cobrar de nuevo → super_admin aprueba o rechaza → solo entonces es visible para influencers. **El pago nunca activa ni aprueba nada** (la marca no puede activar: 403).
-- **Vigencia:** suscripción `agency` activa/trialing con `current_period_end` vigente (gracia de 48 h solo mientras PayPal siga en ACTIVE) o cancelada con período pagado futuro; `past_due`/`incomplete`/`unpaid` no habilitan. Un override administrativo (`subscription_plan_override`) también habilita. Si el plan vence o falla la renovación, no se pueden enviar nuevas campañas hasta regularizar (las ya aprobadas no se tocan).
-- **Sin doble cobro:** checkout responde 409 `ALREADY_ACTIVE` si la marca ya tiene mensualidad vigente; `PayPal-Request-Id` determinista por marca (1 h); la suscripción se registra `incomplete` al crear el checkout y solo el backend la pasa a `active` leyendo ACTIVE en PayPal (`/api/paypal/complete` o webhook `BILLING.SUBSCRIPTION.*`/`PAYMENT.SALE.COMPLETED`); volver de PayPal no cuenta como pago. El ledger `subscription_payments` es único por `(gateway, gateway_payment_id)`.
-- **Alcance de la regla:** solo marcas de agencia (`isAgencyScopedBrand`); las demás marcas conservan su flujo y sus planes Basic/Growth/Pro. El portal no bloquea a las marcas de agencia por falta de plan (`agency_managed` en `GET /api/brand/me`).
-- **Ampliación a TODAS las marcas (decisión de la fundadora, 2026-11-03): sin barrera de pago al entrar.** Una marca aprobada ingresa al portal, accede a Campañas, crea y edita campañas y guarda borradores **sin pagar**. Antes el layout (`src/app/(brand)/layout.tsx`) redirigía a `/brand-settings/plan` y ocultaba el contenido cuando `has_active_subscription` era falso (y el registro aterrizaba en Planes); se eliminó. El middleware y el backend nunca exigieron suscripción para crear campañas. Ahora la compuerta `brandHasCurrentSubscription()` aplica a **todas** las marcas solo en «Enviar a aprobación» (402 → checkout PayPal de **esa** marca, US$79/mes, plan `agency`). Cuentan como vigentes: la mensualidad `agency`, una suscripción Basic/Growth/Pro existente con acceso y un override administrativo (las suscripciones existentes no se tocan ni se vuelven a cobrar). El pago deja la campaña en `pending_approval`; solo el super_admin aprueba y publica. El límite de campañas públicas del plan no bloquea borradores: se aplica al enviar a revisión. Solo el owner de la marca paga (un member recibe el aviso de pedírselo al owner). La suspensión comercial sigue limitando el acceso a Planes.
-- **Estado de verificación (2026-11-03):** Implementado en local. Probado: `tests/agency-multibrand.test.ts` y `tests/agency-paypal.test.ts` (handlers reales sobre base en memoria con PayPal **simulado**); `tsc`, `next lint` y `npm test` (824 pruebas) sin fallas. Migraciones aplicadas en **DEV** `dexpvoubiklgotuukrml` (organización de IC marcada `agency_portal`). **No probado con PayPal Sandbox real** (faltan `PAYPAL_CLIENT_ID/SECRET` y `PAYPAL_AGENCY_PLAN_ID` en `.env.local`), ni en navegador, ni en Preview; sin cambios en producción. Pendiente de decisión: tipo de cambio CLP→USD, y que el owner firme documentos legales de marcas administradas con su propio perfil (el NDA de cada marca la firma quien la administra).
-
-### 16.19 Soporte: orden, plantillas y Seguimiento Pro (2026-11-10)
-
-Un solo módulo, sin sistemas paralelos. Estados `open`/`in_progress`/`closed` (en pantalla Abierto/En progreso/Cerrado); prioridad `P0`–`P3` (editable por el admin).
-
-- **«Todos» = solo activos** (Abierto + En progreso); los cerrados son historial en su pestaña. Orden de activos: prioridad (P0→P3) y luego el más antiguo primero; cerrados, el más reciente primero.
-- **Responder** (`saveAdminReply`, `src/lib/ticket-reply.ts`) pasa Abierto → En progreso; un ticket en progreso o cerrado no cambia. El cierre es siempre manual. El correo sale solo por `deliverReplyEmail` → `getResend()` y su resultado queda en `ticket_replies.email_status/email_error`.
-- **Plantillas:** tabla `support_reply_templates` (crear/editar/eliminar desde Soporte; variables `{{nombre}}`, `{{plan_url}}`). Responder a varios (`POST /api/tickets/bulk-reply`) exige `confirm:true`, omite cerrados y no repite el mismo mensaje en 7 días.
-- **Seguimiento Pro:** «Actualizar Pro» (`POST /api/tickets/pro-followup`, `src/lib/support-tickets.ts`) crea un ticket normal (`category='pro_followup'`, a nombre de la influencer) por cada intento Pro pendiente sin ticket Pro activo; reutiliza los existentes sin modificarlos; índice único `tickets_pro_followup_open_uidx`. **Nunca envía correo al crearlos** y no hay cron. Influencers sin cuenta no pueden tener ticket (se cuentan aparte). «Cobro por verificar» no es un estado: el texto de las plantillas Pro/PayPal no asume que no hubo cobro.
-- **Asignación futura:** no implementada. Los admins son `organization_members` con rol de plataforma (`isPlatformAdmin`); bastará una columna `assigned_to` en `tickets`.
-- **Estado (2026-11-10):** implementado y probado en LOCAL; migración `20261110120000_support_reply_templates.sql` aplicada solo en DEV (transforma la `20261109120000`, que tampoco está en producción: aplicar ambas en orden). No verificado en Preview ni en producción.
-
-## 17. Modo SCENCE — forma de trabajo (permanente)
-
-La fundadora entrega **objetivos**, no instrucciones paso a paso. El agente analiza, decide lo obvio e implementa la solución más simple y correcta. Complementa las secciones 6, 11 y 12; el flujo completo de un requerimiento está en la sección 18.
-
-**PRIORIDAD ABSOLUTA: SIMPLICIDAD Y CAMBIOS MÍNIMOS (decisión de la fundadora, 2026-11-10).** SCENCE debe ser cada vez más simple, no más complicado. Complementa (no reemplaza) las reglas de abajo y la Regla Cero; no elimina ninguna regla de seguridad.
-
-- **Regla de parada:** si una solución sencilla exige demasiados cambios, o se invierte mucho tiempo o código en algo pequeño, **detenerse**, explicar por qué y proponer una alternativa más simple **antes de seguir**.
-- Sin sobreingeniería, refactorizaciones innecesarias ni auditorías repetitivas. No cambiar la interfaz ni diseños existentes sin autorización.
-- **No repetir pruebas ya verificadas** si el cambio no las afecta; mantener las validaciones necesarias (16.7 y sección 18).
-- **Formato de trabajo:** Problema → Causa → Solución mínima → Pruebas. La entrega final sigue el formato de abajo y el de la sección 18, paso 10.
-
-- **Auditar antes de cambiar:** entender cómo funciona hoy, cuál es la fuente de verdad y qué se puede reutilizar.
-- **Reutilizar antes de crear** (sección 6). Nada de componentes, tablas, APIs, migraciones, estados o configuraciones que el objetivo no necesite.
-- **Una sola fuente de verdad:** no duplicar datos ni crear estados paralelos.
-- **Simplificar:** si se resuelve eliminando código, eliminarlo. Menos código es mejor si logra lo mismo.
-- **Proteger lo que funciona:** no tocar funcionalidades no relacionadas. No mezclar problemas independientes; cambios pequeños y verificables.
-- **Legacy:** identificar consumidores reales; si no tiene y la limpieza está aprobada, se elimina. No mantener nada "por si acaso".
-- **Preguntar solo lo necesario:** decidir lo que se infiere del contexto. Detenerse solo ante decisiones de negocio o riesgo real sobre datos, dinero, usuarios, seguridad o comportamiento de negocio (Regla Cero).
-- **Datos de producción:** identificar los registros exactos, previsualizar, revisar dependencias y pedir aprobación antes de cualquier escritura destructiva o sensible.
-- **Antes de merge:** TypeScript, lint, build y el comportamiento relevante verificados (16.7). Commit, push, deploy y migraciones siguen requiriendo autorización explícita (sección 11).
-- **Revisión local y en Preview:** los cambios se revisan primero en `localhost:3000` y luego en Preview, antes de producción (sección 18, «Ruta de despliegue obligatoria» y «Entorno de desarrollo»).
-
-Formato de respuesta (breve): **RESULTADO** · **CAMBIOS** · **VERIFICACIÓN** · **RIESGOS / DECISIONES** (solo si existen) · **SIGUIENTE PASO** (una acción). Si no hizo falta cambiar nada, decirlo. No devolver listas de instrucciones para que la fundadora las repita. Al entregar un requerimiento, este formato se amplía como indica la sección 18 (paso 10).
-
-Prioridad: menos código, menos tablas, menos duplicación, menos estados, menos legacy, menos mantenimiento, más claridad.
-
-## 18. Protocolo permanente de implementación SCENCE
-
-Se aplica a cada requerimiento de la fundadora. **No reemplaza** las secciones 0, 11, 12, 16 y 17: las ordena en un flujo y las cita en vez de repetirlas. Si dos reglas chocan, prevalece la más estricta (Regla Cero y sección 11).
-
-**Flujo (en este orden). Un paso que no aplique se declara «No aplica» con su motivo; nunca se omite en silencio.**
-
-1. **REQUERIMIENTO.** Entender el objetivo, el resultado esperado y los criterios de aceptación. Preguntar solo por decisiones importantes que falten (sección 17).
-2. **AUDITORÍA** (solo lectura). Revisar código, arquitectura, portal, componentes, APIs, base de datos, permisos y RLS, documentación y regresiones potenciales. Aplican la sección 11 (antes de modificar) y la 12 (si es un bug). **No se modifica código antes de terminar la auditoría y definir el plan.**
-3. **PLAN.** Causa raíz, solución mínima, archivos afectados, riesgos y pruebas necesarias. Reutilizar > modificar > crear (sección 6). Si el cambio toca la Regla Cero (visibilidad, postulación, aprobación, briefs, datos de marcas o influencers, pagos, ownership o permisos), **el plan se presenta y se espera aprobación antes de implementar.**
-4. **IMPLEMENTACIÓN.** Solo lo que el requerimiento necesita; no mezclar funcionalidades ajenas (sección 17). Sin modificar producción.
-5. **DOCUMENTACIÓN.** Actualizar los documentos pertinentes (requerimientos, diseño funcional, arquitectura, registro de cambios) **en su fuente única**, sin crear copias. Las reglas de negocio viven en este archivo. Las fuentes por tipo de información y la nomenclatura están en `docs/00-MASTER/GUIA-DE-DOCUMENTACION_v1.0_2026-10-19.md` (índice vigente de fuentes; los documentos históricos conservan su fecha y no prevalecen sobre estas reglas). Hoy no existe un archivo de registro de cambios: no se crea uno sin aprobación; mientras tanto la entrega (paso 10) es el registro.
-6. **TESTING.** Ejecutar `npm test` y las pruebas de integración o específicas relevantes que existan. Las de integración solo contra su base de pruebas, nunca contra producción, y sin pasar claves por el chat (ver `tests/integration/run-crm-integration.sh`). **No se afirma que un test pasó si no se ejecutó.**
-7. **QA.** Revisar funcionalidad, UI, APIs, base de datos, permisos y RLS, casos límite, casos de otros roles y regresiones relevantes (sección 11).
-8. **SMOKE TESTS.** Flujos críticos en local o en un Preview seguro (definido en «Ruta de despliegue obligatoria»), según corresponda; los cambios se dejan listos para revisión local (sección 17). Sin autorización, **no** ejecutar acciones con efectos externos: correos reales (Resend, envío masivo del CRM), cobros (PayPal), mensajes (WhatsApp) ni escrituras en datos reales. Antes de cualquier smoke test que escriba datos, confirmar a qué base apunta el entorno (ver «Entorno de desarrollo»).
-9. **VALIDACIÓN FINAL.** TypeScript, lint, tests y build según el proyecto y los cambios (16.7, con la fuente simulada en sandbox), más la revisión del diff (sección 11). Lo que no pueda ejecutarse se declara con su motivo y queda **pendiente**.
-10. **ENTREGA.** Formato de la sección 17, ampliado: **RESULTADO** (terminado, incompleto o bloqueado, con su motivo; ver «Criterio de cierre») · **CAMBIOS** (archivos modificados y documentación actualizada) · **VERIFICACIÓN** (pruebas con PASS/FAIL, smoke tests) · **RIESGOS / DECISIONES / PENDIENTES** · **ESTADO** (etapa alcanzada: Localhost · Preview · Producción) · **SIGUIENTE PASO** (una acción). Debe quedar la trazabilidad requerimiento → archivos → documentación → pruebas → resultado.
-
-**Ruta de despliegue obligatoria: LOCAL → DEV (`staging`) → PROD (`master`).** Es el proceso oficial y único para todo requerimiento, corrección y mejora (decidido 2026-10-21). Ningún cambio pasa a una etapa sin superar la anterior; no se salta ninguna, tampoco por urgencia. Ordena los pasos 1 a 10 de arriba; no los reemplaza.
-
-1. **LOCALHOST** (`localhost:3000`): pasos 1 a 9 del flujo. Implementar el cambio, ejecutar tests, TypeScript, lint y build según corresponda, y probar la funcionalidad localmente. Sale con el cambio listo y revisado.
-2. **PREVIEW**: desplegar la versión candidata a la rama de pruebas y verificar la funcionalidad en el navegador antes de producción. Requiere autorización para el commit y el push de ese trabajo (sección 11). Dirección fija: `dev.scence.cl`, asignada en Vercel a la rama `staging`, que muestra siempre su último despliegue. Solo se declara «Verificado en Preview» lo que se abrió y comprobó en el navegador; si no, «Por verificar».
-3. **PRODUCCIÓN**: solo después de superar localhost y Preview, y **con autorización explícita para publicar**. Se publica únicamente desde `master`, tras un merge revisado; no se despliegan ramas de trabajo a producción. Las migraciones se revisan antes y se aplican con autorización propia: el mismo archivo de `supabase/migrations/` se aplica primero en DEV y después en producción, y toda migración incluida en el cambio debe estar aplicada en producción antes de publicar el código que la usa. Supabase registra cada migración con la fecha en que se aplica, por lo que la versión del historial puede no coincidir con el prefijo del archivo: la identidad de la migración es su nombre. **Después de publicar:** comprobación funcional en producción (sin efectos reales no autorizados) y actualización de la documentación y del estado del requerimiento (nivel «Confirmado en producción»).
-
-**Reglas inviolables de publicación (2026-10-29).**
-
-- Solo existen las ramas `staging` (DEV) y `master` (PROD). **Nunca crear ramas ni worktrees.**
-- **No hacer push a `master` sin haber validado antes el mismo cambio en DEV** (`staging` → `dev.scence.cl`, base `dexpvoubiklgotuukrml`). Publicar = merge `staging` → `master`; no commits directos a `master`, tampoco por urgencia.
-- **Migraciones:** primero DEV, verificadas con datos o con una prueba explícita; a PROD solo después de validar el código en DEV y con autorización propia, nunca antes del paso por `staging`.
-- Un despliegue en `READY` en Vercel no equivale a «verificado»: declarar la etapa alcanzada (Localhost · DEV · Producción) y qué se abrió realmente en el navegador.
-- Una instrucción de «publicar directamente» no autoriza saltarse DEV; si se recibe, avisar del conflicto con esta regla antes de actuar.
-
-**Preview seguro (definición).** Un Preview es seguro solo si cumple las tres condiciones: (a) usa una base de datos distinta de producción, comprobado por el ref del proyecto de Supabase y sin exponer secretos; (b) sus claves de terceros (correo, pagos, mensajería, scraping) están vacías o en modo de prueba; y (c) su acceso está protegido y no queda abierto al público. Si alguna no se puede confirmar, ese Preview se trata como conectado a producción: solo verificación visual, sin acciones que escriban datos ni envíen correos, cobros o mensajes.
-
-**Estado de configuración auditado 2026-10-29.**
-
-- El `.env.local` apunta a DEV `dexpvoubiklgotuukrml`; URL y refs de las claves JWT coinciden. `PAYPAL_ENV=sandbox`; claves de Resend y PayPal vacías. No confundir con `.env.local.respaldo-produccion`, que conserva claves reales, está ignorado por Git y no debe cargarse para pruebas.
-- `runtime-env.ts` y las barreras Capa A ya están en `master`. El estado anterior que las ubicaba solo en staging quedó obsoleto.
-- Vercel confirma `dev.scence.cl` → `staging`; el último despliegue de producción consultado corresponde a `master` `1c74f1f`. Esto verifica origen del despliegue, no todos los ajustes ni los datos de producción.
-- DEV redirigió al login de Vercel en navegador el 2026-10-29: protección observada. El acceso autenticado a la app sigue pendiente; la revisión automática rechazó generar un enlace temporal sin autorización específica.
-- Separación completa de variables remotas: pendiente. El historial DEV incluye `deliverable_progress_follows_status`, `attendance_status_invariant`, `invoice_ownership_and_sharing` y `restrict_influencers_rls`; esto no certifica paridad completa con PROD. No inferir paridad de esquemas por igualdad de commits.
-
-Un Preview solo se considera aislado si cumple las tres condiciones de «Preview seguro»; no afirmarlo sin comprobarlo. Detalle operativo de entornos y variables: `SETUP.md`, sección 7.
-
-**Proporcionalidad y revisión de seguridad.** Testing, QA y smoke tests (pasos 6 a 8) son **proporcionales al alcance y al riesgo** del requerimiento. **Toda prueba omitida se justifica por escrito en la entrega.** Los cambios de autenticación, autorización, RLS, facturación o permisos exigen además una **revisión de seguridad pertinente**, registrada en la entrega: rutas y APIs afectadas, chequeo de permisos en backend (no solo en frontend), RLS, y casos de los otros roles (secciones 7, 11 y 16.2).
-
-**Criterio de cierre.** Un requerimiento solo se declara **terminado** cuando cumple los criterios de aceptación **y** las verificaciones aplicables. Si quedan pruebas fallidas o pendientes, se declara **incompleto** o **bloqueado**, indicando el motivo y qué falta para cerrarlo.
-
-**Entorno de desarrollo: `localhost:3000`.** Es la dirección fija de desarrollo y de pruebas visuales (aplica al flujo anterior: implementar → probar en localhost → QA y smoke tests → revisar resultados → pedir aprobación antes de commit, merge o deploy).
-
-- **Repositorio y cambios:** trabajar en este repositorio siguiendo LOCAL → `staging` → `master`; no crear ramas ni worktrees, preservando todos los cambios existentes sin commit. No sobrescribir ni revertir cambios ajenos.
-- **Servidor:** antes de iniciarlo, comprobar si ya funciona en el puerto 3000 y reutilizarlo cuando corresponda. No iniciar servidores duplicados ni cambiar de puerto en silencio.
-- **Puerto ocupado por otro proceso:** identificarlo antes de actuar. No terminar procesos ni cambiar de puerto sin autorización.
-- **`localhost` no es base local:** usar `localhost:3000` no implica usar una base de datos local. Antes de cualquier operación que escriba datos, comprobar el destino de Supabase **sin exponer secretos** (solo el ref del proyecto, nunca claves).
-- **Producción:** nunca ejecutar pruebas que escriban datos en producción (sección 17, «Datos de producción»). Si el entorno apunta a producción, detener esas pruebas y comunicarlo.
-- **Base aislada no disponible:** si una prueba la requiere y aún no existe, indicar qué falta y detener **solo esa prueba**; continuar con las verificaciones locales que sí sean seguras.
-- **Herramientas:** no instalar Docker, cambiar dependencias ni incorporar herramientas nuevas como requisito del desarrollo habitual.
-- **Verificación visual:** no se declara «verificado visualmente» (nivel «Verificado en Preview» o equivalente local) algo que no se abrió y comprobó realmente en el navegador. Si no se abrió, se marca «Por verificar».
-
-**Reglas obligatorias**
-
-- No duplicar componentes, APIs, tablas ni documentación si se puede reutilizar lo existente (secciones 6 y 17).
-- Sin migraciones destructivas, cambios de permisos, despliegues ni acciones con efectos reales sin autorización explícita (sección 11).
-- Producción en **solo lectura** durante auditorías y verificaciones no autorizadas (sección 17, «Datos de producción»).
-- Separar siempre cuatro niveles: **Implementado · Probado** (ejecutado, con resultado) **· Verificado en Preview · Confirmado en producción.** Lo que no se verificó se marca «Por verificar».
-- Si una prueba falla: investigar la causa raíz; no ocultarla ni marcar el requerimiento como terminado.
-- Commit, push, merge o deploy solo con autorización para ese trabajo (sección 11); la autorización de uno no se extiende a los demás. Nunca `git add -A` sin autorización.
-- Si un cambio no es seguro o falta una decisión crítica: detenerse y consultar a la fundadora.
-- **Worktrees históricos:** no crear ni usar otros para este flujo; no borrar los existentes ni su trabajo durante una auditoría.
-- Trabajo solo documental: aplican los pasos 1, 2, 3, 5 y 10; los pasos 6 a 9 solo si hay algo que ejecutar, y nunca se declara ejecutado lo que no se ejecutó.
-
-## Regla final para Claude
-
-Antes de escribir código, piensa como:
-
-1. Product Manager
-2. Principal Architect
-3. Security Auditor
-4. Business Owner
-
-Primero protege el negocio.
-
-Después simplifica la experiencia.
-
-Después reutiliza lo existente.
-
-Después implementa el cambio mínimo.
-
-Y siempre pregunta: "¿Esto ayuda a que SCENCE se venda, se use y se mantenga?"
-
-Si la respuesta es no, cuestionar si realmente necesitamos construirlo.
+Cifras, estados de migraciones, evidencias por entorno y pendientes no viven aquí: se mantienen en `docs/` según la guía de documentación y en el histórico enlazado arriba.

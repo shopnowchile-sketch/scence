@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
 import { hasBrandPermission, isPlatformAdmin, resolveBrandAccess } from '@/lib/supabase/ensureOrg'
+import { isPlausibleEmail } from '@/lib/email-match'
 import { normalizeInstagramHandle } from '@/lib/brands/instagram'
 import {
   COLLABORATOR_BRAND_FIELDS,
@@ -17,7 +18,7 @@ import {
 // resolver la dependencia con `register_brand` (M3): no se importa
 // registerBrandAtomic a propósito.
 
-type Authorized = { admin: ReturnType<typeof createAdminClient>; userId: string; brandId: string }
+type Authorized = { admin: ReturnType<typeof createAdminClient>; userId: string; brandId: string; canManage: boolean }
 
 async function authorize(
   action: CollaboratorAction,
@@ -34,13 +35,14 @@ async function authorize(
   const admin = createAdminClient()
   const platformAdmin = await isPlatformAdmin(user.id, admin)
   const access = platformAdmin ? null : await resolveBrandAccess(user.id)
+  const canManage = hasBrandPermission(access, 'team.manage', 'operate')
   const decision = decideCollaboratorAccess({
     isPlatformAdmin: platformAdmin,
     // Rol Y estado de la marca (solo `approved` opera). team.manage = solo owner.
     access: access && {
       brandId: access.brandId,
       canRead: hasBrandPermission(access, 'brand.read', 'operate'),
-      canManage: hasBrandPermission(access, 'team.manage', 'operate'),
+      canManage,
     },
     action,
     requestedBrandId,
@@ -51,7 +53,22 @@ async function authorize(
     const { data: brand } = await admin.from('brands').select('id').eq('id', decision.brandId).maybeSingle()
     if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
   }
-  return { admin, userId: user.id, brandId: decision.brandId }
+  return { admin, userId: user.id, brandId: decision.brandId, canManage: platformAdmin || canManage }
+}
+
+const CONTACT_FIELDS = ['contact_name', 'contact_email', 'contact_phone'] as const
+
+function parseContact(body: Record<string, unknown>) {
+  const fields: Partial<Record<typeof CONTACT_FIELDS[number], string | null>> = {}
+  for (const key of CONTACT_FIELDS) {
+    if (!(key in body)) continue
+    const value = body[key]
+    if (value !== null && typeof value !== 'string') return null
+    const cleaned = typeof value === 'string' ? value.trim() || null : null
+    if (key === 'contact_email' && cleaned && !isPlausibleEmail(cleaned)) return null
+    fields[key] = cleaned
+  }
+  return fields
 }
 
 // GET /api/brand/collaborators[?brand_id=] — lista de colaboradoras de la marca.
@@ -61,13 +78,14 @@ export async function GET(req: NextRequest) {
 
   const { data: rows, error } = await auth.admin
     .from('brand_collaborators')
-    .select('collaborator_brand_id, created_at')
+    .select('collaborator_brand_id, created_at, contact_name, contact_email, contact_phone')
     .eq('brand_id', auth.brandId)
     .order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const ids = (rows ?? []).map(r => r.collaborator_brand_id as string)
-  if (!ids.length) return NextResponse.json({ data: [] })
+  const { canManage } = auth
+  if (!ids.length) return NextResponse.json({ data: [], canManage })
 
   const { data: brands, error: brandsError } = await auth.admin
     .from('brands')
@@ -77,23 +95,32 @@ export async function GET(req: NextRequest) {
 
   const byId = new Map((brands ?? []).map(b => [b.id as string, b]))
   const data = (rows ?? [])
-    .map(r => ({ added_at: r.created_at, brand: byId.get(r.collaborator_brand_id as string) ?? null }))
+    .map(r => ({
+      added_at: r.created_at,
+      brand: byId.get(r.collaborator_brand_id as string) ?? null,
+      contact_name: r.contact_name ?? null,
+      contact_email: r.contact_email ?? null,
+      contact_phone: r.contact_phone ?? null,
+    }))
     .filter(r => r.brand)
-  return NextResponse.json({ data })
+  return NextResponse.json({ data, canManage })
 }
 
 // POST /api/brand/collaborators  { instagram, brand_id? } — agrega una marca EXISTENTE.
 export async function POST(req: NextRequest) {
-  let body: { instagram?: unknown; brand_id?: unknown } = {}
+  let body: Record<string, unknown>
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
   // `null` es JSON válido pero no un objeto: sin esto, body.brand_id lanzaría un TypeError (500) antes de autenticar.
-  if (body === null) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   const auth = await authorize('manage', typeof body.brand_id === 'string' ? body.brand_id : null)
   if (auth instanceof NextResponse) return auth
+
+  const contact = parseContact(body)
+  if (!contact) return NextResponse.json({ error: 'Datos de contacto inválidos' }, { status: 422 })
 
   const instagram = normalizeInstagramHandle(body.instagram)
   if (!instagram) {
@@ -125,12 +152,39 @@ export async function POST(req: NextRequest) {
 
   const { error: insertError } = await auth.admin
     .from('brand_collaborators')
-    .insert({ brand_id: auth.brandId, collaborator_brand_id: target.id, created_by: auth.userId })
+    .insert({ brand_id: auth.brandId, collaborator_brand_id: target.id, created_by: auth.userId, ...contact })
   // 23505 = la relación ya existe (repetición o solicitud simultánea): idempotente.
   if (insertError && insertError.code !== '23505') {
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
+  if (insertError && Object.values(contact).some(Boolean)) {
+    return NextResponse.json({ error: 'Esta marca ya está en tu cartera. Edita su contacto en la lista.' }, { status: 409 })
+  }
   return NextResponse.json({ data: { brand: target }, created: !insertError }, { status: insertError ? 200 : 201 })
+}
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      typeof body.collaborator_brand_id !== 'string' || !UUID_RE.test(body.collaborator_brand_id)) {
+    return NextResponse.json({ error: 'collaborator_brand_id requerido' }, { status: 422 })
+  }
+  const auth = await authorize('manage', typeof body.brand_id === 'string' ? body.brand_id : null)
+  if (auth instanceof NextResponse) return auth
+
+  const contact = parseContact(body)
+  if (!contact || !Object.keys(contact).length) {
+    return NextResponse.json({ error: 'Datos de contacto inválidos' }, { status: 422 })
+  }
+  const { data, error } = await auth.admin.from('brand_collaborators')
+    .update(contact)
+    .eq('brand_id', auth.brandId)
+    .eq('collaborator_brand_id', body.collaborator_brand_id)
+    .select('id')
+    .maybeSingle()
+  if (error) return NextResponse.json({ error: 'No se pudo guardar el contacto' }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Relación no encontrada' }, { status: 404 })
+  return NextResponse.json({ success: true })
 }
 
 // DELETE /api/brand/collaborators?collaborator_brand_id=&brand_id= — quita la relación A → B.

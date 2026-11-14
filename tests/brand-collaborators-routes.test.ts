@@ -105,7 +105,7 @@ function withPgConstraints(db: Db, opts: { insertError?: PgError; fail?: Record<
 }
 
 type CallOpts = { user: string | null; db: Db; query?: string; body?: unknown; badJson?: boolean; insertError?: PgError; fail?: Record<string, string>; failCollaboratorBrandsRead?: boolean }
-async function call(handler: 'GET' | 'POST' | 'DELETE', o: CallOpts) {
+async function call(handler: 'GET' | 'POST' | 'PATCH' | 'DELETE', o: CallOpts) {
   ;(globalThis as any).__routeHarness = {
     user: o.user ? { id: o.user } : null,
     admin: withPgConstraints(o.db, { insertError: o.insertError, fail: o.fail, failCollaboratorBrandsRead: o.failCollaboratorBrandsRead }),
@@ -139,7 +139,7 @@ test('GET: solo expone id, nombre, logo e Instagram; nunca estado ni datos priva
   const r = await call('GET', { user: 'u-A-owner', db: freshDb() })
   for (const item of r.json.data as Row[]) {
     assert.deepEqual(Object.keys(item.brand).sort(), PUBLIC_KEYS)
-    assert.deepEqual(Object.keys(item).sort(), ['added_at', 'brand'])
+    assert.deepEqual(Object.keys(item).sort(), ['added_at', 'brand', 'contact_email', 'contact_name', 'contact_phone'])
   }
   const text = JSON.stringify(r.json)
   for (const secret of ['status', 'approved', 'privado.test', 'secreto', 'organization_id', 'user_id', 'website']) {
@@ -175,7 +175,7 @@ test('GET: super_admin debe indicar la marca; ve la lista de cualquiera; marca i
 
 test('GET: lista vacía → []; fila huérfana (marca borrada) se omite; errores de lectura → 500', async () => {
   const empty = freshDb(); empty.brand_collaborators = []
-  assert.deepEqual((await call('GET', { user: 'u-A-owner', db: empty })).json, { data: [] })
+  assert.deepEqual((await call('GET', { user: 'u-A-owner', db: empty })).json, { data: [], canManage: true })
   const orphan = freshDb(); orphan.brand_collaborators.push({ id: 'r9', brand_id: A, collaborator_brand_id: GHOST })
   assert.deepEqual(listedIds(await call('GET', { user: 'u-A-owner', db: orphan })), [B, F1].sort())
   assert.equal((await call('GET', { user: 'u-A-owner', db: freshDb(), fail: { failSelectOn: 'brand_collaborators' } })).status, 500)
@@ -417,4 +417,43 @@ test('DELETE: error al borrar → 500 y la relación sigue intacta', async () =>
   const db = freshDb(); const before = snapshot(db)
   assert.equal((await call('DELETE', { user: 'u-A-owner', db, query: `?collaborator_brand_id=${B}`, fail: { failDeleteOn: 'brand_collaborators' } })).status, 500)
   assert.deepEqual(db, before)
+})
+
+test('contactos: dos marcas guardan datos distintos para la misma colaboradora', async () => {
+  const db = freshDb()
+  const originalBrands = snapshot(db).brands
+  const body = { collaborator_brand_id: F1, contact_name: 'Contacto A', contact_email: 'a@example.test', contact_phone: '+56912345678' }
+  assert.equal((await call('PATCH', { user: 'u-A-owner', db, body })).status, 200)
+  assert.equal((await call('POST', {
+    user: 'u-B-owner', db, body: { instagram: 'marca_a', contact_email: 'b@example.test' },
+  })).status, 201)
+  // F1 ya está en la cartera de A. La relación de B con F1 es independiente.
+  db.brand_collaborators.push({ id: 'other-link', brand_id: B, collaborator_brand_id: F1 })
+  assert.equal((await call('PATCH', { user: 'u-B-owner', db, body: { ...body, contact_email: 'b-f1@example.test' } })).status, 200)
+  assert.equal((await call('PATCH', { user: 'u-B-owner', db, body: { ...body, brand_id: A } })).status, 403)
+  assert.equal((await call('PATCH', { user: 'u-A-member', db, body })).status, 403)
+  assert.equal((await call('PATCH', { user: 'u-A-owner', db, body: { ...body, contact_email: 'inválido' } })).status, 422)
+  const contactsFor = async (user: string) => (await call('GET', { user, db })).json.data
+  assert.equal((await contactsFor('u-A-owner')).find((row: Row) => row.brand.id === F1).contact_email, 'a@example.test')
+  assert.equal((await contactsFor('u-B-owner')).find((row: Row) => row.brand.id === F1).contact_email, 'b-f1@example.test')
+  assert.equal((await contactsFor('u-B-owner')).find((row: Row) => row.brand.id === A).contact_email, 'b@example.test')
+  assert.deepEqual(db.brands, originalBrands)
+})
+
+test('correo de colaboración: usa solo el contacto de la marca madre y omite emails inválidos', async t => {
+  const { notifyEligibleBrandsOfSponsorOpportunity } = await import('../src/lib/campaign-notifications.ts')
+  const { getResend } = await import('../src/lib/resend.ts')
+  const { isProductionRuntime } = await import('../src/lib/runtime-env.ts')
+  assert.equal(isProductionRuntime(), false, 'la prueba usa el cliente sin red')
+  const send = t.mock.method(getResend().emails, 'send', async () => ({ data: { id: 'simulated' }, error: null }))
+  const db = freshDb()
+  Object.assign(db.campaigns[0], { status: 'active', metadata: { collaboration_opportunity: { enabled: true } } })
+  Object.assign(db.brand_collaborators[0], { contact_email: 'correcto@example.test' })
+  Object.assign(db.brand_collaborators[1], { contact_email: 'inválido' })
+  Object.assign(db.brand_collaborators[3], { contact_email: 'otra-madre@example.test' })
+  const admin = makeAdmin(db, { projectColumns: true }) as any
+  assert.deepEqual(await notifyEligibleBrandsOfSponsorOpportunity('camp-A', admin), { sent: 1, failed: 0 })
+  assert.deepEqual(send.mock.calls.map(call => (call.arguments[0] as { to: string }).to), ['correcto@example.test'])
+  assert.deepEqual(await notifyEligibleBrandsOfSponsorOpportunity('camp-A', admin), { sent: 0, failed: 0 })
+  assert.equal(send.mock.callCount(), 1)
 })

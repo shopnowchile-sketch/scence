@@ -143,6 +143,23 @@ export function BrandOrgForm() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       toast.success('Organización actualizada')
+      if (isOwner && missingRepresentativeFields(representative).length === 0) {
+        const documents = await fetch('/api/brand/documents', { cache: 'no-store' })
+          .then(response => response.ok ? response.json() : null)
+          .catch(() => null)
+        const pendingNda = documents?.data?.find(
+          (document: { document_type: string; status: string }) =>
+            document.document_type === 'nda' && document.status === 'pending'
+        )
+        if (documents?.can_sign && documents.legal_profile_complete && pendingNda) {
+          const query = new URLSearchParams({ sign: pendingNda.id })
+          const campaign = searchParams.get('campaign')
+          if (campaign) query.set('campaign', campaign)
+          router.replace(`/brand-documents?${query}`)
+          return
+        }
+      }
+
       // Si veníamos del gate obligatorio (?complete=1) y ya quedó el
       // Instagram completo, limpiar el query param para que el aviso no
       // quede pegado en pantalla (el layout revalida el bloqueo aparte).

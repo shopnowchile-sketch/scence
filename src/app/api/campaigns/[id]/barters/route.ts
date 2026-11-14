@@ -48,8 +48,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Ordenar el historial de cada canje cronológicamente (asc). El email de la influencer es solo del Super Admin.
   const seeContact = await isPlatformAdmin(user.id, admin)
+  // Dirección de envío confirmada: SOLO Super Admin (coordina y comparte). Las marcas no la reciben:
+  // el SELECT no incluye shipping_location_id y aquí se agrega únicamente para Admin.
+  const shipAddr = new Map<string, { name: string; address: string | null }>()
+  if (seeContact) {
+    const ids = Array.from(new Set((data ?? []).flatMap((b: any) => (b.benefits ?? []).map((x: any) => x.id))))
+    if (ids.length) {
+      const { data: rows } = await admin.from('barter_benefits').select('id, shipping_location_id').in('id', ids).not('shipping_location_id', 'is', null)
+      const locIds = Array.from(new Set((rows ?? []).map((r: any) => r.shipping_location_id)))
+      const { data: locs } = locIds.length ? await admin.from('locations').select('id, name, address').in('id', locIds) : { data: [] as any[] }
+      const byLoc = new Map((locs ?? []).map((l: any) => [l.id, l]))
+      for (const r of rows ?? []) { const l: any = byLoc.get((r as any).shipping_location_id); if (l) shipAddr.set((r as any).id, { name: l.name, address: l.address }) }
+    }
+  }
   const normalized = (data ?? []).map((b: any) => ({
-    ...(seeContact ? b : scrubInfluencerRelation(b)),
+    ...(seeContact ? { ...b, benefits: (b.benefits ?? []).map((x: any) => ({ ...x, shipping_address: shipAddr.get(x.id) ?? null })) } : scrubInfluencerRelation(b)),
     campaign_benefits: campaign.campaign_benefits ?? [],
     history: [...(b.history ?? [])].sort(
       (a: any, z: any) => (a.created_at < z.created_at ? -1 : 1)

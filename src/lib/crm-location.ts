@@ -88,3 +88,52 @@ export function websiteFromEmail(email: string | null | undefined, companyName: 
   const label = flat(d.split('.')[0])
   return label.length >= 4 && flat(companyName).includes(label) ? `https://${d}` : null
 }
+
+type Crumb = { id: string; name: string; level: string }
+
+/**
+ * Nodo MÁS ESPECÍFICO del catálogo `locations` que describe al lead: comuna > región > país.
+ * Conserva los textos originales (no los toca) y NO inventa: si el nombre es ambiguo
+ * (misma comuna en varias regiones sin región que desempate) o no existe, baja al nivel
+ * siguiente que sí sea único; sin coincidencia única devuelve null.
+ */
+export async function resolveLeadLocationId(admin: Admin, input: LeadLocation): Promise<string | null> {
+  const clean = (v?: string | null) => (v ?? '').trim()
+  const country = clean(input.country), region = clean(input.region), commune = clean(input.commune)
+  const find = async (level: string, name: string) => {
+    const { data } = await admin.from('locations').select('id, name').eq('level', level).eq('is_active', true).eq('name', name)
+    return (data ?? []) as Array<{ id: string; name: string }>
+  }
+  const under = async (id: string, level: string): Promise<string | null> => {
+    const { data } = await admin.rpc('location_breadcrumb', { p_id: id })
+    return ((Array.isArray(data) ? data : []) as Crumb[]).find(c => c.level === level)?.id ?? null
+  }
+  try {
+    let regionId: string | null = null
+    if (region) {
+      let cands = await find('region', region)
+      if (country && cands.length > 1) {
+        const inCountry: typeof cands = []
+        for (const c of cands) { const cid = await under(c.id, 'country'); if (cid && (await find('country', country)).some(x => x.id === cid)) inCountry.push(c) }
+        cands = inCountry
+      }
+      regionId = cands.length === 1 ? cands[0].id : null
+    }
+    if (commune) {
+      let cands = await find('commune', commune)
+      if (regionId && cands.length > 1) {
+        const inRegion: typeof cands = []
+        for (const c of cands) if ((await under(c.id, 'region')) === regionId) inRegion.push(c)
+        cands = inRegion
+      } else if (regionId && cands.length === 1 && (await under(cands[0].id, 'region')) !== regionId) {
+        cands = [] // la comuna existe pero en otra región: contradicción, no se vincula
+      }
+      if (cands.length === 1) return cands[0].id
+    }
+    if (regionId) return regionId
+    if (country) { const c = await find('country', country); if (c.length === 1) return c[0].id }
+  } catch (error) {
+    console.error('[resolveLeadLocationId]', error)
+  }
+  return null
+}

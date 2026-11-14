@@ -42,8 +42,8 @@ test('el vínculo debe pertenecer a la campaña autorizada (no basta con autoriz
 
 test('una marca solo asocia lugares propios; uno ajeno responde como inexistente (404)', () => {
   const post = handlers(read('src/app/api/campaigns/[id]/locations/route.ts')).find(h => h.startsWith('POST'))!
-  assert.match(post, /if \(brandAccess\)/)
-  assert.match(post, /place\.brand_id !== brandAccess\.brandId/)
+  assert.match(post, /if \(brandAccess && /)
+  assert.match(post, /brandCanUseLocation\(admin, locationId, brandAccess\.brandId\)/)
   assert.match(post, /status: 404/)
 })
 
@@ -152,4 +152,38 @@ test('reversa: elimina solo lo creado por la migración', () => {
   const code = rollback.split('\n').filter(line => !line.trim().startsWith('--')).join('\n')
   assert.match(code, /DROP TABLE IF EXISTS public\.campaign_locations/)
   assert.doesNotMatch(code, /public\.(locations|campaigns|bookings)\b/)
+})
+
+test('compartir lugares: solo propietaria/Admin, granted_by desde la sesión y lugares privados excluidos', () => {
+  const lib = read('src/lib/location-sharing.ts')
+  assert.match(lib, /granted_by: actor\.userId/)
+  assert.match(lib, /place\.is_private\) return NextResponse\.json/)
+  assert.match(lib, /if \(actor\.ownerBrandId\) q = q\.eq\('brand_id', actor\.ownerBrandId\)/)
+  assert.match(lib, /if \(!place\.is_active \|\| place\.is_private\) return false/)
+  assert.match(read('src/app/api/brand/locations/[id]/shares/route.ts'), /authorizeBrandLocations\('location\.manage'\)/)
+  assert.match(read('src/app/api/locations/[id]/shares/route.ts'), /authorizeLocationsAdmin\(\)/)
+})
+
+test('envíos: el body nunca fija el dueño y la dirección debe ser de la influencer', () => {
+  const lib = read('src/lib/influencer-shipping.ts')
+  assert.match(lib, /\.eq\('user_id', user\.id\)/)
+  const ship = read('src/app/api/influencer/campaigns/[id]/barters/shipping/route.ts')
+  assert.match(ship, /owner_influencer_id', influencerId/)
+  assert.match(ship, /barter\.influencer_id !== influencerId/)
+})
+
+test('privacidad de envíos: solo Admin recibe la dirección; la sucursal exige 2+ opciones y postulación aceptada', () => {
+  const barters = read('src/app/api/campaigns/[id]/barters/route.ts')
+  assert.match(barters, /if \(seeContact\) \{[\s\S]*shipping_location_id/)
+  assert.doesNotMatch(barters.slice(0, barters.indexOf('const SELECT')+400), /shipping_location_id/)
+  const branch = read('src/app/api/influencer/campaigns/[id]/location/route.ts')
+  assert.match(branch, /application_status', 'accepted'/)
+  assert.match(branch, /options\.length < 2/)
+  assert.match(branch, /options\.includes\(body\.location_id\)/)
+})
+
+test('CRM: el vínculo location_id no reemplaza los textos y se recalcula solo si cambian país/región/comuna', () => {
+  const patch = read('src/app/api/crm-leads/[id]/route.ts')
+  assert.match(patch, /resolveLeadLocationId/)
+  assert.match(patch, /f === 'country' \|\| f === 'region' \|\| f === 'commune'/)
 })

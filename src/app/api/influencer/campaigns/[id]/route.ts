@@ -236,6 +236,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       event_booking: visibleEventBooking,
       // Todas las direcciones de la campaña, redactadas en el servidor hasta ser aceptada.
       locations: locationsForInfluencer(await loadCampaignLocations(admin, params.id).catch(() => []), operationalAccess),
+      // Sucursal elegida por la propia influencer (solo con acceso operativo; ver /location).
+      attendance_location_id: operationalAccess
+        ? (((await admin.from('campaign_influencers').select('metadata').eq('campaign_id', params.id).eq('influencer_id', influencer.id).maybeSingle()).data?.metadata as Record<string, unknown> | null)?.attendance_location_id ?? null)
+        : null,
       can_apply: campaign.visibility === 'open' || isPro,
       requires_pro: campaign.visibility === 'private' && !isPro,
     },

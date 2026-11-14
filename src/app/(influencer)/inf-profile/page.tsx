@@ -19,6 +19,7 @@ import NotificationPreferencesForm from '@/components/settings/NotificationPrefe
 import { InfluencerPlanSettings } from '../inf-plan/InfluencerPlanSettings'
 import { InfluencerDocuments } from './_components/InfluencerDocuments'
 import { InfluencerAffiliate } from './_components/InfluencerAffiliate'
+import { ShippingAddresses } from './_components/ShippingAddresses'
 
 type SocialProfile = {
   id?: string
@@ -495,6 +496,8 @@ export default function ProfilePage() {
             </div>
           )}
           </>}
+
+          {activeTab === 'profile' && !editing && <ShippingAddresses />}
 
         </>
       )}

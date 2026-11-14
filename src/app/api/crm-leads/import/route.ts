@@ -3,7 +3,7 @@ import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isCrmAdmin } from '@/lib/crm-auth'
 import { bumpCrmCacheVersion } from '@/lib/crm-cache-version'
 import { canonicalCommune } from '@/lib/crm-commune'
-import { normalizeLeadLocation, websiteFromEmail } from '@/lib/crm-location'
+import { normalizeLeadLocation, resolveLeadLocationId, websiteFromEmail } from '@/lib/crm-location'
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = []
@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
       country: (item.country ?? '').trim() || null,
       address: (item.address ?? '').trim() || null,
       industry: (item.industry ?? '').trim() || null,
+      location_id: null as string | null,
       source: (item.source ?? '').trim() || 'csv_import',
       qualification_status: 'unqualified',
       imported_at: new Date().toISOString(),
@@ -177,6 +178,7 @@ export async function POST(request: NextRequest) {
     r.commune = await canonicalCommune(admin, r.commune)
     // Ubicación solo contra `locations`; lo no reconocido pasa a `address`, no a campos libres.
     Object.assign(r, await normalizeLeadLocation(admin, r))
+    r.location_id = await resolveLeadLocationId(admin, r)
     // Web desde correo, solo si coincide con la empresa y viene vacía (nunca pisa un dato informado).
     if (!r.website) r.website = websiteFromEmail(r.email, r.company_name)
   }

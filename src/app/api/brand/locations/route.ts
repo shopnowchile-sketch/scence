@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeBrandLocations } from '@/lib/brand-locations-auth'
+import { sharedPlacesForBrand } from '@/lib/location-sharing'
 import { locationDbError, isUuid } from '@/lib/locations'
 import { matchesPlaceQuery, normalizeText, validateBrandPlaceCreate } from '@/lib/brand-places'
 
@@ -28,7 +29,9 @@ export async function GET(req: NextRequest) {
       .eq('level', 'place').eq('brand_id', access.brandId).eq('is_active', true)
       .order('name')
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    const places = (data ?? []).filter(p => !q || matchesPlaceQuery(p as { name: string; address: string | null }, q)).slice(0, 50)
+    // Lugares compartidos con esta marca: se ofrecen para campañas, marcados de solo lectura.
+    const shared = (await sharedPlacesForBrand(admin, access.brandId, PLACE_COLUMNS)).map(p => ({ ...p, shared: true })) as Array<{ id: string; name: string; address: string | null; shared?: boolean }>
+    const places = [...((data ?? []) as Array<{ id: string; name: string; address: string | null; shared?: boolean }>), ...shared].filter(p => !q || matchesPlaceQuery(p as { name: string; address: string | null }, q)).slice(0, 50)
     const withBreadcrumb = await Promise.all(places.map(async place => {
       const { data: breadcrumb } = await admin.rpc('location_breadcrumb', { p_id: place.id })
       return { ...place, breadcrumb: breadcrumb ?? [] }

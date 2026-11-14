@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isUuid } from '@/lib/locations'
+import { brandCanUseLocation } from '@/lib/location-sharing'
 import { authorizeCampaignLocations } from '@/lib/campaign-locations-auth'
 import {
   campaignLocationDbError,
@@ -40,14 +41,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const instructions = normalizeInstructions(body?.instructions)
   if (!instructions.ok) return NextResponse.json({ error: instructions.error }, { status: 422 })
 
-  // Una marca solo puede asociar lugares propios. Si no lo son, se responde igual
-  // que si no existieran: no se revela el catálogo de otras marcas ni los domicilios privados.
-  if (brandAccess) {
-    const { data: place, error } = await admin.from('locations').select('id, brand_id').eq('id', locationId).maybeSingle()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    if (!place || place.brand_id !== brandAccess.brandId) {
-      return NextResponse.json({ error: 'El lugar seleccionado no existe.' }, { status: 404 })
-    }
+  // Una marca solo puede asociar lugares propios o compartidos con ella (location_brand_shares).
+  // Si no, se responde igual que si no existieran: no se revela el catálogo de otras marcas
+  // ni los domicilios privados.
+  if (brandAccess && !(await brandCanUseLocation(admin, locationId, brandAccess.brandId))) {
+    return NextResponse.json({ error: 'El lugar seleccionado no existe.' }, { status: 404 })
   }
 
   const { data: last } = await admin

@@ -29,7 +29,7 @@ function LegalMissingNotice({ legal }: { legal: LegalState }) {
   </div>
 }
 
-function LegalDataReview({ data }: { data: LegalData }) {
+function LegalDataReview({ data, fixUrl }: { data: LegalData; fixUrl: string }) {
   const Row = ({ label, value }: { label: string; value: string }) => <div><dt className="text-xs text-gray-400">{label}</dt><dd className="text-sm font-medium text-gray-900">{dash(value)}</dd></div>
   return <div className="rounded-xl border border-gray-200 p-4 space-y-3">
     <p className="font-semibold text-gray-900">Datos que se firmarán</p>
@@ -39,11 +39,11 @@ function LegalDataReview({ data }: { data: LegalData }) {
       <Row label="Representante legal" value={data.representative.name} /><Row label="RUT personal" value={data.representative.rut} />
       <Row label="Cargo" value={data.representative.role} />
     </dl>
-    <p className="text-xs text-gray-400">¿Algo no es correcto? Corrígelo en <Link href={BRAND_LEGAL_FIX_URL} className="text-violet-700 underline">Organización</Link> antes de firmar.</p>
+    <p className="text-xs text-gray-400">¿Algo no es correcto? Corrígelo en <Link href={fixUrl} className="text-violet-700 underline">Organización</Link> antes de firmar.</p>
   </div>
 }
 
-function DocumentModal({ document, canSign, legal, onClose, onSigned }: { document: Document; canSign: boolean; legal: LegalState; onClose: () => void; onSigned: () => void }) {
+function DocumentModal({ document, canSign, legal, onClose, onSigned, onError }: { document: Document; canSign: boolean; legal: LegalState; onClose: () => void; onSigned: () => void; onError: () => void }) {
   const [accepted, setAccepted] = useState(false)
   const [saving, setSaving] = useState(false)
   const sign = async () => {
@@ -53,7 +53,7 @@ function DocumentModal({ document, canSign, legal, onClose, onSigned }: { docume
       const res = await fetch(`/api/brand/documents/${document.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accepted }) })
       const json = await res.json(); if (!res.ok) throw new Error(json.error ?? 'No se pudo firmar')
       toast.success('Documento firmado'); onSigned(); onClose()
-    } catch (e) { toast.error((e as Error).message); onSigned() } finally { setSaving(false) }
+    } catch (e) { toast.error((e as Error).message); onError() } finally { setSaving(false) }
   }
   const downloadPdf = async () => {
     await downloadDocumentPdf(document)
@@ -67,7 +67,7 @@ function DocumentModal({ document, canSign, legal, onClose, onSigned }: { docume
           : !canSign
             ? <p className="text-sm text-gray-500">Solo el owner de la Marca, que es su representante legal, puede firmar este documento.</p>
             : <div className="space-y-4 border-t pt-5">
-              {legal.data && <LegalDataReview data={legal.data} />}
+              {legal.data && <LegalDataReview data={legal.data} fixUrl={legal.fixUrl} />}
               {!legal.complete
                 ? <LegalMissingNotice legal={legal} />
                 : <>
@@ -88,8 +88,25 @@ export default function BrandDocumentsPage() {
     try {
       const res = await fetch('/api/brand/documents'); const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'No se pudieron cargar los documentos')
-      setDocuments(json.data ?? []); setCanSign(json.can_sign === true)
-      setLegal({ complete: json.legal_profile_complete === true, missing: json.missing ?? [], fixUrl: json.fix_url ?? BRAND_LEGAL_FIX_URL, data: json.legal_data ?? null })
+      const query = new URLSearchParams(window.location.search)
+      const campaignId = query.get('campaign')
+      const fixUrl = json.fix_url ?? BRAND_LEGAL_FIX_URL
+      const documents: Document[] = json.data ?? []
+      setDocuments(documents)
+      setCanSign(json.can_sign === true)
+      setLegal({
+        complete: json.legal_profile_complete === true,
+        missing: json.missing ?? [],
+        fixUrl: campaignId ? `${fixUrl}?campaign=${encodeURIComponent(campaignId)}` : fixUrl,
+        data: json.legal_data ?? null,
+      })
+      const signId = query.get('sign')
+      if (signId && json.can_sign && json.legal_profile_complete) {
+        const pendingNda = documents.find(document =>
+          document.id === signId && document.document_type === 'nda' && document.status === 'pending'
+        )
+        if (pendingNda) setSelected(pendingNda)
+      }
     } catch (e) { toast.error((e as Error).message) } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -106,5 +123,12 @@ export default function BrandDocumentsPage() {
     {!legal.complete && pending.length > 0 && <LegalMissingNotice legal={legal} />}
     {pending.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><b>Acción requerida:</b> tienes {pending.length} documento{pending.length > 1 ? 's' : ''} pendiente{pending.length > 1 ? 's' : ''} de firma. El plazo vence el {new Date(pending[0].due_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}.</div>}
     {loading ? <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-violet-600" /></div> : documents.length === 0 ? <div className="card p-10 text-center text-gray-500"><FileText className="h-8 w-8 mx-auto mb-3 text-gray-300" />No tienes documentos pendientes.</div> : <div className="space-y-3">{documents.map(d => <button key={d.id} onClick={() => setSelected(d)} className="card w-full p-4 flex text-left items-center justify-between hover:border-violet-200"><div><p className="font-semibold text-gray-900">{d.title}</p><p className="text-sm text-gray-400">{d.status === 'signed' ? 'Firmado' : `Firma antes del ${new Date(d.due_at).toLocaleDateString('es-CL')}`}</p></div>{d.status === 'signed' ? <span className="inline-flex items-center gap-1 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" />Firmado</span> : <span className="inline-flex items-center gap-1 text-sm text-amber-700"><PenLine className="h-4 w-4" />Pendiente de firma</span>}</button>)}</div>}
-    {selected && <DocumentModal document={selected} canSign={canSign} legal={legal} onClose={() => setSelected(null)} onSigned={load} />}</div>
+    {selected && <DocumentModal document={selected} canSign={canSign} legal={legal} onClose={() => setSelected(null)} onError={load} onSigned={() => {
+      if (selected.document_type === 'nda') {
+        // Recargar el portal para que el layout consulte el nuevo estado del NDA.
+        window.location.replace(resumeCampaignId ? `/brand-campaigns/${resumeCampaignId}` : '/brand-campaigns')
+        return
+      }
+      void load()
+    }} />}</div>
 }

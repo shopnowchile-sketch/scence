@@ -15,7 +15,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Menu, X, LogOut, ChevronDown, Settings } from 'lucide-react'
+import { Menu, X, LogOut, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -45,21 +45,21 @@ export interface NavSection {
 // ── Portal configs ────────────────────────────────────────────────────────────
 
 const PORTAL_CONFIG: Record<Portal, { label: string; badgeColor: string; avatarGradient: string }> = {
-  admin:      { label: 'Beta',       badgeColor: 'bg-gray-100 text-gray-400',    avatarGradient: 'from-pink-400 to-violet-500' },
+  admin:      { label: 'Admin',      badgeColor: 'bg-gray-100 text-gray-400',    avatarGradient: 'from-pink-400 to-violet-500' },
   brand:      { label: 'Marca',      badgeColor: 'bg-blue-50 text-blue-600',     avatarGradient: 'from-blue-400 to-cyan-500' },
   influencer: { label: 'Influencer', badgeColor: 'bg-violet-50 text-violet-600', avatarGradient: 'from-pink-400 to-violet-500' },
 }
 
 // Jerarquía visual pedida por Pri: el nombre de la persona va primero y más
 // grande, el rol (Admin/Marca/Influencer) va después y más chico. Separado de
-// PORTAL_CONFIG.label porque ese campo significa otra cosa para admin ('Beta').
+// PORTAL_CONFIG.label (insignia del encabezado).
 const ROLE_LABEL: Record<Portal, string> = { admin: 'Admin', brand: 'Marca', influencer: 'Influencer' }
 
 // ── Sidebar content ───────────────────────────────────────────────────────────
 
 function SidebarContent({
   portal, pathname, navSections,
-  orgName, orgInitial,
+  orgName,
   userName, userEmail, userInitial,
   plan,
   onSignOut, onNavClick,
@@ -68,7 +68,6 @@ function SidebarContent({
   pathname: string
   navSections: NavSection[]
   orgName?: string
-  orgInitial?: string
   userName: string
   userEmail: string
   userInitial: string
@@ -90,19 +89,9 @@ function SidebarContent({
         </span>
       </div>
 
-      {/* Org pill (admin only) / User pill (brand + influencer) */}
+      {/* User pill (brand + influencer) */}
+      {portal !== 'admin' && (
       <div className="px-3 py-3 border-b border-gray-50 flex-shrink-0">
-        {portal === 'admin' ? (
-          <button className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {orgInitial ?? '?'}
-            </div>
-            <span className="text-sm font-semibold text-gray-900 flex-1 text-left truncate">
-              {orgName || <span className="text-gray-300">Cargando…</span>}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
-          </button>
-        ) : (
           <div className="w-full flex items-center gap-2 px-2 py-2 rounded-lg bg-gray-50">
             <div className={cn('w-7 h-7 rounded-full bg-gradient-to-br flex items-center justify-center text-white text-xs font-bold flex-shrink-0', cfg.avatarGradient)}>
               {userInitial}
@@ -119,8 +108,8 @@ function SidebarContent({
               <div className="text-[10px] text-gray-400">Portal {cfg.label}</div>
             </div>
           </div>
-        )}
       </div>
+      )}
 
       {/* Nav sections */}
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
@@ -202,7 +191,7 @@ function SidebarContent({
 interface AppSidebarProps {
   portal: Portal
   navSections: NavSection[]
-  /** Active brand or admin organization name */
+  /** Active brand name (brand portal header) */
   orgName?: string
   /** Brand only — effective subscription plan */
   plan?: string | null
@@ -214,7 +203,6 @@ export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarPro
   const [mobileOpen,  setMobileOpen]  = useState(false)
   const [userName,    setUserName]    = useState('')
   const [userEmail,   setUserEmail]   = useState('')
-  const [resolvedOrg, setResolvedOrg] = useState(orgName ?? '')
 
   useEffect(() => { setMobileOpen(false) }, [pathname])
 
@@ -229,16 +217,8 @@ export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarPro
         .eq('id', user.id)
         .single()
       setUserName(profile?.display_name || profile?.full_name || user.email?.split('@')[0] || '')
-
-      if (portal === 'admin' && !orgName) {
-        const orgId = user.user_metadata?.organization_id as string | undefined
-        if (orgId) {
-          const { data: org } = await supabase.from('organizations').select('name').eq('id', orgId).single()
-          setResolvedOrg(org?.name ?? (user.user_metadata?.organization_name as string ?? ''))
-        }
-      }
     })
-  }, [portal, orgName])
+  }, [])
 
   const handleSignOut = async () => {
     const supabase = createClient()
@@ -246,12 +226,11 @@ export function AppSidebar({ portal, navSections, orgName, plan }: AppSidebarPro
     router.push('/login')
   }
 
-  const orgInitial  = resolvedOrg.charAt(0).toUpperCase() || '?'
   const userInitial = userName.charAt(0).toUpperCase() || userEmail.charAt(0).toUpperCase() || '?'
 
   const contentProps = {
     portal, pathname, navSections,
-    orgName: orgName ?? resolvedOrg, orgInitial,
+    orgName,
     userName, userEmail, userInitial,
     plan,
     onSignOut: handleSignOut,

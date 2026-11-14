@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
   // Columnas ordenables directo en Postgres. 'followers'/'engagement_rate' se
   // manejan aparte (ver JOIN_SORT_COLS arriba) porque viven en la tabla join.
   // Geography sorting is resolved from locations below; never pass removed country/city/commune columns to Postgres.
-const VALID_SORT_COLS = ['created_at', 'updated_at', 'user_name', 'rating', 'is_verified', 'is_active', 'birth_date'] as const
+const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'birth_date'] as const
   const rawSort    = searchParams.get('sort_by') ?? 'created_at'
   const sortBy     = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
   const sortDir    = searchParams.get('sort_dir') === 'asc' ? true : false
@@ -107,7 +107,7 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'user_name', 'rating', 'is_
     const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
       (from, to) => {
         let q = admin.from('influencers').select(`
-          id, user_name, email, location_id, categories, is_verified,
+          id, display_name, email, location_id, categories, is_verified,
           social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
         `).range(from, to)
         if (requestedLocationIds.length === 0 && (country || communeList.length)) q = q.in('location_id', ['00000000-0000-0000-0000-000000000000'])
@@ -161,7 +161,7 @@ const VALID_SORT_COLS = ['created_at', 'updated_at', 'user_name', 'rating', 'is_
       id,
       user_id,
       organization_id,
-      user_name,
+      display_name,
       bio,
       avatar_url,
       email,
@@ -505,15 +505,15 @@ export async function POST(request: NextRequest) {
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const {
-    user_name, email, phone,
+    display_name, email, phone,
     bio, avatar_url, location_id, birth_date, address, address_lat, address_lng,
     categories, tags, is_verified = false, is_active = false,  // Default: draft
     social_profiles = [], rate_cards = [], organization_id,
     notes, first_name, last_name,
   } = body as Record<string, unknown>
 
-  if (!user_name) {
-    return NextResponse.json({ error: 'user_name is required' }, { status: 422 })
+  if (!display_name) {
+    return NextResponse.json({ error: 'display_name is required' }, { status: 422 })
   }
   if (typeof location_id !== 'string' || !location_id.trim()) {
     return NextResponse.json({ error: 'location_id es obligatorio y debe ser una comuna oficial.' }, { status: 422 })
@@ -555,7 +555,7 @@ export async function POST(request: NextRequest) {
     .from('influencers')
     .insert({
       organization_id: orgId,
-      pending_user_name: user_name,
+      display_name,
       email: email ?? null, phone: phone ?? null, bio: bio ?? null,
       avatar_url: avatar_url ?? null, location_id: location_id.trim(), birth_date: birth_date ?? null,
       address: address ?? null, address_lat: address_lat ?? null, address_lng: address_lng ?? null,
@@ -633,7 +633,7 @@ export async function POST(request: NextRequest) {
       await admin.from('affiliate_links').insert({
         organization_id: orgId,
         influencer_id:   influencer.id,
-        name:            `Link de afiliado — ${user_name}`,
+        name:            `Link de afiliado — ${display_name}`,
         code,
         redirect_url:    `https://www.instagram.com/${igUsername}`,
         full_link:       `${appUrl}/track/${code}`,
@@ -660,7 +660,7 @@ export async function POST(request: NextRequest) {
 
   const { data } = await admin
     .from('influencers')
-    .select('*, user_name, influencer_social_profiles(*), influencer_rate_cards(*)')
+    .select('*, influencer_social_profiles(*), influencer_rate_cards(*)')
     .eq('id', influencer.id)
     .single()
 

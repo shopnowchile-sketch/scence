@@ -31,7 +31,7 @@ const fresh = (): Record<string, Row[]> => ({
     { id: 'camp-B', organization_id: 'org-B', brand_id: 'brand-B', created_by_brand_id: null, name: 'Camp B', status: 'active' },
   ],
   campaign_influencers: [{ id: 'ci1', campaign_id: 'camp-A', influencer_id: 'inf-in', fee: 1, currency: 'CLP', notes: null }],
-  influencers: [{ id: 'inf-in', user_name: 'Dentro', email: 'dentro@x.test' }, { id: 'inf-out', user_name: 'Fuera', email: 'fuera@x.test' }],
+  influencers: [{ id: 'inf-in', display_name: 'Dentro', email: 'dentro@x.test' }, { id: 'inf-out', display_name: 'Fuera', email: 'fuera@x.test' }],
   campaign_deliverables: [], campaign_brands: [], tickets: [{ id: 't1', organization_id: 'org-A' }, { id: 't2', organization_id: 'org-adm' }],
 })
 const req = (url = 'http://localhost/api/x', body: unknown = {}) => ({ url, json: async () => body, headers: new Headers(), nextUrl: new URL(url) }) as any
@@ -98,7 +98,7 @@ test('influencer-report: roles sin report.read, otra marca e influencer ajena a 
 // ── POST /api/influencers: antes sin autorización y con la organización tomada del body/metadata ──
 test('POST /api/influencers: solo admin; organization_id ajena del body → 403; no se toma de user_metadata', async () => {
   const route = await import('../src/app/api/influencers/route.ts')
-  const body = { user_name: 'X', location_id: 'loc', social_profiles: [{ platform: 'instagram', username: 'x' }] }
+  const body = { display_name: 'X', location_id: 'loc', social_profiles: [{ platform: 'instagram', username: 'x' }] }
   const post = (b: any = body) => (route as any).POST(req('http://localhost/api/influencers', b))
   as(null); assert.equal((await post()).status, 401)
   for (const u of ['uOwnerA', 'uMgrA', 'uMemA', 'uFinA', 'uInfluencer']) { as(u); assert.equal((await post()).status, 403, u) }

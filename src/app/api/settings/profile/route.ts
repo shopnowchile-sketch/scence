@@ -11,7 +11,7 @@ export async function GET() {
   const { data, error } = await admin
     .from('profiles')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('id', user.id)
     .single()
 
   if (error) {
@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest) {
   let body: Record<string, unknown>
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { user_name, phone, timezone, locale, avatar_url, notification_preferences, signer_rut, signer_role } = body
+  const { full_name, display_name, phone, timezone, locale, avatar_url, notification_preferences, signer_rut, signer_role } = body
 
   if (locale !== undefined && locale !== 'es' && locale !== 'en') {
     return NextResponse.json({ error: 'Unsupported locale' }, { status: 400 })
@@ -40,7 +40,8 @@ export async function PATCH(request: NextRequest) {
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key)
-  if (has('user_name')) update.user_name = user_name
+  if (has('full_name')) update.full_name = full_name
+  if (has('display_name')) update.display_name = display_name
   if (has('phone')) update.phone = phone ?? null
   if (has('timezone')) update.timezone = timezone
   if (has('locale')) update.locale = locale
@@ -52,7 +53,7 @@ export async function PATCH(request: NextRequest) {
   // no crear una columna/tabla nueva. Merge con lo existente, nunca se pisa
   // el resto de metadata.
   if (notification_preferences && typeof notification_preferences === 'object') {
-    const { data: current } = await admin.from('profiles').select('metadata').eq('user_id', user.id).maybeSingle()
+    const { data: current } = await admin.from('profiles').select('metadata').eq('id', user.id).maybeSingle()
     const currentMeta = (current?.metadata as Record<string, unknown> | null) ?? {}
     update.metadata = { ...currentMeta, notification_preferences }
   }
@@ -60,7 +61,7 @@ export async function PATCH(request: NextRequest) {
   const { data, error } = await admin
     .from('profiles')
     .update(update)
-    .eq('user_id', user.id)
+    .eq('id', user.id)
     .select()
     .single()
 

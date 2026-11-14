@@ -36,8 +36,8 @@ const fresh = (): Record<string, Row[]> => ({
     { id: 'ci2', campaign_id: 'camp-C', influencer_id: 'inf-in', fee: 1, currency: 'CLP', notes: null },
   ],
   influencers: [
-    { id: 'inf-in', user_name: 'Dentro', email: 'dentro@x.test', influencer_social_profiles: [] },
-    { id: 'inf-out', user_name: 'Fuera', email: 'fuera@x.test', influencer_social_profiles: [] },
+    { id: 'inf-in', display_name: 'Dentro', email: 'dentro@x.test', influencer_social_profiles: [] },
+    { id: 'inf-out', display_name: 'Fuera', email: 'fuera@x.test', influencer_social_profiles: [] },
   ],
   campaign_deliverables: [],
   // brand-B solo colabora en camp-A: no es dueña ni creadora.

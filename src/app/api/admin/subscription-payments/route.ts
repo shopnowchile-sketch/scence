@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   const { data: influencer, error: influencerError } = await auth.admin
     .from('influencers')
-    .select('id, user_name, email')
+    .select('id, display_name, email')
     .eq('id', influencerId)
     .maybeSingle()
 
@@ -71,6 +71,6 @@ export async function GET(request: NextRequest) {
       total_paid_currency: latestPayment?.currency ?? null,
     },
     payments: payments ?? [],
-    terms_acceptances: (termsAcceptances ?? []).map(acceptance => ({ ...acceptance, influencer_name: influencer.user_name })),
+    terms_acceptances: (termsAcceptances ?? []).map(acceptance => ({ ...acceptance, influencer_name: influencer.display_name })),
   })
 }

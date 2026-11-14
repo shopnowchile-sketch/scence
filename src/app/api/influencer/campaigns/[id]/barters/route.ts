@@ -75,7 +75,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         commission_rate, affiliate_link_id, delivery_method, status, delivered_at,
         completed_at, status_note, position, shipping_location_id
       ),
-      influencer:influencers (id, user_name, avatar_url),
+      influencer:influencers (id, display_name, avatar_url),
       history:barter_status_history (id, barter_id, from_status, to_status, note, created_at)
     `)
     .eq('campaign_id', params.id)

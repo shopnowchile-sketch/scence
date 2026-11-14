@@ -78,7 +78,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { data: influencer, error: infErr } = await admin
     .from('influencers')
-    .select('id, user_name, email, user_id, is_active')
+    .select('id, display_name, email, user_id, is_active')
     .eq('id', params.id)
     .single()
 
@@ -128,7 +128,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       : null
     let emailSent = false
     if (actionLink) {
-      const { error: emailErr } = await sendInviteEmail(influencer.email, influencer.user_name, actionLink, true)
+      const { error: emailErr } = await sendInviteEmail(influencer.email, influencer.display_name, actionLink, true)
       emailSent = !emailErr
       if (emailErr) console.error('[invite resend] email error:', emailErr)
     }
@@ -169,7 +169,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       user_metadata: {
         is_influencer: true,
         influencer_id: params.id,
-        full_name: influencer.user_name,
+        full_name: influencer.display_name,
       },
     })
 
@@ -215,7 +215,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const { error: emailErr } = await sendInviteEmail(
     influencer.email,
-    influencer.user_name,
+    influencer.display_name,
     actionLink,
     false,
   )

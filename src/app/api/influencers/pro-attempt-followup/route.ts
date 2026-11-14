@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
   const { data: influencers, error: influencersError } = await admin
     .from('influencers')
-    .select('id, user_name, email, organization_id, is_active')
+    .select('id, display_name, email, organization_id, is_active')
     .in('id', ids)
 
   if (influencersError) return NextResponse.json({ error: 'No se pudieron cargar las influencers.' }, { status: 500 })
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       from: FROM_EMAIL,
       to: influencer.email!,
       subject,
-      html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;padding:32px"><div style="max-width:560px;margin:auto;background:#fff;border-radius:16px;padding:32px"><div style="font-size:22px;font-weight:900;color:#111827;margin-bottom:24px">SCENCE</div><p style="font-size:15px;color:#374151;line-height:1.7">Hola ${escapeHtml(influencer.user_name)},</p><div style="font-size:15px;color:#374151;line-height:1.7;white-space:pre-wrap">${escapeHtml(message)}</div><p style="margin-top:28px;font-size:13px;color:#9ca3af">SCENCE</p></div></body></html>`,
+      html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;padding:32px"><div style="max-width:560px;margin:auto;background:#fff;border-radius:16px;padding:32px"><div style="font-size:22px;font-weight:900;color:#111827;margin-bottom:24px">SCENCE</div><p style="font-size:15px;color:#374151;line-height:1.7">Hola ${escapeHtml(influencer.display_name)},</p><div style="font-size:15px;color:#374151;line-height:1.7;white-space:pre-wrap">${escapeHtml(message)}</div><p style="margin-top:28px;font-size:13px;color:#9ca3af">SCENCE</p></div></body></html>`,
     })
   ))
 

@@ -55,7 +55,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
     const rows = query
       ? influencers.filter(influencer => {
         const handles = (influencer.social_profiles ?? []).map(profile => (profile.username ?? '').replace(/^@+/, '')).join(' ')
-        return [influencer.user_name, influencer.email ?? '', influencer.commune ?? influencer.city ?? '', handles]
+        return [influencer.display_name, influencer.email ?? '', influencer.commune ?? influencer.city ?? '', handles]
           .join(' ').toLowerCase().includes(query)
       })
       : [...influencers]
@@ -66,7 +66,7 @@ export function AddInfluencerClient({ campaignId }: Props) {
       if (sortBy === 'followers') comparison = (primary(left)?.followers ?? -1) - (primary(right)?.followers ?? -1)
       else if (sortBy === 'engagement_rate') comparison = (primary(left)?.engagement_rate ?? -1) - (primary(right)?.engagement_rate ?? -1)
       else if (sortBy === 'rating') comparison = (left.rating ?? -1) - (right.rating ?? -1)
-      else if (sortBy === 'user_name') comparison = left.user_name.localeCompare(right.user_name, 'es')
+      else if (sortBy === 'display_name') comparison = left.display_name.localeCompare(right.display_name, 'es')
       else if (sortBy === 'commune') comparison = (left.commune ?? left.city ?? '').localeCompare(right.commune ?? right.city ?? '', 'es')
       else comparison = String(left[sortBy as keyof Influencer] ?? '').localeCompare(String(right[sortBy as keyof Influencer] ?? ''), 'es')
       return sortOrder === 'asc' ? comparison : -comparison

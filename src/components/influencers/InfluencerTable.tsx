@@ -11,10 +11,10 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { SortableTH } from '@/components/ui/SortableTH'
 
-type ColKey = 'user_name' | 'plan' | 'proAttempt' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
+type ColKey = 'display_name' | 'plan' | 'proAttempt' | 'platforms' | 'categories' | 'followers' | 'engagement' | 'rate' | 'rating' | 'status' | 'commune' | 'birthDate' | 'lastConnection' | 'registeredBy' | 'associatedBrands'
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
-  user_name: 280, plan: 130, proAttempt: 130, platforms: 120, categories: 160, followers: 130,
+  display_name: 280, plan: 130, proAttempt: 130, platforms: 120, categories: 160, followers: 130,
   engagement: 140, rate: 120, rating: 90, status: 100, commune: 130, birthDate: 100, lastConnection: 170,
   registeredBy: 140, associatedBrands: 220,
 }
@@ -183,7 +183,7 @@ export function InfluencerTable({
         <table className="w-full" style={{ tableLayout: 'fixed' }}>
           <colgroup>
             {selectable && <col style={{ width: 40 }} />}
-            <col style={{ width: widths.user_name }} />
+            <col style={{ width: widths.display_name }} />
             {portal === 'admin' && visible.plan && <col style={{ width: widths.plan }} />}
             {portal === 'admin' && visible.proAttempt !== false && <col style={{ width: widths.proAttempt }} />}
             {visible.platforms      && <col style={{ width: widths.platforms }} />}
@@ -208,7 +208,7 @@ export function InfluencerTable({
                     className="rounded border-gray-300 text-violet-600" />
                 </th>
               )}
-              <TH col="user_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('user_name', e)}>Influencer</TH>
+              <TH col="display_name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('display_name', e)}>Influencer</TH>
               {portal === 'admin' && visible.plan && (
                 <TH col="plan" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} onResizeStart={e => startResize('plan', e)}>Plan</TH>
               )}
@@ -244,7 +244,7 @@ export function InfluencerTable({
             {influencers.map((inf, i) => {
               const primaryProfile = inf.social_profiles?.find(s => s.is_primary) ?? inf.social_profiles?.[0]
               const gradient = AVATAR_GRADIENTS[i % AVATAR_GRADIENTS.length]
-              const initials = inf.user_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+              const initials = inf.display_name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
               return (
                 <tr key={inf.id} className={cn(
@@ -266,7 +266,7 @@ export function InfluencerTable({
                         gradient
                       )}>
                         {inf.avatar_url
-                          ? <img src={inf.avatar_url} alt={inf.user_name} className="w-full h-full rounded-full object-cover" />
+                          ? <img src={inf.avatar_url} alt={inf.display_name} className="w-full h-full rounded-full object-cover" />
                           : initials
                         }
                       </div>
@@ -277,14 +277,14 @@ export function InfluencerTable({
                               href={`/admin-influencers/${inf.id}`}
                               className="truncate text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
                             >
-                              {inf.user_name}
+                              {inf.display_name}
                             </Link>
                           ) : (
                             <Link
                               href={`/brand-influencers/${inf.id}`}
                               className="truncate text-sm font-semibold text-gray-900 hover:text-violet-700 transition-colors"
                             >
-                              {inf.user_name}
+                              {inf.display_name}
                             </Link>
                           )}
                           {portal !== 'admin' && (

@@ -52,7 +52,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('influencers')
     .select(`
       *,
-      user_name,
       social_profiles:influencer_social_profiles (*),
       rate_cards:influencer_rate_cards (*)
     `)
@@ -303,7 +302,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', params.id)
-    .select('*, user_name, influencer_social_profiles(*), influencer_rate_cards(*)')
+    .select('*, influencer_social_profiles(*), influencer_rate_cards(*)')
     .single()
 
   if (error) {
@@ -370,7 +369,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // Re-fetch with updated relations so response is fresh
   const { data: fresh } = await admin
     .from('influencers')
-    .select('*, user_name, social_profiles:influencer_social_profiles(*), rate_cards:influencer_rate_cards(*)')
+    .select('*, social_profiles:influencer_social_profiles(*), rate_cards:influencer_rate_cards(*)')
     .eq('id', params.id)
     .single()
 
@@ -430,7 +429,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', params.id)
-    .select('*, user_name')
+    .select()
     .single()
 
   if (error) {

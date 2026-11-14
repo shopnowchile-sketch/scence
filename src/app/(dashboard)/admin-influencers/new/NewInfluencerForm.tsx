@@ -36,7 +36,7 @@ const rateCardSchema = z.object({
 
 const schema = z.object({
   // Step 1 — personal
-  user_name: z.string().min(2, 'Mínimo 2 caracteres'),
+  display_name: z.string().min(2, 'Mínimo 2 caracteres'),
   first_name:   z.string().optional(),
   last_name:    z.string().optional(),
   email:        z.string().email('Email inválido').optional().or(z.literal('')),
@@ -183,8 +183,8 @@ function Step1({ register, control, setValue, errors }: Step1Props) {
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
             Nombre artístico / display name <span className="text-red-500">*</span>
           </label>
-          <input {...register('user_name')} className="input-base w-full" placeholder="Valentina Reyes" />
-          {errors.user_name && <p className="text-xs text-red-500 mt-1">{errors.user_name.message}</p>}
+          <input {...register('display_name')} className="input-base w-full" placeholder="Valentina Reyes" />
+          {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre real</label>
@@ -482,7 +482,7 @@ function Step4({ values }: Step4Props) {
       <p className="text-sm text-gray-500">Confirma los datos antes de agregar al roster.</p>
       <div className="card divide-y divide-gray-100">
         {[
-          ['Nombre',       values.user_name],
+          ['Nombre',       values.display_name],
           ['Email',        values.email || '—'],
           ['Ubicación',    values.location_id ? 'Ubicación seleccionada' : '—'],
           ['Categorías',   values.categories?.join(', ') || '—'],
@@ -524,7 +524,7 @@ export function NewInfluencerForm() {
 
   async function goNext() {
     const stepFields: Record<number, (keyof FormValues)[]> = {
-      1: ['user_name', 'location_id'],
+      1: ['display_name', 'location_id'],
       2: ['social_profiles'],
       3: [],
     }

@@ -37,13 +37,13 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
     campaign_id: '',
   })
   const [selectedInfluencers, setSelectedInfluencers] = useState<string[]>([])
-  const [influencers, setInfluencers] = useState<{ id: string; user_name: string; email?: string }[]>([])
+  const [influencers, setInfluencers] = useState<{ id: string; display_name: string; email?: string }[]>([])
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
   const [formError, setFormError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
-    fetch('/api/influencers?limit=200&sort_by=user_name&sort_dir=asc').then(r => r.json()).then(j => setInfluencers(j.data ?? []))
+    fetch('/api/influencers?limit=200&sort_by=display_name&sort_dir=asc').then(r => r.json()).then(j => setInfluencers(j.data ?? []))
     fetch('/api/campaigns?limit=200').then(r => r.json()).then(j => setCampaigns(j.data ?? []))
   }, [])
 
@@ -201,7 +201,7 @@ function NewBookingModal({ onClose }: { onClose: () => void }) {
                   )}>
                     {selectedInfluencers.includes(inf.id) ? '✓' : ''}
                   </span>
-                  {inf.user_name}
+                  {inf.display_name}
                   {inf.email && <span className="text-xs text-gray-400 ml-auto">{inf.email}</span>}
                 </button>
               ))}
@@ -513,7 +513,7 @@ export function BookingsClient() {
                               {format(parseISO(b.starts_at), 'HH:mm')}–{format(parseISO(b.ends_at), 'HH:mm')}
                             </span>
                             {b.influencer && (
-                              <span>👤 {b.influencer.user_name}
+                              <span>👤 {b.influencer.display_name}
                                 {b.booking_influencers && b.booking_influencers.length > 1 &&
                                   <span className="text-gray-400"> +{b.booking_influencers.length - 1}</span>
                                 }
@@ -607,7 +607,7 @@ export function BookingsClient() {
                       <div key={bi.id} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 text-gray-700 text-sm">
                           <span>👤</span>
-                          <span>{bi.influencer?.user_name ?? 'Influencer'}</span>
+                          <span>{bi.influencer?.display_name ?? 'Influencer'}</span>
                         </div>
                         <select
                           value={bi.status}
@@ -639,7 +639,7 @@ export function BookingsClient() {
                 ) : selected.influencer ? (
                   <div className="flex items-center gap-2 text-gray-600">
                     <span className="text-gray-400">👤</span>
-                    <span>{selected.influencer.user_name}</span>
+                    <span>{selected.influencer.display_name}</span>
                   </div>
                 ) : null}
 

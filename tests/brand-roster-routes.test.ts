@@ -27,7 +27,7 @@ function fixture() {
       { campaign_id: 'collab', influencer_id: 'collab', application_status: 'accepted' },
     ],
     brand_influencers: [{ brand_id: 'A', influencer_id: 'own' }, { brand_id: 'A', influencer_id: 'pending' }, { brand_id: 'B', influencer_id: 'foreign-roster' }],
-    influencers: ['accepted', 'pending', 'rejected', 'created', 'foreign', 'own', 'foreign-roster', 'collab', 'global'].map(id => ({ id, user_name: id })),
+    influencers: ['accepted', 'pending', 'rejected', 'created', 'foreign', 'own', 'foreign-roster', 'collab', 'global'].map(id => ({ id, display_name: id })),
     locations: [], subscriptions: [],
   }
 }

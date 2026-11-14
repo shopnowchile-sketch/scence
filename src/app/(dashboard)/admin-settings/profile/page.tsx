@@ -9,7 +9,8 @@ import { Loader2, Save, User } from 'lucide-react'
 import { useScenceLocale } from '@/components/providers/LocaleProvider'
 
 const schema = z.object({
-  user_name:    z.string().min(2, 'Mínimo 2 caracteres'),
+  full_name:    z.string().min(2, 'Mínimo 2 caracteres'),
+  display_name: z.string().optional(),
   phone:        z.string().optional(),
   timezone:     z.string().optional(),
   locale:       z.string().optional(),
@@ -38,7 +39,8 @@ export default function ProfileSettingsPage() {
       .then(({ data }) => {
         if (data) {
           reset({
-            user_name:    data.user_name    ?? '',
+            full_name:    data.full_name    ?? '',
+            display_name: data.display_name ?? '',
             phone:        data.phone        ?? '',
             timezone:     data.timezone     ?? 'America/Mexico_City',
             locale:       data.locale === 'en' || data.locale === 'es' ? data.locale : activeLocale,
@@ -97,10 +99,15 @@ export default function ProfileSettingsPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Nombre <span className="text-red-500">*</span>
+              Nombre completo <span className="text-red-500">*</span>
             </label>
-            <input {...register('user_name')} className="input-base w-full" placeholder="Tu nombre" />
-            {errors.user_name && <p className="text-xs text-red-500 mt-1">{errors.user_name.message}</p>}
+            <input {...register('full_name')} className="input-base w-full" placeholder="Tu nombre completo" />
+            {errors.full_name && <p className="text-xs text-red-500 mt-1">{errors.full_name.message}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre a mostrar</label>
+            <input {...register('display_name')} className="input-base w-full" placeholder="Cómo apareces en la app" />
           </div>
 
           <div>

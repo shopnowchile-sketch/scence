@@ -12,7 +12,7 @@ const campaign = {
   campaign_influencers: [{
     id: 'ci', application_status: 'accepted', fee: null, notes: 'nota interna', message: 'm',
     metadata: { removal_reason: 'attendance_deadline', private_flag: true, last_reminder_sent_at: 't' },
-    influencer: { id: 'i', user_name: 'X', email: 'x@x.cl', phone: '1', user_id: 'u' },
+    influencer: { id: 'i', display_name: 'X', email: 'x@x.cl', phone: '1', user_id: 'u' },
   }],
 }
 

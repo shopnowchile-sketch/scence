@@ -73,14 +73,14 @@ export async function GET(req: NextRequest) {
       budget_total, currency, hashtags, platforms,
       campaign_influencers (
         id, application_status, fee, currency,
-        influencer:influencers (id, user_name, avatar_url,
+        influencer:influencers (id, display_name, avatar_url,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),
       campaign_deliverables (
         id, title, description, type, status, due_date, scheduled_at, sequence_number, platform,
         content_url, submitted_at, published_url, review_notes, attendance_response,
-        influencer:influencers (id, user_name, avatar_url)
+        influencer:influencers (id, display_name, avatar_url)
       )
     `)
     .or(orFilter)

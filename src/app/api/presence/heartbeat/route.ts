@@ -17,7 +17,7 @@ export async function POST() {
   const { error } = await admin
     .from('profiles')
     .update({ last_seen_at: new Date().toISOString() })
-    .eq('user_id', user.id)
+    .eq('id', user.id)
 
   if (error) {
     console.error('[POST /api/presence/heartbeat]', error)

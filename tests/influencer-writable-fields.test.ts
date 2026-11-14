@@ -8,7 +8,7 @@ import {
 
 test('la lista blanca excluye user_id, organization_id y metadata', () => {
   const result = pickAdminInfluencerColumns({
-    user_name: 'Creadora',
+    display_name: 'Creadora',
     user_id: 'otro-usuario',
     organization_id: 'otra-org',
     metadata: { manual_pro: true },
@@ -16,7 +16,7 @@ test('la lista blanca excluye user_id, organization_id y metadata', () => {
   })
 
   assert.deepEqual(result, {
-    pending_user_name: 'Creadora',
+    display_name: 'Creadora',
     is_active: true,
   })
 })

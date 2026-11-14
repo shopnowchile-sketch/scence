@@ -49,15 +49,15 @@ export async function GET() {
   // Plan y acceso desde la fuente única: override administrativo o
   // suscripción de MARCA activa (nunca una de influencer).
   const planAccess = await resolveBrandPlanAccess(admin, data.id)
-  // Representante legal (owner): fuente única profiles.user_name / signer_rut / signer_role. Solo lo ve su propio owner.
+  // Representante legal (owner): fuente única profiles.full_name / signer_rut / signer_role. Solo lo ve su propio owner.
   const { data: representative } = access.isOwner && userId
-    ? await admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('user_id', userId).maybeSingle()
+    ? await admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('id', userId).maybeSingle()
     : { data: null }
   return NextResponse.json({
     data: {
       ...data,
       representative: access.isOwner ? {
-        user_name: representative?.user_name ?? '', signer_rut: representative?.signer_rut ?? '', signer_role: representative?.signer_role ?? '',
+        full_name: representative?.full_name ?? '', signer_rut: representative?.signer_rut ?? '', signer_role: representative?.signer_role ?? '',
       } : null,
       org_plan: planAccess.plan,
       agency_managed: await isAgencyScopedBrand(admin, data.id),
@@ -115,10 +115,10 @@ export async function PATCH(request: Request) {
     if (!access.isOwner || !userId) return NextResponse.json({ error: 'Solo el owner puede editar al representante legal' }, { status: 403 })
     const rep = representative as Record<string, unknown>
     representativeUpdate = {}
-    for (const key of ['user_name', 'signer_rut', 'signer_role'] as const) {
+    for (const key of ['full_name', 'signer_rut', 'signer_role'] as const) {
       if (key in rep) representativeUpdate[key] = String(rep[key] ?? '').trim()
     }
-    if ('user_name' in representativeUpdate && !representativeUpdate.user_name) {
+    if ('full_name' in representativeUpdate && !representativeUpdate.full_name) {
       return NextResponse.json({ error: 'El nombre del representante legal no puede quedar vacío' }, { status: 400 })
     }
   }
@@ -134,7 +134,7 @@ export async function PATCH(request: Request) {
 
   if (representativeUpdate && Object.keys(representativeUpdate).length > 0 && userId) {
     const { error: profileError } = await admin.from('profiles')
-      .update({ ...representativeUpdate, updated_at: new Date().toISOString() }).eq('user_id', userId)
+      .update({ ...representativeUpdate, updated_at: new Date().toISOString() }).eq('id', userId)
     if (profileError) return NextResponse.json({ error: `Se guardó la empresa, pero no el representante legal: ${profileError.message}` }, { status: 500 })
   }
   await recordBrandActivity(admin, access, userId, 'profileUpdated')

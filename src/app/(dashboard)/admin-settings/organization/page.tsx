@@ -200,7 +200,7 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
       const res = await fetch('/api/settings/team/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), role, user_name: name.trim() || undefined }),
+        body: JSON.stringify({ email: email.trim(), role, display_name: name.trim() || undefined }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
@@ -293,7 +293,7 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 function TeamMembers() {
   const [members, setMembers] = useState<Array<{
     id: string; user_id: string; role: string; is_owner: boolean;
-    profile: { user_name: string | null; email: string | null } | null
+    profile: { display_name: string | null; email: string | null } | null
   }>>([])
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState<string | null>(null)
@@ -371,7 +371,7 @@ function TeamMembers() {
               <tr key={m.id} className="hover:bg-gray-50/50">
                 <td className="px-4 py-3">
                   <div className="text-sm font-medium text-gray-900">
-                    {m.profile?.user_name ?? 'Sin nombre'}
+                    {m.profile?.display_name ?? 'Sin nombre'}
                     {m.is_owner && <span className="ml-2 badge badge-violet text-[10px]">Owner</span>}
                   </div>
                 </td>

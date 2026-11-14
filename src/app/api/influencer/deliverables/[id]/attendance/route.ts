@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
   const [{ data: influencer }, { data: deliverable }] = await Promise.all([
-    admin.from('influencers').select('id, user_name, email, is_active').eq('user_id', user.id).maybeSingle(),
+    admin.from('influencers').select('id, display_name, email, is_active').eq('user_id', user.id).maybeSingle(),
     admin.from('campaign_deliverables').select('id, influencer_id, campaign_id, type, due_date').eq('id', params.id).maybeSingle(),
   ])
   if (!influencer || !deliverable) return NextResponse.json({ error: 'Entregable no encontrado' }, { status: 404 })
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         to: influencer.email,
         subject: `¡Asistencia confirmada! ${campaign?.name ?? 'Tu campaña'}`,
         html: attendanceConfirmedEmail({
-          influencerName: influencer.user_name ?? 'Influencer',
+          influencerName: influencer.display_name ?? 'Influencer',
           campaignName: campaign?.name ?? 'tu campaña',
           campaignId: deliverable.campaign_id,
           whatsappGroupUrl,

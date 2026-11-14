@@ -6,7 +6,7 @@ import { isDeliverableComplete } from '@/lib/deliverable-status'
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Influencer {
   id: string
-  user_name: string
+  display_name: string
   avatar_url: string | null
   influencer_social_profiles: Array<{
     platform: string
@@ -42,7 +42,7 @@ interface Deliverable {
   // saves/shares no existen, no se inventan (ver src/lib/deliverables/apify-metrics.ts).
   performance: { views: number | null; likes: number | null; comments: number | null } | null
   engagement_rate: number | null // CALCULADO, no dato real de Instagram
-  influencer: { id: string; user_name: string; avatar_url: string | null } | null
+  influencer: { id: string; display_name: string; avatar_url: string | null } | null
 }
 
 interface CampaignReport {
@@ -159,7 +159,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
       campaign_influencers (
         id, fee, status, application_status, notes,
         influencer:influencers (
-          id, user_name, avatar_url,
+          id, display_name, avatar_url,
           influencer_social_profiles (platform, username, followers, engagement_rate)
         )
       ),
@@ -167,7 +167,7 @@ async function fetchReport(id: string): Promise<CampaignReport | null> {
         id, title, type, status, due_date, platform,
         published_at, published_url, review_notes, progress, content_url,
         attendance_response, performance, engagement_rate,
-        influencer:influencers (id, user_name, avatar_url)
+        influencer:influencers (id, display_name, avatar_url)
       )
     `)
     .eq('id', id)
@@ -497,7 +497,7 @@ export default async function CampaignReportPage({ params }: { params: { id: str
                   <div key={ci.id} className="inf-card">
                     <div className="inf-card-header">
                       <div>
-                        <div className="inf-name">{inf.user_name}</div>
+                        <div className="inf-name">{inf.display_name}</div>
                         <div className="inf-meta">
                           {primaryProfile
                             ? `${primaryProfile.platform}${primaryProfile.username ? ` · @${primaryProfile.username}` : ''}${primaryProfile.followers ? ` · ${formatFollowers(primaryProfile.followers)} seguidores` : ''}`

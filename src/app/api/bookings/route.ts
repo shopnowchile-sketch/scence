@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
 
   let query = admin
     .from('bookings')
-    .select(`*, influencer:influencers (id, user_name, avatar_url), campaign:campaigns (id, name)`)
+    .select(`*, influencer:influencers (id, display_name, avatar_url), campaign:campaigns (id, name)`)
     .eq('organization_id', orgId)
     .order('starts_at', { ascending: true })
     .limit(limit)
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
     const bookingIds = bookings.map(b => b.id)
     const { data: biData } = await admin
       .from('booking_influencers')
-      .select('id, booking_id, influencer_id, status, influencer:influencers(id, user_name, avatar_url)')
+      .select('id, booking_id, influencer_id, status, influencer:influencers(id, display_name, avatar_url)')
       .in('booking_id', bookingIds)
 
     const biByBooking: Record<string, unknown[]> = {}

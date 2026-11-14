@@ -9,12 +9,12 @@ type Admin = SupabaseClient<any, any, any>
 export async function resolveTicketContact(admin: Admin, createdBy: string | null) {
   if (!createdBy) return null
   const [{ data: influencer }, { data: brand }, authResult] = await Promise.all([
-    admin.from('influencers').select('user_name, email').eq('user_id', createdBy).maybeSingle(),
+    admin.from('influencers').select('display_name, email').eq('user_id', createdBy).maybeSingle(),
     admin.from('brands').select('contact_name, contact_email, name').eq('user_id', createdBy).maybeSingle(),
     admin.auth.admin.getUserById(createdBy),
   ])
   const email = influencer?.email ?? brand?.contact_email ?? authResult.data.user?.email ?? ''
-  const name = influencer?.user_name ?? brand?.contact_name ?? brand?.name ?? authResult.data.user?.user_metadata?.full_name ?? email
+  const name = influencer?.display_name ?? brand?.contact_name ?? brand?.name ?? authResult.data.user?.user_metadata?.full_name ?? email
   return { email, name, portal: (influencer ? 'influencer' : 'brand') as 'influencer' | 'brand' }
 }
 

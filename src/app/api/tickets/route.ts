@@ -137,14 +137,14 @@ export async function GET(request: NextRequest) {
 
   if (userIds.length > 0) {
     const [{ data: infs }, { data: brnds }, { data: members }, { data: admins }, { data: profs }] = await Promise.all([
-      admin.from('influencers').select('id, user_id, user_name, email').in('user_id', userIds),
+      admin.from('influencers').select('id, user_id, display_name, email').in('user_id', userIds),
       admin.from('brands').select('id, user_id, contact_name, contact_email, name').in('user_id', userIds),
       admin.from('brand_members').select('user_id, email, brand_id').in('user_id', userIds).eq('is_active', true),
       admin.from('organization_members').select('user_id').in('user_id', userIds).eq('is_active', true).in('role', ADMIN_ROLES),
-      admin.from('profiles').select('user_id, user_name').in('user_id', userIds),
+      admin.from('profiles').select('id, full_name').in('id', userIds),
     ])
 
-    const profileNames = new Map((profs ?? []).map(p => [p.user_id as string, (p.user_name as string | null) ?? null]))
+    const profileNames = new Map((profs ?? []).map(p => [p.id as string, (p.full_name as string | null) ?? null]))
     const accounts: Record<string, { name?: string | null; email?: string | null }> = {}
     // Email desde Auth solo para quienes no son influencer ni marca (pocos).
     const needsAuth = userIds.filter(id =>

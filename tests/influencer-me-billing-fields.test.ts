@@ -11,8 +11,8 @@ const { makeAdmin } = await import('./support/memory-supabase.ts')
 type Row = Record<string, any>
 const fresh = (): Record<string, Row[]> => ({
   influencers: [
-    { id: 'inf-1', user_id: 'u1', user_name: 'Ana', email: 'a@x.cl', organization_id: 'org-secreta', is_active: true, location_id: null, tags: [], categories: [] },
-    { id: 'inf-2', user_id: 'u2', user_name: 'Bea', email: 'b@x.cl', organization_id: 'org-secreta', is_active: true, location_id: null },
+    { id: 'inf-1', user_id: 'u1', display_name: 'Ana', email: 'a@x.cl', organization_id: 'org-secreta', is_active: true, location_id: null, tags: [], categories: [] },
+    { id: 'inf-2', user_id: 'u2', display_name: 'Bea', email: 'b@x.cl', organization_id: 'org-secreta', is_active: true, location_id: null },
   ],
   influencer_social_profiles: [{ id: 'sp1', influencer_id: 'inf-1', platform: 'instagram', username: 'ana', followers: 1 }],
   locations: [], brands: [],
@@ -37,7 +37,7 @@ test('/me: sin sesión 401; devuelve la ficha propia SIN organization_id', async
   as(null); assert.equal((await (me as any).GET()).status, 401)
   as('u1'); const r = await (me as any).GET(); assert.equal(r.status, 200)
   const body = await r.json()
-  assert.equal(body.data.id, 'inf-1'); assert.equal(body.data.user_name, 'Ana'); assert.equal(body.data.email, 'a@x.cl')
+  assert.equal(body.data.id, 'inf-1'); assert.equal(body.data.display_name, 'Ana'); assert.equal(body.data.email, 'a@x.cl')
   assert.equal('organization_id' in body.data, false)
   assert.ok(!JSON.stringify(body).includes('org-secreta'))
 })

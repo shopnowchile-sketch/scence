@@ -33,7 +33,7 @@ const rateCardSchema = z.object({
 })
 
 const schema = z.object({
-  user_name:        z.string().min(2, 'Mínimo 2 caracteres'),
+  display_name:        z.string().min(2, 'Mínimo 2 caracteres'),
   email:               z.string().email('Email inválido').optional().or(z.literal('')),
   phone:               z.string().optional(),
   bio:                 z.string().max(500).optional(),
@@ -128,7 +128,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
       }))
       const meta = (inf.metadata ?? {}) as Record<string, unknown>
       reset({
-        user_name:        inf.user_name ?? '',
+        display_name:        inf.display_name ?? '',
         email:               inf.email ?? '',
         phone:               inf.phone ?? '',
         bio:                 inf.bio ?? '',
@@ -206,7 +206,7 @@ export function InfluencerEditForm({ id }: { id: string }) {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Editar influencer</h1>
-          <p className="text-sm text-gray-400">{res.data.user_name}</p>
+          <p className="text-sm text-gray-400">{res.data.display_name}</p>
         </div>
       </div>
 
@@ -220,8 +220,8 @@ export function InfluencerEditForm({ id }: { id: string }) {
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Nombre artístico / display name <span className="text-red-500">*</span>
               </label>
-              <input {...register('user_name')} className="input-base w-full" />
-              {errors.user_name && <p className="text-xs text-red-500 mt-1">{errors.user_name.message}</p>}
+              <input {...register('display_name')} className="input-base w-full" />
+              {errors.display_name && <p className="text-xs text-red-500 mt-1">{errors.display_name.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>

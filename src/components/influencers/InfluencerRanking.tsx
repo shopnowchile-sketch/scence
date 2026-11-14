@@ -134,7 +134,7 @@ export function InfluencerRanking({
     if (search.trim()) {
       const q = search.trim().toLowerCase().replace(/^@+/, '')
       rows = rows.filter(inf =>
-        String(inf.user_name ?? '').toLowerCase().includes(q) ||
+        String(inf.display_name ?? '').toLowerCase().includes(q) ||
         String(inf.email ?? '').toLowerCase().includes(q) ||
         String(inf.commune ?? inf.city ?? inf.country ?? '').toLowerCase().includes(q) ||
         (inf.social_profiles ?? []).some(profile => String(profile.username ?? '').toLowerCase().replace(/^@+/, '').includes(q))
@@ -370,7 +370,7 @@ export function InfluencerRanking({
           <thead>
             <tr className="border-b border-gray-100">
               <th className="text-left text-xs font-semibold text-gray-400 px-4 py-3 w-12">#</th>
-              <SortableTH col="user_name" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>Influencer</SortableTH>
+              <SortableTH col="display_name" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>Influencer</SortableTH>
               {visible.followers && <SortableTH col="followers" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Seguidores</SortableTH>}
               {visible.engagement && <SortableTH col="engagement" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Engagement</SortableTH>}
               {visible.rating && <SortableTH col="rating" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right">Rating</SortableTH>}
@@ -410,9 +410,9 @@ export function InfluencerRanking({
                         className="flex items-center gap-3 hover:underline"
                       >
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {inf.user_name?.[0]?.toUpperCase() ?? '?'}
+                          {inf.display_name?.[0]?.toUpperCase() ?? '?'}
                         </div>
-                        <div className="text-sm font-semibold text-gray-900">{inf.user_name}</div>
+                        <div className="text-sm font-semibold text-gray-900">{inf.display_name}</div>
                       </Link>
                       <div className="text-xs text-gray-400">
                         {primary && buildProfileUrl(primary.platform, primary.username) ? (

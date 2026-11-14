@@ -58,8 +58,8 @@ export async function linkCrmLeadToProfile(
       } else {
         const { data: brandRow } = await admin.from('brands').select('user_id').eq('id', args.brandId).maybeSingle()
         if (brandRow?.user_id) {
-          const { data: owner } = await admin.from('profiles').select('signer_rut').eq('user_id', brandRow.user_id as string).maybeSingle()
-          if (owner && empty(owner.signer_rut)) await admin.from('profiles').update({ signer_rut: leadRut }).eq('user_id', brandRow.user_id as string)
+          const { data: owner } = await admin.from('profiles').select('signer_rut').eq('id', brandRow.user_id as string).maybeSingle()
+          if (owner && empty(owner.signer_rut)) await admin.from('profiles').update({ signer_rut: leadRut }).eq('id', brandRow.user_id as string)
         }
       }
     }

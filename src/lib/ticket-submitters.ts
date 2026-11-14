@@ -18,7 +18,7 @@ export interface SubmitterSources {
   userIds: string[]
   /** user_id de los usuarios con membresía activa de plataforma (super_admin). */
   platformAdminIds: Set<string>
-  influencers: { id: string; user_id: string | null; user_name: string | null; email: string | null }[]
+  influencers: { id: string; user_id: string | null; display_name: string | null; email: string | null }[]
   brands: { id: string; user_id: string | null; name: string | null; contact_name: string | null; contact_email: string | null }[]
   brandMembers: { user_id: string | null; brand_id: string; email: string | null; name: string | null }[]
   /** Datos del perfil existente (profiles + Auth) para el fallback. */
@@ -38,7 +38,7 @@ export function buildSubmitterMap(src: SubmitterSources): Record<string, TicketS
   for (const inf of src.influencers) {
     if (!inf.user_id || map[inf.user_id]) continue
     map[inf.user_id] = {
-      name: inf.user_name ?? inf.email ?? 'Influencer',
+      name: inf.display_name ?? inf.email ?? 'Influencer',
       email: inf.email ?? '',
       type: 'influencer',
       profile_href: `/admin-influencers/${inf.id}`,

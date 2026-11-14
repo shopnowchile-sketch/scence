@@ -51,7 +51,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     .select(`
       influencer_id, fee, currency, accepted_at, updated_at, application_status,
       influencer:influencers (
-        user_name, email, phone, whatsapp, location_id, categories,
+        display_name, email, phone, whatsapp, location_id, categories,
         influencer_social_profiles (platform, username, followers, engagement_rate)
       )
     `)
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   type Social = { platform: string; username: string | null; followers: number | null; engagement_rate: number | null }
   type Influencer = {
-    user_name: string; email: string | null; phone: string | null; whatsapp: string | null
+    display_name: string; email: string | null; phone: string | null; whatsapp: string | null
     location_id: string | null; categories: string[] | null; influencer_social_profiles: Social[] | null
   }
   const locationDisplayById = await getOfficialLocationDisplayMap(admin)
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const done = content.filter(isDeliverableComplete).length
     const overdue = content.filter(row => isDeliverableOverdue(row, todayKey)).length
     const values: Record<ExportColumnKey, string | number> = {
-      name: influencer?.user_name ?? '',
+      name: influencer?.display_name ?? '',
       instagram: instagram?.username ? `@${instagram.username.replace(/^@/, '')}` : '',
       followers: instagram?.followers ?? '',
       engagement: instagram?.engagement_rate ?? '',

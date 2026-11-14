@@ -17,7 +17,7 @@ export async function GET() {
     .from('campaign_deliverables')
     .select(`
       id, title, type, platform, due_date, content_url, published_url, submitted_at, submitted_notes, caption, campaign_id,
-      influencer:influencers (id, user_name, avatar_url),
+      influencer:influencers (id, display_name, avatar_url),
       campaign:campaigns (id, name, brand:brands!brand_id (name))
     `, { count: 'exact' })
     .eq('status', 'in_review')

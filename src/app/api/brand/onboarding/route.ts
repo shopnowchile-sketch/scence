@@ -27,7 +27,7 @@ export async function GET() {
   const admin = createAdminClient()
   const [{ data: brand }, { data: profile }, { data: documents }, { data: campaigns }] = await Promise.all([
     admin.from('brands').select('rut, instagram, contact_name, contact_email, address_street, address_city, address_region, address_country, address_place_id').eq('id', access.brandId).single(),
-    admin.from('profiles').select('metadata').eq('user_id', user.id).single(),
+    admin.from('profiles').select('metadata').eq('id', user.id).single(),
     admin.from('brand_documents').select('status, document_type').eq('brand_id', access.brandId).eq('document_type', 'nda'),
     admin.from('campaigns').select('id').eq('brand_id', access.brandId).order('created_at', { ascending: true }).limit(1),
   ])
@@ -59,7 +59,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: profile, error: profileError } = await admin.from('profiles').select('metadata').eq('user_id', user.id).single()
+  const { data: profile, error: profileError } = await admin.from('profiles').select('metadata').eq('id', user.id).single()
   if (profileError || !profile) return NextResponse.json({ error: 'Perfil no encontrado' }, { status: 404 })
 
   const metadata = profile.metadata && typeof profile.metadata === 'object' ? profile.metadata as Record<string, unknown> : {}
@@ -70,7 +70,7 @@ export async function PATCH(request: NextRequest) {
       ? { ...state, skipped_at: new Date().toISOString() }
       : { ...state, campaign_tour_seen: true }
 
-  const { error } = await admin.from('profiles').update({ metadata: { ...metadata, brand_onboarding: nextState } }).eq('user_id', user.id)
+  const { error } = await admin.from('profiles').update({ metadata: { ...metadata, brand_onboarding: nextState } }).eq('id', user.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ data: nextState })
 }

@@ -190,7 +190,7 @@ export function InfluencersClient({ portal = 'admin', initialView }: Influencers
   }
 
   async function deleteOne(inf: Influencer) {
-    if (!confirm(`¿Eliminar permanentemente a "${inf.user_name}"? Esta acción no se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar permanentemente a "${inf.display_name}"? Esta acción no se puede deshacer.`)) return
     try {
       const r = await fetch(`/api/influencers/${inf.id}?hard=true`, { method: 'DELETE' })
       const j = await r.json()

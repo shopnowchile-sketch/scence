@@ -58,7 +58,7 @@ function db(seed: Record<string, Row[]>, opts: { uniqueProOpen?: boolean } = {})
   return { admin, t }
 }
 
-const inf = (id: string, extra: Row = {}) => ({ id, user_id: `u-${id}`, user_name: `Inf ${id}`, email: `${id}@example.test`, organization_id: ORG, is_active: true, metadata: {}, ...extra })
+const inf = (id: string, extra: Row = {}) => ({ id, user_id: `u-${id}`, display_name: `Inf ${id}`, email: `${id}@example.test`, organization_id: ORG, is_active: true, metadata: {}, ...extra })
 const attempt = (id: string) => ({ status: 'incomplete', organization_id: ORG, metadata: { influencer_id: id, account_type: 'influencer' }, paypal_payer_id: null })
 const ticket = (id: string, extra: Row = {}) => ({ id, organization_id: ORG, created_by: `u-${id.replace('t-', '')}`, title: 'Ticket', description: 'texto', status: 'open', priority: 'P2', category: 'other', ...extra })
 

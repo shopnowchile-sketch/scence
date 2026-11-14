@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
       .select(`
         id,
         user_id,
-        user_name,
+        display_name,
         location_id,
         categories,
         rating,
@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
 
   if (search) {
     rows = rows.filter(inf =>
-      String(inf.user_name ?? '').toLowerCase().includes(search) ||
+      String(inf.display_name ?? '').toLowerCase().includes(search) ||
       String(inf.commune ?? inf.city ?? '').toLowerCase().includes(search) ||
       (inf.social_profiles ?? []).some(profile => String(profile.username ?? '').toLowerCase().replace(/^@+/, '').includes(search))
     )

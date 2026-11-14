@@ -15,7 +15,7 @@ type LocationStatus = 'ok' | 'missing' | 'orphan' | 'inactive'
 
 interface GeographyInfluencer {
   id: string
-  user_name: string | null
+  display_name: string | null
   instagram_username: string | null
   is_active: boolean
   location_status: LocationStatus
@@ -91,7 +91,7 @@ function InfluencerList({ rows, showStatus }: { rows: GeographyInfluencer[]; sho
           <li key={inf.id}>
             <Link href={`/admin-influencers/${inf.id}`} className="flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg hover:bg-violet-50/60">
               <span className="min-w-0">
-                <span className="block text-sm font-medium text-gray-900 truncate">{inf.user_name || '(sin nombre)'}</span>
+                <span className="block text-sm font-medium text-gray-900 truncate">{inf.display_name || '(sin nombre)'}</span>
                 <span className={`block text-xs truncate ${inf.instagram_hint ? 'text-amber-600' : 'text-gray-400'}`}>
                   {inf.instagram_username ? `@${inf.instagram_username}`
                     : inf.instagram_hint === 'conflict' ? 'Instagram coincide con otra ficha'
@@ -167,7 +167,7 @@ function GeographyDrilldown({ nodes, influencers }: { nodes: GeographyCountNode[
   if (showInvalid) list = invalid
   else if (current && showDirect) list = influencers.filter(i => i.location_id === current.id)
   else if (current && children.length === 0) list = influencers.filter(i => inSubtree(i.location_id))
-  list?.sort((a, b) => (a.user_name ?? '').localeCompare(b.user_name ?? '', 'es-CL'))
+  list?.sort((a, b) => (a.display_name ?? '').localeCompare(b.display_name ?? '', 'es-CL'))
 
   const bars: BarRow[] = [...children]
   if (current && children.length > 0 && current.direct > 0) bars.push({ id: DIRECT, name: unspecifiedLabel, count: current.direct, muted: true })

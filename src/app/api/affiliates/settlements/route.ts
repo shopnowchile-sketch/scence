@@ -8,7 +8,7 @@ export async function GET() {
 
   const { data, error } = await access.admin
     .from('commission_settlements')
-    .select('*, influencer:influencers (id, user_name, avatar_url), campaign:campaigns (id, name), conversions:commission_settlement_conversions (conversion:affiliate_conversions (id, sale_amount, commission_amount, currency, occurred_at, affiliate_link_id, external_sale_id))')
+    .select('*, influencer:influencers (id, display_name, avatar_url), campaign:campaigns (id, name), conversions:commission_settlement_conversions (conversion:affiliate_conversions (id, sale_amount, commission_amount, currency, occurred_at, affiliate_link_id, external_sale_id))')
     .eq('organization_id', access.orgId)
     .order('created_at', { ascending: false })
 

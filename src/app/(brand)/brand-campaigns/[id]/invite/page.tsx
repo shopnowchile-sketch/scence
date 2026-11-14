@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 
 interface Influencer {
   id: string
-  user_name: string
+  display_name: string
   avatar_url: string | null
   categories: string[]
   city: string | null
@@ -146,11 +146,11 @@ export default function InviteInfluencerPage() {
       ) : influencer ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
           {influencer.avatar_url
-            ? <Image src={influencer.avatar_url} alt={influencer.user_name} width={56} height={56} className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
-            : <div className="w-14 h-14 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">{influencer.user_name[0]}</div>
+            ? <Image src={influencer.avatar_url} alt={influencer.display_name} width={56} height={56} className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
+            : <div className="w-14 h-14 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">{influencer.display_name[0]}</div>
           }
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-gray-900">{influencer.user_name}</h3>
+            <h3 className="font-bold text-gray-900">{influencer.display_name}</h3>
             {primary && (
               <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                 <Instagram className="h-3 w-3" />

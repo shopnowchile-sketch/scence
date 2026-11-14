@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, user_name, email, is_active')
+    .select('id, display_name, email, is_active')
     .eq('id', influencer_id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Influencer no encontrada' }, { status: 404 })
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     to:      influencer.email,
     subject: `Recordatorio: entregables pendientes en "${campaign.name}"`,
     html: deliverableReminderEmail({
-      influencerName: influencer.user_name,
+      influencerName: influencer.display_name,
       campaignName:   campaign.name,
       pendingTitles:  pending.map(d => d.title || d.type || 'Entregable'),
       appUrl:         `${APP_URL}/inf-deliverables?campaign=${params.id}`,

@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // la fecha guardada en la plantilla de la campaña.
     const { data: acceptedRows, error: acceptedError } = await admin
       .from('campaign_influencers')
-      .select('id, influencer_id, influencer:influencers(user_name,email,is_active)')
+      .select('id, influencer_id, influencer:influencers(display_name,email,is_active)')
       .eq('campaign_id', params.id)
       .eq('application_status', 'accepted')
       .in('influencer_id', ids)
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       }]
     })
     const people = (rows ?? []).map(row => ({
-      name: (row.influencer as unknown as { user_name?: string | null })?.user_name ?? 'Hola',
+      name: (row.influencer as unknown as { display_name?: string | null })?.display_name ?? 'Hola',
       email: (row.influencer as unknown as { email?: string | null })?.email,
       active: (row.influencer as unknown as { is_active?: boolean | null })?.is_active !== false,
       dueDate: row.due_date,
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (!body.due_date || !/^\d{4}-\d{2}-\d{2}$/.test(body.due_date)) return NextResponse.json({ error: 'Define una fecha límite para confirmar.' }, { status: 422 })
 
-  const { data: accepted, error: acceptedError } = await admin.from('campaign_influencers').select('id, influencer_id, influencer:influencers(user_name,email,is_active)').eq('campaign_id', params.id).eq('application_status', 'accepted')
+  const { data: accepted, error: acceptedError } = await admin.from('campaign_influencers').select('id, influencer_id, influencer:influencers(display_name,email,is_active)').eq('campaign_id', params.id).eq('application_status', 'accepted')
   if (acceptedError) return NextResponse.json({ error: acceptedError.message }, { status: 500 })
   if (!accepted?.length) return NextResponse.json({ error: 'Aún no hay influencers aceptadas.' }, { status: 422 })
   const influencerIds = accepted.map(row => row.influencer_id)
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (body.send_email !== false && (newRows.length || pendingExistingIds.length)) {
     const recipients = new Set([...newRows.map(row => row.influencer_id), ...(existing ?? []).filter(row => pendingExistingIds.includes(row.id)).map(row => row.influencer_id)])
     const people = accepted.filter(row => recipients.has(row.influencer_id)).map(row => ({
-      name: (row.influencer as unknown as { user_name?: string | null })?.user_name ?? 'Hola',
+      name: (row.influencer as unknown as { display_name?: string | null })?.display_name ?? 'Hola',
       email: (row.influencer as unknown as { email?: string | null })?.email,
       // Regla: influencer inactiva = cero emails de SCENCE.
       active: (row.influencer as unknown as { is_active?: boolean | null })?.is_active !== false,

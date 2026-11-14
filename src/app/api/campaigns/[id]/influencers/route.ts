@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .select(`
       *,
       influencer:influencers (
-        id, user_name, avatar_url, location_id, is_verified,
+        id, display_name, avatar_url, location_id, is_verified,
         influencer_social_profiles (platform, username, followers, engagement_rate),
         influencer_rate_cards (deliverable_type, base_rate, currency)
       )
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .select(`
       *,
       influencer:influencers (
-        id, user_name, avatar_url, location_id, email,
+        id, display_name, avatar_url, location_id, email,
         influencer_social_profiles (platform, username, followers, engagement_rate)
       )
     `)
@@ -232,7 +232,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Antes este flujo (a diferencia de aprobar una postulación, ver campaign-applications.ts)
   // no enviaba ningún email — la influencer solo se enteraba si entraba a mirar el dashboard.
   try {
-    const inf = (data as { influencer?: { user_name?: string | null; email?: string | null } | null }).influencer
+    const inf = (data as { influencer?: { display_name?: string | null; email?: string | null } | null }).influencer
     const { data: camp } = await admin
       .from('campaigns')
       .select('name, type, status, brand:brands!brand_id(name)')
@@ -258,10 +258,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         to: inf.email,
         subject: attendance ? `Confirma tu asistencia: ${camp.name}` : invite ? 'Fuiste seleccionada para una campaña privada ✨' : `Fuiste asignada a la campaña "${camp.name}"`,
         html: attendance
-          ? attendanceConfirmationEmail({ influencerName: inf.user_name ?? 'Influencer', campaignName: camp.name, campaignId: params.id, dueDate: attendance.due_date })
+          ? attendanceConfirmationEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, campaignId: params.id, dueDate: attendance.due_date })
           : invite
-          ? influencerInviteEmail({ influencerName: inf.user_name ?? 'Influencer', campaignName: camp.name, brandName: (camp.brand as { name?: string } | null)?.name ?? 'Scence', inviteUrl: `${APP_URL}/inf-campaigns` })
-          : campaignAssignedEmail({ influencerName: inf.user_name ?? 'Influencer', campaignName: camp.name, campaignType: camp.type, campaignUrl: `${APP_URL}/inf-campaign/${params.id}` }),
+          ? influencerInviteEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, brandName: (camp.brand as { name?: string } | null)?.name ?? 'Scence', inviteUrl: `${APP_URL}/inf-campaigns` })
+          : campaignAssignedEmail({ influencerName: inf.display_name ?? 'Influencer', campaignName: camp.name, campaignType: camp.type, campaignUrl: `${APP_URL}/inf-campaign/${params.id}` }),
       })
       // Resend no lanza excepción en errores de API — hay que revisar `error`.
       if (emailErr) console.error('[POST /api/campaigns/[id]/influencers] Resend devolvió error:', emailErr)
@@ -303,7 +303,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   // influencer de una eliminación accidental.
   const { data: relation } = await admin
     .from('campaign_influencers')
-    .select('id, application_status, metadata, influencer:influencers(user_name, email)')
+    .select('id, application_status, metadata, influencer:influencers(display_name, email)')
     .eq('campaign_id', params.id)
     .eq('influencer_id', influencerId)
     .maybeSingle()

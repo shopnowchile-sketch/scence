@@ -119,9 +119,9 @@ export async function resolvePendingCampaignAnnouncement(
   // Sin filtro por organization_id: las marcas quedan con organization_id propia
   // y aislada (fix 2026-07-02), así que filtrar por la org de la campaña dejaría
   // fuera a casi todo el roster.
-  const { data: candidates, error: infErr } = await fetchAllRows<{ id: string; user_id: string | null; user_name: string | null; email: string | null; location_id: string | null }>((from, to) => admin
+  const { data: candidates, error: infErr } = await fetchAllRows<{ id: string; user_id: string | null; display_name: string | null; email: string | null; location_id: string | null }>((from, to) => admin
     .from('influencers')
-    .select('id, user_id, user_name, email, location_id')
+    .select('id, user_id, display_name, email, location_id')
     .eq('is_active', true)
     .not('email', 'is', null)
     .order('id')
@@ -148,7 +148,7 @@ export async function resolvePendingCampaignAnnouncement(
   const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
   const optedOut = new Set<string>()
   for (let i = 0; i < userIds.length; i += 500) {
-    const { data: profiles, error: profilesErr } = await admin.from('profiles').select('user_id, metadata').in('user_id', userIds.slice(i, i + 500))
+    const { data: profiles, error: profilesErr } = await admin.from('profiles').select('id, metadata').in('id', userIds.slice(i, i + 500))
     // Falla cerrado: sin las preferencias no se puede respetar el opt-out.
     if (profilesErr) {
       console.error('[resolvePendingCampaignAnnouncement] error leyendo preferencias', profilesErr)
@@ -161,7 +161,7 @@ export async function resolvePendingCampaignAnnouncement(
       const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
         ? metadata.notification_preferences as Record<string, unknown>
         : {}
-      if (preferences[preferenceKey] === false) optedOut.add(profile.user_id)
+      if (preferences[preferenceKey] === false) optedOut.add(profile.id)
     }
   }
 
@@ -226,7 +226,7 @@ export async function announceCampaignToInfluencers(
             to: inf.email as string,
             subject: `Nueva campaña disponible: ${campaign.name} — cupos limitados`,
             html: campaignOpenAvailableEmail({
-              influencerName: inf.user_name ?? 'influencer',
+              influencerName: inf.display_name ?? 'influencer',
               campaignName: campaign.name,
               campaignType: campaign.type,
               applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
@@ -350,9 +350,9 @@ export async function resolveReopenedCampaignAnnouncement(
   const ids = Array.from(new Set((notifiedBefore ?? []).map(r => r.influencer_id).filter((id): id is string => Boolean(id) && !existing.has(id))))
   if (ids.length === 0) return { campaign, pending: [], skipped: undefined }
 
-  const candidates: Array<{ id: string; user_id: string | null; user_name: string | null; email: string | null }> = []
+  const candidates: Array<{ id: string; user_id: string | null; display_name: string | null; email: string | null }> = []
   for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await admin.from('influencers').select('id, user_id, user_name, email').in('id', ids.slice(i, i + 200)).eq('is_active', true).not('email', 'is', null)
+    const { data, error } = await admin.from('influencers').select('id, user_id, display_name, email').in('id', ids.slice(i, i + 200)).eq('is_active', true).not('email', 'is', null)
     if (error) {
       console.error('[resolveReopenedCampaignAnnouncement] error listando influencers', error)
       return { campaign, pending: [], skipped: 'query_error' as const }
@@ -370,13 +370,13 @@ export async function resolveReopenedCampaignAnnouncement(
   const userIds = candidates.map(inf => inf.user_id).filter((id): id is string => Boolean(id))
   const optedOut = new Set<string>()
   for (let i = 0; i < userIds.length; i += 500) {
-    const { data: profiles } = await admin.from('profiles').select('user_id, metadata').in('user_id', userIds.slice(i, i + 500))
+    const { data: profiles } = await admin.from('profiles').select('id, metadata').in('id', userIds.slice(i, i + 500))
     for (const profile of profiles ?? []) {
       const metadata = profile.metadata && typeof profile.metadata === 'object' ? profile.metadata as Record<string, unknown> : {}
       const preferences = metadata.notification_preferences && typeof metadata.notification_preferences === 'object'
         ? metadata.notification_preferences as Record<string, unknown>
         : {}
-      if (preferences.public_campaigns_email === false) optedOut.add(profile.user_id)
+      if (preferences.public_campaigns_email === false) optedOut.add(profile.id)
     }
   }
 
@@ -406,7 +406,7 @@ export async function announceCampaignReopened(
             to: inf.email as string,
             subject: reopenedSubject(campaign.name),
             html: campaignOpenAvailableEmail({
-              influencerName: inf.user_name ?? 'influencer',
+              influencerName: inf.display_name ?? 'influencer',
               campaignName: campaign.name,
               campaignType: campaign.type,
               applyUrl: `${APP_URL}/inf-campaign/${campaign.id}`,
@@ -503,7 +503,7 @@ export async function notifyPreassignedInfluencersOnActivation(
 
     const [{ data: ciRows }, { data: notifiedRows }] = await Promise.all([
       admin.from('campaign_influencers')
-        .select('influencer_id, application_status, origin, message, influencer:influencers (user_name, email, is_active)')
+        .select('influencer_id, application_status, origin, message, influencer:influencers (display_name, email, is_active)')
         .eq('campaign_id', campaignId)
         .not('application_status', 'eq', 'rejected'),
       admin.from('campaign_influencer_notifications').select('influencer_id').eq('campaign_id', campaignId),
@@ -516,7 +516,7 @@ export async function notifyPreassignedInfluencersOnActivation(
       application_status: string | null
       origin: string | null
       message: string | null
-      influencer: { user_name: string | null; email: string | null; is_active: boolean | null } | null
+      influencer: { display_name: string | null; email: string | null; is_active: boolean | null } | null
     }
     const targets = ((ciRows ?? []) as unknown as Row[]).filter(r =>
       r.influencer?.is_active && r.influencer?.email && !notified.has(r.influencer_id)
@@ -533,14 +533,14 @@ export async function notifyPreassignedInfluencersOnActivation(
         const isInvitationPending = r.origin === 'invitation' && r.application_status === 'pending'
         const html = isInvitationPending
           ? influencerInviteEmail({
-              influencerName: inf.user_name ?? 'influencer',
+              influencerName: inf.display_name ?? 'influencer',
               campaignName:   campaign.name,
               brandName:      brandName || 'Una marca',
               inviteUrl:      `${APP_URL}/inf-campaigns`,
               message:        r.message ?? undefined,
             })
           : campaignAssignedEmail({
-              influencerName: inf.user_name ?? 'Influencer',
+              influencerName: inf.display_name ?? 'Influencer',
               campaignName:   campaign.name,
               campaignType:   campaign.type,
               campaignUrl:    `${APP_URL}/inf-campaign/${campaign.id}`,

@@ -53,7 +53,7 @@ export function BartersTab({
     const term = normalizeSearch(query)
     return barters.filter(barter => {
       const matchesSearch = normalizeSearch([
-        barter.influencer?.user_name,
+        barter.influencer?.display_name,
         barter.influencer?.email,
         barter.influencer?.instagram_username,
       ].filter(Boolean).join(' ')).includes(term)
@@ -278,10 +278,10 @@ function TrackingRow({ campaignId, barter, campaignBenefits, selectedPendingKeys
     <div className="card overflow-hidden">
       <div className="flex items-center gap-2.5 border-b border-gray-100 px-3 py-2.5">
         <div className="h-8 w-8 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white text-[10px] font-bold">
-          {(barter.influencer?.user_name ?? '?').slice(0, 2).toUpperCase()}
+          {(barter.influencer?.display_name ?? '?').slice(0, 2).toUpperCase()}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-gray-900">{barter.influencer?.user_name ?? 'Influencer'}</p>
+          <p className="truncate text-xs font-semibold text-gray-900">{barter.influencer?.display_name ?? 'Influencer'}</p>
           <p className="truncate text-[11px] text-gray-400">
             {barter.influencer?.email ?? 'Sin email'}
             {barter.influencer?.instagram_username ? ` · @${barter.influencer.instagram_username.replace(/^@/, '')}` : ''}

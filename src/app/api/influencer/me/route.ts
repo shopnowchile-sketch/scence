@@ -17,7 +17,7 @@ export async function GET() {
   const { data, error } = await admin
     .from('influencers')
     .select(`
-      id, user_name, avatar_url, bio, email, phone,
+      id, display_name, avatar_url, bio, email, phone,
       address, location_id, birth_date, categories, tags, is_verified, metadata,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)
@@ -75,14 +75,14 @@ export async function PATCH(req: Request) {
 
   const { data: influencer } = await admin
     .from('influencers')
-    .select('id, user_name, address, location_id, birth_date, phone, metadata')
+    .select('id, display_name, address, location_id, birth_date, phone, metadata')
     .eq('user_id', user.id)
     .single()
   if (!influencer) return NextResponse.json({ error: 'Not an influencer account' }, { status: 403 })
 
   // Allowed profile fields
   const profileUpdate: Record<string, unknown> = {}
-  const allowed = ['user_name', 'bio', 'phone', 'address', 'birth_date', 'avatar_url', 'categories', 'location_id']
+  const allowed = ['display_name', 'bio', 'phone', 'address', 'birth_date', 'avatar_url', 'categories', 'location_id']
   for (const key of allowed) {
     if (key in body) profileUpdate[key] = body[key]
   }
@@ -131,7 +131,7 @@ export async function PATCH(req: Request) {
   // en ese punto, no acá.
   const finalAddress = 'address' in profileUpdate ? String(profileUpdate.address ?? '').trim() : String(influencer.address ?? '').trim()
   const finalLocationId = 'location_id' in profileUpdate ? String(profileUpdate.location_id ?? '').trim() : String(influencer.location_id ?? '').trim()
-  const finalDisplayName = 'user_name' in profileUpdate ? String(profileUpdate.user_name ?? '').trim() : String(influencer.user_name ?? '').trim()
+  const finalDisplayName = 'display_name' in profileUpdate ? String(profileUpdate.display_name ?? '').trim() : String(influencer.display_name ?? '').trim()
 
   let finalHasInstagram: boolean
   if (Array.isArray(body.social_profiles)) {
@@ -174,12 +174,9 @@ export async function PATCH(req: Request) {
   }
 
   if (Object.keys(profileUpdate).length > 0) {
-    // El nombre se guarda en pending_user_name; como esta influencer tiene cuenta, la base lo pasa a profiles.user_name.
-    const { user_name: nextName, ...influencerColumns } = profileUpdate
-    const columnsToWrite = typeof nextName === 'string' && nextName.trim() ? { ...influencerColumns, pending_user_name: nextName.trim() } : influencerColumns
     const { error: upErr } = await admin
       .from('influencers')
-      .update(columnsToWrite)
+      .update(profileUpdate)
       .eq('id', influencer.id)
     if (upErr) {
       // Nunca mostrar errores técnicos de la base a la persona.
@@ -244,7 +241,7 @@ export async function PATCH(req: Request) {
   const { data: updated } = await admin
     .from('influencers')
     .select(`
-      id, user_name, avatar_url, bio, email, phone,
+      id, display_name, avatar_url, bio, email, phone,
       address, location_id, birth_date, categories,
       influencer_social_profiles (id, platform, username, followers, engagement_rate, profile_url, synced_at, sync_status)
     `)

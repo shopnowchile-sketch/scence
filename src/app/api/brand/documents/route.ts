@@ -17,7 +17,7 @@ export async function GET() {
     .eq('brand_id', access.brandId).order('created_at', { ascending: false })
     ,
     admin.from('brands').select(BRAND_LEGAL_SELECT).eq('id', access.brandId).single(),
-    admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('user_id', user.id).maybeSingle(),
+    admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('id', user.id).maybeSingle(),
   ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   // Fuente única de datos legales (lib/brand-legal-profile.ts): el NDA los muestra, nunca los pide.

@@ -25,7 +25,7 @@ const adminMember = { id: 'm0', user_id: 'u-admin', organization_id: 'org-agency
 
 function meDb(): Db {
   return {
-    influencers: [{ id: 'inf-1', user_id: 'u1', user_name: 'Ana', email: 'a@x.cl', address: 'Calle 1', location_id: 'loc-1', phone: null, birth_date: null, metadata: {}, categories: [] }],
+    influencers: [{ id: 'inf-1', user_id: 'u1', display_name: 'Ana', email: 'a@x.cl', address: 'Calle 1', location_id: 'loc-1', phone: null, birth_date: null, metadata: {}, categories: [] }],
     influencer_social_profiles: [{ id: 'sp1', influencer_id: 'inf-1', platform: 'instagram', username: 'ana', followers: 10 }],
     locations: [], brands: [],
   }

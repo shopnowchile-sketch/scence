@@ -1,4 +1,3 @@
-import { getUserEmails } from '@/lib/user-email'
 import { brandHasCurrentSubscription, AGENCY_SUBSCRIPTION_REQUIRED } from '@/lib/agency-brands'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createServerClient } from '@/lib/supabase/server'
@@ -25,7 +24,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const [{ data: brand }, { data: document, error: documentError }, { data: representative }] = await Promise.all([
     admin.from('brands').select(BRAND_LEGAL_SELECT).eq('id', access.brandId).single(),
     admin.from('brand_documents').select('id, template_id, title, document_type, metadata').eq('id', params.id).eq('brand_id', access.brandId).eq('status', 'pending').single(),
-    admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('user_id', user.id).maybeSingle(),
+    admin.from('profiles').select(PROFILE_LEGAL_SELECT).eq('id', user.id).maybeSingle(),
   ])
   if (documentError || !document) return NextResponse.json({ error: 'Documento pendiente no encontrado' }, { status: 404 })
   if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 })
@@ -58,7 +57,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { data: members } = await admin
       .from('organization_members')
-      .select('user_id, role, is_owner')
+      .select('user_id, role, is_owner, profile:profiles(email)')
       .eq('organization_id', brand.organization_id)
     const admins = (members ?? []).filter(member => member.is_owner || member.role === 'super_admin')
     const title = document.document_type === 'nda' ? `NDA firmado por ${brand.name}` : `Documento firmado por ${brand.name}`
@@ -73,9 +72,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       })))
     }
 
-    const adminEmails = await getUserEmails(admin, admins.map(member => member.user_id as string))
-    const memberEmails = admins.map(member => adminEmails[member.user_id as string] ?? null)
-      .filter((email): email is string => Boolean(email))
+    const memberEmails = admins.map(member => {
+      const profile = member.profile as unknown as { email?: string | null } | null
+      return profile?.email?.trim().toLowerCase() ?? null
+    }).filter((email): email is string => Boolean(email))
     const fallbackEmail = process.env.ADMIN_NOTIFICATION_EMAIL ?? 'hola.scence@gmail.com'
     const recipients = Array.from(new Set([...memberEmails, fallbackEmail.trim().toLowerCase()].filter(Boolean)))
     if (recipients.length > 0) {

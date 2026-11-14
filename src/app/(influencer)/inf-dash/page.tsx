@@ -62,7 +62,7 @@ type SocialProfile = {
 
 type InfluencerProfile = {
   id: string
-  user_name: string
+  display_name: string
   avatar_url: string | null
   email: string | null
   address?: string | null
@@ -89,7 +89,7 @@ function joinMissing(labels: string[]): string {
 function missingProfileItems(profile: InfluencerProfile | null): MissingProfileItem[] {
   if (!profile) return []
   const missing: MissingProfileItem[] = []
-  if (!profile.user_name?.trim()) missing.push({ label: 'Nombre', section: 'personal' })
+  if (!profile.display_name?.trim()) missing.push({ label: 'Nombre', section: 'personal' })
   const hasInstagram = profile.influencer_social_profiles?.some(
     sp => sp.platform === 'instagram' && (sp.username || sp.profile_url)
   )
@@ -268,11 +268,11 @@ export default function InfluencerDashboard() {
       <div className="flex items-center justify-between gap-2 sm:pt-1">
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
           <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-bold text-base sm:text-lg flex-shrink-0 overflow-hidden">
-            {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.user_name} className="w-full h-full object-cover" /> : profile?.user_name?.charAt(0).toUpperCase() ?? '?'}
+            {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.display_name} className="w-full h-full object-cover" /> : profile?.display_name?.charAt(0).toUpperCase() ?? '?'}
           </div>
           <div className="min-w-0">
             <p className="hidden text-xs font-semibold uppercase tracking-[0.16em] text-violet-500 sm:block">Mi portal</p>
-            <h1 className="truncate text-base font-bold leading-tight tracking-tight text-gray-950 sm:text-2xl">Hola, {profile?.user_name}<span className="hidden sm:inline"> 👋</span></h1>
+            <h1 className="truncate text-base font-bold leading-tight tracking-tight text-gray-950 sm:text-2xl">Hola, {profile?.display_name}<span className="hidden sm:inline"> 👋</span></h1>
             <p className="truncate text-xs first-letter:uppercase leading-tight text-gray-400 sm:text-sm">{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
           </div>
         </div>

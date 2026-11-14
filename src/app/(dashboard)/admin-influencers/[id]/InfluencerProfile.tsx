@@ -455,8 +455,8 @@ export function InfluencerProfile({ id }: { id: string }) {
   const conversions = influencer.affiliate_conversions ?? []
   const settlements = influencer.commission_settlements ?? []
 
-  const avatarGrad = GRADIENTS[influencer.user_name.charCodeAt(0) % GRADIENTS.length]
-  const initials = getInitials(influencer.user_name)
+  const avatarGrad = GRADIENTS[influencer.display_name.charCodeAt(0) % GRADIENTS.length]
+  const initials = getInitials(influencer.display_name)
 
   const totalFollowers = socialProfiles.reduce((s, sp) => s + (sp.followers ?? 0), 0)
   const avgEngagement = socialProfiles.length
@@ -568,7 +568,7 @@ export function InfluencerProfile({ id }: { id: string }) {
           {/* Avatar */}
           <div className="relative flex-shrink-0">
             {influencer.avatar_url ? (
-              <img src={influencer.avatar_url} alt={influencer.user_name}
+              <img src={influencer.avatar_url} alt={influencer.display_name}
                 className="w-20 h-20 rounded-2xl object-cover" />
             ) : (
               <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGrad} flex items-center justify-center`}>
@@ -588,7 +588,7 @@ export function InfluencerProfile({ id }: { id: string }) {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-                    {influencer.user_name}
+                    {influencer.display_name}
                   </h1>
                   <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-extrabold', influencer.pro_source === 'manual' ? 'bg-amber-100 text-amber-800' : influencer.is_pro ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-600')}>
                     {influencer.is_pro ? 'PLAN PRO' : 'PLAN GRATIS'}

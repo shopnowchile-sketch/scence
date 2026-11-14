@@ -46,7 +46,7 @@ function freshDb(): Db {
     ],
     brand_documents: [{ id: 'doc-A', brand_id: 'brand-A', template_id: 'tpl-1', status: 'pending', title: 'NDA A', document_type: 'nda', metadata: {}, content_snapshot: 'viejo', due_at: '2026-12-01' }],
     contract_templates: [{ id: 'tpl-1', content: TEMPLATE }],
-    profiles: [{ user_id: 'uA-owner', user_name: 'Enzo Ficticio', signer_rut: '12.345.678-9', signer_role: 'Representante legal' }],
+    profiles: [{ id: 'uA-owner', full_name: 'Enzo Ficticio', signer_rut: '12.345.678-9', signer_role: 'Representante legal' }],
     notifications: [],
     campaigns: [],
   }
@@ -79,12 +79,12 @@ const FORM_A = { name: 'Marca A', instagram: 'marca_a', ...COMPANY }
 
 test('helper: lista exactamente qué falta, separado por empresa y representante, y arma el domicilio', () => {
   assert.deepEqual(legal.missingCompanyLegalFields({ rut: ' ', address_street: 'x' }).map(f => f.key), ['rut', 'address_city', 'address_region', 'address_country'])
-  assert.deepEqual(legal.missingRepresentativeFields({ user_name: 'A', signer_rut: null, signer_role: '' }).map(f => f.key), ['signer_rut', 'signer_role'])
+  assert.deepEqual(legal.missingRepresentativeFields({ full_name: 'A', signer_rut: null, signer_role: '' }).map(f => f.key), ['signer_rut', 'signer_role'])
   const all = legal.missingLegalFields({}, {})
   assert.equal(all.length, 8)
   assert.ok(all.every(f => f.label && (f.section === 'empresa' || f.section === 'representante')))
   assert.equal(legal.formatBrandAddress({ address_street: 'Calle', address_number: '5', address_city: 'Santiago', address_region: 'RM', address_country: 'Chile' }), 'Calle, 5, Santiago, RM, Chile')
-  const ok = legal.buildBrandLegalProfile({ name: 'X', rut: '1-9', ...COMPANY }, { user_name: 'N', signer_rut: '2-7', signer_role: 'Rep' })
+  const ok = legal.buildBrandLegalProfile({ name: 'X', rut: '1-9', ...COMPANY }, { full_name: 'N', signer_rut: '2-7', signer_role: 'Rep' })
   assert.equal(ok.complete, true)
   assert.equal(legal.legalIncompleteBody(legal.missingLegalFields({}, {})).fix_url, '/brand-settings/organization')
 })
@@ -120,7 +120,7 @@ test('firma: los signer_* que lleguen en el cuerpo se IGNORAN (una sola fuente d
 
 test('firma: falta RUT personal/cargo del owner (caso THE COLOR RUN) → 422 que dice exactamente qué falta y adónde ir; sigue pendiente', async () => {
   const db = freshDb()
-  db.profiles = [{ user_id: 'uA-owner', user_name: 'Enzo Ficticio', signer_rut: null, signer_role: null }]
+  db.profiles = [{ id: 'uA-owner', full_name: 'Enzo Ficticio', signer_rut: null, signer_role: null }]
   const { status, json } = await doSign('uA-owner', db)
   assert.equal(status, 422)
   assert.equal(json.code, 'LEGAL_PROFILE_INCOMPLETE')
@@ -134,7 +134,7 @@ test('firma: sin fila de perfil → 422 con los 3 datos del representante; sin d
   const noProfile = freshDb(); noProfile.profiles = []
   const r1 = await doSign('uA-owner', noProfile)
   assert.equal(r1.status, 422)
-  assert.deepEqual(r1.json.missing.map((f: any) => f.key), ['user_name', 'signer_rut', 'signer_role'])
+  assert.deepEqual(r1.json.missing.map((f: any) => f.key), ['full_name', 'signer_rut', 'signer_role'])
   for (const key of ['rut', 'address_street', 'address_city', 'address_region', 'address_country']) {
     const db = freshDb(); (db.brands[0] as Row)[key] = ' '
     const r = await doSign('uA-owner', db)
@@ -163,7 +163,7 @@ test('permisos intactos: solo el owner firma; member, finance heredado, anónimo
     assert.equal(db.brand_documents[0].status, 'pending')
   }
   const other = freshDb()
-  other.profiles.push({ user_id: 'uB-owner', user_name: 'B', signer_rut: '1-9', signer_role: 'Rep' }); Object.assign(other.brands[1], COMPANY)
+  other.profiles.push({ id: 'uB-owner', full_name: 'B', signer_rut: '1-9', signer_role: 'Rep' }); Object.assign(other.brands[1], COMPANY)
   assert.equal((await doSign('uB-owner', other)).status, 404)
   assert.equal(other.brand_documents[0].status, 'pending')
 })
@@ -172,7 +172,7 @@ test('NDA firmado queda intacto: no se firma dos veces y editar el perfil o la e
   const db = freshDb()
   assert.equal((await doSign('uA-owner', db)).status, 200)
   const before = JSON.stringify(db.brand_documents[0])
-  db.profiles[0].signer_rut = '55.555.555-5'; db.profiles[0].user_name = 'Cambiado'; db.brands[0].rut = '77.777.777-7'
+  db.profiles[0].signer_rut = '55.555.555-5'; db.profiles[0].full_name = 'Cambiado'; db.brands[0].rut = '77.777.777-7'
   assert.equal((await doSign('uA-owner', db)).status, 404)
   const listed = await doList('uA-owner', db)
   assert.equal(JSON.stringify(db.brand_documents[0]), before)
@@ -201,7 +201,7 @@ test('listado: incompleto → dice qué falta y ofrece acceso directo a Organiza
   const db = freshDb(); db.profiles = []; db.brands[0].rut = ''
   const { json } = await doList('uA-owner', db)
   assert.equal(json.legal_profile_complete, false)
-  assert.deepEqual(json.missing.map((f: any) => f.key), ['rut', 'user_name', 'signer_rut', 'signer_role'])
+  assert.deepEqual(json.missing.map((f: any) => f.key), ['rut', 'full_name', 'signer_rut', 'signer_role'])
   assert.equal(json.fix_url, '/brand-settings/organization')
   assert.ok(json.missing_legal_fields.includes('RUT de la empresa'))
   assert.equal((await doList('uA-member', freshDb())).status, 403)
@@ -211,10 +211,10 @@ test('listado: incompleto → dice qué falta y ofrece acceso directo a Organiza
 // ── Organización: único lugar de captura del representante ───────────────────────────────────
 
 test('Organización: el owner guarda empresa + representante; se escribe en profiles (fuente de verdad) y el NDA queda firmable', async () => {
-  const db = freshDb(); db.profiles = [{ user_id: 'uA-owner', user_name: 'Enzo', signer_rut: null, signer_role: null }]
-  const r = await patchMe('uA-owner', db, { ...FORM_A, representative: { user_name: ' Enzo Ficticio ', signer_rut: ' 12.345.678-9 ', signer_role: 'Gerente General' } })
+  const db = freshDb(); db.profiles = [{ id: 'uA-owner', full_name: 'Enzo', signer_rut: null, signer_role: null }]
+  const r = await patchMe('uA-owner', db, { ...FORM_A, representative: { full_name: ' Enzo Ficticio ', signer_rut: ' 12.345.678-9 ', signer_role: 'Gerente General' } })
   assert.equal(r.status, 200, JSON.stringify(r.json))
-  assert.deepEqual({ ...db.profiles[0] }, { user_id: 'uA-owner', user_name: 'Enzo Ficticio', signer_rut: '12.345.678-9', signer_role: 'Gerente General', updated_at: db.profiles[0].updated_at })
+  assert.deepEqual({ ...db.profiles[0] }, { id: 'uA-owner', full_name: 'Enzo Ficticio', signer_rut: '12.345.678-9', signer_role: 'Gerente General', updated_at: db.profiles[0].updated_at })
   assert.equal((await doSign('uA-owner', db)).status, 200)
   assert.equal(db.brand_documents[0].signer_role, 'Gerente General')
 })
@@ -229,10 +229,10 @@ test('Organización: validación legal de la empresa viene del helper (400 con l
 
 test('Organización: nombre del representante no puede quedar vacío; no se toca la marca ni el perfil', async () => {
   const db = freshDb()
-  const r = await patchMe('uA-owner', db, { ...FORM_A, name: 'Marca A2', representative: { user_name: '  ' } })
+  const r = await patchMe('uA-owner', db, { ...FORM_A, name: 'Marca A2', representative: { full_name: '  ' } })
   assert.equal(r.status, 400)
   assert.equal(db.brands[0].name, 'Marca A')
-  assert.equal(db.profiles[0].user_name, 'Enzo Ficticio')
+  assert.equal(db.profiles[0].full_name, 'Enzo Ficticio')
 })
 
 test('Organización: solo el owner edita al representante; member sin permiso (403) y otro owner no pisa perfiles ajenos', async () => {
@@ -241,9 +241,9 @@ test('Organización: solo el owner edita al representante; member sin permiso (4
   assert.equal((await patchMe(null, db, { ...FORM_A })).status, 401)
   assert.equal(db.profiles[0].signer_rut, '12.345.678-9')
   // el representante siempre es el usuario de la sesión: no hay forma de indicar otro perfil
-  const spoof = freshDb(); spoof.profiles.push({ user_id: 'uB-owner', user_name: 'B', signer_rut: 'B-1', signer_role: 'B' })
+  const spoof = freshDb(); spoof.profiles.push({ id: 'uB-owner', full_name: 'B', signer_rut: 'B-1', signer_role: 'B' })
   await patchMe('uA-owner', spoof, { ...FORM_A, representative: { signer_rut: '8-8', id: 'uB-owner', user_id: 'uB-owner' } })
-  assert.equal(spoof.profiles.find(p => p.user_id === 'uB-owner')!.signer_rut, 'B-1')
+  assert.equal(spoof.profiles.find(p => p.id === 'uB-owner')!.signer_rut, 'B-1')
 })
 
 test('Organización: PATCH sin bloque representante no toca el perfil (compatibilidad con guardados antiguos)', async () => {

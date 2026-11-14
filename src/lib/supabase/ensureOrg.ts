@@ -144,14 +144,14 @@ export async function provisionOrgForBrand(brandName: string): Promise<string | 
  * user_metadata.organization_id, que para signups self-service apunta a la
  * organización huérfana creada por el trigger.
  */
-export async function ensureInfluencerRow(user: User): Promise<{ id: string; user_name: string } | null> {
+export async function ensureInfluencerRow(user: User): Promise<{ id: string; display_name: string } | null> {
   if (!user.user_metadata?.is_influencer) return null
 
   const admin = createAdminClient()
 
   const { data: existing } = await admin
     .from('influencers')
-    .select('id, user_name')
+    .select('id, display_name')
     .eq('user_id', user.id)
     .single()
 
@@ -172,7 +172,7 @@ export async function ensureInfluencerRow(user: User): Promise<{ id: string; use
   if (user.email) {
     const { data: orphan } = await admin
       .from('influencers')
-      .select('id, user_name')
+      .select('id, display_name')
       .is('user_id', null)
       .ilike('email', user.email)
       .limit(1)
@@ -336,14 +336,12 @@ export async function ensureBrandRow(user: User): Promise<{ id: string; name: st
     user_metadata: { ...user.user_metadata, organization_id: registered.organizationId },
   })
   if (metaErr) console.error('[ensureBrandRow] no se pudo guardar organization_id en metadata:', metaErr.message)
-  // El perfil normalmente ya lo creó handle_new_user (user_role brand_member); quien registra una marca pasa a brand_owner
-  // sin pisar nunca un super_admin o influencer.
   await admin.from('profiles').upsert({
-    user_id: user.id,
-    user_name: (user.user_metadata?.full_name as string | undefined) ?? user.email?.split('@')[0] ?? '',
-    user_role: 'brand_owner',
-  }, { onConflict: 'user_id', ignoreDuplicates: true })
-  await admin.from('profiles').update({ user_role: 'brand_owner' }).eq('user_id', user.id).eq('user_role', 'brand_member')
+    id: user.id,
+    full_name: (user.user_metadata?.full_name as string | undefined) ?? '',
+    display_name: (user.user_metadata?.full_name as string | undefined) ?? '',
+    role: 'brand_manager',
+  }, { onConflict: 'id' })
 
   const { data: brand } = await admin.from('brands').select('id, name, status').eq('id', registered.brandId).single()
   return brand ?? { id: registered.brandId, name: brandName, status: 'pending_approval' }

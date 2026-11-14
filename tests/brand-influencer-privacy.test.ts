@@ -21,9 +21,9 @@ type Row = Record<string, any>
 const m = (user_id: string, organization_id: string, role: string, brand_id: string | null, is_owner = false) =>
   ({ id: `m-${user_id}`, user_id, organization_id, role, brand_id, is_owner, is_active: true })
 
-const INF1 = { id: 'inf-1', user_id: 'uInf1', user_name: 'Ana Aceptada', email: 'ana@test.invalid', phone: '+56911111111', whatsapp: '+56911111111', avatar_url: null, location_id: null, categories: ['Moda'], rating: 5 }
-const INF2 = { id: 'inf-2', user_id: null, user_name: 'Beto Pendiente', email: 'beto@test.invalid', phone: '+56922222222', whatsapp: null, avatar_url: null, location_id: null, categories: [], rating: 4 }
-const INF9 = { id: 'inf-9', user_id: 'uInf9', user_name: 'Zoe De Otra Marca', email: 'zoe@test.invalid', phone: '+56999999999', whatsapp: null, avatar_url: null, location_id: null, categories: [], rating: 3 }
+const INF1 = { id: 'inf-1', user_id: 'uInf1', display_name: 'Ana Aceptada', email: 'ana@test.invalid', phone: '+56911111111', whatsapp: '+56911111111', avatar_url: null, location_id: null, categories: ['Moda'], rating: 5 }
+const INF2 = { id: 'inf-2', user_id: null, display_name: 'Beto Pendiente', email: 'beto@test.invalid', phone: '+56922222222', whatsapp: null, avatar_url: null, location_id: null, categories: [], rating: 4 }
+const INF9 = { id: 'inf-9', user_id: 'uInf9', display_name: 'Zoe De Otra Marca', email: 'zoe@test.invalid', phone: '+56999999999', whatsapp: null, avatar_url: null, location_id: null, categories: [], rating: 3 }
 const social = (id: string) => [{ platform: 'instagram', username: id, followers: 1000, engagement_rate: 3, is_primary: true }]
 
 const fresh = (): Record<string, Row[]> => ({
@@ -56,7 +56,7 @@ const fresh = (): Record<string, Row[]> => ({
   ],
   campaign_deliverables: [], bookings: [], locations: [], subscriptions: [],
   barters: [
-    { id: 'b1', campaign_id: 'camp-A', influencer_id: 'inf-1', created_at: '2026-10-01', status: 'pending', influencer: { id: 'inf-1', user_name: 'Ana Aceptada', avatar_url: null, email: 'ana@test.invalid' }, history: [], benefits: [] },
+    { id: 'b1', campaign_id: 'camp-A', influencer_id: 'inf-1', created_at: '2026-10-01', status: 'pending', influencer: { id: 'inf-1', display_name: 'Ana Aceptada', avatar_url: null, email: 'ana@test.invalid' }, history: [], benefits: [] },
   ],
 })
 // projectColumns: la base respeta la lista de columnas del `.select(...)` (la ruta de ranking pide columnas explícitas).
@@ -72,8 +72,8 @@ const CONTACT = /ana@test|beto@test|zoe@test|\+569|"user_id"|uInf/
 
 // ── Helper puro ────────────────────────────────────────────────────────────────
 test('helper: quita email, teléfono, WhatsApp y user_id; conserva el resto; tolera null', () => {
-  const clean = privacy.withoutInfluencerContact({ id: 'i', user_name: 'X', email: 'a@b', phone: '1', whatsapp: '2', user_id: 'u', categories: ['a'] })
-  assert.deepEqual(clean, { id: 'i', user_name: 'X', categories: ['a'] })
+  const clean = privacy.withoutInfluencerContact({ id: 'i', display_name: 'X', email: 'a@b', phone: '1', whatsapp: '2', user_id: 'u', categories: ['a'] })
+  assert.deepEqual(clean, { id: 'i', display_name: 'X', categories: ['a'] })
   assert.equal(privacy.withoutInfluencerContact(null), null)
   assert.deepEqual(privacy.scrubInfluencerRelation({ id: 'ci', fee: 5, influencer: { id: 'i', email: 'a@b' } }), { id: 'ci', fee: 5, influencer: { id: 'i' } })
   assert.deepEqual(privacy.scrubInfluencerRelation({ id: 'ci', influencer: null }), { id: 'ci', influencer: null })
@@ -87,7 +87,7 @@ test('detalle de campaña (vista de marca): postulantes y participantes siguen v
   const campaign = fresh().campaigns[0]
   const view = privacy.scrubCampaignInfluencers({ ...campaign, address: 'x' })
   const people = view.campaign_influencers as any[]
-  assert.deepEqual(people.map(ci => ci.influencer.user_name).sort(), ['Ana Aceptada', 'Beto Pendiente'])
+  assert.deepEqual(people.map(ci => ci.influencer.display_name).sort(), ['Ana Aceptada', 'Beto Pendiente'])
   assert.deepEqual(people.map(ci => ci.application_status).sort(), ['accepted', 'pending'])
   assert.ok(people.every(ci => ci.influencer.influencer_social_profiles.length === 1), 'conserva Instagram para buscar')
   assert.ok(people.every(ci => ci.fee !== undefined && ci.id), 'conserva el resto de la fila')
@@ -113,7 +113,7 @@ test('canjes: la marca gestiona y ve los canjes sin el email de la influencer; e
   const brandJson = await brand.json()
   assert.equal(brandJson.data.length, 1)
   assert.equal(brandJson.data[0].id, 'b1')
-  assert.equal(brandJson.data[0].influencer.user_name, 'Ana Aceptada')
+  assert.equal(brandJson.data[0].influencer.display_name, 'Ana Aceptada')
   assert.doesNotMatch(JSON.stringify(brandJson), /ana@test/)
 
   as('uAdmin')
@@ -131,8 +131,8 @@ test('ranking de marca: solo influencers vinculadas a la marca, sin user_id; has
   assert.equal(res.status, 200)
   const json = await res.json()
   // Visibilidad (getBrandInfluencerScope): postulantes y participantes de sus campañas + roster; nunca de otra marca.
-  assert.deepEqual(json.data.map((row: any) => row.user_name).sort(), ['Ana Aceptada', 'Beto Pendiente'], 'no incluye influencers de otra marca')
-  const byName = (rows: any[], name: string) => rows.find(row => row.user_name === name)
+  assert.deepEqual(json.data.map((row: any) => row.display_name).sort(), ['Ana Aceptada', 'Beto Pendiente'], 'no incluye influencers de otra marca')
+  const byName = (rows: any[], name: string) => rows.find(row => row.display_name === name)
   assert.equal(byName(json.data, 'Ana Aceptada').has_account, true)
   assert.equal(byName(json.data, 'Beto Pendiente').has_account, false, 'sin cuenta (user_id nulo)')
   assert.ok(json.data.every((row: any) => !('user_id' in row)))
@@ -148,7 +148,7 @@ test('ranking de marca: solo influencers vinculadas a la marca, sin user_id; has
 
   as('uOwnerB')
   const other = await (await (ranking as any).GET(req('http://x/api/brand/influencers/ranking'))).json()
-  assert.deepEqual(other.data.map((row: any) => row.user_name), ['Zoe De Otra Marca'])
+  assert.deepEqual(other.data.map((row: any) => row.display_name), ['Zoe De Otra Marca'])
   as(null)
   assert.equal((await (ranking as any).GET(req('http://x/api/brand/influencers/ranking'))).status, 401)
 })
@@ -163,7 +163,7 @@ test('guardias: el componente de ranking usa has_account (con respaldo a user_id
 test('guardias: el ranking de marca pide columnas explícitas sin email, teléfono ni WhatsApp', () => {
   const src = read('src/app/api/brand/influencers/ranking/route.ts')
   const select = src.slice(src.indexOf(".from('influencers')"), src.indexOf('.in(\'id\', influencerIds)'))
-  assert.match(select, /user_name/)
+  assert.match(select, /display_name/)
   assert.doesNotMatch(select, /\b(email|phone|whatsapp)\b|\*/)
   assert.match(src, /\.map\(\(\{ user_id, \.\.\.rest \}\) => \(\{ \.\.\.rest, has_account: Boolean\(user_id\) \}\)\)/)
 })

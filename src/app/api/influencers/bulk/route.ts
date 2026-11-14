@@ -21,7 +21,7 @@ import { getOfficialLocationDisplayMap } from '@/lib/influencer-location'
  */
 
 export interface BulkRow {
-  user_name?: string
+  display_name?: string
   email?: string
   phone?: string
   location_id?: string
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
 
   const { data: existingInfs } = await admin
     .from('influencers')
-    .select('id, email, user_name')
+    .select('id, email, display_name')
     .eq('organization_id', orgId)
     .in('email', emails.length ? emails : ['__none__'])
 
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
     const igKey = normUrl(row.instagram_url as string)
 
     // Fila vacía
-    if (!row.user_name && !row.email && !igKey) { skippedEmpty++; return }
+    if (!row.display_name && !row.email && !igKey) { skippedEmpty++; return }
 
     // Instagram es obligatorio en toda importación
     if (requireInstagram && !igKey) { skippedNoInstagram++; return }
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
       const chunk = toInsert.slice(c, c + CHUNK)
       const insertPayload = chunk.map(row => ({
         organization_id: orgId,
-        pending_user_name: row.user_name || row.email?.split('@')[0] || 'Sin nombre',
+        display_name: row.display_name || row.email?.split('@')[0] || 'Sin nombre',
         email: row.email || null,
         phone: row.phone || null,
         location_id: row.location_id || null,
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
       const { data: inserted, error: insertErr } = await admin
         .from('influencers')
         .insert(insertPayload)
-        .select('id, email, user_name')
+        .select('id, email, display_name')
 
       if (insertErr || !inserted) {
         errors.push({ row: c + 1, error: insertErr?.message ?? 'Batch insert failed' })
@@ -268,18 +268,18 @@ export async function POST(request: NextRequest) {
 
       created += inserted.length
 
-      // Map by email (primary), fall back to user_name for rows without email
+      // Map by email (primary), fall back to display_name for rows without email
       const emailToId = new Map(inserted
         .filter(inf => inf.email)
         .map(inf => [inf.email!.toLowerCase(), inf.id]))
       const nameToId = new Map(inserted
-        .filter(inf => !inf.email && inf.user_name)
-        .map(inf => [inf.user_name.toLowerCase(), inf.id]))
+        .filter(inf => !inf.email && inf.display_name)
+        .map(inf => [inf.display_name.toLowerCase(), inf.id]))
 
       chunk.forEach(row => {
         const infId = row.email
           ? emailToId.get(row.email.toLowerCase())
-          : nameToId.get((row.user_name ?? '').toLowerCase())
+          : nameToId.get((row.display_name ?? '').toLowerCase())
         if (!infId) return
         const sps = buildSocialProfiles(row)
         sps.forEach((sp, idx) => {

@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
   const limit    = Math.max(1, parseInt(searchParams.get('limit') ?? '48', 10))
   const summaryOnly = searchParams.get('summary') === '1'
 
-  const VALID_SORT_COLS = ['created_at', 'updated_at', 'user_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
+  const VALID_SORT_COLS = ['created_at', 'updated_at', 'display_name', 'rating', 'is_verified', 'is_active', 'country', 'city', 'commune'] as const
   const isLocationSort = rawSort === 'country' || rawSort === 'city' || rawSort === 'commune'
   const sortBy = (VALID_SORT_COLS as readonly string[]).includes(rawSort) ? rawSort : 'created_at'
 
@@ -95,12 +95,12 @@ export async function GET(req: NextRequest) {
     for (let i = 0; i < restrictedInfluencerIds.length; i += 100) {
       const { data: candidates, error: candidatesError } = await admin
         .from('influencers')
-        .select('id, user_name, location_id')
+        .select('id, display_name, location_id')
         .in('id', restrictedInfluencerIds.slice(i, i + 100))
       if (candidatesError) return NextResponse.json({ error: candidatesError.message }, { status: 500 })
       for (const row of candidates ?? []) {
         const location = row.location_id ? locationDisplayById.get(row.location_id) : undefined
-        const haystack = [row.user_name, location?.country, location?.region, location?.city, location?.commune]
+        const haystack = [row.display_name, location?.country, location?.region, location?.city, location?.commune]
         if (haystack.some(value => value && normalizeLocationName(String(value)).includes(needle))) matched.push(row.id)
       }
     }
@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
     const { data: summaryRows, error: summaryError } = await fetchAllRows<Record<string, unknown>>(
       (from, to) => {
         let q = admin.from('influencers').select(`
-          id, user_name, location_id, categories, is_verified,
+          id, display_name, location_id, categories, is_verified,
           social_profiles:influencer_social_profiles(platform, followers, engagement_rate, is_primary)
         `).range(from, to)
         q = q.in('id', restrictedInfluencerIds)
@@ -180,7 +180,7 @@ export async function GET(req: NextRequest) {
     .from('influencers')
     .select(`
       id,
-      user_name,
+      display_name,
       bio,
       avatar_url,
       location_id,
@@ -307,13 +307,13 @@ export async function POST(req: NextRequest) {
 
   // organization_id / brand_id: NUNCA se aceptan del body, aunque vengan.
   const {
-    user_name, email, phone, bio, avatar_url, location_id, birth_date,
+    display_name, email, phone, bio, avatar_url, location_id, birth_date,
     address, address_lat, address_lng, categories, tags,
     is_verified = false, is_active = true,
     social_profiles = [], rate_cards = [], notes, first_name, last_name,
   } = body as Record<string, unknown>
 
-  if (!user_name || typeof user_name !== 'string' || !user_name.trim()) {
+  if (!display_name || typeof display_name !== 'string' || !display_name.trim()) {
     return NextResponse.json({ error: 'El nombre es requerido' }, { status: 422 })
   }
   if (!email || typeof email !== 'string' || !email.trim()) {
@@ -353,7 +353,7 @@ export async function POST(req: NextRequest) {
   // 1) Buscar por instagram username en toda la tabla (cualquier org).
   const { data: igMatches } = await admin
     .from('influencer_social_profiles')
-    .select('influencer_id, influencer:influencers(id, organization_id, user_name)')
+    .select('influencer_id, influencer:influencers(id, organization_id, display_name)')
     .eq('platform', 'instagram')
     .ilike('username', igUsername)
 
@@ -401,7 +401,7 @@ export async function POST(req: NextRequest) {
     .from('influencers')
     .insert({
       organization_id: brand.organization_id, // ← forzado server-side, nunca del body
-      pending_user_name: (user_name as string).trim(),
+      display_name: (display_name as string).trim(),
       email: emailNorm, phone: phone ?? null, bio: bio ?? null,
       avatar_url: avatar_url ?? null, location_id: canonicalLocationId,
       birth_date: birth_date ?? null,
@@ -455,7 +455,7 @@ export async function POST(req: NextRequest) {
 
   const { data } = await admin
     .from('influencers')
-    .select('*, user_name, influencer_social_profiles(*), influencer_rate_cards(*)')
+    .select('*, influencer_social_profiles(*), influencer_rate_cards(*)')
     .eq('id', influencer.id)
     .single()
 
@@ -470,7 +470,7 @@ export async function POST(req: NextRequest) {
   if (instagram_sync?.synced) {
     const { data: refreshed } = await admin
       .from('influencers')
-      .select('*, user_name, influencer_social_profiles(*), influencer_rate_cards(*)')
+      .select('*, influencer_social_profiles(*), influencer_rate_cards(*)')
       .eq('id', influencer.id)
       .single()
     return NextResponse.json({ data: refreshed ?? data, instagram_sync: { synced: instagram_sync.synced, not_found: instagram_sync.not_found } }, { status: 201 })

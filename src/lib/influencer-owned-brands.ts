@@ -8,7 +8,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scence-app.vercel.ap
 const APPROVAL_EMAIL = ADMIN_NOTIFICATION_EMAIL
 
 export async function getInfluencer(user: User, admin: SupabaseClient) {
-  const { data } = await admin.from('influencers').select('id, user_name, email').eq('user_id', user.id).maybeSingle()
+  const { data } = await admin.from('influencers').select('id, display_name, email').eq('user_id', user.id).maybeSingle()
   return data
 }
 

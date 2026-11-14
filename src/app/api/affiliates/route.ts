@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     .from('affiliate_links')
     .select(`
       *,
-      influencer:influencers (id, user_name),
+      influencer:influencers (id, display_name),
       campaign:campaigns (id, name)
     `)
     .eq('organization_id', orgId)
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     })
     .select(`
       *,
-      influencer:influencers (id, user_name),
+      influencer:influencers (id, display_name),
       campaign:campaigns (id, name)
     `)
     .single()

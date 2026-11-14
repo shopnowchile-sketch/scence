@@ -22,7 +22,7 @@ interface Deliverable {
   content_url: string | null
   published_url?: string | null
   submitted_at: string | null
-  influencer: { id: string; user_name: string; avatar_url: string | null } | null
+  influencer: { id: string; display_name: string; avatar_url: string | null } | null
 }
 
 interface Campaign {
@@ -33,7 +33,7 @@ interface Campaign {
   end_date: string | null
   budget_total: number | null
   currency: string
-  campaign_influencers: Array<{ id: string; application_status: string | null; influencer: { id: string; user_name: string; avatar_url: string | null } | null }>
+  campaign_influencers: Array<{ id: string; application_status: string | null; influencer: { id: string; display_name: string; avatar_url: string | null } | null }>
   campaign_deliverables: Deliverable[]
 }
 
@@ -175,7 +175,7 @@ export default function BrandDashboard() {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{d.title || d.type}</p>
-                    <p className="text-xs text-gray-500">{d.influencer?.user_name} · {camp?.name}</p>
+                    <p className="text-xs text-gray-500">{d.influencer?.display_name} · {camp?.name}</p>
                   </div>
                   {d.content_url && (
                     <a href={d.content_url} target="_blank" rel="noopener noreferrer"

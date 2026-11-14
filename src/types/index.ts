@@ -50,7 +50,7 @@ export interface Influencer {
   id: string
   user_id: string | null
   organization_id: string | null
-  user_name: string
+  display_name: string
   bio: string | null
   avatar_url: string | null
   cover_url: string | null
@@ -189,7 +189,7 @@ export interface CampaignInfluencerDetail {
   history?: { applications: number; selected: number; participations: number; contents: number } | null
   influencer: {
     id: string
-    user_name: string
+    display_name: string
     avatar_url: string | null
     city: string | null
   commune: string | null
@@ -248,7 +248,7 @@ export interface CampaignDeliverableDetail {
   attendance_outcome_at?: string | null
   influencer: {
     id: string
-    user_name: string
+    display_name: string
     avatar_url: string | null
   } | null
 }
@@ -373,13 +373,13 @@ export interface Booking {
   metadata: Record<string, unknown> | null // stores google_calendar_link etc.
   // Computed helpers from metadata
   google_calendar_link?: string | null
-  influencer?: Pick<Influencer, 'id' | 'user_name' | 'avatar_url'>
+  influencer?: Pick<Influencer, 'id' | 'display_name' | 'avatar_url'>
   campaign?: Pick<Campaign, 'id' | 'name'>
   booking_influencers?: Array<{
     id: string
     influencer_id: string
     status: string
-    influencer?: Pick<Influencer, 'id' | 'user_name' | 'avatar_url'> | null
+    influencer?: Pick<Influencer, 'id' | 'display_name' | 'avatar_url'> | null
   }>
   created_at: string
   updated_at: string
@@ -439,11 +439,11 @@ export interface InfluencerFilters {
   // followers/engagement_rate quedan en el tipo por compatibilidad con la UI histórica,
   // pero /api/influencers no puede ordenar por ellos (viven en el join
   // influencer_social_profiles, no en la tabla influencers) — cae a created_at.
-  // Columnas que sí ordenan de verdad server-side: user_name, rating,
+  // Columnas que sí ordenan de verdad server-side: display_name, rating,
   // is_verified, created_at, updated_at. commune/city/country se ordenan en
   // memoria con location_id → locations (no son columnas de orden). 'plan' tampoco es columna
   // directa — mismo tratamiento server-side que followers/engagement_rate.
-  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'user_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at' | 'plan'
+  sortBy: 'followers' | 'engagement_rate' | 'rating' | 'display_name' | 'created_at' | 'commune' | 'is_active' | 'birth_date' | 'last_sign_in_at' | 'plan'
   sortOrder: 'asc' | 'desc'
 }
 
@@ -546,7 +546,7 @@ export interface BarterStatusHistoryEntry {
   changed_by: string | null
   note: string | null
   created_at: string
-  actor?: { user_id: string; user_name: string | null } | null
+  actor?: { id: string; full_name: string | null } | null
 }
 
 export interface Barter {
@@ -577,13 +577,13 @@ export interface Barter {
   updated_at: string
   influencer?: {
     id: string
-    user_name: string
+    display_name: string
     avatar_url: string | null
     email?: string | null
     instagram_username?: string | null
   } | null
   brand?: { id: string; name: string; logo_url: string | null } | null
-  responsible?: { user_id: string; user_name: string | null } | null
+  responsible?: { id: string; full_name: string | null } | null
   history?: BarterStatusHistoryEntry[]
 }
 

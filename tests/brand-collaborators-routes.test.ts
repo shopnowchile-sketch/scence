@@ -12,6 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { register } from 'node:module'
 
+process.env.VERCEL_ENV = 'test' // el prebuild de Vercel corre estas pruebas: nunca con el cliente real de correo
 register('./support/ts-resolve.mjs', import.meta.url)
 register('./support/route-harness.mjs', import.meta.url)
 
